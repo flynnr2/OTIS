@@ -86,6 +86,10 @@ def test_cx322_compiles_the_exact_timer_projection_path() -> None:
 
 def test_active_hybrid_bundle_binds_the_current_package_loader() -> None:
     assert TOOL_PATHS["run_loader"].name == "run_loader.py"
+    assert (
+        TOOL_PATHS["evidence_finalization_journal"].name
+        == "evidence_finalization.py"
+    )
 
 
 def test_cx322_real_process_fixture_connects_response_to_later_authority() -> None:

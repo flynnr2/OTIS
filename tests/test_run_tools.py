@@ -159,6 +159,55 @@ def test_cx322_d9_d6_integration_is_a_current_evidence_package(
     assert load_manifest(run_dir).data == value
 
 
+def test_cx322_d9_d6_72h_is_a_current_evidence_package(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "cx322_d9_d6_72h"
+    value = _write_manifest(
+        run_dir,
+        compatibility_floor="OTIS_CX322_D9_D6_72H_EVIDENCE_EPOCH_1",
+        run_id="cx322_d9_d6_72h_live_fixture",
+        stage="OTIS_CX322_D9_D6_72H_SUSTAINED_ENGINEERING_LIVE",
+        programme_id="OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_V1",
+        cx319=None,
+        cx322_d9_d6_72h={
+            "profile_id": "cx322_d9_d6_72h_sustained_engineering"
+        },
+    )
+
+    assert load_manifest(run_dir).data == value
+
+
+@pytest.mark.parametrize(
+    "change",
+    (
+        {"compatibility_floor": "CX319_EVIDENCE_EPOCH_1"},
+        {"programme_id": "wrong_programme"},
+        {"cx322_d9_d6_72h": {"profile_id": "wrong_profile"}},
+    ),
+)
+def test_cx322_d9_d6_72h_requires_exact_epoch_and_identity(
+    tmp_path: Path, change: dict[str, object]
+) -> None:
+    run_dir = tmp_path / "wrong_cx322_d9_d6_72h"
+    values: dict[str, object] = {
+        "compatibility_floor": "OTIS_CX322_D9_D6_72H_EVIDENCE_EPOCH_1",
+        "stage": "OTIS_CX322_D9_D6_72H_SUSTAINED_ENGINEERING_LIVE",
+        "programme_id": "OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_V1",
+        "cx319": None,
+        "cx322_d9_d6_72h": {
+            "profile_id": "cx322_d9_d6_72h_sustained_engineering"
+        },
+    }
+    values.update(change)
+    _write_manifest(run_dir, **values)
+
+    with pytest.raises(
+        ValueError, match="OTIS_CX322_D9_D6_72H_EVIDENCE_EPOCH_1"
+    ):
+        load_manifest(run_dir)
+
+
 def test_sustained_hybrid_is_a_current_evidence_package(
     tmp_path: Path,
 ) -> None:

@@ -46,6 +46,7 @@ HYBRID_EXACT = Path("csv/active_hybrid_decisions_v2.csv")
 CAPTURE_MAX_AGE_S = 15.0
 EVIDENCE_MAX_AGE_S = 15.0
 EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
+CAMPAIGN18_PREWRITE_QUALIFICATION_DEADLINE_S = 660.0
 
 _AT2_NON_JOIN_FIELDS = frozenset(
     {
@@ -89,6 +90,15 @@ def _age_s(path: Path, *, now: float) -> float | None:
     if not path.is_file():
         return None
     return max(0.0, now - path.stat().st_mtime)
+
+
+def _utc_epoch(value: object) -> float | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 
 def _row_summary(path: Path, fields: tuple[str, ...]) -> dict[str, Any]:
@@ -302,6 +312,19 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
     supervisor = _read_object(run_dir / SUPERVISOR_STATE)
     terminal = None if supervisor is None else supervisor.get("terminal")
     terminal_reached = isinstance(terminal, dict)
+    prewrite_readiness = (
+        None
+        if supervisor is None
+        else supervisor.get("latest_prewrite_readiness")
+    )
+    supervisor_started_epoch = _utc_epoch(
+        None if supervisor is None else supervisor.get("supervisor_started_utc")
+    )
+    prewrite_elapsed_s = (
+        None
+        if supervisor_started_epoch is None
+        else max(0.0, now - supervisor_started_epoch)
+    )
     device = str(manifest["host"]["serial_device"])
     owners = sorted(_serial_owner_pids(device))
     capture_pid = None if capture is None else capture.get("pid")
@@ -358,6 +381,15 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             integrity_faults.append("raw_evidence_missing")
         elif raw_age > EVIDENCE_MAX_AGE_S:
             integrity_faults.append("raw_evidence_stale")
+        if (
+            programme is CX322_D9_D6_72H_PROGRAMME
+            and isinstance(prewrite_readiness, dict)
+            and prewrite_readiness.get("ready") is False
+            and prewrite_elapsed_s is not None
+            and prewrite_elapsed_s
+            > CAMPAIGN18_PREWRITE_QUALIFICATION_DEADLINE_S
+        ):
+            integrity_faults.append("prewrite_qualification_deadline_expired")
 
     estimates = _row_summary(
         run_dir / ESTIMATES,
@@ -438,6 +470,9 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "maximum_poll_interval_s": 10,
             "plant_sign_ack_deadline_s": 30,
             "evidence_stale_after_s": EVIDENCE_MAX_AGE_S,
+            "campaign18_prewrite_qualification_deadline_s": (
+                CAMPAIGN18_PREWRITE_QUALIFICATION_DEADLINE_S
+            ),
         },
         "capture": {
             "pid": capture_pid,
@@ -456,6 +491,16 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "qualification_started_utc": (
                 None if supervisor is None else supervisor.get("qualification_started_utc")
             ),
+            "supervisor_started_utc": (
+                None if supervisor is None else supervisor.get("supervisor_started_utc")
+            ),
+            "prewrite_elapsed_s": prewrite_elapsed_s,
+            "prewrite_contract_ready_utc": (
+                None
+                if supervisor is None
+                else supervisor.get("prewrite_contract_ready_utc")
+            ),
+            "prewrite_readiness": prewrite_readiness,
             "qualified_origin_estimate_id": (
                 None if supervisor is None else supervisor.get("qualified_origin_estimate_id")
             ),

@@ -11,6 +11,8 @@ from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_72H_PROGRAMME,
 )
 from host.otis_tools.contracts import CONTRACT_FIELDS
+from host.otis_tools.evidence import create_evidence_snapshot
+from host.otis_tools.run_loader import load_manifest
 
 
 def _write_json(path: Path, value: dict[str, object]) -> None:
@@ -458,4 +460,77 @@ def test_campaign18_physical_manifest_monitor_reports_exact_sidecar_progress_and
     assert "exact_timing_sidecar_identity_mismatch" in mismatch["integrity_faults"]
     assert mismatch["progress"]["exact_timing_sidecars"]["mismatches"] == [
         "AT2 join mismatch transaction_record_sequence=1:accepted_code"
+    ]
+
+
+def test_generated_campaign18_manifest_loads_and_snapshots_through_generic_lifecycle(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir, _now = _campaign18_fixture(tmp_path, monkeypatch)
+
+    manifest = load_manifest(run_dir)
+    assert manifest.data["programme_id"] == (
+        CX322_D9_D6_72H_PROGRAMME.programme_id
+    )
+    for entry in manifest.files:
+        path = run_dir / entry["path"]
+        if path.is_file():
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(
+                handle, fieldnames=CONTRACT_FIELDS[entry["contract"]]
+            )
+            writer.writeheader()
+    for relative in manifest.data["evidence_artifacts"]:
+        path = run_dir / relative
+        if path.is_file():
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+
+    snapshot_path = create_evidence_snapshot(run_dir, allow_incomplete=True)
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+    assert snapshot["run_id"] == run_dir.name
+    assert snapshot["run_state"] == "complete"
+    assert any(
+        item["path"] == "run_manifest.json"
+        and item["role"] == "run_manifest"
+        for item in snapshot["artifacts"]
+    )
+
+
+def test_campaign18_monitor_distinguishes_expected_prewrite_wait_from_deadline_expiry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir, now = _campaign18_fixture(tmp_path, monkeypatch)
+    state_path = run_dir / monitor.SUPERVISOR_STATE
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state.update(
+        {
+            "latest_hybrid_state": "SETUP_PENDING",
+            "supervisor_started_utc": "2033-05-18T03:28:20Z",
+            "prewrite_contract_ready_utc": None,
+            "latest_prewrite_readiness": {
+                "ready": False,
+                "missing": [],
+                "mismatches": ["startup inhibit remains active"],
+            },
+        }
+    )
+    _write_json(state_path, state)
+
+    waiting = monitor.snapshot(run_dir, now=now)
+    assert waiting["status"] == "running"
+    assert waiting["progress"]["prewrite_readiness"]["ready"] is False
+    assert waiting["progress"]["prewrite_elapsed_s"] == 300.0
+
+    expired = monitor.snapshot(
+        run_dir,
+        now=now + monitor.CAMPAIGN18_PREWRITE_QUALIFICATION_DEADLINE_S + 1,
+    )
+    assert expired["status"] == "fault"
+    assert "prewrite_qualification_deadline_expired" in expired[
+        "integrity_faults"
     ]

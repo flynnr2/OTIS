@@ -99,6 +99,83 @@ def test_campaign18_exact_sidecar_join_is_required_before_analyze_or_register(
     assert registered is False
 
 
+def test_campaign18_finalizer_uses_declared_journal_phases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    journal = runner.begin_finalization(
+        run_dir=run_dir,
+        index_path=tmp_path / "index.json",
+        registration={
+            "source_revision": "a" * 40,
+            "build_identity": "b" * 64 + ":" + "c" * 64,
+            "profile_identity": CX322_D9_D6_72H_PROGRAMME.profile_id,
+            "attempt_classification": "interrupted_campaign",
+            "result_or_failure_reason": "pending",
+            "analyzer_identity": "d" * 64,
+        },
+        required_seal=Path("reports/seal.json"),
+    )
+    runner.advance_phase(journal, "capture_closed", {"capture_exit": 0})
+    snapshot = run_dir / runner.EVIDENCE_MANIFEST
+    seal_path = run_dir / "reports/seal.json"
+    seal_path.parent.mkdir()
+    seal = {
+        "status": "bounded_nonpass",
+        "primary_decision": "cx322_d9_d6_72h_operator_abort",
+        "tool_sha256": "e" * 64,
+        "seal_sha256": "f" * 64,
+    }
+    monkeypatch.setattr(runner, "_terminal", lambda _run_dir: {})
+    monkeypatch.setattr(
+        runner,
+        "create_evidence_snapshot",
+        lambda *args, **kwargs: (_write(snapshot, {"artifacts": []}) or snapshot),
+    )
+    manifest = SimpleNamespace(data={"programme_id": "campaign18"})
+    monkeypatch.setattr(runner, "load_manifest", lambda _run_dir: manifest)
+    monkeypatch.setattr(runner, "validate_evidence_snapshot", lambda *args: ([], []))
+    monkeypatch.setattr(runner, "_snapshotted_artifact_identities", lambda *args: {})
+    monkeypatch.setattr(
+        runner,
+        "_require_campaign18_exact_timing_sidecars",
+        lambda *args: {"required": True, "exact": True, "AT2_rows": 0, "AH2_rows": 0},
+    )
+    monkeypatch.setattr(
+        runner,
+        "_analyze",
+        lambda _run_dir: (_write(seal_path, seal) or seal_path, seal),
+    )
+    monkeypatch.setattr(runner, "set_registration_intent", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        runner, "recover_registration", lambda _journal: {"content_sha256": "1" * 64}
+    )
+
+    result = runner._finalize_and_register(
+        run_dir=run_dir,
+        activation={
+            "firmware": {
+                "source_revision": "a" * 40,
+                "build_identity": "b" * 64 + ":" + "c" * 64,
+            },
+            "profile_identity": CX322_D9_D6_72H_PROGRAMME.profile_id,
+        },
+        evidence_index_path=tmp_path / "index.json",
+        finalization_journal=journal,
+        orchestration_error=None,
+    )
+
+    value = json.loads(journal.read_text(encoding="utf-8"))
+    assert value["phases"]["snapshot"] is not None
+    assert value["phases"]["analysis"]["details"][
+        "exact_timing_sidecar_join"
+    ]["exact"] is True
+    assert value["phases"]["seal"] is not None
+    assert "exact_timing_sidecars" not in value["phases"]
+    assert result["primary_decision"] == "cx322_d9_d6_72h_operator_abort"
+
+
 def _write(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
@@ -405,6 +482,28 @@ def test_prewrite_abort_does_not_invent_a_confirmed_static_code() -> None:
     )
 
 
+def test_campaign18_independent_prewrite_abort_is_a_canonical_transport_terminal() -> None:
+    assert runner._terminal_expected(
+        {
+            "result": "aborted",
+            "reason": "independent_host_abort_fifo",
+            "primary_decision": "operator_abort",
+        },
+        CX322_D9_D6_72H_PROGRAMME,
+    )
+
+
+def test_campaign18_does_not_admit_an_unrelated_generic_abort() -> None:
+    assert not runner._terminal_expected(
+        {
+            "result": "aborted",
+            "reason": "unrelated_abort",
+            "primary_decision": "operator_abort",
+        },
+        CX322_D9_D6_72H_PROGRAMME,
+    )
+
+
 def test_partial_snapshot_freezes_available_evidence_and_declares_absence(
     tmp_path: Path,
 ) -> None:
@@ -672,6 +771,11 @@ def test_orchestration_waits_for_abort_delivery_before_capture_close(
         return {"manifest": "live"}
 
     monkeypatch.setattr(runner, "create_run_manifest", manifest)
+    monkeypatch.setattr(
+        runner,
+        "load_manifest",
+        lambda _run_dir: SimpleNamespace(data={"manifest": "live"}),
+    )
     journal = tmp_path / "journal.json"
     _write(journal, {"phases": {}})
     monkeypatch.setattr(runner, "begin_finalization", lambda **kwargs: journal)
@@ -775,6 +879,11 @@ def test_noncanonical_aborted_terminal_checks_delivery_before_capture_close(
         return {"manifest": "live"}
 
     monkeypatch.setattr(runner, "create_run_manifest", manifest)
+    monkeypatch.setattr(
+        runner,
+        "load_manifest",
+        lambda _run_dir: SimpleNamespace(data={"manifest": "live"}),
+    )
     journal = tmp_path / "journal.json"
     _write(journal, {"phases": {}})
     monkeypatch.setattr(runner, "begin_finalization", lambda **kwargs: journal)
@@ -934,6 +1043,11 @@ def test_capture_prewrite_failure_still_enters_offline_finalization(
         return {"manifest": "live"}
 
     monkeypatch.setattr(runner, "create_run_manifest", manifest)
+    monkeypatch.setattr(
+        runner,
+        "load_manifest",
+        lambda _run_dir: SimpleNamespace(data={"manifest": "live"}),
+    )
     journal = tmp_path / "journal.json"
     _write(journal, {"phases": {}})
     monkeypatch.setattr(runner, "begin_finalization", lambda **kwargs: journal)
@@ -1014,6 +1128,18 @@ def test_offline_recovery_never_calls_board_serial_or_upload(
         },
     )
     monkeypatch.setattr(runner, "validate_frozen_run_manifest", lambda _path: manifest)
+    monkeypatch.setattr(
+        runner, "load_manifest", lambda _run_dir: SimpleNamespace(data={})
+    )
+    exact_checks: list[Path] = []
+    monkeypatch.setattr(
+        runner,
+        "_require_campaign18_exact_timing_sidecars",
+        lambda observed_run, _manifest: (
+            exact_checks.append(observed_run)
+            or {"required": True, "exact": True}
+        ),
+    )
     monkeypatch.setattr(runner, "set_registration_intent", lambda *args, **kwargs: {})
     monkeypatch.setattr(
         runner,
@@ -1037,3 +1163,4 @@ def test_offline_recovery_never_calls_board_serial_or_upload(
     assert result["physical_rerun"] is False
     assert result["device_or_actuator_io"] is False
     assert (run_dir / "raw/serial.log").read_bytes() == before
+    assert exact_checks == [run_dir]

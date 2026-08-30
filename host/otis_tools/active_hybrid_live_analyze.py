@@ -280,13 +280,11 @@ def campaign18_exact_timing_sidecar_join(
     ):
         mismatches.append("AT2/AH2 global timing_record_sequence is not contiguous")
     return {
-        "exact": bool(
-            transactions
-            and decisions
-            and transaction_timings
-            and decision_timings
-            and not mismatches
-        ),
+        # Presence is a scientific/endpoint criterion, not a relational join
+        # criterion. A pre-setup terminal has four empty lifecycle relations;
+        # empty-to-empty is exact, while either asymmetric side is rejected by
+        # the orphan/missing checks above.
+        "exact": not mismatches,
         "AT2_rows": len(transaction_timings),
         "AH2_rows": len(decision_timings),
         "mismatches": mismatches,
@@ -3346,9 +3344,16 @@ def analyze(
         ),
         "terminal_tight_inside_reacquired_and_retained": terminal_tight_inside,
         "no_chatter_clamp_or_policy_fault": no_fault_or_chatter,
-        "qualified_12h_endpoint_complete": endpoint_complete,
+        "qualified_endpoint_complete": endpoint_complete,
         "terminal_static_without_outstanding_authority": static_terminal_exact,
     }
+    if programme is not CX322_D9_D6_72H_PROGRAMME:
+        # Retain the deployed key for non-Campaign18 packages. Campaign18 is
+        # deliberately duration-neutral here so its 72-hour endpoint cannot be
+        # mislabeled as an inherited 12-hour criterion.
+        scientific_acceptance_checks["qualified_12h_endpoint_complete"] = (
+            endpoint_complete
+        )
     descriptive_prior_comparisons = (
         scientific_acceptance_checks
         if programme.response_checkpoint_observational

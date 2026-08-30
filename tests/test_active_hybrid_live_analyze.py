@@ -123,6 +123,20 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
     )
     assert exact["exact"] is True
 
+    empty = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=[],
+        decisions=[],
+        transaction_timings=[],
+        decision_timings=[],
+    )
+    assert empty == {
+        "exact": True,
+        "AT2_rows": 0,
+        "AH2_rows": 0,
+        "mismatches": [],
+        "coarse_seconds_used_as_ticks": False,
+    }
+
     for transactions, at2_rows, ah2_rows in (
         ([], [at2], [ah2]),
         ([transaction, dict(transaction)], [at2], [ah2]),
