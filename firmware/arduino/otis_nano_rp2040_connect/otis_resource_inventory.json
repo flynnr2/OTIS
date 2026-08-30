@@ -64,11 +64,11 @@
       "id": "telemetry",
       "implementation": "OtisSpscQueue<OtisTelemetryMessage, OTIS_TELEMETRY_QUEUE_DEPTH>",
       "capacity_symbol": "OTIS_TELEMETRY_QUEUE_DEPTH",
-      "capacity": 192,
+      "capacity": 212,
       "producer": "core1_timing",
       "consumer": "core0_service",
       "loss_policy": "drop_new_increment_counter_no_control_authority",
-      "maximum_consumer_absence": "declared_bursts_only; max_boot_169,max_concurrent_142; core0_drains_12_per_loop",
+      "maximum_consumer_absence": "declared_bursts_only; max_boot_169,max_concurrent_212; core0_drains_12_per_loop",
       "recovery": "continue_if_absolute_gates_clean; reset_if_transport_fault"
     },
     {

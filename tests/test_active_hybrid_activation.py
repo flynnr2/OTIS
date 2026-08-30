@@ -64,6 +64,7 @@ def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(
             *activation.REHEARSAL_COVERAGE,
             *activation.CAMPAIGN18_REHEARSAL_COVERAGE,
             "integrated_setup_provenance_boundary",
+            "mandatory_sustained_status_snapshot_identity",
         )
     }
     unsigned = {
@@ -734,6 +735,13 @@ def test_campaign18_later_activation_accepts_programme_operator_abort_terminal(
             "measurement_authority_or_platform_fault",
             "cx322_d9_d6_72h_live_supervisor_fault:"
             "live active_fail_static asserted",
+        ),
+        (
+            "cx322_d9_d6_72h_identity_or_evidence_fault",
+            "measurement_authority_or_platform_fault",
+            "cx322_d9_d6_72h_live_supervisor_fault:"
+            "active live-health handoff is invalid: new snapshot generation "
+            "began before the prior generation 2006 completed",
         ),
     ),
 )

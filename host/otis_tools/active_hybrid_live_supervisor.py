@@ -2177,6 +2177,15 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             terminal["primary_decision"] = (
                 "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
             )
+        elif (
+            self.programme is CX322_D9_D6_72H_PROGRAMME
+            and reason.startswith(
+                f"{self.programme.key}_live_supervisor_fault:"
+            )
+        ):
+            terminal["primary_decision"] = (
+                "cx322_d9_d6_72h_identity_or_evidence_fault"
+            )
         elif self.programme.sustained_regulation and reason in {
             "prospective_repeated_alternation",
             "prospective_low_efficiency_path",

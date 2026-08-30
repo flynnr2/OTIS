@@ -613,6 +613,8 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
     assert "transaction_bound && manual_start_confirmed" in status_getter
     assert '"0x%04X"' in visitor
     assert "OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT" in visitor
+    assert "OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID" in visitor
+    assert "OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V3" in visitor
     assert '"unavailable"' in visitor
 
 

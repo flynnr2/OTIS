@@ -12,11 +12,14 @@ constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
 constexpr uint32_t OTIS_PHASE_PREVIEW_QUEUE_DEPTH = 32u;
 constexpr uint32_t OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH = 16u;
 // The non-active portion of Stage 7 timing health reaches 67 telemetry
-// messages. ACTIVE status has one fixed 33-field vocabulary plus three
-// complete-generation envelope records in both the direct and cross-core
-// publishers. A periodic health burst and one ACTIVE? response can align
-// while Core 0 is occupied with serial transport.
-constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 33u;
+// messages. ACTIVE status has a maximum 63-field vocabulary across the base,
+// sustained-hybrid, and CX321 contracts, plus three complete-generation
+// envelope records in both the direct and cross-core publishers. Reserve the
+// union because the visitor is shared and compile-time profile fields must not
+// make admission smaller than the burst it actually emits. A periodic health
+// burst and one ACTIVE? response can align while Core 0 is occupied with
+// serial transport.
+constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 63u;
 constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u;
 constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST =
     OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT +
@@ -30,13 +33,13 @@ constexpr uint32_t OTIS_TIMING_HEALTH_TELEMETRY_BURST =
 constexpr uint32_t OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_TELEMETRY_BURST +
     OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
-static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 152u,
+static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 212u,
               "Stage 7 health plus one ACTIVE? response must remain exact");
 // Retain the already-proven conservative split-boot capacity after removing
 // the obsolete D10 witness records; a smaller exact startup count is not
 // needed to protect the finite queue.
 constexpr uint32_t OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 169u;
-constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 192u;
+constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 212u;
 static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
                   OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST,
               "telemetry queue must absorb concurrent health and ACTIVE? bursts");

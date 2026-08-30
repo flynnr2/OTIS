@@ -58,6 +58,7 @@ class ActiveHybridProgramme:
     identification_required: bool = False
     response_checkpoint_observational: bool = False
     sustained_regulation: bool = False
+    sustained_status_contract: bool = False
     prospectively_changed_authority_envelope: bool = False
     forwarded_output_integration: bool = False
     fresh_serial_auto_detect: bool = False
@@ -477,6 +478,7 @@ CX322_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
         }
     ),
     response_checkpoint_observational=True,
+    sustained_status_contract=True,
     prospectively_changed_authority_envelope=True,
     forwarded_output_integration=True,
     fresh_serial_auto_detect=True,
@@ -578,6 +580,7 @@ SUSTAINED_HYBRID_PROGRAMME = ActiveHybridProgramme(
     ),
     response_checkpoint_observational=True,
     sustained_regulation=True,
+    sustained_status_contract=True,
 )
 
 

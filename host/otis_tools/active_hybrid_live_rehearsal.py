@@ -398,7 +398,7 @@ def _post_abort_active_status_wire_fixture(
     if programme.identification_required:
         keys = CX321_ACTIVE_STATUS_KEYS
         contract = CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT
-    elif programme.sustained_regulation:
+    elif programme.sustained_status_contract:
         keys = SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS
         contract = SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT
     else:
@@ -1862,12 +1862,12 @@ def _cx322_active_status_wire_fixture(
     requested_code = programme.setup_code - 5 if applied_code is None else applied_code
     keys = (
         SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS
-        if programme.sustained_regulation
+        if programme.sustained_status_contract
         else ACTIVE_STATUS_KEYS
     )
     contract = (
         SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT
-        if programme.sustained_regulation
+        if programme.sustained_status_contract
         else ACTIVE_STATUS_SNAPSHOT_CONTRACT
     )
     physical_count = int(applied) if correction_count is None else correction_count
@@ -1962,7 +1962,7 @@ def _cx322_active_status_wire_fixture(
             ),
         }
     )
-    if programme.sustained_regulation:
+    if programme.sustained_status_contract:
         values.update(
             {
                 "automatic_application_count": str(automatic_count),
@@ -5334,6 +5334,8 @@ def run(
         if bundle.get("setup", {}).get("provenance") != provenance:
             raise ValueError("integrated rehearsal setup provenance differs")
         coverage["integrated_setup_provenance_boundary"] = True
+    if programme.sustained_status_contract:
+        coverage["mandatory_sustained_status_snapshot_identity"] = True
     if programme.sustained_regulation:
         coverage.update(
             {
@@ -5343,7 +5345,6 @@ def run(
                 "opposite_direction_recovery_transaction": True,
                 "first_post_recovery_consumer": True,
                 "separate_automatic_physical_challenge_accounting": True,
-                "mandatory_sustained_status_snapshot_identity": True,
             }
         )
     if programme is CX322_D9_D6_72H_PROGRAMME:

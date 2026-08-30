@@ -1153,6 +1153,30 @@ def test_campaign18_missing_counter_aborts_before_optional_event_write(
     ]["reason"]
 
 
+def test_campaign18_live_supervisor_fault_uses_canonical_terminal(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["terminal_static_code"] = 0xA850
+
+    supervisor._abort(
+        "cx322_d9_d6_72h_live_supervisor_fault:"
+        "active live-health handoff is invalid"
+    )
+
+    assert supervisor.state["terminal"] == {
+        "result": "aborted",
+        "reason": (
+            "cx322_d9_d6_72h_live_supervisor_fault:"
+            "active live-health handoff is invalid"
+        ),
+        "primary_decision": "cx322_d9_d6_72h_identity_or_evidence_fault",
+        "utc": supervisor.state["terminal"]["utc"],
+        "last_confirmed_code": 0xA850,
+    }
+
+
 def test_campaign18_qualification_defers_incomplete_capture_baseline_atomically(
     tmp_path: Path,
 ) -> None:

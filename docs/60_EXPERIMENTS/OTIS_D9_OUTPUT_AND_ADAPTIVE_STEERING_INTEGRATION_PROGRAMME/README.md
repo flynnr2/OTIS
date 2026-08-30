@@ -11,9 +11,14 @@ long runs despite the unavailable oscilloscope/counter waveform evidence:
 - the 72-hour unchanged-CX322 hybrid programme bound by
   [`cx322_d9_d6_72h_integrated_engineering_contract_v1.json`](cx322_d9_d6_72h_integrated_engineering_contract_v1.json).
 
-The frequency-only run has passed by provenance-linked host-only supersession,
-and the exact 72-hour activation is prepared but not launched. See
-[`05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md`](05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md).
+The frequency-only run has passed by provenance-linked host-only supersession.
+The first three 72-hour hybrid attempts stopped before the endpoint; Attempt 3
+isolated a firmware ACTIVE-status admission defect after 8,460 qualified
+seconds of otherwise healthy live hybrid steering. See
+[`05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md`](05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md),
+[`06_HYBRID_72H_ATTEMPT2_RESULT_AND_RESTART_READINESS.md`](06_HYBRID_72H_ATTEMPT2_RESULT_AND_RESTART_READINESS.md)
+and
+[`07_HYBRID_72H_ATTEMPT3_TELEMETRY_ADMISSION_TERMINAL.md`](07_HYBRID_72H_ATTEMPT3_TELEMETRY_ADMISSION_TERMINAL.md).
 
 This authority supersedes the original Gate B waveform dependency and the
 Prompt 04 stop boundary only for these explicitly identified engineering

@@ -14,6 +14,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from typing import Any
@@ -308,6 +309,8 @@ def validate_operational_rehearsal(
     coverage = report.get("coverage")
     tool_bindings = report.get("tool_bindings")
     expected_coverage = set(REHEARSAL_COVERAGE)
+    if programme.sustained_status_contract:
+        expected_coverage.add("mandatory_sustained_status_snapshot_identity")
     if programme.sustained_regulation:
         expected_coverage.update(SUSTAINED_REHEARSAL_COVERAGE)
     if programme.engineering_unarmed_observation_s > 0:
@@ -593,6 +596,18 @@ def _attempt_descriptor(
         operator_abort_decisions = {"operator_abort"}
         if programme is CX322_D9_D6_72H_PROGRAMME:
             operator_abort_decisions.add("cx322_d9_d6_72h_operator_abort")
+        campaign18_legacy_live_health_handoff = (
+            isinstance(supervisor_terminal, dict)
+            and isinstance(supervisor_terminal.get("reason"), str)
+            and re.fullmatch(
+                r"cx322_d9_d6_72h_live_supervisor_fault:"
+                r"active live-health handoff is invalid: new snapshot "
+                r"generation began before the prior generation [1-9][0-9]* "
+                r"completed",
+                supervisor_terminal["reason"],
+            )
+            is not None
+        )
         failed_physical_gate = (
             seal.get("status") == "failed"
             and seal.get("primary_decision")
@@ -636,10 +651,13 @@ def _attempt_descriptor(
                     == "cx322_d9_d6_72h_identity_or_evidence_fault"
                     and supervisor_terminal.get("primary_decision")
                     == "measurement_authority_or_platform_fault"
-                    and supervisor_terminal.get("reason")
-                    == (
-                        "cx322_d9_d6_72h_live_supervisor_fault:"
-                        "live active_fail_static asserted"
+                    and (
+                        supervisor_terminal.get("reason")
+                        == (
+                            "cx322_d9_d6_72h_live_supervisor_fault:"
+                            "live active_fail_static asserted"
+                        )
+                        or campaign18_legacy_live_health_handoff
                     )
                 )
             )
