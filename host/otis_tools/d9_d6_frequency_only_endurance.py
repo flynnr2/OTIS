@@ -1334,9 +1334,14 @@ def canonical_d14_d8_intervals(run_dir: Path) -> list[dict[str, Any]]:
     separately reported local diagnostic and can neither qualify nor veto an
     authoritative interval.
     """
-    raw_rows = _read_csv_rows(run_dir / "csv" / RAW_EVENTS_CSV)
-    snapshot_rows = _read_csv_rows(run_dir / "csv" / PPS_SNAPSHOTS_CSV)
+    # CNT is the producer commit/frontier record: firmware emits and capture
+    # flushes its supporting REF and SNP first.  Read the frontier before its
+    # support files so a concurrent append cannot expose a new CNT against
+    # stale REF/SNP snapshots and turn a transient host read into a permanent
+    # one-second exclusion.
     count_rows = _read_csv_rows(run_dir / "csv" / COUNT_OBSERVATIONS_CSV)
+    snapshot_rows = _read_csv_rows(run_dir / "csv" / PPS_SNAPSHOTS_CSV)
+    raw_rows = _read_csv_rows(run_dir / "csv" / RAW_EVENTS_CSV)
     transaction_rows = _read_csv_rows(run_dir / ACTIVE_CSV)
     snapshots, duplicate_snapshots = _unique_rows(snapshot_rows, "snapshot_sequence")
     counts, duplicate_counts = _unique_rows(count_rows, "count_seq")
@@ -1497,8 +1502,10 @@ def canonical_d14_d8_intervals(run_dir: Path) -> list[dict[str, Any]]:
         duration_ticks = progress.distance_ticks if progress and progress.valid else None
         frequency_error_hz: float | None = None
         if duration_ticks and counted_edges is not None:
-            expected_edges = 10_000_000.0 * duration_ticks / TIMER_HZ
-            frequency_error_hz = (counted_edges - expected_edges) * TIMER_HZ / duration_ticks
+            # This is a D14-relative one-reference-interval observation.  The
+            # RP2040 timer measures capture aperture diagnostics; it is not the
+            # frequency reference and must not redefine a GNSS-PPS second.
+            frequency_error_hz = float(counted_edges - 10_000_000)
         settling_complete = bool(
             last_application_sequence is None
             or _u32_distance(last_application_sequence, sequence) > 900
@@ -1694,6 +1701,37 @@ def _read_opportunity_causal_ledger(
                 {
                     "resolved": True,
                     "disposition": row.get("disposition"),
+                    "resolution_evidence": row.get("resolution_evidence"),
+                    "resolution_transaction_record_sequence": row.get(
+                        "resolution_transaction_record_sequence"
+                    ),
+                    "resolution_reason": row.get("resolution_reason"),
+                }
+            )
+        elif event == "opportunity_reclassified":
+            retained = opportunities.get(sequence)
+            if (
+                retained is None
+                or retained.get("resolved") is not True
+                or row.get("control_identity_sha256")
+                != retained.get("control_identity_sha256")
+                or row.get("prior_disposition") != retained.get("disposition")
+                or retained.get("disposition") != "ineligible_not_authorized"
+                or retained.get("resolution_evidence")
+                != "control_previews_v1.authority_flags"
+                or row.get("disposition") != "applied"
+                or row.get("resolution_evidence")
+                != "active_transactions_v1.application"
+                or _safe_int(row.get("resolution_transaction_record_sequence"))
+                is None
+            ):
+                raise ValueError(
+                    f"invalid opportunity reclassification sequence {sequence}"
+                )
+            retained.update(
+                {
+                    "eligible_control_opportunity": True,
+                    "disposition": "applied",
                     "resolution_evidence": row.get("resolution_evidence"),
                     "resolution_transaction_record_sequence": row.get(
                         "resolution_transaction_record_sequence"
@@ -2377,6 +2415,14 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
                 )
             related = transactions_by_decision.get(sequence, [])
             related_events = {item.get("event") for item in related}
+            applications = [
+                item for item in related if item.get("event") == "application"
+            ]
+            if len(applications) > 1:
+                raise ValueError(
+                    f"multiple applications claim control opportunity {sequence}"
+                )
+            application = applications[0] if applications else None
             metadata_withdrawal = next(
                 (
                     item
@@ -2403,9 +2449,21 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
             resolution_evidence: str | None
             resolution_transaction_sequence: int | None = None
             resolution_reason: str | None = None
-            if "application" in related_events:
+            if application is not None:
                 disposition = "applied"
                 resolution_evidence = "active_transactions_v1.application"
+                resolution_transaction_sequence = _safe_int(
+                    application.get("transaction_record_sequence")
+                )
+                if resolution_transaction_sequence is None:
+                    raise ValueError(
+                        f"application for control opportunity {sequence} lacks "
+                        "its transaction record sequence"
+                    )
+                # The exact application is later causal evidence that this was
+                # an eligible opportunity.  Its earlier preview can legitimately
+                # precede the authority release in the independently flushed CSV.
+                eligible = True
             elif metadata_withdrawal is not None:
                 disposition = "gnss_metadata_hold"
                 resolution_reason = metadata_withdrawal.get("reason")
@@ -2499,6 +2557,41 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
                 )
                 _, retained = _read_opportunity_causal_ledger(ledger_path)
                 continue
+            if (
+                prior.get("resolved") is True
+                and prior.get("disposition") == "ineligible_not_authorized"
+                and prior.get("resolution_evidence")
+                == "control_previews_v1.authority_flags"
+                and disposition == "applied"
+            ):
+                _append_opportunity_event(
+                    ledger_path,
+                    {
+                        "event": "opportunity_reclassified",
+                        "control_sequence": sequence,
+                        "control_identity_sha256": identity,
+                        "prior_disposition": "ineligible_not_authorized",
+                        "disposition": "applied",
+                        "resolution_evidence": resolution_evidence,
+                        "resolution_transaction_record_sequence": (
+                            resolution_transaction_sequence
+                        ),
+                        "resolution_reason": (
+                            "late_exact_application_supersedes_preview_only_"
+                            "classification"
+                        ),
+                    },
+                )
+                _, retained = _read_opportunity_causal_ledger(ledger_path)
+                continue
+            if (
+                prior.get("resolved") is True
+                and disposition == "applied"
+                and prior.get("disposition") != "applied"
+            ):
+                raise ValueError(
+                    f"application conflicts with retained disposition for {sequence}"
+                )
             if prior.get("resolved") is not True and disposition is not None:
                 _append_opportunity_event(
                     ledger_path,
@@ -3403,8 +3496,9 @@ def _candidate_fll_window_fitness(
         drift_support: list[dict[str, Any]] = []
         one_edge_resolutions: list[Fraction] = []
         for segment_index, segment in enumerate(segments):
-            segment_errors: list[tuple[int, int, Fraction]] = []
+            segment_errors: list[tuple[int, int, int, Fraction]] = []
             segment_elapsed_ticks = 0
+            segment_elapsed_d14_intervals = 0
             complete_count = len(segment) // duration_s
             for window_index in range(complete_count):
                 support = segment[
@@ -3412,17 +3506,24 @@ def _candidate_fll_window_fitness(
                 ]
                 total_edges = sum(int(row["counted_edges"]) for row in support)
                 total_ticks = sum(int(row["duration_ticks"]) for row in support)
+                support_intervals = len(support)
                 error = Fraction(
-                    total_edges * TIMER_HZ - 10_000_000 * total_ticks,
-                    total_ticks,
+                    total_edges - 10_000_000 * support_intervals,
+                    support_intervals,
                 )
-                one_edge = Fraction(TIMER_HZ, total_ticks)
+                one_edge = Fraction(1, support_intervals)
                 one_edge_resolutions.append(one_edge)
                 segment_elapsed_ticks += total_ticks
+                segment_elapsed_d14_intervals += support_intervals
                 last_sequence = int(support[-1]["count_sequence"])
                 errors.append((segment_index, last_sequence, error))
                 segment_errors.append(
-                    (last_sequence, segment_elapsed_ticks, error)
+                    (
+                        last_sequence,
+                        segment_elapsed_d14_intervals,
+                        segment_elapsed_ticks,
+                        error,
+                    )
                 )
                 windows.append(
                     {
@@ -3437,20 +3538,36 @@ def _candidate_fll_window_fitness(
                         "support_interval_count": len(support),
                         "summed_counted_edges": total_edges,
                         "summed_duration_ticks": total_ticks,
+                        "frequency_reference_domain": "D14_reference_intervals",
+                        "aperture_diagnostic_domain": "rp2040_timer0",
                         "stationary_segment_elapsed_end_ticks": (
                             segment_elapsed_ticks
+                        ),
+                        "stationary_segment_elapsed_end_d14_intervals": (
+                            segment_elapsed_d14_intervals
                         ),
                         "frequency_error_hz": _fraction_evidence(error),
                         "one_edge_resolution_hz": _fraction_evidence(one_edge),
                     }
                 )
             if len(segment_errors) >= 2:
-                first_sequence, first_ticks, first_error = segment_errors[0]
-                last_sequence, last_ticks, last_error = segment_errors[-1]
+                (
+                    first_sequence,
+                    first_d14_intervals,
+                    first_ticks,
+                    first_error,
+                ) = segment_errors[0]
+                (
+                    last_sequence,
+                    last_d14_intervals,
+                    last_ticks,
+                    last_error,
+                ) = segment_errors[-1]
                 span_ticks = last_ticks - first_ticks
-                if span_ticks > 0:
+                span_d14_intervals = last_d14_intervals - first_d14_intervals
+                if span_ticks > 0 and span_d14_intervals > 0:
                     slope = (last_error - first_error) * Fraction(
-                        3600 * TIMER_HZ, span_ticks
+                        3600, span_d14_intervals
                     )
                     drift_support.append(
                         {
@@ -3458,6 +3575,7 @@ def _candidate_fll_window_fitness(
                             "estimate_count": len(segment_errors),
                             "source_first_count_sequence": first_sequence,
                             "source_last_count_sequence": last_sequence,
+                            "source_span_d14_intervals": span_d14_intervals,
                             "source_span_ticks": span_ticks,
                             "source_span_s": _fraction_evidence(
                                 Fraction(span_ticks, TIMER_HZ)
@@ -3579,6 +3697,8 @@ def _candidate_fll_window_fitness(
         "observational_only": True,
         "runtime_authority_changed": False,
         "source": "canonical_1s_D14_D8_intervals",
+        "frequency_reference_domain": "D14_reference_intervals",
+        "aperture_diagnostic_domain": "rp2040_timer0",
         "stationary_support": (
             "qualified_consecutive_same_session_dac_code_and_epoch_after_settling"
         ),
@@ -4024,7 +4144,14 @@ def _validate_live_package_lifecycle(
     }
 
 
-def analyze_run(run_dir: Path) -> dict[str, Any]:
+def analyze_run(
+    run_dir: Path,
+    *,
+    output_path: Path | None = None,
+    state_override: Mapping[str, Any] | None = None,
+    terminal_override: Mapping[str, Any] | None = None,
+    offline_supersession: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Produce the engineering-only analysis before immutable sealing."""
     run_dir = run_dir.resolve()
     manifest = _read(run_dir / "run_manifest.json")
@@ -4034,8 +4161,14 @@ def analyze_run(run_dir: Path) -> dict[str, Any]:
     lifecycle_provenance = _validate_live_package_lifecycle(
         run_dir=run_dir, manifest=manifest
     )
-    state = _read(run_dir / SUPERVISOR_STATE_PATH)
-    terminal_state = state.get("terminal")
+    recorded_state = _read(run_dir / SUPERVISOR_STATE_PATH)
+    state = dict(state_override) if state_override is not None else recorded_state
+    recorded_terminal_state = recorded_state.get("terminal")
+    terminal_state = (
+        dict(terminal_override)
+        if terminal_override is not None
+        else recorded_terminal_state
+    )
     if not isinstance(terminal_state, dict) or not terminal_state.get("result"):
         raise ValueError("shared active supervisor terminal is absent")
     terminal = str(terminal_state.get("reason"))
@@ -4159,7 +4292,8 @@ def analyze_run(run_dir: Path) -> dict[str, Any]:
         "run_id": manifest["run_id"],
         "bundle_sha256": manifest["frequency_only_engineering"]["bundle_sha256"],
         "terminal": terminal,
-        "active_supervisor_terminal": terminal_state,
+        "active_supervisor_terminal": recorded_terminal_state,
+        "derived_terminal": terminal_state,
         "lifecycle_provenance": lifecycle_provenance,
         "qualified_duration_s": state.get("qualified_duration_s"),
         "milestones_qualified_s": state.get("milestones_qualified_s"),
@@ -4243,7 +4377,12 @@ def analyze_run(run_dir: Path) -> dict[str, Any]:
         "unresolved_delivered_output_claims": contract["unresolved_delivered_output_claims"],
         "physical_waveform_qualification": False,
     }
-    _write_new(run_dir / ANALYSIS_PATH, analysis)
+    if offline_supersession is not None:
+        analysis["offline_supersession"] = dict(offline_supersession)
+    _write_new(
+        output_path.resolve() if output_path is not None else run_dir / ANALYSIS_PATH,
+        analysis,
+    )
     return analysis
 
 

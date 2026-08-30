@@ -1234,6 +1234,26 @@ def test_canonical_qualified_interval_joins_d14_ref_snp_and_d8_cnt(tmp_path: Pat
     assert endurance.canonical_d14_d8_intervals(run_dir)[0]["measurement_qualified"] is False
 
 
+def test_canonical_interval_reads_commit_frontier_before_supporting_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reads: list[str] = []
+
+    def read_rows(path: Path) -> list[dict[str, str]]:
+        reads.append(path.name)
+        return []
+
+    monkeypatch.setattr(endurance, "_read_csv_rows", read_rows)
+
+    assert endurance.canonical_d14_d8_intervals(tmp_path) == []
+    assert reads == [
+        endurance.COUNT_OBSERVATIONS_CSV,
+        endurance.PPS_SNAPSHOTS_CSV,
+        endurance.RAW_EVENTS_CSV,
+        endurance.ACTIVE_CSV.name,
+    ]
+
+
 def test_shared_frequency_control_path_uses_a808_setup_then_arm(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path)
     run_dir = tmp_path / "shared"
@@ -1522,6 +1542,62 @@ def test_opportunity_ledger_is_restart_safe_and_zero_application_is_accounted(
     assert set(opportunities) == {10, 11, 12}
 
 
+def test_late_exact_application_reclassifies_preview_only_opportunity_once(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "late-application"
+    supervisor = endurance.create_live_supervisor(
+        run_dir=run_dir, bundle=_bundle(tmp_path)
+    )
+    endurance._write_csv_rows(
+        run_dir / "csv" / endurance.CONTROL_PREVIEWS_CSV,
+        CONTROL_FIELDS,
+        [_control_row(10, limited_delta=21, reason="actionable")],
+    )
+
+    supervisor._update_lost_opportunities({})
+    assert supervisor.state["lost_opportunity_dispositions"] == {
+        "ineligible_not_authorized": 1
+    }
+
+    application = {
+        field: "" for field in endurance.ACTIVE_TRANSACTION_V1_FIELDS
+    }
+    application.update(
+        {
+            "transaction_record_sequence": "4",
+            "event": "application",
+            "decision_sequence": "10",
+        }
+    )
+    endurance._write_csv_rows(
+        run_dir / endurance.ACTIVE_CSV,
+        endurance.ACTIVE_TRANSACTION_V1_FIELDS,
+        [application],
+    )
+    supervisor._update_lost_opportunities({})
+
+    events, opportunities = endurance._read_opportunity_causal_ledger(
+        run_dir / endurance.OPPORTUNITY_CAUSAL_LEDGER_PATH
+    )
+    assert [event["event"] for event in events] == [
+        "opportunity_observed",
+        "opportunity_reclassified",
+    ]
+    assert opportunities[10]["eligible_control_opportunity"] is True
+    assert opportunities[10]["disposition"] == "applied"
+    assert opportunities[10]["resolution_transaction_record_sequence"] == 4
+
+    restarted = endurance.create_live_supervisor(
+        run_dir=run_dir, bundle=_bundle(tmp_path)
+    )
+    restarted._update_lost_opportunities({})
+    events_after_restart, _ = endurance._read_opportunity_causal_ledger(
+        run_dir / endurance.OPPORTUNITY_CAUSAL_LEDGER_PATH
+    )
+    assert events_after_restart == events
+
+
 @pytest.mark.parametrize("sequences", ([1, 3], [1, 1]))
 def test_opportunity_ledger_rejects_missing_or_duplicate_control_sequences(
     tmp_path: Path, sequences: list[int]
@@ -1725,6 +1801,38 @@ def test_candidate_fll_windows_use_exact_stationary_rational_support() -> None:
     assert candidates["60"]["drift_support"]
     assert result["observational_only"] is True
     assert result["runtime_authority_changed"] is False
+
+
+def test_candidate_fll_frequency_uses_d14_not_rp2040_timer_as_reference() -> None:
+    intervals = [
+        {
+            "count_sequence": sequence,
+            "session": 7,
+            "dac_epoch": 4,
+            "applied_code": 0xA808,
+            "counted_edges": 9_999_998,
+            "duration_ticks": endurance.TIMER_HZ - 80,
+            "measurement_qualified": True,
+            "settling_complete": True,
+        }
+        for sequence in range(1, 601)
+    ]
+
+    result = endurance._candidate_fll_window_fitness(intervals)
+    candidate = result["candidates"]["600"]
+
+    assert candidate["windows"][0]["frequency_error_hz"] == {
+        "numerator": -2,
+        "denominator": 1,
+        "display_value": -2.0,
+    }
+    assert candidate["windows"][0]["summed_duration_ticks"] == 600 * (
+        endurance.TIMER_HZ - 80
+    )
+    assert candidate["windows"][0]["frequency_reference_domain"] == (
+        "D14_reference_intervals"
+    )
+    assert result["aperture_diagnostic_domain"] == "rp2040_timer0"
 
 
 def test_candidate_fll_windows_never_straddle_session_code_or_epoch() -> None:
