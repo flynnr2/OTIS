@@ -1424,14 +1424,25 @@ def contain_optional_evidence_fault(
     component: str,
     fault: str,
 ) -> OptionalFaultDisposition:
-    """Contain a shadow or D10-local failure at zero control authority."""
+    """Contain a shadow, D10, or D6-local failure at zero control authority."""
 
     allowed = {
-        "shadow": {"killed", "stalled", "corrupt", "rejected"},
+        "shadow": {
+            "input_drop",
+            "output_drop",
+            "stale",
+            "killed",
+            "stalled",
+            "delayed",
+            "corrupt",
+            "rejected",
+            "model_infeasible",
+        },
         "d10": {"absent", "noise", "invalid", "overflow", "queue_failure"},
+        "d6": {"absent", "stalled", "corrupt", "overflow", "queue_failure"},
     }
     if component not in allowed:
-        raise ValueError("component must be 'shadow' or 'd10'")
+        raise ValueError("component must be 'shadow', 'd10', or 'd6'")
     if fault not in allowed[component]:
         raise ValueError(f"unsupported {component} fault: {fault}")
     return OptionalFaultDisposition(

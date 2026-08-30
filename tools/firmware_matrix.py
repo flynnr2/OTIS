@@ -67,6 +67,7 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_CX322_DIRECT_HYBRID",
     "OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION",
     "OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS",
+    "OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES",
     "OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE",
     "OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED",
     "OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW",
@@ -79,6 +80,8 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_GNSS_RECEIVER",
     "OTIS_GNSS_UART_TX_ENABLED",
     "OTIS_GNSS_UART_BAUD",
+    "OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION",
+    "OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS",
     "OTIS_GNSS_DISCOVERY_STARTUP_BAUD_HINT",
     "OTIS_GNSS_BAUD_CHARACTERIZATION_RETAIN_DISCOVERED_STARTUP_BAUD",
     "OTIS_GNSS_BAUD_CHARACTERIZATION_RESUME",
@@ -86,6 +89,7 @@ OPTIONAL_PROFILE_SELECTOR_NAMES = {
     "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION",
     "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
     "OTIS_ENABLE_Q2_TRANSACTION_REHEARSAL",
+    "OTIS_ENABLE_D9_D6_READINESS_PROFILE",
     "OTIS_ENABLE_FORWARDED_D9_OUTPUT",
     "OTIS_ENABLE_FORWARDED_D6_MONITOR",
     "OTIS_CX317_ACTIVE_CAMPAIGN",
@@ -183,6 +187,59 @@ GNSS_BAUD_CHARACTERIZATION_BINARY_MARKERS = {
 }
 GNSS_BAUD_PACKET_PATTERN = re.compile(
     rb"\$PMTK251,[0-9]+\*[0-9A-F]{2}\r\n"
+)
+D9_D6_READINESS_CONTRACT = (
+    REPO_ROOT
+    / "docs"
+    / "60_EXPERIMENTS"
+    / "OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME"
+    / "d9_d6_readiness_contract_v1.json"
+)
+D9_D6_READINESS_CONTRACT_ID = "OTIS_D9_D6_READINESS_CONTRACT_V1"
+D9_D6_READINESS_CONTRACT_SEMANTIC_SHA256 = (
+    "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d"
+)
+# These are deliberately emitted status/provenance strings, rather than source
+# symbols or ELF layout details.  The binary audit therefore proves the
+# customer-visible, fixed configuration surface of the selected build.
+D9_D6_BINARY_MARKERS = {
+    "contract_id": D9_D6_READINESS_CONTRACT_ID.encode("ascii"),
+    "contract_semantic_sha256": D9_D6_READINESS_CONTRACT_SEMANTIC_SHA256.encode(
+        "ascii"
+    ),
+    "unqualified_configured_state": b"configured_10mhz_forwarded_unqualified",
+    "source_d8_gpin0": b"D8_GPIO20_GPIN0",
+    "destination_d9_gpout0": b"D9_GPIO21_GPOUT0",
+    "readback": b"readback_valid",
+    "integer_divider": b"integer_divider",
+    "fractional_divider": b"fractional_divider",
+}
+D6_MONITOR_BINARY_MARKERS = {
+    "raw_snapshot_record": b"MNS",
+    "component": b"forwarded_clock_monitor",
+    "d6_gpio18_resource": b"d6_gpio18_diagnostic_input",
+    "d6_d14_snapshot_topology": b"d6_d14_cumulative_snapshot",
+    "monitor_channel": b"channel_id",
+    "cpu_snapshot_backend": b"pio_wait_cumulative_snapshot_cpu_v1",
+}
+# A qualified output or a non-zero / runtime-selected divider must never be
+# represented by a readiness binary.  These are names reserved for future
+# deliberate implementations, so a newly introduced semantic surface cannot
+# silently evade this proof.
+D9_D6_FORBIDDEN_BINARY_MARKERS = {
+    "qualified_waveform_claim": b"qualified_10mhz_forwarded",
+    "runtime_source_selection": b"runtime_forwarded_clock_source_selection",
+    "nonzero_fractional_divider": b"fractional_divider_nonzero",
+}
+D9_D6_ZERO_AUTHORITY_SELECTORS = (
+    "OTIS_ENABLE_DAC_AD5693R",
+    "OTIS_ENABLE_H1_DAC_SWEEP",
+    "OTIS_ENABLE_CX317_BOUNDED_ACTIVE",
+    "OTIS_ENABLE_CX318_STAGE4_PREMISE_SETUP",
+    "OTIS_ENABLE_CX320_ACTIVE_HYBRID",
+    "OTIS_ENABLE_CX321_ACTIVE_HYBRID",
+    "OTIS_ENABLE_CX322_DIRECT_HYBRID",
+    "OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION",
 )
 GENERATED_HEADER_NAME = "otis_build_profile.generated.h"
 PROVENANCE_FORMAT = "otis_generated_build_v1"
@@ -539,7 +596,10 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
                 "cx320_active_hybrid",
                 "cx321_active_hybrid",
                 "cx322_direct_hybrid",
+                "cx322_d9_d6_integration_engineering",
+                "cx322_d9_d6_72h_sustained_engineering",
                 "otis_sustained_hybrid_regulation_v1",
+                "d9_d6_frequency_only_lower",
             }
         ):
             raise MatrixError(
@@ -552,6 +612,20 @@ def load_matrix(path: Path = DEFAULT_MATRIX) -> dict[str, Any]:
         if characterization_enabled not in {"0", "1"}:
             raise MatrixError(
                 "OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION must be 0 or 1"
+            )
+        if profile_id in {
+            "cx322_direct_hybrid",
+            "cx322_d9_d6_integration_engineering",
+            "cx322_d9_d6_72h_sustained_engineering",
+            "d9_d6_frequency_only_lower",
+        } and (
+            defines.get("OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION") != "1"
+            or defines.get("OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS")
+            != "1200u"
+        ):
+            raise MatrixError(
+                "D9/D6 operational profiles require the exact finite "
+                "configuration-blind GNSS promotion contract"
             )
         if (
             characterization_enabled == "1"
@@ -1268,20 +1342,176 @@ def _artifact_hashes(artifacts_dir: Path) -> list[dict[str, Any]]:
     return sorted(artifacts, key=lambda item: item["name"])
 
 
+def _d9_d6_readiness_contract() -> dict[str, Any]:
+    """Load and bind the frozen D9/D6 readiness semantics.
+
+    This is intentionally an offline build-time binding.  It asserts neither
+    electrical propagation nor waveform quality; those claims remain outside
+    an ELF's evidence boundary.
+    """
+    contract = _load_json(D9_D6_READINESS_CONTRACT)
+    unsigned = {
+        key: value
+        for key, value in contract.items()
+        if key != "contract_semantic_sha256"
+    }
+    actual_semantic_sha256 = _sha256_json(unsigned)
+    if (
+        contract.get("contract_id") != D9_D6_READINESS_CONTRACT_ID
+        or contract.get("contract_semantic_sha256")
+        != D9_D6_READINESS_CONTRACT_SEMANTIC_SHA256
+        or actual_semantic_sha256 != D9_D6_READINESS_CONTRACT_SEMANTIC_SHA256
+    ):
+        raise MatrixError("frozen D9/D6 readiness contract identity differs")
+    if (
+        contract.get("d9_output", {}).get("source")
+        != "GPIO20/CLOCK_GPIN0/clksrc_gpin0"
+        or contract.get("d9_output", {}).get("destination")
+        != "D9/GPIO21/CLOCK_GPOUT0"
+        or contract.get("d9_output", {}).get("divider")
+        != {"integer": 1, "fractional": 0}
+        or contract.get("d6_monitor", {}).get("gpio") != "D6/GPIO18"
+        or contract.get("d6_monitor", {}).get("authority")
+        != "must_not_affect_D14_D8_validity_estimation_control_abort_or_terminal"
+    ):
+        raise MatrixError("frozen D9/D6 readiness contract topology differs")
+    return contract
+
+
+def _single_flashable_image(artifacts_dir: Path, *, audit: str) -> bytes:
+    binary_paths = sorted(
+        path for path in artifacts_dir.iterdir()
+        if path.is_file() and path.suffix == ".bin"
+    )
+    if len(binary_paths) != 1:
+        raise MatrixError(
+            f"{audit} binary audit requires exactly one emitted flashable BIN; "
+            f"found {len(binary_paths)}"
+        )
+    return binary_paths[0].read_bytes()
+
+
+def _d9_d6_binary_contract(
+    profile: dict[str, Any], artifacts_dir: Path
+) -> dict[str, Any]:
+    """Verify the fixed D8->D9 and optional D6 flashable image surface."""
+    image = _single_flashable_image(artifacts_dir, audit="D9/D6")
+    defines = profile["defines"]
+    output_selected = defines.get("OTIS_ENABLE_FORWARDED_D9_OUTPUT", "0") == "1"
+    monitor_selected = defines.get("OTIS_ENABLE_FORWARDED_D6_MONITOR", "0") == "1"
+    selector_values = {
+        name: defines.get(name, "0") for name in D9_D6_ZERO_AUTHORITY_SELECTORS
+    }
+    zero_authority = all(value == "0" for value in selector_values.values())
+    base = {
+        "contract": "otis_d9_d6_readiness_binary_contract_v1",
+        "output_selection": "enabled" if output_selected else "disabled",
+        "monitor_selection": "enabled" if monitor_selected else "disabled",
+        "selectors": {
+            "OTIS_ENABLE_D9_D6_READINESS_PROFILE": defines.get(
+                "OTIS_ENABLE_D9_D6_READINESS_PROFILE", "0"
+            ),
+            "OTIS_ENABLE_FORWARDED_D9_OUTPUT": defines.get(
+                "OTIS_ENABLE_FORWARDED_D9_OUTPUT", "0"
+            ),
+            "OTIS_ENABLE_FORWARDED_D6_MONITOR": defines.get(
+                "OTIS_ENABLE_FORWARDED_D6_MONITOR", "0"
+            ),
+            "control_write_selectors": selector_values,
+            "all_control_write_selectors_disabled": zero_authority,
+            "d9_has_control_authority": False,
+            "d6_has_control_authority": False,
+        },
+    }
+    if not output_selected:
+        if monitor_selected:
+            raise MatrixError("D6 monitor cannot be selected when D9 output is disabled")
+        return {
+            **base,
+            "status": "disabled_profile",
+            "topology_contract": None,
+            "readiness_contract": None,
+            "required_markers": {},
+            "forbidden_markers_present": {},
+        }
+
+    readiness = _d9_d6_readiness_contract()
+    marker_presence = {
+        name: marker in image for name, marker in D9_D6_BINARY_MARKERS.items()
+    }
+    if not all(marker_presence.values()):
+        missing = sorted(
+            name for name, present in marker_presence.items() if not present
+        )
+        raise MatrixError(
+            "D9 readiness binary omits required fixed-output markers: "
+            f"{missing}"
+        )
+    monitor_markers = {
+        name: marker in image for name, marker in D6_MONITOR_BINARY_MARKERS.items()
+    }
+    if monitor_selected and not all(monitor_markers.values()):
+        missing = sorted(
+            name for name, present in monitor_markers.items() if not present
+        )
+        raise MatrixError(
+            "D6 readiness binary omits required diagnostic-monitor markers: "
+            f"{missing}"
+        )
+    forbidden_present = {
+        name: marker in image
+        for name, marker in D9_D6_FORBIDDEN_BINARY_MARKERS.items()
+    }
+    present = sorted(name for name, value in forbidden_present.items() if value)
+    if present:
+        raise MatrixError(
+            "D9 readiness binary contains forbidden runtime/fractional "
+            f"selection markers: {present}"
+        )
+    contract_binding = {
+        "path": str(D9_D6_READINESS_CONTRACT.relative_to(REPO_ROOT)),
+        "contract_id": readiness["contract_id"],
+        "contract_semantic_sha256": readiness["contract_semantic_sha256"],
+    }
+    return {
+        **base,
+        "status": "verified",
+        "topology_contract": {
+            **contract_binding,
+            "binding_scope": (
+                "fixed_D8_GPIN0_to_D9_GPOUT0_and_D6_zero_authority_sidecar"
+            ),
+        },
+        "readiness_contract": contract_binding if zero_authority else None,
+        "authority_scope": (
+            "no_control_readiness"
+            if zero_authority
+            else "D9_D6_topology_only_controller_authority_is_separate"
+        ),
+        "required_markers": {
+            "d9_output": marker_presence,
+            "d6_monitor": monitor_markers if monitor_selected else {},
+        },
+        "forbidden_markers_present": forbidden_present,
+    }
+
+
 def _gnss_binary_contract(
     profile: dict[str, Any], artifacts_dir: Path
 ) -> dict[str, Any]:
-    """Verify the emitted ELF contains only its authorized PMTK251 surface."""
-    elf_paths = sorted(
+    """Verify the flashable image contains only its authorized PMTK251 surface."""
+    binary_paths = sorted(
         path for path in artifacts_dir.iterdir()
-        if path.is_file() and path.suffix == ".elf"
+        if path.is_file() and path.suffix == ".bin"
     )
-    if len(elf_paths) != 1:
+    if len(binary_paths) != 1:
         raise MatrixError(
-            "GNSS binary audit requires exactly one emitted ELF; "
-            f"found {len(elf_paths)}"
+            "GNSS binary audit requires exactly one emitted flashable BIN; "
+            f"found {len(binary_paths)}"
         )
-    image = elf_paths[0].read_bytes()
+    # Do not scan the ELF container: non-loadable DWARF can retain the spelling
+    # of a compile-time-discarded command and is not part of the device image.
+    image = binary_paths[0].read_bytes()
     actual_packets = set(GNSS_BAUD_PACKET_PATTERN.findall(image))
     defines = profile["defines"]
     characterization_enabled = (
@@ -1713,6 +1943,7 @@ def _compile_profile(
         resource_usage = _resource_usage_from_build_output(combined)
         resource_report = _enforce_resource_budgets(matrix, resource_usage)
         gnss_binary_contract = _gnss_binary_contract(profile, artifacts_dir)
+        d9_d6_binary_contract = _d9_d6_binary_contract(profile, artifacts_dir)
         artifacts = _artifact_hashes(artifacts_dir)
         after_hashing = _capture_source_state(
             matrix,
@@ -1732,6 +1963,7 @@ def _compile_profile(
                 "provenance": provenance,
                 "resource_budget": resource_report,
                 "gnss_binary_contract": gnss_binary_contract,
+                "d9_d6_binary_contract": d9_d6_binary_contract,
                 "artifacts": artifacts,
             },
         )

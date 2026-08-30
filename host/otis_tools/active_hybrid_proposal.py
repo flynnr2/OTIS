@@ -15,7 +15,9 @@ from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
     CX321_PROGRAMME,
+    PROGRAMMES,
     get_active_hybrid_programme,
+    integrated_setup_provenance_contract,
     progressive_checkpoint_contract,
     programme_from_mapping,
 )
@@ -83,24 +85,32 @@ def _progressive_envelope(
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
     return {
-        "maximum_total_automatic_applications": programme.maximum_applications,
-        "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+        "maximum_total_automatic_applications": (
+            programme.authorized_maximum_applications
+        ),
+        "maximum_total_physical_control_applications": (
+            programme.authorized_maximum_physical_applications
+        ),
         "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
         **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
-        "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
+        "maximum_cumulative_absolute_movement_codes": (
+            programme.authorized_maximum_cumulative_movement_codes
+        ),
         "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
         "minimum_code": programme.minimum_code,
         "maximum_code": programme.maximum_code,
         "qualified_duration_s": programme.qualified_duration_s,
-        "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
+        "absolute_wall_clock_limit_s": programme.authorized_absolute_wall_limit_s,
         "retry": False,
         "extension": False,
     }
 
 
-def _requested_authority() -> dict[str, Any]:
-    return {
+def _requested_authority(
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
+) -> dict[str, Any]:
+    value: dict[str, Any] = {
         "firmware_flash_limit": 1,
         "reset_for_entry_or_bounded_recovery": True,
         "serial_access": True,
@@ -113,6 +123,11 @@ def _requested_authority() -> dict[str, Any]:
         "automatic_retry": False,
         "automatic_restoration": False,
     }
+    if programme.forwarded_output_integration:
+        value["setup_provenance"] = integrated_setup_provenance_contract(
+            programme
+        )
+    return value
 
 
 def _non_effective_authority() -> dict[str, Any]:
@@ -192,7 +207,7 @@ def create_successor_proposal(
         "build_identity": bundle["firmware"]["build_identity"],
         "firmware_uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
         "progressive_envelope": _progressive_envelope(programme),
-        "requested_after_separate_decision": _requested_authority(),
+        "requested_after_separate_decision": _requested_authority(programme),
         "authority": authority_fields,
         "claim_boundary": {
             "offline_replay_is_not_observed_physical_response": True,
@@ -221,6 +236,13 @@ def create_successor_proposal(
                     "inherits_physical_authority": False,
                 }
                 if programme.sustained_regulation
+                else {
+                    "controller_request_law_unchanged": True,
+                    "authority_ceilings_and_qualified_duration_changed_by_current_prospectively_frozen_programme": True,
+                    "successor_qualification_criterion_prospectively_frozen": True,
+                    "inherits_physical_authority": False,
+                }
+                if programme.prospectively_changed_authority_envelope
                 else {
                     "scientific_limits_and_duration_unchanged": True,
                     "successor_qualification_criterion_prospectively_frozen": True,
@@ -296,7 +318,9 @@ def validate_proposal(
         raise ValueError("CX320 proposal build identity differs")
     if proposal.get("progressive_envelope") != _progressive_envelope(programme):
         raise ValueError("CX320 proposal progressive envelope differs")
-    if proposal.get("requested_after_separate_decision") != _requested_authority():
+    if proposal.get("requested_after_separate_decision") != _requested_authority(
+        programme
+    ):
         raise ValueError("active-hybrid requested authority envelope differs")
     if programme.identification_required and proposal.get(
         "programme_policy_sha256"
@@ -349,6 +373,7 @@ def validate_proposal(
             )
             or (
                 programme.identification_required
+                and not programme.prospectively_changed_authority_envelope
                 and (
                     lineage.get("scientific_limits_and_duration_unchanged")
                     is not True
@@ -357,6 +382,22 @@ def validate_proposal(
                     )
                     is not True
                     or lineage.get("inherits_physical_authority") is not False
+                )
+            )
+            or (
+                programme.prospectively_changed_authority_envelope
+                and (
+                    lineage.get("controller_request_law_unchanged") is not True
+                    or lineage.get(
+                        "authority_ceilings_and_qualified_duration_changed_by_current_prospectively_frozen_programme"
+                    )
+                    is not True
+                    or lineage.get(
+                        "successor_qualification_criterion_prospectively_frozen"
+                    )
+                    is not True
+                    or lineage.get("inherits_physical_authority") is not False
+                    or "scientific_limits_and_duration_unchanged" in lineage
                 )
             )
             or (
@@ -394,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--successor-reason", default=DEFAULT_SUCCESSOR_REASON)
     parser.add_argument("--output", type=Path)
     parser.add_argument(
-        "--programme", choices=("cx320", "cx321", "cx322", "sustained_hybrid"), default="cx320"
+        "--programme", choices=tuple(PROGRAMMES), default="cx320"
     )
     args = parser.parse_args(argv)
     if args.create:

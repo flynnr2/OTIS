@@ -18,8 +18,11 @@ OtisSpscQueue<OtisTelemetryMessage, OTIS_TELEMETRY_QUEUE_DEPTH>
     telemetry_to_service;
 OtisSpscQueue<OtisPhasePreviewRecordMessage, OTIS_PHASE_PREVIEW_QUEUE_DEPTH>
     phase_preview_to_service;
+OtisSpscQueue<OtisMonitorObservationMessage, OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH>
+    monitor_observation_to_service;
 
 uint32_t telemetry_dropped = 0u;
+uint32_t monitor_observation_dropped = 0u;
 uint8_t partition_fault = static_cast<uint8_t>(OtisPartitionFault::None);
 bool fail_static = false;
 bool timing_owner_active = false;
@@ -261,7 +264,9 @@ void otis_dual_core_partition_reset(void) {
   evidence_to_service.reset();
   telemetry_to_service.reset();
   phase_preview_to_service.reset();
+  monitor_observation_to_service.reset();
   __atomic_store_n(&telemetry_dropped, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&monitor_observation_dropped, 0u, __ATOMIC_RELAXED);
   __atomic_store_n(&partition_fault,
                    static_cast<uint8_t>(OtisPartitionFault::None),
                    __ATOMIC_RELEASE);
@@ -347,6 +352,19 @@ bool otis_dual_core_take_observation(OtisObservationMessage *message) {
   return observation_to_service.try_pop(message);
 }
 
+bool otis_dual_core_publish_monitor_observation(
+    const OtisMonitorObservationMessage *message) {
+  if (message != nullptr && monitor_observation_to_service.try_push(*message))
+    return true;
+  increment_saturating(&monitor_observation_dropped);
+  return false;
+}
+
+bool otis_dual_core_take_monitor_observation(
+    OtisMonitorObservationMessage *message) {
+  return monitor_observation_to_service.try_pop(message);
+}
+
 bool otis_dual_core_publish_critical(
     const OtisCriticalRecordMessage *message) {
   if (message != nullptr && critical_to_service.try_push(*message)) return true;
@@ -376,6 +394,12 @@ bool otis_dual_core_publish_telemetry(const OtisTelemetryMessage *message) {
   if (message != nullptr && telemetry_to_service.try_push(*message)) return true;
   increment_saturating(&telemetry_dropped);
   return false;
+}
+
+bool otis_dual_core_telemetry_can_publish(uint32_t message_count) {
+  return message_count <= OTIS_TELEMETRY_QUEUE_DEPTH &&
+         telemetry_to_service.depth() <=
+             OTIS_TELEMETRY_QUEUE_DEPTH - message_count;
 }
 
 bool otis_dual_core_publish_boot_telemetry(
@@ -466,6 +490,11 @@ void otis_dual_core_get_stats(OtisDualCoreQueueStats *stats) {
       __atomic_load_n(&telemetry_dropped, __ATOMIC_ACQUIRE);
   stats->phase_preview_depth = phase_preview_to_service.depth();
   stats->phase_preview_high_water = phase_preview_to_service.high_water();
+  stats->monitor_observation_depth = monitor_observation_to_service.depth();
+  stats->monitor_observation_high_water =
+      monitor_observation_to_service.high_water();
+  stats->monitor_observation_dropped =
+      __atomic_load_n(&monitor_observation_dropped, __ATOMIC_ACQUIRE);
   stats->timing_progress = {
       __atomic_load_n(&timing_loop_sequence, __ATOMIC_ACQUIRE),
       static_cast<OtisTimingProgressPhase>(
@@ -676,6 +705,28 @@ bool otis_actuator_guard_acknowledge(
   guard_fault(guard, "actuator_acknowledgement_phase_or_value_mismatch",
               OtisPartitionFault::ActuatorAcknowledgementMismatch);
   return false;
+}
+
+bool otis_actuator_guard_discard_exact_rejection(
+    OtisActuatorTransactionGuard *guard,
+    const OtisCrossCoreActuatorAck *acknowledgement,
+    uint16_t confirmed_applied_code) {
+  if (guard == nullptr || acknowledgement == nullptr ||
+      guard->state != OtisActuatorGuardState::AwaitingAcceptance ||
+      acknowledgement->kind != OtisActuatorAckKind::Rejected ||
+      acknowledgement->rejection_reason !=
+          OtisActuatorRejectionReason::MetadataHoldCancelledBeforeAcceptance ||
+      !acknowledgement_matches(guard->pending, *acknowledgement) ||
+      guard->pending.current_applied_code != confirmed_applied_code ||
+      acknowledgement->accepted_code != confirmed_applied_code ||
+      acknowledgement->applied_code != confirmed_applied_code ||
+      acknowledgement->i2c_ok || acknowledgement->clamped ||
+      acknowledgement->ambiguous)
+    return false;
+  guard->pending = {};
+  guard->state = OtisActuatorGuardState::Idle;
+  guard->reason = "exact_rejection_discarded_without_application";
+  return true;
 }
 
 bool otis_actuator_guard_check_deadline(OtisActuatorTransactionGuard *guard,

@@ -37,6 +37,11 @@ estimation and control state on Core 1. Bounded immutable queues are the only
 cross-core contract. Earlier GPIO bring-up proofs were single-core; that is
 historical evidence and not the current discipline architecture.
 
+The GNSS UART receive ring, parser, link state machine, and transmitter are
+mutable Core 0 state with one service executor. Core 1 does not drain or
+advance them during carrier absence; Core 0's carrier-absent loop retains that
+bounded service responsibility.
+
 ## Capture Families
 
 The RP2040 should emit separate semantic record families:
@@ -46,6 +51,7 @@ The RP2040 should emit separate semantic record families:
 | `EVT` | generic pulse/event captures |
 | `REF` | reference captures such as PPS |
 | `CNT` | count observations |
+| `MNS` | raw D6 forwarded-output monitor snapshots |
 | `STS` | status/health telemetry |
 
 ## Count Philosophy
@@ -78,6 +84,7 @@ The SW1 Arduino Nano RP2040 Connect live-capture convention is:
 | `CH0` | generic pulse/event input | `D10` |
 | `CH1` | PPS/reference input | `D14` |
 | `CH2` | divided/gated oscillator observation input | `D8` / `GPIO20` / `GPIN0` |
+| `CH3` | zero-authority forwarded-output monitor | `D6` / `GPIO18` |
 
 ## Reserved Clock Pins
 
@@ -86,7 +93,7 @@ The SW1 H0 pin convention keeps RP2040 clock-function pins explicit:
 | Arduino pin | RP2040 GPIO | Clock function | OTIS use |
 |---:|---:|---|---|
 | `D8` | `GPIO20` | `GPIN0` | external OCXO/reference input |
-| `D9` | `GPIO21` | `GPOUT0` | internal clock visibility, reserved output |
+| `D9` | `GPIO21` | `GPOUT0` | compile-time GPIN0 forwarded output, otherwise reserved/high impedance |
 | `D2` | `GPIO25` | `GPOUT3` | secondary diagnostic clock, reserved output |
 
 All active and reserved GPIO, IRQ, PIO, DMA, timer, and clock claims are
@@ -94,7 +101,34 @@ validated before mode hardware setup. The authoritative ledger and emitted
 ownership diagnostics are defined in
 [`HARDWARE_RESOURCE_OWNERSHIP.md`](HARDWARE_RESOURCE_OWNERSHIP.md).
 
-Do not reuse `D9` or `D2` as general capture inputs.
+Do not reuse `D9` or `D2` as general capture inputs. D6 is selected only by the
+exact readiness or integrated engineering profiles and remains outside the
+authoritative capture plane.
+
+## D6 diagnostic sidecar
+
+The optional D6 monitor reuses the proved cumulative PIO snapshot programme in
+a distinct PIO0 state machine and instruction range. D6 supplies `IN_BASE`;
+D14 is a shared read-only snapshot condition. Firmware emits one raw `MNS`
+record per serviced snapshot and may derive a channel-3 `CNT` interval only
+from adjacent monitor and D14 identities. Each `MNS` carries both the monitor
+session and authoritative reference session so a reset boundary cannot be
+bridged by recency.
+
+The monitor has its own drop-new queue and no DMA. It never backpressures the
+D14/D8 queue. Missing snapshots, FIFO backlog, resource exhaustion, local
+status, sequence gaps, duplicate identities, and ambiguous counter movement
+re-anchor or disable only the monitor. D6 records cannot enter D14/D8 validity,
+selected estimation, control eligibility, actuator requests, abort, or a run
+terminal.
+
+The retained Prompt 02 physical package exercised this sidecar with the D9 to
+D6 1 kΩ loopback. Its 90 same-reference D8:D6 comparisons differed by zero or
+one cycle, within the frozen two-cycle tolerance, while the 90 D14/D8 monitor
+stratum intervals remained healthy. This is a D6-local digital-continuity
+result, not a replacement for an external D9 waveform/frequency instrument or
+an input to control truth. The package's D9 waveform terminal remains
+`output_function_correct_but_waveform_evidence_incomplete`.
 
 ## SW1 H0 Bring-Up Modes
 

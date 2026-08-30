@@ -38,7 +38,9 @@ After exact authorization, this prompt permits:
 
 It does not permit:
 
-- a GNSS receiver command or baud change;
+- a host-issued, runtime, ad hoc or response-selected GNSS receiver command or
+  baud change; the exact firmware-start configuration-blind promotion frozen in
+  the current bundle is required and is the sole exception;
 - a predetermined DAC setup/restore write not frozen in the bundle;
 - hybrid/PLL authority, a phase-derived request or changed-controller trial;
 - runtime GPOUT source, output pin or divider changes;
@@ -55,8 +57,10 @@ Before flashing or wiring:
 
 1. Revalidate every source, contract, tool, build, ELF/UF2, profile, output,
    D6, FLL, stop-condition and evidence-destination identity from Prompt 01.
-2. Confirm the sealed GNSS result and current receiver baud agree with the
-   bundle. Do not issue a receiver command to make them agree.
+2. Confirm the firmware-start GNSS bootstrap completed exactly once at all
+   frozen source rates with the required settle, left UART0 permanently at
+   115200 and obtained fresh identity/configuration/metadata there. Do not
+   issue a host/runtime receiver command or scan to make it agree.
 3. Establish one continuously known serial owner and continuously drained
    logging before enabling capture producers.
 4. Confirm board identity, expected clean boot transcript, resource registry,

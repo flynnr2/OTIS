@@ -28,7 +28,12 @@ from .active_hybrid_activation import (
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
     programme_from_mapping,
+    progressive_checkpoint_contract,
+)
+from .active_hybrid_live_supervisor import (
+    forwarded_output_integration_prewrite_evidence,
 )
 from .active_hybrid_evidence_guard import (
     ResponseCheckpointRejected,
@@ -72,6 +77,7 @@ from .cx321_plant_sign_evidence_guard import (
 )
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
 from .frequency_control_supervisor import DAC_CSV, RPH_CSV, TDB_CSV
+from .pps_cumulative_span_estimator import COUNT_INVALID_FLAGS
 from .run_loader import (
     CAPTURE_IN_PROGRESS_FLAG,
     COMPLETE_MARKER,
@@ -84,6 +90,37 @@ TOOL_ID = "cx320_active_hybrid_live_analyze_v1"
 SEAL_TYPE = "cx320_active_hybrid_physical_seal_v1"
 DEFAULT_SEAL = Path("reports/cx320_active_hybrid_physical_seal_v1.json")
 ACTIVE_HYBRID_CSV = Path("csv/active_hybrid_decisions_v1.csv")
+PRE_SETUP_PROVENANCE_UNRESOLVED = "pre_setup_provenance_unresolved"
+_AT2_JOIN_FIELDS = (
+    "transaction_record_sequence",
+    "event",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "session_id",
+    "request_sequence",
+    "decision_sequence",
+    "source_first_sequence",
+    "source_last_sequence",
+    "authorization_sequence",
+    "nonce",
+    "accepted_code",
+    "applied_code",
+    "application_sequence",
+    "dac_epoch",
+    "reason",
+)
+_AH2_JOIN_FIELDS = (
+    "hybrid_record_sequence",
+    "decision_sequence",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "capture_session",
+    "source_first_sequence",
+    "source_last_sequence",
+    "reason",
+)
 TERMINAL_DECISIONS = frozenset(
     {
         "bounded_active_hybrid_control_passed",
@@ -126,6 +163,163 @@ def _canonical_sha256(value: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def campaign18_exact_timing_sidecar_join(
+    *,
+    transactions: list[dict[str, str]],
+    decisions: list[dict[str, str]],
+    transaction_timings: list[dict[str, str]],
+    decision_timings: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Prove the mandatory one-to-one Campaign18 V1/V2 lifecycle join."""
+
+    mismatches: list[str] = []
+
+    def inspect(
+        *,
+        label: str,
+        record_type: str,
+        source_rows: list[dict[str, str]],
+        timing_rows: list[dict[str, str]],
+        sequence_field: str,
+        timestamp_field: str,
+        join_fields: tuple[str, ...],
+    ) -> None:
+        source_counts: dict[str, int] = {}
+        source_by_sequence: dict[str, dict[str, str]] = {}
+        for source in source_rows:
+            sequence = source.get(sequence_field, "")
+            source_counts[sequence] = source_counts.get(sequence, 0) + 1
+            source_by_sequence[sequence] = source
+            if not sequence.isdigit() or int(sequence) <= 0:
+                mismatches.append(
+                    f"{label} malformed V1 {sequence_field}={sequence}"
+                )
+        duplicate_sources = sorted(
+            (sequence for sequence, count in source_counts.items() if count != 1),
+            key=lambda value: int(value) if value.isdigit() else -1,
+        )
+        if duplicate_sources:
+            mismatches.append(
+                f"{label} duplicate V1 {sequence_field}="
+                + ",".join(duplicate_sources)
+            )
+        timing_counts: dict[str, int] = {}
+        prior_timing_sequence = 0
+        prior_timestamp = -1
+        for timing in timing_rows:
+            sequence = timing.get(sequence_field, "")
+            timing_counts[sequence] = timing_counts.get(sequence, 0) + 1
+            try:
+                timing_sequence = int(timing["timing_record_sequence"])
+                timestamp = int(timing[timestamp_field])
+            except (KeyError, TypeError, ValueError):
+                mismatches.append(f"{label} malformed exact counter row")
+                continue
+            if (
+                timing.get("record_type") != record_type
+                or timing.get("schema_version") != "2"
+                or timing.get("time_domain") != "rp2040_timer0_extended"
+                or timing_sequence <= prior_timing_sequence
+                or timestamp < prior_timestamp
+                or timing_sequence <= 0
+                or timestamp < 0
+            ):
+                mismatches.append(
+                    f"{label} exact identity/order mismatch {sequence_field}={sequence}"
+                )
+            prior_timing_sequence = timing_sequence
+            prior_timestamp = timestamp
+            source = source_by_sequence.get(sequence)
+            if source is None:
+                mismatches.append(f"{label} orphan {sequence_field}={sequence}")
+            elif any(timing.get(field) != source.get(field) for field in join_fields):
+                mismatches.append(f"{label} join mismatch {sequence_field}={sequence}")
+        duplicates = sorted(
+            (sequence for sequence, count in timing_counts.items() if count != 1),
+            key=lambda value: int(value) if value.isdigit() else -1,
+        )
+        if duplicates:
+            mismatches.append(
+                f"{label} duplicate {sequence_field}=" + ",".join(duplicates)
+            )
+        missing = sorted(
+            set(source_by_sequence) - set(timing_counts),
+            key=lambda value: int(value) if value.isdigit() else -1,
+        )
+        if missing:
+            mismatches.append(
+                f"{label} missing {sequence_field}=" + ",".join(missing)
+            )
+
+    inspect(
+        label="AT2",
+        record_type="AT2",
+        source_rows=transactions,
+        timing_rows=transaction_timings,
+        sequence_field="transaction_record_sequence",
+        timestamp_field="event_timestamp_ticks",
+        join_fields=_AT2_JOIN_FIELDS,
+    )
+    inspect(
+        label="AH2",
+        record_type="AH2",
+        source_rows=decisions,
+        timing_rows=decision_timings,
+        sequence_field="hybrid_record_sequence",
+        timestamp_field="decision_timestamp_ticks",
+        join_fields=_AH2_JOIN_FIELDS,
+    )
+    all_timing_sequences: list[int] = []
+    for timing in [*transaction_timings, *decision_timings]:
+        try:
+            all_timing_sequences.append(int(timing["timing_record_sequence"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if sorted(all_timing_sequences) != list(
+        range(1, len(all_timing_sequences) + 1)
+    ):
+        mismatches.append("AT2/AH2 global timing_record_sequence is not contiguous")
+    return {
+        "exact": bool(
+            transactions
+            and decisions
+            and transaction_timings
+            and decision_timings
+            and not mismatches
+        ),
+        "AT2_rows": len(transaction_timings),
+        "AH2_rows": len(decision_timings),
+        "mismatches": mismatches,
+        "coarse_seconds_used_as_ticks": False,
+    }
+
+
+def require_campaign18_exact_timing_sidecars(
+    run_dir: Path, manifest: RunManifest
+) -> dict[str, Any]:
+    """Reject Campaign18 evidence before sealing unless exact sidecars join."""
+
+    programme = programme_from_mapping(manifest.data)
+    if programme is not CX322_D9_D6_72H_PROGRAMME:
+        return {"required": False, "exact": True}
+    result = campaign18_exact_timing_sidecar_join(
+        transactions=_read_csv(_contract_path(manifest, "active_transactions_v1")),
+        decisions=_read_csv(_contract_path(manifest, "active_hybrid_decisions_v1")),
+        transaction_timings=_read_csv(
+            _contract_path(manifest, "active_transactions_v2")
+        ),
+        decision_timings=_read_csv(
+            _contract_path(manifest, "active_hybrid_decisions_v2")
+        ),
+    )
+    if not result["exact"]:
+        raise ValueError(
+            "Campaign18 exact AT2/AH2 lifecycle join failed: "
+            + json.dumps(result, sort_keys=True)
+        )
+    return {"required": True, **result}
+
+
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -154,6 +348,94 @@ def _read_object(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"JSON root must be an object: {path}")
     return value
+
+
+def _semantic_identity_exact(value: dict[str, Any], identity_key: str) -> bool:
+    claimed = value.get(identity_key)
+    unsigned = {key: item for key, item in value.items() if key != identity_key}
+    return isinstance(claimed, str) and claimed == _canonical_sha256(unsigned)
+
+
+def _historical_manifest_for_superseding_replay(
+    manifest_path: Path, supersedes_seal: Path
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Bind a once-validated frozen manifest after current semantics advance.
+
+    This is intentionally available only to a superseding offline replay.  It
+    does not reinterpret the old authority contract: it requires the original
+    seal to attest that the exact manifest passed its then-current validator,
+    then rechecks every copied bundle/proposal/activation byte and semantic
+    identity named by that unchanged manifest.
+    """
+
+    manifest_path = manifest_path.resolve()
+    manifest = _read_object(manifest_path)
+    if not _semantic_identity_exact(manifest, "manifest_sha256"):
+        raise ValueError("historical run manifest semantic identity differs")
+    prior_path = supersedes_seal.resolve()
+    prior = _read_object(prior_path)
+    if not _semantic_identity_exact(prior, "seal_sha256"):
+        raise ValueError("historical predecessor seal semantic identity differs")
+    frozen_manifest_attested = (
+        prior.get("acquisition_gate", {})
+        .get("checks", {})
+        .get("frozen_live_manifest_exact")
+        is True
+    )
+    if not frozen_manifest_attested:
+        raise ValueError("historical predecessor did not attest the frozen manifest")
+
+    exact_links = (
+        prior.get("run_id") == manifest.get("run_id")
+        and prior.get("run_identity") == manifest.get("run_identity")
+        and prior.get("build_identity")
+        == manifest.get("firmware", {}).get("build_identity")
+        and prior.get("bundle_sha256")
+        == manifest.get("bundle", {}).get("bundle_sha256")
+        and prior.get("proposal_sha256")
+        == manifest.get("proposal", {}).get("proposal_sha256")
+        and prior.get("activation_sha256")
+        == manifest.get("activation", {}).get("activation_sha256")
+    )
+    if not exact_links:
+        raise ValueError("historical predecessor and manifest identities differ")
+
+    semantic_keys = {
+        "bundle": "bundle_sha256",
+        "proposal": "proposal_sha256",
+        "activation": "activation_sha256",
+    }
+    artifact_bindings: dict[str, dict[str, Any]] = {}
+    for name, semantic_key in semantic_keys.items():
+        binding = manifest.get(name, {})
+        path = Path(str(binding.get("path", ""))).resolve()
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or path.parent != manifest_path.parent
+            or path.stat().st_size != binding.get("size_bytes")
+            or _sha256_file(path) != binding.get("sha256")
+        ):
+            raise ValueError(f"historical {name} byte binding differs")
+        artifact = _read_object(path)
+        if (
+            not _semantic_identity_exact(artifact, semantic_key)
+            or artifact.get(semantic_key) != binding.get(semantic_key)
+        ):
+            raise ValueError(f"historical {name} semantic binding differs")
+        artifact_bindings[name] = {
+            "path": str(path),
+            "sha256": binding["sha256"],
+            semantic_key: binding[semantic_key],
+        }
+    return manifest, {
+        "mode": "superseding_replay_of_once_validated_historical_manifest",
+        "current_contract_validation": False,
+        "historical_manifest_semantic_identity_exact": True,
+        "predecessor_frozen_manifest_attestation_exact": True,
+        "artifact_bindings": artifact_bindings,
+        "supersedes_seal_sha256": prior["seal_sha256"],
+    }
 
 
 def _read_object_or_empty(
@@ -592,6 +874,9 @@ def _replay_ahy(
     expected_active_policy_sha256: str | None = None,
     plant_sign_records: list[dict[str, str]] | None = None,
     estimate_rows: list[dict[str, str]] | None = None,
+    maximum_applications: int | None = None,
+    maximum_cumulative_movement_codes: int | None = None,
+    phase_checkpoint_required: bool = True,
 ) -> dict[str, Any]:
     """Replay the complete policy state and both integer request paths."""
 
@@ -632,6 +917,9 @@ def _replay_ahy(
             )
         ),
         estimate_rows=estimate_rows,
+        maximum_applications=maximum_applications,
+        maximum_cumulative_movement_codes=maximum_cumulative_movement_codes,
+        phase_checkpoint_required=phase_checkpoint_required,
     )
 
 
@@ -643,6 +931,7 @@ def _response_attestations(
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
     policy_path: Path | None = None,
     expected_active_policy_sha256: str | None = None,
+    allow_superseded_attestation_tool_identity: bool = False,
 ) -> tuple[bool, dict[str, str], list[dict[str, Any]], frozenset[int]]:
     exact = True
     hashes: dict[str, str] = {}
@@ -650,6 +939,7 @@ def _response_attestations(
     rejected_record_sequences: set[int] = set()
     for response in (row for row in active_rows if row.get("event") == "response"):
         relative: Path | None = None
+        retained_tool_identity_superseded = False
         try:
             request_sequence: object = int(response["request_sequence"])
             record_sequence: object = int(response["transaction_record_sequence"])
@@ -671,6 +961,16 @@ def _response_attestations(
                     else None
                 ),
                 estimates_csv=(estimates_path if estimates_path.is_file() else None),
+                maximum_applications=programme.authorized_maximum_applications,
+                maximum_cumulative_movement_codes=(
+                    programme.authorized_maximum_cumulative_movement_codes
+                ),
+                phase_checkpoint_required=bool(
+                    progressive_checkpoint_contract(programme).get(
+                        "phase_material_application_count_is_acquisition_pass_gate",
+                        True,
+                    )
+                ),
             )
             retained = _read_object(path) if path.is_file() else {}
             phase_acknowledged = any(
@@ -685,7 +985,23 @@ def _response_attestations(
                 and int(item.get("request_sequence", -1)) == request_sequence
                 for item in supervisor_events
             )
-            row_exact = retained == replayed or (
+            retained_tool_identity_superseded = (
+                allow_superseded_attestation_tool_identity
+                and bool(retained)
+                and _semantic_identity_exact(retained, "attestation_sha256")
+                and _semantic_identity_exact(replayed, "attestation_sha256")
+                and {
+                    key: value
+                    for key, value in retained.items()
+                    if key not in {"tool_sha256", "attestation_sha256"}
+                }
+                == {
+                    key: value
+                    for key, value in replayed.items()
+                    if key not in {"tool_sha256", "attestation_sha256"}
+                }
+            )
+            row_exact = retained == replayed or retained_tool_identity_superseded or (
                 not path.exists() and not phase_acknowledged and recovered_host_hold
             )
             if path.is_file():
@@ -744,6 +1060,11 @@ def _response_attestations(
                 "replayed_attestation_sha256": replayed.get("attestation_sha256"),
                 "checkpoint_passed": checkpoint_passed,
                 "expected_rejection": expected_rejection,
+                **(
+                    {"retained_attestation_tool_identity_superseded": True}
+                    if retained_tool_identity_superseded
+                    else {}
+                ),
             }
         )
     return exact, hashes, comparisons, frozenset(rejected_record_sequences)
@@ -792,7 +1113,11 @@ def _cx320_commands_exact(
         submitted == acknowledged
         and sent == expected_sent
         and grammar_exact
-        and submitted.count("CONFIG?") == 1
+        # Forwarded-output integrations re-query CONFIG? periodically so D9
+        # source/divider/readback continuity is retained throughout the run.
+        # Exact submitted/written/sent equality above makes every repetition
+        # accountable; requiring exactly one contradicts the real supervisor.
+        and submitted.count("CONFIG?") >= 1
         and submitted.count("DUALCORE?") == 1
         and submitted.count("DAC?") == 1
         and sum(setup.fullmatch(command) is not None for command in submitted) == 1
@@ -843,6 +1168,194 @@ def _wall_origin_and_setup_order_exact(
         and supervisor_events[supervisor_starts[0]].get("manifest_sha256")
         == manifest.get("manifest_sha256")
     )
+
+
+def _pre_setup_commands_exact(
+    markers: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    capture_state: dict[str, Any],
+) -> bool:
+    """Verify the bounded query/lease path before setup became possible."""
+
+    submitted = [
+        str(item["command"])
+        for item in events
+        if item.get("event") == "command_submitted"
+    ]
+    acknowledged = [
+        str(item["command"])
+        for item in events
+        if item.get("event") == "host_written"
+    ]
+    sent = [
+        str(item["command"])
+        for item in markers
+        if item.get("event") == "host_command_sent"
+    ]
+    grammar_exact = all(
+        command in {"CONFIG?", "DUALCORE?", "DAC?", "ACTIVE?"}
+        or re.fullmatch(r"ACTIVE SNAPSHOT [1-9][0-9]*", command)
+        or re.fullmatch(r"ACTIVE LEASE [1-9][0-9]*", command)
+        for command in submitted
+    )
+    return (
+        bool(submitted)
+        and submitted == acknowledged
+        and sent == [*submitted, "ACTIVE ABORT"]
+        and grammar_exact
+        and submitted.count("CONFIG?") >= 1
+        and submitted.count("DUALCORE?") == 1
+        and submitted.count("DAC?") == 1
+        and int(capture_state.get("emergency_aborts_sent", 0)) == 1
+    )
+
+
+def _pre_setup_wall_origin_exact(
+    manifest: dict[str, Any],
+    supervisor_state: dict[str, Any],
+    supervisor_events: list[dict[str, Any]],
+    markers: list[dict[str, Any]],
+    programme: ActiveHybridProgramme,
+) -> bool:
+    capture_starts = [
+        item for item in markers if item.get("event") == "capture_started"
+    ]
+    setup_markers = [
+        item
+        for item in markers
+        if item.get("event") == "host_command_sent"
+        and str(item.get("command", "")).startswith("ACTIVE SETUP ")
+    ]
+    supervisor_starts = [
+        item
+        for item in supervisor_events
+        if item.get("event") == f"{programme.key}_live_supervisor_started"
+    ]
+    setup_requests = [
+        item
+        for item in supervisor_events
+        if item.get("event") == f"{programme.key}_exact_setup_requested"
+    ]
+    wall_origin = manifest.get("started_at_utc")
+    return (
+        isinstance(wall_origin, str)
+        and bool(wall_origin)
+        and supervisor_state.get("wall_origin_utc") == wall_origin
+        and len(capture_starts) == 1
+        and not setup_markers
+        and len(supervisor_starts) == 1
+        and not setup_requests
+        and supervisor_starts[0].get("wall_origin_utc") == wall_origin
+        and supervisor_starts[0].get("manifest_sha256")
+        == manifest.get("manifest_sha256")
+    )
+
+
+def _pre_setup_provenance_terminal_facts(
+    *,
+    programme: ActiveHybridProgramme,
+    terminal: dict[str, Any],
+    supervisor_state: dict[str, Any],
+    health: dict[tuple[str, str], str],
+    active_rows: list[dict[str, str]],
+    decision_rows: list[dict[str, str]],
+    dac_rows: list[dict[str, str]],
+    estimate_rows: list[dict[str, str]],
+    command_stream_exact: bool,
+    wall_origin_exact: bool,
+    abort_ordering_exact: bool,
+    capture_closure_exact: bool,
+    d9_readback_exact: bool,
+    aligned_interval_count: int,
+) -> dict[str, Any]:
+    """Recognize only a clean terminal before setup or DAC authority existed."""
+
+    readiness = supervisor_state.get("latest_prewrite_readiness")
+    readiness = readiness if isinstance(readiness, dict) else {}
+    no_control_records = not active_rows and not decision_rows and not dac_rows
+    no_estimator_records = not estimate_rows
+    setup_or_application_authority_reached = (
+        not no_control_records
+        or supervisor_state.get("manual_start_sent") is True
+        or supervisor_state.get("setup_requested_utc") is not None
+        or supervisor_state.get("setup_confirmed_utc") is not None
+    )
+    state_exact = (
+        supervisor_state.get("manual_start_sent") is False
+        and supervisor_state.get("setup_requested_utc") is None
+        and supervisor_state.get("setup_confirmed_utc") is None
+        and supervisor_state.get("setup_authority_path") is None
+        and supervisor_state.get("prewrite_contract_ready_utc") is None
+        and supervisor_state.get("arm_pending") is False
+        and supervisor_state.get("terminal_static_code") is None
+        and readiness.get("physical_dac_confirmation")
+        == "unknown_before_live_stimulus"
+    )
+    dac_provenance_unresolved = (
+        health.get(("dac", "applied_code_known")) == "false"
+        and health.get(("dac", "last_applied_code")) == "unavailable"
+        and health.get(("cx317_active", "confirmed_applied_code_known"))
+        == "false"
+        and health.get(("cx317_active", "confirmed_applied_code"))
+        == "unavailable"
+        and health.get(("cx317_active", "dac_epoch")) == "0"
+    )
+    firmware_terminal_exact = (
+        health.get(("cx317_active", "state")) == "ABORTED"
+        and health.get(("cx317_active", "hybrid_state")) == "SETUP_PENDING"
+        and health.get(("cx317_active", "fail_static")) == "true"
+        and health.get(("cx317_active", "manual_start_confirmed")) == "false"
+        and health.get(("cx317_active", "evidence_pending")) == "false"
+        and health.get(("cx317_active", "evidence_phase")) == "evidence_clear"
+        and health.get(("cx317_active", "evidence_request_sequence"), "0") == "0"
+        and health.get(("cx317_active", "correction_count")) == "0"
+        and health.get(("cx317_active", "automatic_application_count")) == "0"
+        and health.get(("cx317_active", "cumulative_movement_codes")) == "0"
+    )
+    supervisor_terminal_exact = (
+        terminal.get("result") == "aborted"
+        and terminal.get("primary_decision")
+        == "measurement_authority_or_platform_fault"
+        and terminal.get("reason")
+        == f"{programme.key}_live_supervisor_fault:live active_fail_static asserted"
+    )
+    exact = (
+        programme.forwarded_output_integration
+        and programme.terminal_after_first_response
+        and supervisor_terminal_exact
+        and state_exact
+        and dac_provenance_unresolved
+        and firmware_terminal_exact
+        and no_control_records
+        and no_estimator_records
+        and command_stream_exact
+        and wall_origin_exact
+        and abort_ordering_exact
+        and capture_closure_exact
+        and d9_readback_exact
+        and aligned_interval_count > 0
+    )
+    return {
+        "exact": exact,
+        "supervisor_terminal_exact": supervisor_terminal_exact,
+        "pre_setup_state_exact": state_exact,
+        "dac_provenance_unresolved": dac_provenance_unresolved,
+        "firmware_terminal_exact": firmware_terminal_exact,
+        "no_control_records": no_control_records,
+        "no_estimator_records": no_estimator_records,
+        "command_stream_exact": command_stream_exact,
+        "wall_origin_exact_without_setup": wall_origin_exact,
+        "abort_ordering_exact": abort_ordering_exact,
+        "capture_closure_exact": capture_closure_exact,
+        "d9_readback_exact": d9_readback_exact,
+        "aligned_d14_d8_d6_interval_count": aligned_interval_count,
+        "setup_or_application_authority_reached": (
+            setup_or_application_authority_reached
+        ),
+        "measurement_authority_fault_claimed": False if exact else None,
+    }
+
+
 def _application_contract(
     active_rows: list[dict[str, str]],
     decisions: list[dict[str, str]],
@@ -1284,9 +1797,12 @@ def _classify_decision(
     minimum_material_applications: int,
     fact_gathering: bool = False,
     early_safety_terminal: bool = False,
+    pre_setup_provenance_unresolved: bool = False,
 ) -> tuple[str, str]:
     if operator_abort:
         return "bounded_nonpass", "operator_abort"
+    if pre_setup_provenance_unresolved and integrity_exact:
+        return "bounded_nonpass", PRE_SETUP_PROVENANCE_UNRESOLVED
     if fact_gathering and early_safety_terminal:
         return "bounded_nonpass", "bounded_direct_hybrid_early_safety_stop"
     if platform_terminal or not integrity_exact:
@@ -1319,6 +1835,40 @@ def _classify_decision(
     if not phase_pass:
         return "bounded_nonpass", "hybrid_response_wrong_or_frequency_not_reacquired"
     return "passed", "bounded_active_hybrid_control_passed"
+
+
+def _campaign18_outcome(
+    *,
+    integrity_exact: bool,
+    operator_abort: bool,
+    platform_terminal: bool,
+    endpoint_complete: bool,
+    terminal: dict[str, Any],
+    controller_authority_inhibited: bool,
+) -> tuple[str, str]:
+    if operator_abort:
+        return "bounded_nonpass", "cx322_d9_d6_72h_operator_abort"
+    if platform_terminal:
+        reason = str(terminal.get("reason", "")).lower()
+        if "d9" in reason and ("configuration" in reason or "readback" in reason):
+            decision = "cx322_d9_d6_72h_D9_configuration_or_readback_fault"
+        elif any(item in reason for item in ("transaction", "acknowledg", "controller")):
+            decision = "cx322_d9_d6_72h_controller_or_transaction_fault"
+        elif any(item in reason for item in ("d14", "d8", "capture")):
+            decision = "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+        else:
+            decision = "cx322_d9_d6_72h_identity_or_evidence_fault"
+        return "failed", decision
+    if not integrity_exact:
+        return "failed", "cx322_d9_d6_72h_identity_or_evidence_fault"
+    if not endpoint_complete:
+        return "bounded_nonpass", "cx322_d9_d6_72h_right_censored_incomplete"
+    if controller_authority_inhibited:
+        return (
+            "bounded_nonpass",
+            "cx322_d9_d6_72h_controller_or_transaction_fault",
+        )
+    return "passed", "cx322_d9_d6_72h_qualified_engineering_complete"
 
 
 def _sustained_regulation_outcome(
@@ -1561,6 +2111,71 @@ def _legacy_checkpoint_terminal_misclassified(
     )
 
 
+def _legacy_first_response_endpoint_misclassified(
+    *,
+    programme: ActiveHybridProgramme,
+    terminal: dict[str, Any],
+    applications: dict[str, Any],
+    active_hybrid_replay_exact: bool,
+    transaction_history_exact: bool,
+    capsules_exact: bool,
+    response_attestations_exact: bool,
+    supervisor_events: list[dict[str, Any]],
+    static_terminal_exact: bool,
+) -> bool:
+    """Recognize the integrated smoke endpoint that the old supervisor missed.
+
+    The frozen integration contract made the phase-material checkpoint
+    observational, but the live supervisor accidentally required it before
+    taking the first-complete-response terminal.  Correction is deliberately
+    narrow: one exact application, its complete four-phase acknowledgement
+    chain, one healthy retained response, and the exact wall endpoint.
+    """
+
+    if not (
+        programme.forwarded_output_integration
+        and programme.terminal_after_first_response
+        and progressive_checkpoint_contract(programme).get(
+            "phase_material_application_count_is_acquisition_pass_gate",
+            True,
+        )
+        is False
+        and terminal.get("result") == "nonpass"
+        and terminal.get("primary_decision") == "right_censored_incomplete"
+        and terminal.get("reason")
+        == f"{programme.key}_2h_absolute_wall_endpoint"
+        and applications.get("exact") is True
+        and applications.get("automatic_application_count") == 1
+        and applications.get("physical_control_application_count") == 1
+        and applications.get("frequency_only_application_count") == 1
+        and applications.get("phase_material_application_count") == 0
+        and applications.get("all_response_checkpoints_passed") is True
+        and active_hybrid_replay_exact
+        and transaction_history_exact
+        and capsules_exact
+        and response_attestations_exact
+        and static_terminal_exact
+    ):
+        return False
+    phase_acknowledgements = [
+        (int(item.get("request_sequence", 0)), int(item.get("phase", 0)))
+        for item in supervisor_events
+        if item.get("event") == "transaction_phase_acknowledged"
+    ]
+    retained_responses = [
+        item
+        for item in supervisor_events
+        if item.get("event") == "response_retained_as_nonterminal_observation"
+        and item.get("response_class")
+        in {"healthy_detected", "healthy_indeterminate_near_resolution", "inside_deadband"}
+    ]
+    return (
+        phase_acknowledgements == [(1, 1), (1, 2), (1, 3), (1, 4)]
+        and len(retained_responses) == 1
+        and int(retained_responses[0].get("request_sequence", 0)) == 1
+    )
+
+
 def _legacy_plant_terminal_decision(
     terminal: dict[str, Any], rows: list[dict[str, str]]
 ) -> str | None:
@@ -1798,7 +2413,21 @@ def analyze(
         raise ValueError("CX320 live capture is still active")
     if not (run_dir / COMPLETE_MARKER).is_file():
         raise ValueError("CX320 live run is not marked complete")
-    manifest_value = validate_frozen_run_manifest(run_dir / "run_manifest.json")
+    manifest_validation: dict[str, Any]
+    try:
+        manifest_value = validate_frozen_run_manifest(run_dir / "run_manifest.json")
+        manifest_validation = {
+            "mode": "current_contract",
+            "current_contract_validation": True,
+        }
+    except ValueError:
+        if supersedes_seal is None:
+            raise
+        manifest_value, manifest_validation = (
+            _historical_manifest_for_superseding_replay(
+                run_dir / "run_manifest.json", supersedes_seal
+            )
+        )
     programme = programme_from_mapping(manifest_value)
     if manifest_value.get("stage") != programme.live_stage:
         raise ValueError(
@@ -1874,6 +2503,18 @@ def analyze(
 
     active_rows = _read_csv(run_dir / ACTIVE_CSV)
     decision_rows = _read_csv(run_dir / ACTIVE_HYBRID_CSV)
+    exact_timing_sidecar_join: dict[str, Any] | None = None
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        exact_timing_sidecar_join = campaign18_exact_timing_sidecar_join(
+            transactions=active_rows,
+            decisions=decision_rows,
+            transaction_timings=_read_csv(
+                _contract_path(manifest, "active_transactions_v2")
+            ),
+            decision_timings=_read_csv(
+                _contract_path(manifest, "active_hybrid_decisions_v2")
+            ),
+        )
     rph_rows = _read_csv(run_dir / RPH_CSV)
     tdb_rows = _read_csv(run_dir / TDB_CSV)
     dac_rows = _read_csv(run_dir / DAC_CSV)
@@ -1935,6 +2576,16 @@ def analyze(
             ),
             plant_sign_records=plant_sign_records,
             estimate_rows=exact_estimate_rows,
+            maximum_applications=programme.authorized_maximum_applications,
+            maximum_cumulative_movement_codes=(
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
+            phase_checkpoint_required=bool(
+                progressive_checkpoint_contract(programme).get(
+                    "phase_material_application_count_is_acquisition_pass_gate",
+                    True,
+                )
+            ),
         )
     except (KeyError, OSError, TypeError, ValueError) as exc:
         retained_input_failures.append(f"active-hybrid replay: {exc}")
@@ -1974,6 +2625,7 @@ def analyze(
             if programme.identification_required
             else policy.policy_sha256
         ),
+        allow_superseded_attestation_tool_identity=(supersedes_seal is not None),
     )
     try:
         capsule_exact, capsule_hashes = _capsules_exact(
@@ -2124,7 +2776,9 @@ def analyze(
             maximum_code=spec.maximum_code,
             maximum_step=spec.maximum_step,
             maximum_applications=spec.correction_limit,
-            maximum_automatic_applications=programme.maximum_applications,
+            maximum_automatic_applications=(
+                programme.authorized_maximum_applications
+            ),
             maximum_deliberate_challenges=programme.maximum_deliberate_challenges,
             maximum_cumulative=spec.cumulative_limit,
             minimum_cadence_s=int(control["minimum_applied_cadence_s"]),
@@ -2222,6 +2876,73 @@ def analyze(
         evidence = {}
 
     health = latest_complete_health(run_dir / HEALTH_CSV)
+    forwarded_output_integration: dict[str, Any] | None = None
+    if programme.forwarded_output_integration:
+        integration_missing, integration_mismatches = (
+            forwarded_output_integration_prewrite_evidence(health)
+        )
+        d9_missing = [
+            item
+            for item in integration_missing
+            if not item.startswith("forwarded_clock_monitor.")
+        ]
+        d6_missing = [
+            item
+            for item in integration_missing
+            if item.startswith("forwarded_clock_monitor.")
+        ]
+        monitor_path = _contract_path(
+            manifest, "forwarded_monitor_snapshots_v1"
+        )
+        monitor_rows = _read_csv(monitor_path)
+        d14_rows = _read_csv(_contract_path(manifest, "pps_snapshots_v1"))
+        d8_rows = _read_csv(_contract_path(manifest, "count_observations_v1"))
+        d14_sequences = [int(row["snapshot_sequence"]) for row in d14_rows]
+        aligned_intervals_exact = (
+            bool(d14_rows)
+            and len(d14_rows) == len(d8_rows) == len(monitor_rows)
+            and d14_sequences
+            == list(range(d14_sequences[0], d14_sequences[-1] + 1))
+            and all(
+                d14["status"] == "0"
+                and d6["status"] == "0"
+                and int(d8["flags"]) & COUNT_INVALID_FLAGS == 0
+                and d14["snapshot_sequence"] == d8["count_seq"]
+                and d14["snapshot_sequence"] == d6["snapshot_sequence"]
+                and d14["reference_timestamp_ticks"] == d8["gate_close_ticks"]
+                and d14["reference_timestamp_ticks"]
+                == d6["reference_timestamp_ticks"]
+                and d8["channel_id"] == "2"
+                and d6["channel_id"] == "3"
+                for d14, d8, d6 in zip(
+                    d14_rows, d8_rows, monitor_rows, strict=True
+                )
+            )
+        )
+        forwarded_output_integration = {
+            "d9_digital_configuration_and_readback_exact": (
+                not d9_missing and not integration_mismatches
+            ),
+            "d9_missing": d9_missing,
+            "d9_mismatches": list(integration_mismatches),
+            "d9_waveform_load_jitter_or_independent_frequency_qualified": False,
+            "d6_status_observable": not d6_missing,
+            "d6_status_missing": d6_missing,
+            "d6_monitor_snapshot_count": len(monitor_rows),
+            "d14_snapshot_count": len(d14_rows),
+            "d8_count_observation_count": len(d8_rows),
+            "d14_d8_d6_intervals_aligned_and_valid": aligned_intervals_exact,
+            "aligned_d14_d8_d6_interval_count": (
+                len(d14_rows) if aligned_intervals_exact else 0
+            ),
+            "d6_latest_state": health.get(
+                ("forwarded_clock_monitor", "state"), "unavailable"
+            ),
+            "d6_latest_fault_flags": health.get(
+                ("forwarded_clock_monitor", "fault_flags"), "unavailable"
+            ),
+            "d6_control_validity_or_terminal_authority": False,
+        }
     latest_hybrid_state = health.get(("cx317_active", "hybrid_state"), "")
     terminal_static_code = terminal.get(
         "last_confirmed_code", supervisor_state.get("terminal_static_code")
@@ -2259,14 +2980,110 @@ def analyze(
     except (TypeError, ValueError):
         static_terminal_exact = False
         retained_input_failures.append("terminal static code is malformed")
-    endpoint_complete = (
-        terminal.get("result") == "healthy_stop"
+    pre_setup_terminal_claimed = (
+        programme.forwarded_output_integration
+        and programme.terminal_after_first_response
+        and terminal.get("result") == "aborted"
+        and terminal.get("primary_decision")
+        == "measurement_authority_or_platform_fault"
         and terminal.get("reason")
-        == (
-            f"{programme.key}_{programme.qualified_duration_s // 3600}h_qualified_endpoint_complete"
-            if programme.sustained_regulation
-            else f"{programme.key}_12h_qualified_endpoint_complete"
+        == f"{programme.key}_live_supervisor_fault:live active_fail_static asserted"
+    )
+    if pre_setup_terminal_claimed:
+        try:
+            pre_setup_command_exact = _pre_setup_commands_exact(
+                markers, supervisor_events, capture_state
+            )
+        except (KeyError, TypeError, ValueError):
+            pre_setup_command_exact = False
+    else:
+        # The pre-setup abort grammar is only evidence for that terminal.  A
+        # successful setup has a different command grammar and must not be
+        # judged by a predicate that expressly forbids ACTIVE SETUP.
+        pre_setup_command_exact = True
+    pre_setup_wall_origin_exact = _pre_setup_wall_origin_exact(
+        manifest_value,
+        supervisor_state,
+        supervisor_events,
+        markers,
+        programme,
+    )
+    aligned_interval_count = (
+        int(
+            (forwarded_output_integration or {}).get(
+                "aligned_d14_d8_d6_interval_count", 0
+            )
         )
+        if programme.forwarded_output_integration
+        else 0
+    )
+    pre_setup_provenance = _pre_setup_provenance_terminal_facts(
+        programme=programme,
+        terminal=terminal,
+        supervisor_state=supervisor_state,
+        health=health,
+        active_rows=active_rows,
+        decision_rows=decision_rows,
+        dac_rows=dac_rows,
+        estimate_rows=(
+            exact_estimate_rows
+            if isinstance(exact_estimate_rows, list)
+            else []
+        ),
+        command_stream_exact=pre_setup_command_exact,
+        wall_origin_exact=pre_setup_wall_origin_exact,
+        abort_ordering_exact=abort_ordering_exact,
+        capture_closure_exact=bool(capture_closure["ok"]),
+        d9_readback_exact=bool(
+            forwarded_output_integration
+            and forwarded_output_integration[
+                "d9_digital_configuration_and_readback_exact"
+            ]
+        ),
+        aligned_interval_count=aligned_interval_count,
+    )
+    pre_setup_provenance_exact = bool(pre_setup_provenance["exact"])
+    if pre_setup_provenance_exact:
+        retained_input_failures = [
+            failure
+            for failure in retained_input_failures
+            if not failure.startswith("active-hybrid replay:")
+        ]
+        ahy_replay = {
+            "exact": False,
+            "not_reached_before_terminal": True,
+            "reason": "no setup, application, estimate, or active-hybrid records",
+        }
+    legacy_first_response_endpoint_misclassified = (
+        _legacy_first_response_endpoint_misclassified(
+            programme=programme,
+            terminal=terminal,
+            applications=applications,
+            active_hybrid_replay_exact=bool(ahy_replay.get("exact")),
+            transaction_history_exact=transaction_history_exact,
+            capsules_exact=capsule_exact,
+            response_attestations_exact=attestation_exact,
+            supervisor_events=supervisor_events,
+            static_terminal_exact=static_terminal_exact,
+        )
+    )
+    engineering_endpoint_complete = (
+        programme.terminal_after_first_response
+        and (
+            (
+                terminal.get("result") == "healthy_stop"
+                and terminal.get("reason")
+                == (
+                    f"{programme.key}_first_complete_application_"
+                    "consumer_and_response"
+                )
+            )
+            or legacy_first_response_endpoint_misclassified
+        )
+    )
+    endpoint_complete = engineering_endpoint_complete or (
+        terminal.get("result") == "healthy_stop"
+        and terminal.get("reason") == programme.qualified_endpoint_reason
     )
     phase_degraded = (
         terminal.get("primary_decision")
@@ -2355,26 +3172,91 @@ def analyze(
         "terminal_disarmed_evidence_clear_no_outstanding_static_code": static_terminal_exact,
         "registration_source_artifacts_present": not missing_source_artifacts,
         "retained_inputs_readable": not retained_input_failures,
+        **(
+            {
+                "campaign18_exact_AT2_AH2_lifecycle_join": bool(
+                    exact_timing_sidecar_join
+                    and exact_timing_sidecar_join["exact"]
+                )
+            }
+            if programme is CX322_D9_D6_72H_PROGRAMME
+            else {}
+        ),
         "plant_sign_evidence_replay_exact": bool(
             plant_sign_replay.get("exact_replay")
         ),
+        **(
+            {
+                "integrated_d9_digital_configuration_and_readback_exact": bool(
+                    forwarded_output_integration
+                    and forwarded_output_integration[
+                        "d9_digital_configuration_and_readback_exact"
+                    ]
+                )
+            }
+            if programme.forwarded_output_integration
+            else {}
+        ),
+        **(
+            {"pre_setup_provenance_terminal_exact": True}
+            if pre_setup_provenance_exact
+            else {}
+        ),
     }
-    acquisition_check_names = {
-        "frozen_live_manifest_exact",
-        "capture_closed_cleanly_with_one_owner",
-        "command_stream_exact",
-        "wall_origin_capture_identity_and_setup_order_exact",
-        "abort_submission_delivery_and_close_order_exact",
-        "terminal_disarmed_evidence_clear_no_outstanding_static_code",
-        "response_identity_through_first_dependent_decision_exact",
-    }
+    acquisition_check_names = (
+        {
+            "frozen_live_manifest_exact",
+            "capture_closed_cleanly_with_one_owner",
+            "abort_submission_delivery_and_close_order_exact",
+            "pre_setup_provenance_terminal_exact",
+        }
+        if pre_setup_provenance_exact
+        else {
+            "frozen_live_manifest_exact",
+            "capture_closed_cleanly_with_one_owner",
+            "command_stream_exact",
+            "wall_origin_capture_identity_and_setup_order_exact",
+            "abort_submission_delivery_and_close_order_exact",
+            "terminal_disarmed_evidence_clear_no_outstanding_static_code",
+            "response_identity_through_first_dependent_decision_exact",
+        }
+    )
+    if programme.forwarded_output_integration:
+        acquisition_check_names.add(
+            "integrated_d9_digital_configuration_and_readback_exact"
+        )
     acquisition_gate_passed = all(
         common_checks[name] for name in acquisition_check_names
     )
-    finalization_gate_passed = all(common_checks.values())
-    integrity_exact = all(common_checks.values())
+    finalization_check_names = set(common_checks)
+    if pre_setup_provenance_exact:
+        finalization_check_names -= {
+            "transaction_history_exact",
+            "raw_measurement_and_estimator_replay_exact",
+            "active_hybrid_decision_and_materiality_replay_exact",
+            "setup_dac_epoch_application_and_budget_exact",
+            "command_stream_exact",
+            "wall_origin_capture_identity_and_setup_order_exact",
+            "terminal_disarmed_evidence_clear_no_outstanding_static_code",
+        }
+    finalization_gate_passed = all(
+        common_checks[name] for name in finalization_check_names
+    )
+    integrity_exact = finalization_gate_passed
     sustained_regulation: dict[str, Any] | None = None
-    if programme.sustained_regulation:
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        status, primary_decision = _campaign18_outcome(
+            integrity_exact=integrity_exact,
+            operator_abort=operator_abort,
+            platform_terminal=platform_terminal,
+            endpoint_complete=endpoint_complete,
+            terminal=terminal,
+            controller_authority_inhibited=isinstance(
+                supervisor_state.get("controller_authority_inhibited_reason"),
+                str,
+            ),
+        )
+    elif programme.sustained_regulation:
         status, primary_decision, sustained_regulation = (
             _sustained_regulation_outcome(
                 integrity_exact=integrity_exact,
@@ -2410,11 +3292,18 @@ def analyze(
                 metric_contract["minimum_material_phase_applications"]
             ),
             fact_gathering=programme.response_checkpoint_observational,
+            pre_setup_provenance_unresolved=pre_setup_provenance_exact,
             early_safety_terminal=(
                 terminal.get("primary_decision")
                 == "bounded_direct_hybrid_early_safety_stop"
             ),
         )
+        if (
+            programme.terminal_after_first_response
+            and engineering_endpoint_complete
+            and primary_decision == "bounded_direct_hybrid_evidence_acquired"
+        ):
+            primary_decision = "bounded_integrated_engineering_evidence_acquired"
     preliminary_decision = terminal.get("preliminary_decision")
     plant_terminal_decision = (
         plant_sign_replay.get("terminal_decision")
@@ -2504,6 +3393,7 @@ def analyze(
         "bundle_sha256": manifest_value["bundle"]["bundle_sha256"],
         "proposal_sha256": manifest_value["proposal"]["proposal_sha256"],
         "activation_sha256": manifest_value["activation"]["activation_sha256"],
+        "manifest_validation": manifest_validation,
         "status": status,
         "primary_decision": primary_decision,
         "checks": common_checks,
@@ -2551,7 +3441,18 @@ def analyze(
             "detail": measurement_replay,
         },
         "active_hybrid_replay": ahy_replay,
+        **(
+            {"campaign18_exact_timing_sidecar_join": exact_timing_sidecar_join}
+            if exact_timing_sidecar_join is not None
+            else {}
+        ),
         "application_counts_and_budgets": applications,
+        "pre_setup_provenance_terminal": pre_setup_provenance,
+        **(
+            {"forwarded_output_integration": forwarded_output_integration}
+            if forwarded_output_integration is not None
+            else {}
+        ),
         **(
             {"sustained_regulation": sustained_regulation}
             if sustained_regulation is not None
@@ -2572,12 +3473,15 @@ def analyze(
             "legacy_supervisor_terminal_misclassification_corrected": (
                 legacy_checkpoint_terminal_misclassified
                 or legacy_plant_terminal_misclassified
+                or legacy_first_response_endpoint_misclassified
             ),
             "offline_corrected_primary_decision": (
                 primary_decision
                 if (
                     legacy_checkpoint_terminal_misclassified
                     or legacy_plant_terminal_misclassified
+                    or legacy_first_response_endpoint_misclassified
+                    or pre_setup_provenance_exact
                 )
                 else None
             ),

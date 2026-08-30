@@ -33,10 +33,25 @@
   attachments.
 - The PA1616S/MT3339 selected baud persists across an MCU reset or flash while
   the receiver remains powered; only a receiver power cycle restores its 9600
-  module default. Continuation attachment therefore cannot assume 9600 after
-  MCU reset. It uses the sealed 57600 observation only as a PMTK605/PMTK705
-  discovery hint, then falls back through the complete frozen five-rate scan.
-  No PMTK251 is permitted before fresh identity at an allowed baud.
+  module default. Ordinary 115200 firmware handles the two legitimate
+  operational starts—reset-default 9600 or retained-operational 115200—by
+  sending the same fixed `PMTK251,115200` packet once at 9600 and once at
+  115200, waiting 1200 ms after each physical UART drain, then remaining at
+  115200. This deterministic transaction does not inspect responses or discover
+  the current rate, is never retried after boot, and requires exact ordered
+  completion/epoch telemetry before control. The separate baud-
+  characterization continuation retains its sealed discovery and PMTK605/
+  PMTK705 rules; those experimental rules do not govern ordinary operation.
+- The 2026-08-28 D9/D6 frequency-only attempt 5 preserved healthy D14/D8 and
+  D9/D6 digital evidence and issued no DAC write, but failed GNSS startup. Its
+  implementation changed UART rates and queried identity immediately after
+  RP2040 peripheral completion, repeatedly truncating the receiver stream.
+  Peripheral completion did not prove receiver parsing/application. That run
+  remains an identity/evidence failure; the exact per-rate settle and permanent
+  post-bootstrap 115200 contract are a platform correction, not a
+  reinterpretation of the failed acquisition. Rates other than 9600 and 115200
+  are characterization-only; returning from such a profile to ordinary
+  firmware requires that characterization's explicit final transition.
 - A continuation from logical S06 `peak_status` creates a real capture-session
   and firmware boundary. The final result is necessarily a multi-artifact
   composite: counters may be differenced only within one source artifact, and
@@ -76,4 +91,42 @@
   future bundle. They do not make the uncalibrated plant model generally
   control-ready or turn an indeterminate natural material response into
   observed sign.
-- OTIS still does not provide a qualified D9/GPOUT0 delivered timing output.
+- The retained Prompt 02 package physically established the compile-time
+  D8/GPIN0 to D9/GPOUT0 output/readback identity and a zero-authority D6
+  loopback monitor. Its 90 same-reference D8:D6 comparisons differed by zero
+  or one cycle within the frozen two-cycle diagnostic tolerance, with healthy
+  authoritative D14/D8 capture. It still does not provide a physically
+  qualified D9 delivered timing output: no oscilloscope or independently
+  referenced frequency counter evidence was retained. With only a multimeter
+  and the D6 digital sidecar, voltage levels, duty cycle, rise/fall behavior,
+  ringing, propagation delay, jitter, load sensitivity, and independently
+  referenced frequency remain unmeasured. A successful D6 count comparison
+  cannot close those claims. The historical Prompt 02 terminals remain
+  `output_function_correct_but_waveform_evidence_incomplete`,
+  `frequency_only_d9_output_soak_incomplete`, and
+  `cx322_integration_blocked_by_d9_output_gate`. Later explicit operator
+  authority permits separate 24-hour frequency-only and 72-hour hybrid
+  engineering acquisitions without waveform instrumentation. Those runs may
+  establish digital continuity and control-performance evidence, but cannot
+  revise the historical terminal or qualify the delivered D9 waveform or load.
+- The Prompt 03 metadata-hold, phase-degradation, low-efficiency, fail-static,
+  and optional-evidence semantics remain deterministic non-effective reference
+  code for their original frozen contract. The later engineering long-run
+  profiles implement the applicable `GNSS_METADATA_HOLD` transaction semantics
+  in the existing live firmware, parser, supervisor, and telemetry path; that
+  implementation is bound only by each run's separate effective activation.
+  It does not retroactively make the Prompt 03 oracle effective or grant that
+  historical contract DAC, arm, flash, serial, or trial authority.
+- Prompt 04 verified the complete current Release matrix, three exact separated
+  build manifests, the unchanged CX322 policy, the non-effective Prompt 03
+  contract, and the retained sealed D9/D6 PTY operational path. It deliberately
+  did not create a combined D9/D6/CX322 binary, live Prompt 03 telemetry path,
+  integrated rehearsal, or 72-hour proposal. A later one-application,
+  21-code, 7,200-second smoke profile combined unchanged CX322 with fixed D9
+  forwarding and D6 diagnostics. Still later explicit operator authority
+  created distinct 24-hour frequency-only and 72-hour unchanged-CX322
+  engineering programmes with cadence-derived sustained-authority ceilings.
+  Their exact activations and complete operational-path rehearsals are required
+  before bench entry. Neither can be promoted into a waveform, qualified-load,
+  jitter, independently referenced frequency, or public delivered-output
+  claim.

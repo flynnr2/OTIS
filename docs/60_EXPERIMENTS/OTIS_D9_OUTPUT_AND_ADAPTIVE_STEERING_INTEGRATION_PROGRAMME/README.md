@@ -2,8 +2,83 @@
 
 ## Status
 
-This directory is a future Codex execution bundle. Its presence does not grant
-bench, serial, flash, receiver-command, DAC, control-arm or live-run authority.
+The historical Prompt 02–04 terminals remain valid for their frozen inputs.
+Subsequent explicit operator directions now authorize two separate engineering
+long runs despite the unavailable oscilloscope/counter waveform evidence:
+
+- the 24-hour frequency-only programme bound by
+  [`d9_d6_frequency_only_digital_endurance_contract_v1.json`](d9_d6_frequency_only_digital_endurance_contract_v1.json);
+- the 72-hour unchanged-CX322 hybrid programme bound by
+  [`cx322_d9_d6_72h_integrated_engineering_contract_v1.json`](cx322_d9_d6_72h_integrated_engineering_contract_v1.json).
+
+The frequency-only run has passed by provenance-linked host-only supersession,
+and the exact 72-hour activation is prepared but not launched. See
+[`05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md`](05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md).
+
+This authority supersedes the original Gate B waveform dependency and the
+Prompt 04 stop boundary only for these explicitly identified engineering
+acquisitions. It does not change the Prompt 02 waveform terminal, qualify the
+delivered D9 waveform or load, or promote a public output claim. Oscilloscope
+and independently referenced counter evidence remain unknown and deferred,
+not failed and not required for the non-waveform tests.
+
+Both live entries require fresh `capture_device --auto-detect` for every
+enumeration, exactly one device at 115200 baud, exact post-attachment D9
+source/divider/GPIO/readback, D14/D8 continuity and control eligibility, D6
+present or explicitly local-degraded, same-receiver GNSS metadata, exact
+DAC-code/epoch identity, one serial owner and an independent abort path. The
+bench connection is D9 to D6 through a 1 kΩ series resistor. D14 remains the
+sole timing reference, D8 the sole oscillator/control truth, D9 an output, and
+D6 a fail-local zero-authority diagnostic.
+
+Every exact live firmware start first executes the ordinary configuration-blind
+GNSS bootstrap: the fixed set-115200 packet is sent once in the frozen
+9600 then 115200 order, with 1200 ms receiver-side settle after each physical
+UART drain, followed by permanent UART0 operation and qualification at 115200. No
+host or runtime baud command, response-driven discovery, fallback scan or
+post-bootstrap promotion retry is permitted. Pre-write readiness requires the
+exact ordered bootstrap completions/counters/rate mask, local UART baud and
+epoch, zero post-bootstrap PMTK251 attempts or baud changes, fresh same-receiver identity/configuration and
+current metadata. A bootstrap or qualification failure keeps DAC authority at
+zero while D14/D8 and D9/D6 acquisition continue.
+
+The 24-hour authority envelope permits at most 48 automatic applications,
+1,008 cumulative absolute codes and 49 total physical writes including setup.
+The 72-hour envelope permits at most 144 automatic applications, 3,024
+cumulative absolute codes and 145 total writes including setup. Both retain a
+21-code maximum step, 1,800-second minimum application cadence, one outstanding
+transaction, no retry or restoration, and an exact 1,500-second endpoint
+response reserve. These limits are cadence-derived safety ceilings, never
+targets or early completion conditions; authority remains available throughout
+the qualified interval outside the endpoint reserve.
+
+A naturally occurring recoverable GNSS serial-metadata anomaly enters bounded
+`GNSS_METADATA_HOLD`: D14/D8 capture, estimation, phase accumulation and any
+already-required response continue, the last confirmed DAC code is retained,
+and no new request is issued. Rearm requires fresh metadata from the same
+receiver followed by causally later exact D14/D8/session/code/epoch evidence.
+The programme does not deliberately create a physical GNSS anomaly. Actual D14
+loss remains a separate authoritative fault.
+
+The earlier one-application engineering smoke contract remains preserved as
+[`cx322_d9_d6_integration_engineering_contract_v1.json`](cx322_d9_d6_integration_engineering_contract_v1.json)
+and does not constrain either long-run authority envelope.
+
+Prompt 04 has closed at
+`non_effective_semantics_verified_promotion_blocked_by_d9_gate`. The complete
+current Release gate, exact separated builds, retained D9/D6 operational-path
+evidence, and non-effective Prompt 03 semantics have been verified without
+creating a combined D9/D6/CX322 profile or trial proposal. See
+[`PROMPT04_BLOCKED_PROMOTION_VERIFICATION.md`](PROMPT04_BLOCKED_PROMOTION_VERIFICATION.md).
+
+Prompt 02 closed with the D9 waveform gate incomplete and the unchanged CX322
+integration blocked. See
+[`PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md`](PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md)
+and its machine-readable
+[`prompt02_controller_decision_v1.json`](prompt02_controller_decision_v1.json).
+Those historical artifacts grant no further authority. Current engineering
+bench authority comes only from the later operator instruction recorded in the
+integrated engineering contract.
 
 The bundle carries the completed cross-campaign offline decision into two
 decision-bearing outcomes:
@@ -66,14 +141,29 @@ Execute these prompts in order:
    verification, build the exact profile, exercise the complete no-hardware
    operational path and freeze a non-effective integrated-trial proposal.
 
-Do not skip directly to Prompt 03 merely because the hybrid law already has
-positive retained physical evidence. The pending D9/FLL-output gate is part of
-the frozen selection rule.
+Prompt 03 remains non-effective safety architecture. The later engineering
+profile does not compile or select those reference semantics and does not
+authorize a renewed D9/FLL soak.
+
+Prompt 03 has now reached
+`operational_semantics_implemented_promotion_blocked_by_d9_gate`. See
+[`PROMPT03_NON_EFFECTIVE_OPERATIONAL_SEMANTICS.md`](PROMPT03_NON_EFFECTIVE_OPERATIONAL_SEMANTICS.md).
+
+Prompt 04 verified the resulting historical non-effective boundary. Its three exact
+builds remain intentionally separated: non-actuating D9/D6, compile-only
+unqualified frequency control, and retained standalone CX322. The later
+engineering profile and authority are a superseding, separately identified
+bench programme; they do not alter that historical result or create the
+Prompt 04 72-hour promotion proposal.
 
 ## Stop boundary
 
-This bundle stops after the confirmed implementation, exact affected build and
-complete operational-path rehearsal. It must not start the later 72-hour
-integrated hybrid/output trial. That trial requires a new explicit authority
-decision binding the exact firmware, controller, output contract, qualified
-load, wiring, tools, stop conditions and evidence destinations produced here.
+The stop boundary above is the historical Prompt 04 boundary. The operator has
+since supplied the separate authority decision required there. Neither revised
+long run may start from that instruction alone: its current exact source,
+firmware binary, contract, capture inventory, command envelope, abort path,
+analyzer, finalizer and evidence destinations must first be frozen into an
+effective activation, and the same operationally significant bundle must pass
+the complete real-process rehearsal. A changed operational input invalidates
+that activation and requires the shortest affected rebuild or rehearsal before
+bench entry.

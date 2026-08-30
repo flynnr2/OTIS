@@ -49,6 +49,24 @@ PPS_SNAPSHOT_FIELDS = [
     "backend",
 ]
 
+# D6 is a locally wired observation of the forwarded D9 output.  It is
+# intentionally a separate raw contract from the authoritative D8 SNP stream:
+# monitor loss, noise, or absence must never be reinterpreted as a D14/D8
+# capture, validity, steering, or terminal condition.
+FORWARDED_MONITOR_SNAPSHOT_FIELDS = [
+    "record_type",
+    "schema_version",
+    "session",
+    "reference_session",
+    "snapshot_sequence",
+    "cumulative_down_counter",
+    "reference_sequence",
+    "reference_timestamp_ticks",
+    "status",
+    "backend",
+    "channel_id",
+]
+
 ASSOCIATION_LOSS_DECISION_V1_FIELDS = [
     "record_type",
     "schema_version",
@@ -352,6 +370,31 @@ ACTIVE_TRANSACTION_V1_FIELDS = [
     "evidence_state",
 ]
 
+ACTIVE_TRANSACTION_V2_FIELDS = [
+    "record_type",
+    "schema_version",
+    "timing_record_sequence",
+    "transaction_record_sequence",
+    "event",
+    "event_timestamp_ticks",
+    "time_domain",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "session_id",
+    "request_sequence",
+    "decision_sequence",
+    "source_first_sequence",
+    "source_last_sequence",
+    "authorization_sequence",
+    "nonce",
+    "accepted_code",
+    "applied_code",
+    "application_sequence",
+    "dac_epoch",
+    "reason",
+]
+
 ACTIVE_HYBRID_DECISION_V1_FIELDS = [
     "record_type",
     "schema_version",
@@ -409,6 +452,23 @@ ACTIVE_HYBRID_DECISION_V1_FIELDS = [
     "active_policy_sha256",
     "response_policy_sha256",
     "actionable",
+]
+
+ACTIVE_HYBRID_DECISION_V2_FIELDS = [
+    "record_type",
+    "schema_version",
+    "timing_record_sequence",
+    "hybrid_record_sequence",
+    "decision_sequence",
+    "decision_timestamp_ticks",
+    "time_domain",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "capture_session",
+    "source_first_sequence",
+    "source_last_sequence",
+    "reason",
 ]
 
 # CX318 Stage 4 telemetry is deliberately separate from the accepted frequency
@@ -541,6 +601,7 @@ CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
     "pps_snapshots_v1": PPS_SNAPSHOT_FIELDS,
+    "forwarded_monitor_snapshots_v1": FORWARDED_MONITOR_SNAPSHOT_FIELDS,
     "association_loss_decisions_v1": ASSOCIATION_LOSS_DECISION_V1_FIELDS,
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
@@ -551,7 +612,9 @@ CONTRACT_FIELDS = {
     "estimates_v2": ESTIMATE_V2_FIELDS,
     "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
     "active_transactions_v1": ACTIVE_TRANSACTION_V1_FIELDS,
+    "active_transactions_v2": ACTIVE_TRANSACTION_V2_FIELDS,
     "active_hybrid_decisions_v1": ACTIVE_HYBRID_DECISION_V1_FIELDS,
+    "active_hybrid_decisions_v2": ACTIVE_HYBRID_DECISION_V2_FIELDS,
     "relative_phase_observations_v1": RELATIVE_PHASE_OBSERVATION_V1_FIELDS,
     "phase_estimator_outputs_v1": PHASE_ESTIMATOR_OUTPUT_V1_FIELDS,
     "hybrid_preview_decisions_v1": HYBRID_PREVIEW_DECISION_V1_FIELDS,
@@ -565,6 +628,7 @@ CONTRACT_RECORD_TYPES = {
     "raw_events_v1": {"EVT", "REF"},
     "count_observations_v1": {"CNT"},
     "pps_snapshots_v1": {"SNP"},
+    "forwarded_monitor_snapshots_v1": {"MNS"},
     "association_loss_decisions_v1": {"ASL"},
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
@@ -575,7 +639,9 @@ CONTRACT_RECORD_TYPES = {
     "estimates_v2": {"EST"},
     "control_previews_v1": {"CTL"},
     "active_transactions_v1": {"ACT"},
+    "active_transactions_v2": {"AT2"},
     "active_hybrid_decisions_v1": {"AHY"},
+    "active_hybrid_decisions_v2": {"AH2"},
     "relative_phase_observations_v1": {"RPH"},
     "phase_estimator_outputs_v1": {"PHE"},
     "hybrid_preview_decisions_v1": {"HPR"},
@@ -587,6 +653,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "raw_events_v1": 1,
     "count_observations_v1": 1,
     "pps_snapshots_v1": 1,
+    "forwarded_monitor_snapshots_v1": 1,
     "association_loss_decisions_v1": 1,
     "health_v1": 1,
     "dac_steps_v1": 1,
@@ -597,7 +664,9 @@ CONTRACT_SCHEMA_VERSIONS = {
     "estimates_v2": 2,
     "control_previews_v1": 1,
     "active_transactions_v1": 1,
+    "active_transactions_v2": 2,
     "active_hybrid_decisions_v1": 1,
+    "active_hybrid_decisions_v2": 2,
     "relative_phase_observations_v1": 1,
     "phase_estimator_outputs_v1": 1,
     "hybrid_preview_decisions_v1": 1,
@@ -609,6 +678,7 @@ SEQUENCE_FIELDS = {
     "raw_events_v1": "event_seq",
     "count_observations_v1": "count_seq",
     "pps_snapshots_v1": "snapshot_sequence",
+    "forwarded_monitor_snapshots_v1": "snapshot_sequence",
     "association_loss_decisions_v1": "decision_sequence",
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
@@ -619,7 +689,9 @@ SEQUENCE_FIELDS = {
     "estimates_v2": "estimate_seq",
     "control_previews_v1": "control_seq",
     "active_transactions_v1": "transaction_record_sequence",
+    "active_transactions_v2": "timing_record_sequence",
     "active_hybrid_decisions_v1": "hybrid_record_sequence",
+    "active_hybrid_decisions_v2": "timing_record_sequence",
     "relative_phase_observations_v1": "observation_sequence",
     "phase_estimator_outputs_v1": "observation_sequence",
     "hybrid_preview_decisions_v1": "preview_sequence",
@@ -631,6 +703,7 @@ TIMESTAMP_FIELDS = {
     "raw_events_v1": ("timestamp_ticks",),
     "count_observations_v1": ("gate_open_ticks", "gate_close_ticks"),
     "pps_snapshots_v1": ("reference_timestamp_ticks",),
+    "forwarded_monitor_snapshots_v1": ("reference_timestamp_ticks",),
     "association_loss_decisions_v1": ("decision_ticks",),
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
@@ -641,7 +714,9 @@ TIMESTAMP_FIELDS = {
     "estimates_v2": ("estimator_timestamp_ticks",),
     "control_previews_v1": ("decision_timestamp_ticks",),
     "active_transactions_v1": (),
+    "active_transactions_v2": ("event_timestamp_ticks",),
     "active_hybrid_decisions_v1": (),
+    "active_hybrid_decisions_v2": ("decision_timestamp_ticks",),
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("decision_timestamp_ticks",),
@@ -652,12 +727,14 @@ TIMESTAMP_FIELDS = {
 CHANNEL_FIELDS = {
     "raw_events_v1": "channel_id",
     "count_observations_v1": "channel_id",
+    "forwarded_monitor_snapshots_v1": "channel_id",
 }
 
 DOMAIN_FIELDS = {
     "raw_events_v1": ("capture_domain",),
     "count_observations_v1": ("gate_domain",),
     "pps_snapshots_v1": (),
+    "forwarded_monitor_snapshots_v1": (),
     "association_loss_decisions_v1": (),
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
@@ -668,7 +745,9 @@ DOMAIN_FIELDS = {
     "estimates_v2": ("time_domain",),
     "control_previews_v1": ("time_domain",),
     "active_transactions_v1": (),
+    "active_transactions_v2": ("time_domain",),
     "active_hybrid_decisions_v1": (),
+    "active_hybrid_decisions_v2": ("time_domain",),
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("time_domain",),
@@ -678,6 +757,7 @@ DOMAIN_FIELDS = {
 
 CONTRACT_IMPLICIT_TIME_DOMAINS = {
     "pps_snapshots_v1": "rp2040_timer0",
+    "forwarded_monitor_snapshots_v1": "rp2040_timer0",
     "association_loss_decisions_v1": "rp2040_timer0",
     "dac_steps_v1": "host_elapsed_ms",
     "plant_sign_qualification_v1": "rp2040_timer0_extended",
@@ -685,8 +765,11 @@ CONTRACT_IMPLICIT_TIME_DOMAINS = {
 
 SESSION_FIELDS = {
     "pps_snapshots_v1": "session",
+    "forwarded_monitor_snapshots_v1": "session",
     "tight_deadband_decisions_v1": "capture_session",
     "active_hybrid_decisions_v1": "capture_session",
+    "active_transactions_v2": "session_id",
+    "active_hybrid_decisions_v2": "capture_session",
     "plant_sign_qualification_v1": "capture_session",
 }
 
@@ -825,6 +908,7 @@ TIGHT_DEADBAND_POLICY_SHA256 = "a0dbe59f1b22fda35c1b760b21a03ab906ef683955368db2
 VALID_ACTIVE_TRANSACTION_EVENTS = {
     "manual_start",
     "request_created",
+    "request_withdrawn",
     "core0_accepted",
     "request_accepted",
     "application",
@@ -938,6 +1022,7 @@ def _check_sequence(contract: str, row: dict[str, str], row_number: int, previou
     # reconstruction layer validates adjacency using both session and ordinal.
     if contract in {
         "pps_snapshots_v1",
+        "forwarded_monitor_snapshots_v1",
         "relative_phase_observations_v1",
         "phase_estimator_outputs_v1",
     }:
@@ -1078,6 +1163,28 @@ def _check_pps_snapshot(row: dict[str, str], row_number: int, errors: list[str])
             )
     if not row.get("backend"):
         errors.append(f"row {row_number}: backend must not be empty")
+
+
+def _check_forwarded_monitor_snapshot(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_pps_snapshot(row, row_number, errors)
+    if row.get("backend") != "pio_wait_cumulative_snapshot_cpu_v1":
+        errors.append(
+            f"row {row_number}: forwarded monitor backend must be "
+            "pio_wait_cumulative_snapshot_cpu_v1"
+        )
+    _parse_non_negative_int(
+        row.get("reference_session", ""), "reference_session", row_number, errors
+    )
+    channel_id = _parse_non_negative_int(
+        row.get("channel_id", ""), "channel_id", row_number, errors
+    )
+    if channel_id is not None and channel_id != 3:
+        errors.append(
+            f"row {row_number}: forwarded monitor channel_id must be 3 (D6); "
+            f"got {channel_id}"
+        )
 
 
 def _check_association_loss_decision_v1(
@@ -1849,6 +1956,7 @@ def _check_active_transaction_v1(
             errors.append(f"row {row_number}: {event} requires a non-zero request_sequence")
         expected_evidence = {
             "request_created": "request_pending",
+            "request_withdrawn": "evidence_clear",
             "core0_accepted": "acceptance_pending",
             "request_accepted": "request_pending",
             "application": "application_pending",
@@ -1862,6 +1970,10 @@ def _check_active_transaction_v1(
     if event == "request_created" and row.get("active_state") != "REQUEST_PENDING":
         errors.append(
             f"row {row_number}: request_created requires REQUEST_PENDING"
+        )
+    if event == "request_withdrawn" and row.get("active_state") != "DISARMED":
+        errors.append(
+            f"row {row_number}: request_withdrawn requires DISARMED"
         )
     if event in {"request_accepted", "core0_accepted"} and row.get("active_state") != "ACCEPTED_AWAITING_APPLICATION":
         errors.append(
@@ -1878,6 +1990,117 @@ def _check_active_transaction_v1(
         )
     if event == "response" and row.get("response_class") == "unavailable":
         errors.append(f"row {row_number}: response requires a response classification")
+
+
+def _check_active_transaction_v2(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "event",
+            "time_domain",
+            "run_identity",
+            "build_identity",
+            "profile_identity",
+            "reason",
+        ),
+    )
+    event = row.get("event")
+    if event not in VALID_ACTIVE_TRANSACTION_EVENTS:
+        errors.append(
+            f"row {row_number}: event must be one of "
+            f"{sorted(VALID_ACTIVE_TRANSACTION_EVENTS)}"
+        )
+    if row.get("time_domain") != "rp2040_timer0_extended":
+        errors.append(
+            f"row {row_number}: active timing sidecar requires "
+            "rp2040_timer0_extended"
+        )
+    parsed = {
+        field_name: _parse_non_negative_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        for field_name in (
+            "timing_record_sequence",
+            "transaction_record_sequence",
+            "event_timestamp_ticks",
+            "session_id",
+            "request_sequence",
+            "decision_sequence",
+            "source_first_sequence",
+            "source_last_sequence",
+            "authorization_sequence",
+            "nonce",
+            "accepted_code",
+            "applied_code",
+            "application_sequence",
+            "dac_epoch",
+        )
+    }
+    for field_name in ("timing_record_sequence", "transaction_record_sequence"):
+        if parsed[field_name] == 0:
+            errors.append(f"row {row_number}: {field_name} must be non-zero")
+    if event == "manual_start":
+        for field_name in (
+            "request_sequence",
+            "decision_sequence",
+            "source_first_sequence",
+            "source_last_sequence",
+            "authorization_sequence",
+            "nonce",
+            "application_sequence",
+        ):
+            if parsed[field_name] not in {None, 0}:
+                errors.append(
+                    f"row {row_number}: manual_start {field_name} must be zero"
+                )
+        if parsed["accepted_code"] in {None, 0} or (
+            parsed["accepted_code"] != parsed["applied_code"]
+        ):
+            errors.append(
+                f"row {row_number}: manual_start must bind one exact applied code"
+            )
+    elif parsed["request_sequence"] in {None, 0}:
+        errors.append(f"row {row_number}: {event} requires a request sequence")
+
+
+def _check_active_hybrid_decision_v2(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "time_domain",
+            "run_identity",
+            "build_identity",
+            "profile_identity",
+            "reason",
+        ),
+    )
+    if row.get("time_domain") != "rp2040_timer0_extended":
+        errors.append(
+            f"row {row_number}: hybrid timing sidecar requires "
+            "rp2040_timer0_extended"
+        )
+    for field_name in (
+        "timing_record_sequence",
+        "hybrid_record_sequence",
+        "decision_sequence",
+        "decision_timestamp_ticks",
+        "capture_session",
+        "source_first_sequence",
+        "source_last_sequence",
+    ):
+        value = _parse_non_negative_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        if field_name not in {"decision_timestamp_ticks"} and value == 0:
+            errors.append(f"row {row_number}: {field_name} must be non-zero")
 
 
 def _check_active_hybrid_decision_v1(
@@ -2581,6 +2804,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_count_observation(row, row_count, errors)
             if context.contract == "pps_snapshots_v1":
                 _check_pps_snapshot(row, row_count, errors)
+            if context.contract == "forwarded_monitor_snapshots_v1":
+                _check_forwarded_monitor_snapshot(row, row_count, errors)
             if context.contract == "association_loss_decisions_v1":
                 _check_association_loss_decision_v1(row, row_count, errors)
             if context.contract == "health_v1":
@@ -2601,8 +2826,12 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_control_preview_v1(row, row_count, errors)
             if context.contract == "active_transactions_v1":
                 _check_active_transaction_v1(row, row_count, errors)
+            if context.contract == "active_transactions_v2":
+                _check_active_transaction_v2(row, row_count, errors)
             if context.contract == "active_hybrid_decisions_v1":
                 _check_active_hybrid_decision_v1(row, row_count, errors)
+            if context.contract == "active_hybrid_decisions_v2":
+                _check_active_hybrid_decision_v2(row, row_count, errors)
             if context.contract == "plant_sign_qualification_v1":
                 _check_plant_sign_qualification_v1(
                     row, row_count, errors

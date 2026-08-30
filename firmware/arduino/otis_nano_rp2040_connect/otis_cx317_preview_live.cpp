@@ -114,7 +114,7 @@ double temperature_c = 0.0;
 bool selected_estimator_valid = false;
 bool selected_model_applicable = false;
 bool recovery_requested = false;
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
 OtisTimer0Extension timer_extension = {};
 #endif
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
@@ -432,7 +432,7 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   selected_estimator_valid = false;
   selected_model_applicable = false;
   recovery_requested = false;
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   otis_timer0_extension_init(&timer_extension);
 #endif
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
@@ -511,7 +511,7 @@ void otis_cx317_preview_live_on_dac_applied_epoch_exact(
     uint64_t application_ticks, uint32_t capture_session) {
   otis_cx317_preview_live_on_dac_applied_epoch(applied_code, dac_epoch,
                                                uptime_s);
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   if (!timer_extension.available ||
       timer_extension.capture_session != capture_session)
     otis_timer0_extension_seed(
@@ -546,7 +546,7 @@ void otis_cx317_preview_live_on_boundary(
   if (active_outcome != nullptr) *active_outcome = {};
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   if (!initialized || observation == nullptr) return;
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   uint64_t current_boundary_extended_ticks = observation->pps_timestamp_ticks;
   const bool boundary_extended = otis_timer0_extension_advance_boundary(
       &timer_extension, observation->pps_timestamp_ticks,
@@ -734,7 +734,7 @@ void otis_cx317_preview_live_on_boundary(
         phase_snapshot_available && phase_snapshot.recorder_published;
 #endif
     OtisCx317ActiveLiveOutcome local_active_outcome;
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
     otis_cx317_active_live_on_decision_at_ticks(
         &active_decision, current_boundary_extended_ticks,
         &local_active_outcome);
@@ -819,7 +819,7 @@ uint16_t otis_cx317_preview_live_plant_sign_accepted_intervals(void) {
 
 bool otis_cx317_preview_live_extend_timer0_ticks(
     uint64_t raw_ticks, uint64_t *extended_ticks) {
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   constexpr uint64_t kMaximumProjectionTicks = 60ull * 16000000ull;
   return otis_timer0_extension_project_nearest(
       &timer_extension, raw_ticks, timer_extension.capture_session,
@@ -833,7 +833,7 @@ bool otis_cx317_preview_live_extend_timer0_ticks(
 
 bool otis_cx317_preview_live_project_setup_timer0_ticks(
     uint64_t raw_ticks, uint32_t capture_session, uint64_t *extended_ticks) {
-#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   constexpr uint64_t kTimer0ModulusTicks = (1ull << 32) * 16ull;
   if (extended_ticks == nullptr || capture_session == 0u) return false;
   const uint64_t normalized_raw_ticks = raw_ticks % kTimer0ModulusTicks;

@@ -44,7 +44,7 @@ def test_cx322_compiles_the_exact_timer_projection_path() -> None:
     )
 
     assert (
-        "#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING\n"
+        "#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION\n"
         "OtisTimer0Extension timer_extension = {};"
     ) in preview
     for function in (
@@ -52,7 +52,7 @@ def test_cx322_compiles_the_exact_timer_projection_path() -> None:
         "bool otis_cx317_preview_live_project_setup_timer0_ticks",
     ):
         body = preview[preview.index(function) :]
-        assert body.index("#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING") < body.index(
+        assert body.index("#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION") < body.index(
             "#else"
         )
     boundary = preview[
@@ -65,7 +65,7 @@ def test_cx322_compiles_the_exact_timer_projection_path() -> None:
         boundary.index("OtisCx317ActiveLiveOutcome local_active_outcome") :
     ]
     assert (
-        "#if OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING\n"
+        "#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION\n"
         "    otis_cx317_active_live_on_decision_at_ticks("
     ) in decision_dispatch
 

@@ -17,7 +17,7 @@ claim no DMA channel and emit that zero claim explicitly at boot.
 Queue and interrupt-ring ownership is part of the same architectural boundary.
 Its executable companion ledger is
 `firmware/arduino/otis_nano_rp2040_connect/otis_resource_inventory.json`.
-Tests compare all six SPSC queue declarations, both interrupt rings, capacity
+Tests compare all seven SPSC queue declarations, both interrupt rings, capacity
 symbols and values, producer/consumer identities, loss policies, maximum
 consumer absence, and recovery semantics against source. The JSON ledger is
 normative where an older prose queue table differs.
@@ -57,8 +57,8 @@ These claims exist in every build:
 |---|---|---|---|
 | timer/timebase | RP2040 monotonic timebase exposed by Arduino `micros()` / `millis()` | `arduino_timebase` | scheduling and reconstructed OTIS timestamps |
 | system clock tree | `clk_sys` and core-managed derived clocks | `arduino_clock_tree` | CPU, USB, PIO and potential DMA execution clock |
-| GPIO | `D9` / GPIO21 | `clock_visibility` | reserved `GPOUT0` visibility pin |
-| clock output | `GPOUT0` | `clock_visibility` | reserved internal-clock visibility function |
+| GPIO | `D9` / GPIO21 | `clock_visibility` or `forwarded_clock_output` | disabled-profile reservation, or exact selected GPIN0-forwarded output |
+| clock output | `GPOUT0` | `clock_visibility` or `forwarded_clock_output` | disabled-profile reservation, or fixed `clksrc_gpin0` integer-divide-one output |
 | GPIO | `D2` / GPIO25 | `diagnostic_clock` | reserved `GPOUT3` diagnostic pin |
 | clock output | `GPOUT3` | `diagnostic_clock` | reserved secondary diagnostic-clock function |
 
@@ -100,6 +100,15 @@ snapshot condition. The PIO state machine alone owns the count boundary. The
 registry also binds the dynamically claimed DMA channel to
 `count_observation`; DMA transports the already-captured word and is not a
 boundary owner.
+
+The exact D9/D6 qualification and integrated engineering profiles additionally claim D6/GPIO18 and one
+dynamically allocated PIO0 state machine plus a non-overlapping 15-word copy of
+the cumulative snapshot programme for `forwarded_clock_monitor`. It has no DMA
+claim and no GPIO IRQ claim. Its CPU consumer drains at most one snapshot per
+accepted authoritative boundary into a separate bounded drop-new queue. A
+monitor allocation, FIFO, continuity, or queue fault disables only that
+sidecar; it neither invalidates the resource registry for D14/D8 nor enters
+measurement, controller, abort, or terminal authority.
 
 ## PIO and DMA policy
 
@@ -193,7 +202,7 @@ timestamp domains, sequence rules, or measurement flags. Existing `REF`, `EVT`,
 |---|---|---|
 | Core/library GPIO use outside the OTIS ledger | The registry enforces OTIS ownership, but cannot introspect arbitrary third-party code that directly reconfigures a GPIO. | Compile with the pinned Philhower core and inspect any newly added library before enabling it. |
 | Dynamic PIO allocation | SDK allocation prevents hardware double-claiming; actual SM/offset can change when another library uses PIO. Registry telemetry preserves the assigned identity. | On the combined PIO build, confirm distinct SMs and non-overlapping program offsets, then verify both `REF` and `CNT`. |
-| PIO allocation exhaustion | A backend can remain uninitialized with a pending claim. Existing backend failure telemetry and registry completeness expose the condition, but current mode setup does not turn every allocation failure into a boot fatal. | Exhaust or reserve PIO resources in a bench test and verify `complete=false`, backend `init=failed`, and no clean measurement is inferred. |
+| PIO allocation exhaustion | An authoritative backend can remain uninitialized with a pending claim. The optional D6 monitor instead fails locally with its pending claim explicit while D14/D8 registry completeness and validity remain intact. | Exhaust or reserve PIO resources in a deterministic integration test; verify authoritative failures remain visible, D6-only failure stays local, and no clean monitor result is inferred. |
 | I2C concurrency | Core 0 is the sole physical I2C execution plane for the DAC and environment sensors. Core 1 never accesses `Wire` or mutable device state; actuator work crosses through bounded immutable request/acknowledgement records. No cross-core I2C lock is required because ownership does not migrate. | Native queue/guard tests and the dual-core live proof must show exact request/acknowledgement accounting, one physical DAC call site, and continued timing capture under service-plane I2C and telemetry load. |
 | Serial exclusivity | The capture carrier is the procedural sole owner and verifies the observed owner set during managed runs. OS-enforced exclusivity has not been established for every supported serial implementation. | Q1 must exercise competing opens and real detach/reattach on each supported host platform before stronger exclusivity is claimed. |
 | Hardware mux not exercised in host tests | Host tests cover collision semantics and ownership call paths; compile tests cover supported configurations. | Bench-check pin functions, IRQ activity, PIO allocations, and status evidence on the Nano RP2040 Connect. |

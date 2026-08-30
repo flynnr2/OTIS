@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from host.otis_tools import sustained_hybrid_successor_study as study
 
 
@@ -69,6 +71,7 @@ def test_persistent_one_count_release_and_reset_boundaries() -> None:
     assert after_reset_reason == "persistent_one_count_first_hold"
 
 
+@pytest.mark.historical
 def test_attempt4_comparison_replays_v1_and_rejects_all_frozen_candidates() -> None:
     report = study.create_comparison_report()
 

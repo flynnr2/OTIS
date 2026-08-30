@@ -8,7 +8,10 @@ import pytest
 
 from host.otis_tools import active_hybrid_activation as activation
 from host.otis_tools.active_hybrid_programme_contract import (
+    CX320_PROGRAMME,
     CX321_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
     SUSTAINED_HYBRID_PROGRAMME,
 )
 
@@ -23,6 +26,143 @@ def _write(path: Path, value: dict[str, object]) -> None:
 
 def _semantic(value: dict[str, object], field: str) -> dict[str, object]:
     return {**value, field: activation._canonical_sha256(value)}
+
+
+def test_campaign18_alone_requires_exact_active_timing_sidecars() -> None:
+    campaign18 = {
+        entry["contract"]: entry
+        for entry in activation._required_files(CX322_D9_D6_72H_PROGRAMME)
+    }
+    assert campaign18["active_transactions_v2"].get("optional") is None
+    assert campaign18["active_hybrid_decisions_v2"].get("optional") is None
+
+    for historical in (
+        CX320_PROGRAMME,
+        CX321_PROGRAMME,
+        CX322_D9_D6_INTEGRATION_PROGRAMME,
+        SUSTAINED_HYBRID_PROGRAMME,
+    ):
+        contracts = {
+            entry["contract"] for entry in activation._required_files(historical)
+        }
+        assert "active_transactions_v2" not in contracts
+        assert "active_hybrid_decisions_v2" not in contracts
+
+
+def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(
+    tmp_path: Path,
+) -> None:
+    bundle = {
+        "programme_id": CX322_D9_D6_72H_PROGRAMME.programme_id,
+        "bundle_sha256": "b" * 64,
+        "host_tools": {},
+    }
+    proposal = {"proposal_sha256": "c" * 64}
+    coverage = {
+        name: True
+        for name in (
+            *activation.REHEARSAL_COVERAGE,
+            *activation.CAMPAIGN18_REHEARSAL_COVERAGE,
+            "integrated_setup_provenance_boundary",
+        )
+    }
+    unsigned = {
+        "schema_version": 1,
+        "report_type": CX322_D9_D6_72H_PROGRAMME.rehearsal_report_type,
+        "status": "passed",
+        "bundle_sha256": bundle["bundle_sha256"],
+        "proposal_sha256": proposal["proposal_sha256"],
+        "physical_actions_performed": 0,
+        "qualification_evidence": False,
+        "coverage": coverage,
+        "tool_bindings": {},
+        "setup_provenance_contract": activation.integrated_setup_provenance_contract(
+            CX322_D9_D6_72H_PROGRAMME
+        ),
+        "real_process_topology": {
+            "cx322_real_transaction_path": {
+                "complete_multi_transaction_sequence": True,
+                "request_sequences_consumed": [1, 2],
+                "gnss_hold_and_causal_requalification": True,
+                "gnss_bootstrap_in_progress_observed_by_supervisor": True,
+                "first_post_requalification_consumer_exact": True,
+                "first_post_recovery_consumer_decision_sequence": 12,
+            }
+        },
+        "accelerated_qualified_device_clock": {
+            "correction_admission_close_elapsed_s": 257_700,
+            "qualified_endpoint_elapsed_s": 259_200,
+            "admission_open_at_floor_before_exact_boundary": True,
+            "admission_closed_at_exact_boundary": True,
+            "forward_host_utc_step_did_not_close_early": True,
+            "backward_host_utc_step_did_not_delay_endpoint": True,
+        },
+    }
+    receipt = _semantic(unsigned, "rehearsal_sha256")
+    receipt_path = tmp_path / (
+        f"{CX322_D9_D6_72H_PROGRAMME.rehearsal_report_type}.json"
+    )
+    _write(receipt_path, receipt)
+    _write(
+        tmp_path / "process_topology/run/run_manifest.json",
+        {
+            "programme_id": CX322_D9_D6_72H_PROGRAMME.programme_id,
+            "profile_identity": CX322_D9_D6_72H_PROGRAMME.profile_id,
+            "contracts": {
+                "active_transactions_v2": 2,
+                "active_hybrid_decisions_v2": 2,
+            },
+            "files": [
+                {
+                    "path": "csv/active_transactions_v2.csv",
+                    "contract": "active_transactions_v2",
+                },
+                {
+                    "path": "csv/active_hybrid_decisions_v2.csv",
+                    "contract": "active_hybrid_decisions_v2",
+                },
+            ],
+            "domains": [
+                {"name": "rp2040_timer0_extended", "nominal_hz": 16_000_000}
+            ],
+        },
+    )
+
+    observed = activation.validate_operational_rehearsal(
+        receipt_path,
+        bundle=bundle,
+        proposal=proposal,
+        require_current_tools=False,
+        programme=CX322_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["report_type"] == (
+        CX322_D9_D6_72H_PROGRAMME.rehearsal_report_type
+    )
+    changed = dict(receipt)
+    changed["real_process_topology"] = {
+        "cx322_real_transaction_path": {
+            "complete_multi_transaction_sequence": True,
+            "request_sequences_consumed": [1, 2],
+            "gnss_hold_and_causal_requalification": False,
+            "gnss_bootstrap_in_progress_observed_by_supervisor": True,
+            "first_post_requalification_consumer_exact": True,
+            "first_post_recovery_consumer_decision_sequence": 12,
+        }
+    }
+    changed_unsigned = {
+        key: value for key, value in changed.items() if key != "rehearsal_sha256"
+    }
+    changed["rehearsal_sha256"] = activation._canonical_sha256(changed_unsigned)
+    _write(receipt_path, changed)
+    with pytest.raises(ValueError, match="Campaign 18 rehearsal lacks"):
+        activation.validate_operational_rehearsal(
+            receipt_path,
+            bundle=bundle,
+            proposal=proposal,
+            require_current_tools=False,
+            programme=CX322_D9_D6_72H_PROGRAMME,
+        )
 
 
 def _cx321_rehearsal_receipt(tmp_path: Path) -> tuple[Path, dict, dict]:
@@ -180,6 +320,51 @@ def test_sustained_activation_rejects_missing_multi_transaction_coverage(
             require_current_tools=False,
             programme=SUSTAINED_HYBRID_PROGRAMME,
         )
+
+
+def test_integrated_activation_requires_unarmed_observation_coverage(
+    tmp_path: Path,
+) -> None:
+    bundle = {
+        "programme_id": CX322_D9_D6_INTEGRATION_PROGRAMME.programme_id,
+        "bundle_sha256": "b" * 64,
+        "host_tools": {},
+    }
+    proposal = {"proposal_sha256": "c" * 64}
+    expected_coverage = (
+        set(activation.REHEARSAL_COVERAGE)
+        | set(activation.INTEGRATED_REHEARSAL_COVERAGE)
+    )
+    unsigned = {
+        "schema_version": 1,
+        "report_type": (
+            CX322_D9_D6_INTEGRATION_PROGRAMME.rehearsal_report_type
+        ),
+        "status": "passed",
+        "bundle_sha256": bundle["bundle_sha256"],
+        "proposal_sha256": proposal["proposal_sha256"],
+        "physical_actions_performed": 0,
+        "qualification_evidence": False,
+        "coverage": {name: True for name in expected_coverage},
+        "tool_bindings": {},
+        "setup_provenance_contract": (
+            activation.integrated_setup_provenance_contract(
+                CX322_D9_D6_INTEGRATION_PROGRAMME
+            )
+        ),
+    }
+    path = tmp_path / "integrated-rehearsal.json"
+    _write(path, _semantic(unsigned, "rehearsal_sha256"))
+
+    result = activation.validate_operational_rehearsal(
+        path,
+        bundle=bundle,
+        proposal=proposal,
+        require_current_tools=False,
+        programme=CX322_D9_D6_INTEGRATION_PROGRAMME,
+    )
+
+    assert result["rehearsal_sha256"]
 
 
 @pytest.mark.parametrize(
@@ -482,6 +667,63 @@ def test_later_activation_accepts_exact_bounded_operator_abort_terminal(
     assert observed["attempt"]["predecessor_physical_terminal"][
         "primary_decision"
     ] == "operator_abort"
+
+
+def test_later_activation_accepts_exact_pre_setup_provenance_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal, rehearsal_path, _ = _inputs(
+        tmp_path
+    )
+    _current_validators(monkeypatch, bundle, proposal)
+    predecessor_run = tmp_path / "attempt-pre-setup"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "bounded_nonpass",
+        "run_id": "attempt-pre-setup",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "pre_setup_provenance_unresolved",
+        "acquisition_gate": {"passed": True},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": True
+        },
+        "pre_setup_provenance_terminal": {"exact": True},
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "reason": (
+                    "cx322_d9_d6_live_supervisor_fault:"
+                    "live active_fail_static asserted"
+                ),
+            },
+        },
+    }
+    predecessor_path = reports / "cx320_active_hybrid_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation.create_activation(
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        operational_rehearsal_path=rehearsal_path,
+        serial_device="/dev/cu.usbmodem-test",
+        operator_instruction_ref="expanded bounded recovery authority",
+        output_path=tmp_path / "activation-pre-setup-successor.json",
+        attempt_ordinal=2,
+        attempt_reason="establish first known DAC state prospectively",
+        predecessor_terminal_path=predecessor_path,
+    )
+
+    assert observed["attempt"]["ordinal"] == 2
+    assert observed["attempt"]["automatic_retry"] is False
+    assert observed["attempt"]["predecessor_physical_terminal"][
+        "primary_decision"
+    ] == "pre_setup_provenance_unresolved"
 
 
 def test_later_activation_accepts_failed_post_acquisition_terminal(

@@ -14,7 +14,7 @@ from typing import Mapping, Sequence
 from .active_status_contract import ACTIVE_STATUS_KEYS
 
 
-RUNTIME_CONTRACT_ID = "cx318_stage5_prewrite_runtime_contract_v1"
+RUNTIME_CONTRACT_ID = "cx318_stage5_prewrite_runtime_contract_v2"
 INHERITED_PREVIEW_BASELINE_CODE = 0xA828
 INHERITED_PREVIEW_BASELINE_PROVENANCE = (
     "stage4_sealed_build_bound_preview_not_physical_dac_confirmation"
@@ -36,6 +36,17 @@ HEALTH_INTEGRITY_EXACT = {
     ("cx318_preview", "actionable"): "false",
     ("cx318_preview", "actuation_authorized"): "false",
     ("cx318_preview", "authorization_consumed"): "false",
+}
+
+# These are the firmware's exact, current inputs to the one-shot SETUP
+# authority decision.  Broad receiver/capture health is not an acceptable
+# proxy: the device can legitimately keep either input false while D14 or GNSS
+# metadata is still qualifying after boot.  That state is a bounded pre-setup
+# hold and must never be allowed to consume the sole setup request.
+SETUP_AUTHORITY_EXACT = {
+    ("cx317_active", "setup_gnss_eligible"): "true",
+    ("cx317_active", "setup_reference_eligible"): "true",
+    ("cx317_active", "setup_partition_healthy"): "true",
 }
 
 
@@ -186,6 +197,15 @@ def evaluate_prewrite_readiness(
         ("dac", "last_applied_code"): "unavailable",
     }
     _expect(health, exact, missing, mismatches)
+    for key, required in SETUP_AUTHORITY_EXACT.items():
+        observed = health.get(key)
+        name = _key_name(key)
+        if observed is None:
+            missing.append(f"missing {name}")
+        elif observed != required:
+            mismatches.append(
+                f"{name}={observed!r}, expected {required!r} before setup"
+            )
     for key, nonzero in (
         (("cx317_active", "session_id"), True),
         (("cx317_active", "uptime_s"), False),
@@ -256,6 +276,9 @@ def canonical_prewrite_fixture(
             "selected_interval_count": "0",
             "automatic_retry": "false",
             "automatic_restore": "false",
+            "setup_gnss_eligible": "true",
+            "setup_reference_eligible": "true",
+            "setup_partition_healthy": "true",
         }
     )
     health = {("cx317_active", key): value for key, value in active.items()}

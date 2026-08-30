@@ -9,6 +9,7 @@ retry or restoration path.
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -23,6 +24,7 @@ from typing import Any, Callable, IO
 
 from .active_hybrid_activation import (
     EXPECTED_BOARD_SERIAL,
+    EXPECTED_BAUD,
     OPERATION,
     RUN_ACTIVATION_PATH,
     RUN_BUNDLE_PATH,
@@ -32,6 +34,7 @@ from .active_hybrid_activation import (
     validate_activation,
     validate_frozen_run_manifest,
 )
+from .active_status_contract import complete_active_status_snapshots
 from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
@@ -39,7 +42,13 @@ from .active_hybrid_programme_contract import (
     programme_from_mapping,
 )
 from .board_identity import read_board_identity
-from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
+from .capture_device import _detect_single_device
+from .capture_runtime_checks import (
+    HOST_MARKER_PREFIX,
+    _capture_state_ready,
+    _serial_owner_pids,
+)
+from .contracts import HEALTH_FIELDS
 from .evidence import (
     EVIDENCE_MANIFEST,
     create_evidence_snapshot,
@@ -75,6 +84,7 @@ COMPLETE = Path("COMPLETE")
 NORMAL_FIFO = Path("control/normal_commands.fifo")
 EMERGENCY_FIFO = Path("control/emergency_abort.fifo")
 HOST_ABORT_FIFO = Path("control/host_abort.fifo")
+ACTIVATION_ATTEMPT_RESERVATION_SUFFIX = ".attempt-reservation-v1.json"
 ABSOLUTE_WALL_LIMIT_S = 57_600
 CAPTURE_DURATION_S = ABSOLUTE_WALL_LIMIT_S + 180
 SUPERVISOR_DURATION_S = ABSOLUTE_WALL_LIMIT_S + 120
@@ -164,6 +174,80 @@ def _copy_immutable(source: Path, destination: Path) -> None:
         os.close(descriptor)
 
 
+def _activation_attempt_reservation_path(
+    activation: dict[str, Any],
+) -> Path:
+    """Return one caller-independent reservation path for an activation.
+
+    The activation pathname is deliberately not part of this identity: an
+    exact byte-for-byte copy must not acquire a second upload attempt.  The
+    activation's immutable bundle binding supplies the common namespace and
+    its semantic SHA supplies the unique consumption key.
+    """
+
+    bundle = activation.get("bundle")
+    activation_sha256 = activation.get("activation_sha256")
+    if (
+        not isinstance(bundle, dict)
+        or not isinstance(bundle.get("path"), str)
+        or not isinstance(activation_sha256, str)
+        or len(activation_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in activation_sha256)
+    ):
+        raise ValueError("active-hybrid activation lacks a global attempt identity")
+    bundle_path = Path(bundle["path"]).resolve()
+    return bundle_path.parent / (
+        f".{bundle_path.name}.{activation_sha256}"
+        f"{ACTIVATION_ATTEMPT_RESERVATION_SUFFIX}"
+    )
+
+
+def _reserve_activation_attempt(
+    *,
+    activation_path: Path,
+    activation: dict[str, Any],
+    programme: ActiveHybridProgramme,
+    run_dir: Path,
+) -> Path:
+    """Consume one activation globally before any hardware-side operation."""
+
+    reservation_path = _activation_attempt_reservation_path(activation)
+    reservation = {
+        "schema_version": 1,
+        "record_type": "active_hybrid_activation_attempt_reservation_v1",
+        "created_utc": _utc_now(),
+        "status": "irreversibly_reserved_before_hardware",
+        "activation_path": str(activation_path.resolve()),
+        "activation_file_sha256": _sha256_file(activation_path.resolve()),
+        "activation_sha256": activation.get("activation_sha256"),
+        "activation_id": activation.get("activation_id"),
+        "programme_id": programme.programme_id,
+        "run_identity": activation.get("run_identity"),
+        "intended_run_directory": str(run_dir.resolve()),
+        "automatic_retry": False,
+        "reusable_across_run_directories": False,
+    }
+    try:
+        _atomic_new_json(reservation_path, reservation)
+    except FileExistsError as exc:
+        prior = _read_json(reservation_path)
+        prior_run = (
+            prior.get("intended_run_directory")
+            if isinstance(prior, dict)
+            else "unreadable_reservation"
+        )
+        raise RuntimeError(
+            "active-hybrid activation is already irreversibly reserved by "
+            f"physical attempt {prior_run}"
+        ) from exc
+    parent_descriptor = os.open(reservation_path.parent, os.O_RDONLY)
+    try:
+        os.fsync(parent_descriptor)
+    finally:
+        os.close(parent_descriptor)
+    return reservation_path
+
+
 def _wait_until(
     predicate: Callable[[], bool], timeout_s: float, description: str
 ) -> None:
@@ -201,6 +285,15 @@ def _locate_board_by_serial(
     return address, read_board_identity(address, arduino_cli=arduino_cli)
 
 
+def _fresh_auto_detect_device() -> str:
+    """Resolve the current sole USB CDC path without retaining an old path."""
+
+    try:
+        return _detect_single_device()
+    except SystemExit as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _upload_exact_firmware(
     *,
     run_dir: Path,
@@ -235,9 +328,15 @@ def _upload_exact_firmware(
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline:
             try:
-                device_after, board_after = _locate_board_by_serial(
-                    EXPECTED_BOARD_SERIAL, arduino_cli=arduino_cli
-                )
+                if programme.fresh_serial_auto_detect:
+                    device_after = _fresh_auto_detect_device()
+                    board_after = read_board_identity(
+                        device_after, arduino_cli=arduino_cli
+                    )
+                else:
+                    device_after, board_after = _locate_board_by_serial(
+                        EXPECTED_BOARD_SERIAL, arduino_cli=arduino_cli
+                    )
                 break
             except (
                 OSError,
@@ -247,13 +346,19 @@ def _upload_exact_firmware(
             ) as exc:
                 reappearance_error = str(exc)
                 time.sleep(0.5)
+    expected_serial = (
+        None if programme.fresh_serial_auto_detect else EXPECTED_BOARD_SERIAL
+    )
     passed = (
         completed.returncode == 0
         and device_after is not None
         and board_after is not None
         and board_before.get("serial_number")
         == board_after.get("serial_number")
-        == EXPECTED_BOARD_SERIAL
+        and (
+            programme.fresh_serial_auto_detect
+            or board_after.get("serial_number") == EXPECTED_BOARD_SERIAL
+        )
     )
     record = {
         "schema_version": 1,
@@ -269,7 +374,12 @@ def _upload_exact_firmware(
         "stderr_sha256": sha256(completed.stderr.encode()).hexdigest(),
         "stdout_tail": completed.stdout[-4000:],
         "stderr_tail": completed.stderr[-4000:],
-        "expected_board_serial": EXPECTED_BOARD_SERIAL,
+        "expected_board_serial": expected_serial,
+        "device_selection": (
+            "fresh_capture_device_--auto-detect"
+            if programme.fresh_serial_auto_detect
+            else "expected_board_serial"
+        ),
         "board_identity_confirmed_before": True,
         "board_identity_confirmed_after": passed,
         "usb_reenumerated": board_after is not None,
@@ -306,12 +416,23 @@ def _capture_command(
     run_dir: Path,
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> list[str]:
-    return [
+    command = [
         sys.executable,
         "-m",
         "host.otis_tools.capture_device",
-        "--device",
-        device,
+    ]
+    command.extend(
+        [
+            "--auto-detect",
+            "--expected-auto-detect-device",
+            device,
+        ]
+        if programme.fresh_serial_auto_detect
+        else ["--device", device]
+    )
+    command.extend([
+        "--baud",
+        str(EXPECTED_BAUD),
         "--run-dir",
         str(run_dir),
         "--duration-s",
@@ -326,7 +447,8 @@ def _capture_command(
         "1",
         "--normal-command-max-age-s",
         "2",
-    ]
+    ])
+    return command
 
 
 def _supervisor_command(
@@ -363,6 +485,7 @@ def _launch_process(command: list[str], log: IO[str]) -> subprocess.Popen[str]:
         stdout=log,
         stderr=log,
         text=True,
+        start_new_session=True,
     )
 
 
@@ -431,6 +554,52 @@ def _record_abort_delivery_failure(
     return path
 
 
+def _retained_abort_consumption_health(run_dir: Path) -> dict[tuple[str, str], str] | None:
+    """Return a complete post-abort firmware snapshot from canonical records.
+
+    The live reducer deliberately latches ``invalid`` when an ordinary
+    supervisor snapshot overlaps a prior incomplete generation.  That remains
+    a control-plane fault, but it must not erase a later complete, retained
+    ABORTED/fail-static snapshot when deciding whether the independent abort
+    reached firmware before the sole capture owner may close.
+    """
+    raw_path = run_dir / "raw/serial.log"
+    if not raw_path.is_file():
+        return None
+    abort_sent = False
+    rows: list[dict[str, str]] = []
+    with raw_path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if line.startswith(HOST_MARKER_PREFIX):
+                try:
+                    marker = json.loads(line[len(HOST_MARKER_PREFIX) :])
+                except json.JSONDecodeError:
+                    continue
+                if marker.get("event") == "emergency_abort_sent":
+                    # Reset at the independently retained transmission marker:
+                    # only a causally later firmware snapshot can prove that
+                    # this abort reached and was consumed by the device.
+                    abort_sent = True
+                    rows = []
+                continue
+            if not abort_sent or not line.startswith("STS,"):
+                continue
+            try:
+                values = next(csv.reader([line.rstrip("\r\n")]))
+            except csv.Error:
+                continue
+            if len(values) != len(HEALTH_FIELDS):
+                continue
+            rows.append(dict(zip(HEALTH_FIELDS, values, strict=True)))
+    snapshots, newest_started_generation = complete_active_status_snapshots(rows)
+    if not snapshots:
+        return None
+    latest = snapshots[-1]
+    if int(latest["snapshot_generation_complete"]) != newest_started_generation:
+        return None
+    return {("cx317_active", key): value for key, value in latest.items()}
+
+
 def _wait_for_terminal_abort_delivery(
     run_dir: Path, terminal: dict[str, Any]
 ) -> None:
@@ -447,9 +616,16 @@ def _wait_for_terminal_abort_delivery(
         ):
             return False
         live = read_live_health_state(run_dir / LIVE_STATE_PATH)
-        if live.state != "complete":
+        # Prefer the atomic live state.  On its explicitly-invalid branch,
+        # use only a complete retained firmware abort snapshot—not a partial
+        # health prefix and never a fresh query/nonce request.
+        health = (
+            live.health
+            if live.state == "complete"
+            else _retained_abort_consumption_health(run_dir)
+        )
+        if health is None:
             return False
-        health = live.health
         if not (
             health.get(("cx317_active", "state")) == "ABORTED"
             and health.get(("cx317_active", "fail_static")) == "true"
@@ -745,6 +921,16 @@ def _analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
     return analyze(run_dir)
 
 
+def _require_campaign18_exact_timing_sidecars(
+    run_dir: Path, manifest: Any
+) -> dict[str, Any]:
+    from .active_hybrid_live_analyze import (
+        require_campaign18_exact_timing_sidecars,
+    )
+
+    return require_campaign18_exact_timing_sidecars(run_dir, manifest)
+
+
 def _finalize_and_register(
     *,
     run_dir: Path,
@@ -793,6 +979,14 @@ def _finalize_and_register(
     )
     frozen_acquisition_identities = _snapshotted_artifact_identities(
         run_dir, snapshot
+    )
+    exact_timing_sidecar_join = _require_campaign18_exact_timing_sidecars(
+        run_dir, loaded
+    )
+    advance_phase(
+        finalization_journal,
+        "exact_timing_sidecars",
+        exact_timing_sidecar_join,
     )
     seal_path, seal = _analyze(run_dir)
     if frozen_acquisition_identities != _snapshotted_artifact_identities(
@@ -870,12 +1064,25 @@ def run_active_hybrid_qualification(
     run_dir = run_dir.resolve()
     if run_dir.exists():
         raise FileExistsError(f"CX320 live run already exists: {run_dir}")
-    device = str(activation["device"]["path"])
+    activation_reservation_path = _reserve_activation_attempt(
+        activation_path=activation_path,
+        activation=activation,
+        programme=programme,
+        run_dir=run_dir,
+    )
+    device = (
+        _fresh_auto_detect_device()
+        if programme.fresh_serial_auto_detect
+        else str(activation["device"]["path"])
+    )
     owners = _serial_owner_pids(device)
     if owners:
         raise ValueError(f"serial device already has owners: {sorted(owners)}")
     board = read_board_identity(device, arduino_cli=arduino_cli)
-    if board.get("serial_number") != EXPECTED_BOARD_SERIAL:
+    if (
+        not programme.fresh_serial_auto_detect
+        and board.get("serial_number") != EXPECTED_BOARD_SERIAL
+    ):
         raise ValueError("connected board serial differs from CX320 activation")
 
     run_dir.mkdir(parents=True)
@@ -926,6 +1133,12 @@ def run_active_hybrid_qualification(
 
     manifest_path = run_dir / RUN_MANIFEST_PATH
     try:
+        if programme.fresh_serial_auto_detect:
+            freshly_detected = _fresh_auto_detect_device()
+            if freshly_detected != device:
+                raise RuntimeError(
+                    "fresh serial path changed before capture ownership"
+                )
         create_run_manifest(
             activation_path=run_activation,
             bundle_path=run_bundle,
@@ -974,6 +1187,7 @@ def run_active_hybrid_qualification(
     supervisor: subprocess.Popen[str] | None = None
     orchestration_error: Exception | None = None
     capture_closed = False
+    abort_delivery_resolved_or_bounded = False
     try:
         capture_log = (
             run_dir / _programme_path(CAPTURE_LOG, programme)
@@ -1041,7 +1255,13 @@ def run_active_hybrid_qualification(
             raise RuntimeError(
                 f"CX320 supervisor exited {supervisor_exit}, expected {sorted(valid_exits)}"
             )
-        _wait_for_terminal_abort_delivery(run_dir, terminal)
+        try:
+            _wait_for_terminal_abort_delivery(run_dir, terminal)
+        finally:
+            # A failed check writes the bounded delivery-failure record before
+            # raising.  Either result satisfies the required ordering gate for
+            # the subsequent retained close path; it must not be retried.
+            abort_delivery_resolved_or_bounded = True
         capture_exit = _graceful_capture_stop(capture)
         capture_closed = True
         advance_phase(
@@ -1062,15 +1282,27 @@ def run_active_hybrid_qualification(
             error=exc,
             phase="live_orchestration",
         )
-        if (
-            capture is not None
-            and (_terminal(run_dir) or {}).get("result") != "aborted"
-        ):
-            _bounded_priority_abort(
-                run_dir,
-                run_dir / EMERGENCY_FIFO,
-                capture,
-            )
+        if capture is not None:
+            caught_terminal = _terminal(run_dir)
+            if (
+                (caught_terminal or {}).get("result") == "aborted"
+                and not abort_delivery_resolved_or_bounded
+            ):
+                try:
+                    _wait_for_terminal_abort_delivery(run_dir, caught_terminal)
+                except (OSError, TimeoutError, TypeError, ValueError):
+                    # The helper has already retained a bounded delivery-
+                    # failure artifact.  Preserve the original orchestration
+                    # failure and proceed to bounded capture closure.
+                    pass
+                finally:
+                    abort_delivery_resolved_or_bounded = True
+            elif (caught_terminal or {}).get("result") != "aborted":
+                _bounded_priority_abort(
+                    run_dir,
+                    run_dir / EMERGENCY_FIFO,
+                    capture,
+                )
         if capture is None:
             capture_closed = True
             advance_phase(
@@ -1173,6 +1405,10 @@ def run_active_hybrid_qualification(
     result.update(
         {
             "activation_sha256": activation["activation_sha256"],
+            "activation_attempt_reservation": {
+                "path": str(activation_reservation_path),
+                "sha256": _sha256_file(activation_reservation_path),
+            },
             "bundle_sha256": activation["bundle"]["bundle_sha256"],
             "build_identity": activation["firmware"]["build_identity"],
             "firmware_flashes": 1,

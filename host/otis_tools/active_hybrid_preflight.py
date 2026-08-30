@@ -14,6 +14,7 @@ from .active_hybrid_evidence_audit import audit_predecessor
 from .active_hybrid_proposal import validate_proposal
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
+    integrated_setup_provenance_contract,
     programme_from_mapping,
 )
 from .programme_status import OFFLINE_PREPARATION, load_programme_status
@@ -21,6 +22,7 @@ from .serial_commands import parse_serial_command
 
 
 TOOL_ID = "cx320_active_hybrid_structural_preflight_v1"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _canonical_sha256(value: dict[str, Any]) -> str:
@@ -44,6 +46,59 @@ def _programme_status_allows_preflight(
     return current.get("allowed_operations") == expected_operations
 
 
+def _predecessor_evidence(
+    status: dict[str, Any], programme: ActiveHybridProgramme
+) -> dict[str, Any]:
+    """Bind the predecessor at its own evidence identity.
+
+    The original CX320 programme retains its full current-source predecessor
+    audit.  The integrated successor instead binds the completed historical
+    CX322 seal by file and semantic identity; it must not reinterpret that
+    historical package with current, later source bindings.
+    """
+
+    if not programme.forwarded_output_integration:
+        predecessor = audit_predecessor()
+        return {
+            "status": predecessor["status"],
+            "binding_mode": "cx319_full_predecessor_audit",
+            "seal_sha256": predecessor["programme_seal"]["seal_sha256"],
+        }
+
+    current = status.get("programmes", {}).get(programme.status_programme_id, {})
+    declared = current.get("predecessor_evidence", {})
+    path_value = declared.get("seal_path") if isinstance(declared, dict) else None
+    path = Path(str(path_value or ""))
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    if not path.is_file():
+        raise ValueError("integrated CX322 predecessor seal is unavailable")
+    file_sha256 = sha256(path.read_bytes()).hexdigest()
+    seal = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        not isinstance(declared, dict)
+        or current.get("predecessor_programme")
+        != "cx322_bounded_hybrid_fact_gathering"
+        or file_sha256 != declared.get("seal_file_sha256")
+        or path.stat().st_size != declared.get("seal_size_bytes")
+        or seal.get("seal_sha256") != declared.get("seal_sha256")
+        or seal.get("status") != "passed"
+        or seal.get("primary_decision")
+        != declared.get("terminal_primary_decision")
+        or seal.get("programme_id")
+        != "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1"
+    ):
+        raise ValueError("integrated CX322 predecessor evidence binding differs")
+    return {
+        "status": "passed",
+        "binding_mode": "historical_content_addressed_cx322_terminal_seal",
+        "seal_path": str(path.resolve()),
+        "seal_file_sha256": file_sha256,
+        "seal_sha256": seal["seal_sha256"],
+        "terminal_primary_decision": seal["primary_decision"],
+    }
+
+
 def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
     declared_bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     if not isinstance(declared_bundle, dict):
@@ -51,8 +106,8 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
     programme = programme_from_mapping(declared_bundle)
     bundle = validate_bundle(bundle_path, programme)
     proposal = validate_proposal(proposal_path, programme)
-    predecessor = audit_predecessor()
     status = load_programme_status()
+    predecessor = _predecessor_evidence(status, programme)
     if not _programme_status_allows_preflight(status, programme):
         raise ValueError(
             f"programme status does not permit {programme.key.upper()} "
@@ -93,6 +148,30 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         ),
         "no_physical_actions_performed": True,
     }
+    if programme.forwarded_output_integration:
+        from .gnss_operational_baud_policy import GNSS_OPERATIONAL_BAUD_POLICY
+
+        provenance = integrated_setup_provenance_contract(programme)
+        checks.update(
+            {
+                "integrated_engineering_contract_bound": isinstance(
+                    bundle.get("engineering_contract"), dict
+                ),
+                "unknown_boot_DAC_state_not_inferred": (
+                    bundle.get("setup", {}).get("provenance") == provenance
+                    and provenance["prior_or_nominal_state_inferred"] is False
+                ),
+                "setup_is_frozen_stimulus_not_restoration": (
+                    provenance["setup_operation"]
+                    == "prospectively_frozen_authorized_stimulus_not_restoration"
+                    and provenance["automatic_or_nominal_restoration"] is False
+                ),
+                "gnss_boot_to_permanent_115200_policy_bound": (
+                    bundle.get("gnss_uart_policy")
+                    == GNSS_OPERATIONAL_BAUD_POLICY
+                ),
+            }
+        )
     if not all(checks.values()):
         raise ValueError(f"CX320 structural preflight failed: {checks}")
     report: dict[str, Any] = {
@@ -112,7 +191,8 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         "policy_sha256": bundle["policy"]["policy_sha256"],
         "build_identity": bundle["firmware"]["build_identity"],
         "firmware_uf2_sha256": bundle["firmware"]["uf2"]["sha256"],
-        "predecessor_programme_seal_sha256": predecessor["programme_seal"]["seal_sha256"],
+        "predecessor_programme_seal_sha256": predecessor["seal_sha256"],
+        "predecessor_evidence_binding": predecessor,
         "normalized_command_rehearsal": normalized,
         "checks": checks,
         "claim_boundary": {

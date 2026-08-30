@@ -95,6 +95,23 @@ def _read_object(path: Path) -> dict[str, Any]:
     return value
 
 
+def _is_unavailable_historical_binding(name: str, source: Path) -> bool:
+    """Recognize the one sealed run-package reference absent from clean trees.
+
+    ``runs/`` is deliberately ignored.  The policy remains bound to the
+    predecessor seal SHA, but an offline policy/replay reader must not require
+    a local copy of that historical package merely to exercise current
+    semantics.  The no-I/O preflight separately calls ``audit_predecessor``;
+    that gate requires and fully verifies the sealed physical package before a
+    proposal can progress.
+    """
+    try:
+        relative = source.relative_to(REPO_ROOT)
+    except ValueError:
+        return False
+    return name == "predecessor_programme_seal" and relative.parts[:1] == ("runs",)
+
+
 def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
     value = _read_object(path)
     policy_id = value.get("policy_id")
@@ -121,6 +138,8 @@ def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
         if not isinstance(binding, dict):
             raise ValueError(f"binding {name} must be an object")
         source = REPO_ROOT / str(binding.get("path", ""))
+        if not source.is_file() and _is_unavailable_historical_binding(name, source):
+            continue
         if not source.is_file() or _sha256_file(source) != binding.get("sha256"):
             raise ValueError(f"active-hybrid binding differs: {source}")
 

@@ -17,7 +17,7 @@ not as a replacement for the board clock.
 | Arduino pin | RP2040 GPIO | RP2040 clock function | OTIS use |
 |---|---:|---|---|
 | D8 | GPIO20 | CLOCK GPIN0 | external OCXO/GPSDO reference input |
-| D9 | GPIO21 | CLOCK GPOUT0 | RP2040 internal clock diagnostic output |
+| D9 | GPIO21 | CLOCK GPOUT0 | compile-time-selected D8/GPIN0 forwarded output |
 | D2 | GPIO25 | CLOCK GPOUT3 | secondary RP2040 internal clock diagnostic output |
 
 D8 / GPIO20 / GPIN0 is the preferred non-surgical reference-clock ingress for
@@ -29,9 +29,10 @@ edges and only one cumulative word is pushed per accepted PPS; individual
 oscillator edges are never enqueued. FC0 remains useful for diagnostics but
 does not own a PPS aperture.
 
-GPOUT0 and GPOUT3 expose RP2040 internal clocks for diagnostics, validation,
-and external measurement. They are not evidence that the external reference has
-become the RP2040 system clock.
+GPOUT0 is reserved for the compile-time D8/GPIN0 to D9 forwarded-output path.
+Its only initial selection is `clksrc_gpin0`, integer divide one and fractional
+divide zero. GPOUT3 remains an internal-clock diagnostic. Neither path is
+evidence that the external oscillator has become the RP2040 system clock.
 
 ## Internal Board Clock Paths
 
@@ -49,8 +50,8 @@ For the OTIS MVP:
 - GPSDO/OCXO means instrument/reference clock;
 - GPIN0 brings the external reference into the RP2040 for measurement and
   correlation;
-- GPOUT0 and GPOUT3 expose RP2040 internal clocks for diagnostics, validation,
-  and external measurement;
+- GPOUT0 may forward GPIN0 to D9 without changing a platform clock;
+- GPOUT3 exposes an RP2040 internal clock for diagnostics;
 - host-side analysis must preserve clock-domain provenance.
 
 The external reference should remain visible as a measured input domain. Host
@@ -96,6 +97,49 @@ GPSDO / OCXO
 
 The conditioning/divider block is responsible for voltage compatibility, edge
 quality, and any temporary frequency division needed for early firmware tests.
+
+## D9/D6 readiness loopback
+
+The D9 readiness programme uses only this fixed diagnostic loopback:
+
+```text
+D8 / GPIO20 / GPIN0 -> GPOUT0 -> D9 / GPIO21
+                                  |
+                                  +-- 1 kΩ series resistor -- D6 / GPIO18
+```
+
+D6 is an input-only, zero-authority diagnostic monitor. Its dedicated PIO
+snapshot sidecar shares D14 only as a read-only interval boundary. D6 absence,
+loss, overflow, or contradiction must not affect D14/D8 validity, estimation,
+control eligibility, abort, or the run terminal. A D6 count match corroborates
+digital edge continuity; it does not qualify D9 voltage, waveform, duty cycle,
+rise/fall behavior, ringing, jitter, delay, load drive, or absolute accuracy.
+
+The direct D9 interface remains a prospectively characterized 3.3 V CMOS,
+high-impedance-load output. It is not a qualified 50-ohm source.
+
+### Prompt 02 physical result
+
+The retained 2026-08-28 D9/D6 qualification package established the exact
+compile-time output/readback identity and D6 digital continuity under the
+1 kΩ D9-to-D6 loopback. It did not include an oscilloscope or independently
+referenced frequency counter. The resulting D9 terminal is
+`output_function_correct_but_waveform_evidence_incomplete`; D6 is
+`d6_forwarded_clock_monitor_qualified_as_diagnostic_only`; and D14/D8 remained
+healthy. Do not use a multimeter reading or D6 count match to upgrade the D9
+interface to a waveform, load, delay, jitter, voltage, or 50-ohm claim.
+
+The frequency-only output soak was not started because its waveform gate did
+not pass. The board was returned to the D9-disabled baseline profile. The
+tracked provenance and controller consequence are recorded in
+[`PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md`](../60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/PROMPT02_QUALIFICATION_AND_CONTROLLER_DECISION.md).
+
+A later, distinct engineering programme may exercise unchanged CX322 with this
+digital output and sidecar enabled. It retains the same 1 kΩ wiring and
+high-impedance-only claim boundary, requires exact D9 source/divider/GPIO
+readback before setup and during the run, and keeps D6 local-degraded behavior
+out of D14/D8 validity and steering authority. It does not turn the incomplete
+Prompt 02 waveform result into a qualified output.
 
 ## Non-Goals / Not MVP
 

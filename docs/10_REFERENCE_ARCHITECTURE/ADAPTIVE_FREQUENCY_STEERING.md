@@ -217,13 +217,37 @@ configuration contradiction may keep control held and require operator review,
 but it still does not rewrite retained D14/D8 observations or invalidate the
 physical acquisition.
 
-The existing transaction layer already has a nonterminal `REFERENCE_HOLD` and
-fresh-requalification path. The focused implementation gap is narrower: the
-current active-hybrid live supervisor treats loss of `setup_gnss_eligible`
-after setup as terminal, and the firmware's `reference_path_healthy()` combines
-serial metadata with D14/D8 health during unfinished transactions. Separate
+The existing transaction layer supplies the nonterminal hold and
+fresh-requalification path. The engineering long-run implementation separates
 `GNSS_METADATA_HOLD` from authoritative-reference and actuator-provenance
-faults in those existing paths; do not create another controller or supervisor.
+faults in that existing path rather than creating another controller or
+supervisor. It records whether a private request was withdrawn before release
+or whether a released request completed under Core 0 ownership, retains the
+exact applied-code/session/epoch frontier, and requires fresh same-receiver
+metadata followed by a causally later exact D14/D8 observation before rearm.
+
+The 2026-08-28 D9 programme closed its output gate as materially incomplete, so
+the first implementation of these semantics was intentionally a permanently
+non-effective reference oracle and native deterministic fixture. It binds
+Core 1 private withdrawal, Core 0 ownership after durable release, acceptance
+through application/DAC epoch/first consumer/response, absorbing actuator
+provenance and low-efficiency states, phase-loss latching, and causal metadata
+requalification. It does not itself alter the live CX322 firmware, schemas,
+parser, supervisor, or authority profile. The exact historical contract is
+[`cx322_non_effective_operational_semantics_contract_v1.json`](../60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_non_effective_operational_semantics_contract_v1.json).
+
+Later explicit operator instructions authorize distinct 24-hour frequency-only
+and 72-hour unchanged-CX322 engineering runs with D9 forwarding and D6
+diagnostics enabled. Their live profiles implement the applicable metadata-hold
+transaction behavior directly while retaining the original request laws. They
+keep new-actuation authority open until an exact 1,500-second endpoint reserve;
+48/1,008 and 144/3,024 application/cumulative-code ceilings respectively are
+cadence-derived safety bounds, not targets or completion conditions. D14 and D8
+remain the only reference and oscillator/control truth; D9
+configuration/readback is an output-leg entry and continuity gate, and D6
+remains zero-authority. This later authority does not select or retroactively
+promote the non-effective Prompt 03 oracle, revise the incomplete D9
+waveform/load terminal, or establish a public delivered-output claim.
 
 D10 is not claimed by the current PPS-gated steering profiles. If a future
 operating profile enables D10 `EVT` capture, D10-local invalidity, noise, gaps,

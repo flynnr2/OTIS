@@ -97,6 +97,7 @@ def _synthetic_build(tmp_path: Path) -> Path:
     return path
 
 
+@pytest.mark.historical
 def test_programme_freezes_the_authorized_zero_control_campaign() -> None:
     programme = load_programme()
 
@@ -124,6 +125,7 @@ def test_programme_freezes_the_authorized_zero_control_campaign() -> None:
     assert programme["timing"]["minimum_scientific_duration_s"] == 34200
 
 
+@pytest.mark.historical
 def test_bundle_binds_the_gnss_transition_and_exact_firmware(tmp_path: Path) -> None:
     path = tmp_path / "bundle.json"
     create_bundle(build_manifest_path=_synthetic_build(tmp_path), output_path=path)
@@ -151,6 +153,7 @@ def test_bundle_binds_the_gnss_transition_and_exact_firmware(tmp_path: Path) -> 
     assert set(preflight["hardware_operations"].values()) == {0}
 
 
+@pytest.mark.historical
 def test_attempt2_bundle_reuses_baud_proof_and_requires_exact_output_evidence(
     tmp_path: Path,
 ) -> None:
@@ -224,6 +227,7 @@ def test_extended_pmtk514_evidence_reaches_first_prewrite_consumer() -> None:
     ]
 
 
+@pytest.mark.historical
 def test_attempt3_freezes_physical_response_and_continuous_entry() -> None:
     programme = load_programme(ATTEMPT3_PROGRAMME)
     gnss = programme["gnss_live_boundary"]
@@ -239,6 +243,7 @@ def test_attempt3_freezes_physical_response_and_continuous_entry() -> None:
     assert programme["operator_authority"]["automatic_retry"] is False
 
 
+@pytest.mark.historical
 def test_attempt4_freezes_bounded_runtime_hold_and_attempt3_lineage() -> None:
     programme = load_programme(ATTEMPT4_PROGRAMME)
     gnss = programme["gnss_live_boundary"]
@@ -262,6 +267,7 @@ def test_attempt4_freezes_bounded_runtime_hold_and_attempt3_lineage() -> None:
     assert programme["operator_authority"]["automatic_retry"] is False
 
 
+@pytest.mark.historical
 def test_attempt5_freezes_9600_return_and_attempt4_support_correction() -> None:
     programme = load_programme(ATTEMPT5_PROGRAMME)
     gnss = programme["gnss_live_boundary"]
@@ -284,6 +290,7 @@ def test_attempt5_freezes_9600_return_and_attempt4_support_correction() -> None:
     assert programme["operator_authority"]["automatic_retry"] is False
 
 
+@pytest.mark.historical
 def test_attempt6_binds_attempt5_terminal_and_compiled_command_correction() -> None:
     programme = load_programme(ATTEMPT6_PROGRAMME)
     gnss = programme["gnss_live_boundary"]
@@ -309,6 +316,7 @@ def test_attempt6_binds_attempt5_terminal_and_compiled_command_correction() -> N
     assert programme["operator_authority"]["automatic_retry"] is False
 
 
+@pytest.mark.historical
 def test_complete_operational_rehearsal_exercises_all_transactions(tmp_path: Path) -> None:
     bundle_path = tmp_path / "bundle.json"
     create_bundle(

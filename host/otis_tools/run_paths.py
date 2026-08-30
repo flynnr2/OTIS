@@ -12,6 +12,10 @@ RAW_SERIAL_LOG = "serial.log"
 RAW_EVENTS_CSV = "raw_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 PPS_SNAPSHOTS_CSV = "pps_snapshots.csv"
+# This is deliberately distinct from the D8 PIO/DMA snapshot evidence above.
+# It carries only the D6 observation of the forwarded D9 output and is never a
+# substitute for authoritative D14/D8 capture evidence.
+FORWARDED_MONITOR_SNAPSHOTS_CSV = "forwarded_monitor_snapshots.csv"
 ASSOCIATION_LOSS_DECISIONS_CSV = "association_loss_decisions_v1.csv"
 HEALTH_CSV = "health.csv"
 DAC_STEPS_CSV = "dac_steps.csv"
@@ -21,7 +25,9 @@ DIAGNOSTICS_CSV = "diagnostics_v1.csv"
 ESTIMATES_CSV = "estimates_v2.csv"
 CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
 ACTIVE_TRANSACTIONS_CSV = "active_transactions_v1.csv"
+ACTIVE_TRANSACTIONS_V2_CSV = "active_transactions_v2.csv"
 ACTIVE_HYBRID_DECISIONS_CSV = "active_hybrid_decisions_v1.csv"
+ACTIVE_HYBRID_DECISIONS_V2_CSV = "active_hybrid_decisions_v2.csv"
 PLANT_SIGN_QUALIFICATION_CSV = "plant_sign_qualification_v1.csv"
 RELATIVE_PHASE_OBSERVATIONS_CSV = "relative_phase_observations_v1.csv"
 PHASE_ESTIMATOR_OUTPUTS_CSV = "phase_estimator_outputs_v1.csv"
@@ -67,6 +73,10 @@ class RunPaths:
         return self.csv_dir / PPS_SNAPSHOTS_CSV
 
     @property
+    def forwarded_monitor_snapshots_csv(self) -> Path:
+        return self.csv_dir / FORWARDED_MONITOR_SNAPSHOTS_CSV
+
+    @property
     def association_loss_decisions_csv(self) -> Path:
         return self.csv_dir / ASSOCIATION_LOSS_DECISIONS_CSV
 
@@ -91,8 +101,16 @@ class RunPaths:
         return self.csv_dir / ACTIVE_TRANSACTIONS_CSV
 
     @property
+    def active_transactions_v2_csv(self) -> Path:
+        return self.csv_dir / ACTIVE_TRANSACTIONS_V2_CSV
+
+    @property
     def active_hybrid_decisions_csv(self) -> Path:
         return self.csv_dir / ACTIVE_HYBRID_DECISIONS_CSV
+
+    @property
+    def active_hybrid_decisions_v2_csv(self) -> Path:
+        return self.csv_dir / ACTIVE_HYBRID_DECISIONS_V2_CSV
 
     @property
     def plant_sign_qualification_csv(self) -> Path:
@@ -120,6 +138,11 @@ def default_csv_files() -> list[dict[str, str]]:
         {"path": f"{CSV_DIR}/{RAW_EVENTS_CSV}", "contract": "raw_events_v1"},
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
         {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v1", "optional": True},
+        {
+            "path": f"{CSV_DIR}/{FORWARDED_MONITOR_SNAPSHOTS_CSV}",
+            "contract": "forwarded_monitor_snapshots_v1",
+            "optional": True,
+        },
         {
             "path": f"{CSV_DIR}/{ASSOCIATION_LOSS_DECISIONS_CSV}",
             "contract": "association_loss_decisions_v1",
@@ -190,6 +213,27 @@ def cx321_csv_files() -> list[dict[str, str]]:
         {
             "path": f"{CSV_DIR}/{PLANT_SIGN_QUALIFICATION_CSV}",
             "contract": "plant_sign_qualification_v1",
+            "optional": True,
+        },
+    ]
+
+
+def exact_active_timing_csv_files() -> list[dict[str, str]]:
+    """Base capture products plus revised long-run exact timing sidecars.
+
+    Keeping this inventory distinct prevents historical ACT/AHY campaigns
+    from acquiring empty v2 products or implying exact-counter coverage.
+    """
+
+    return [
+        *default_csv_files(),
+        {
+            "path": f"{CSV_DIR}/{ACTIVE_TRANSACTIONS_V2_CSV}",
+            "contract": "active_transactions_v2",
+        },
+        {
+            "path": f"{CSV_DIR}/{ACTIVE_HYBRID_DECISIONS_V2_CSV}",
+            "contract": "active_hybrid_decisions_v2",
             "optional": True,
         },
     ]

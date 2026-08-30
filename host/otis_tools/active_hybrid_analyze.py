@@ -76,6 +76,9 @@ def _validate_scenario(
 
 
 def _scenario_terminal_classifications(programme: Any) -> dict[str, str]:
+    declared = programme.accelerated_rehearsal_terminal_classifications
+    if declared:
+        return dict(declared)
     faults = {
         "shared_fail_static_transport_obstruction": (
             "measurement_authority_or_platform_fault"
@@ -89,8 +92,13 @@ def _scenario_terminal_classifications(programme: Any) -> dict[str, str]:
             **faults,
         }
     if programme.response_checkpoint_observational:
+        acquired_terminal = (
+            "bounded_integrated_engineering_evidence_acquired"
+            if programme.forwarded_output_integration
+            else "bounded_direct_hybrid_evidence_acquired"
+        )
         return {
-            "modeled_phase_transaction": "bounded_direct_hybrid_evidence_acquired",
+            "modeled_phase_transaction": acquired_terminal,
             "clean_phase_degradation": "right_censored_incomplete",
             **faults,
         }

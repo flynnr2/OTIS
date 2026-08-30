@@ -10,6 +10,10 @@ import pytest
 
 from host.otis_tools import active_hybrid_live_supervisor as live
 from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX322_D9_D6_72H_PROGRAMME,
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
+)
 from host.otis_tools.active_control_supervisor import (
     _next_selected_interval_is_cadence_eligible,
 )
@@ -19,6 +23,9 @@ from host.otis_tools.bounded_tight_deadband_prewrite_contract import (
 )
 from host.otis_tools.prewrite_readiness_contract import PrewriteReadiness
 from host.otis_tools.contracts import CONTRACT_FIELDS
+from host.otis_tools.gnss_operational_baud_policy import (
+    GNSS_OPERATIONAL_PREWRITE_EXACT,
+)
 
 
 def _utc(epoch: float) -> str:
@@ -31,6 +38,85 @@ def _utc(epoch: float) -> str:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_gnss_metadata_hold_is_static_and_requires_causal_requalification() -> None:
+    supervisor = object.__new__(live.ActiveHybridLiveSupervisor)
+    supervisor.state = {
+        "gnss_metadata_hold": None,
+        "gnss_metadata_hold_count": 0,
+    }
+    events: list[tuple[str, dict[str, object]]] = []
+    supervisor._save = lambda: None
+    supervisor._programme_event = (
+        lambda suffix, **payload: events.append((suffix, payload))
+    )
+    health = {
+        ("cx317_active", "state"): "GNSS_METADATA_HOLD",
+        ("cx317_active", "gnss_metadata_hold_active"): "true",
+        ("cx317_active", "gnss_metadata_hold_transaction_pending"): "false",
+        ("cx317_active", "confirmed_applied_code_known"): "true",
+        ("cx317_active", "confirmed_applied_code"): "0xA83C",
+        ("cx317_active", "dac_epoch"): "1",
+        ("cx317_active", "correction_count"): "0",
+        ("cx317_active", "cumulative_movement_codes"): "0",
+        ("cx317_active", "gnss_metadata_hold_entry_sequence"): "20",
+    }
+    supervisor._update_gnss_metadata_hold(health, True)
+    assert supervisor.state["gnss_metadata_hold_count"] == 1
+    assert events[-1][0] == "gnss_metadata_hold_entered"
+
+    changed = dict(health)
+    changed[("cx317_active", "correction_count")] = "1"
+    with pytest.raises(ValueError, match="actuation identity changed"):
+        supervisor._update_gnss_metadata_hold(changed, True)
+
+    recovered = dict(health)
+    recovered.update(
+        {
+            ("cx317_active", "state"): "DISARMED",
+            ("cx317_active", "gnss_metadata_hold_active"): "false",
+            ("cx317_active", "gnss_metadata_requalification_sequence"): "21",
+            ("cx317_active", "gnss_metadata_qualification_frontier"): "100",
+            ("cx317_active", "d14_d8_observation_sequence"): "101",
+        }
+    )
+    supervisor._update_gnss_metadata_hold(recovered, False)
+    assert supervisor.state["gnss_metadata_hold"] is None
+    assert events[-1][0] == "gnss_metadata_hold_requalified"
+
+
+def test_campaign18_runtime_hold_follows_confirmed_setup_evidence(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["manual_start_sent"] = False
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    health = _health(
+        supervisor,
+        state="GNSS_METADATA_HOLD",
+        gnss_metadata_hold_active="true",
+        gnss_metadata_hold_transaction_pending="false",
+        gnss_metadata_hold_entry_sequence="50",
+        gnss_metadata_requalification_sequence="0",
+        gnss_metadata_qualification_frontier="0",
+        d14_d8_observation_sequence="500",
+    )
+
+    supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["gnss_metadata_hold_count"] == 1
+    assert supervisor.state["gnss_metadata_hold"] == {
+        "entry_sequence": 50,
+        "applied_code": live.SETUP_CODE,
+        "dac_epoch": 1,
+        "correction_count": 0,
+        "cumulative_movement_codes": 0,
+        "transaction_resolution_pending": False,
+        "entered_utc": supervisor.state["gnss_metadata_hold"]["entered_utc"],
+    }
 
 
 def _manifest(*, wall_origin_epoch: float = 1_800_000_000.0) -> dict:
@@ -124,6 +210,39 @@ def _cx321_manifest() -> dict:
     return manifest
 
 
+def _integrated_manifest() -> dict:
+    manifest = _manifest()
+    programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    policy_path = programme.natural_policy_path
+    policy_sha256 = sha256(policy_path.read_bytes()).hexdigest()
+    manifest.update(
+        {
+            "programme_id": programme.programme_id,
+            "stage": programme.live_stage,
+            "run_identity": programme.runtime_run_identity,
+            "profile_identity": programme.profile_id,
+            "policy": {
+                "path": str(policy_path),
+                "sha256": policy_sha256,
+                "size_bytes": policy_path.stat().st_size,
+                "policy_sha256": policy_sha256,
+            },
+        }
+    )
+    section = manifest.pop("cx320")
+    section["run_identity"] = programme.runtime_run_identity
+    section["profile_id"] = programme.profile_id
+    section["automatic_control"].update(
+        {
+            "maximum_total_applications": 1,
+            "maximum_cumulative_movement_codes": 21,
+        }
+    )
+    section["qualification"]["absolute_wall_clock_limit_s"] = 7_200
+    manifest[programme.manifest_section] = section
+    return manifest
+
+
 def test_cx321_runtime_binds_active_and_numerical_policy_domains() -> None:
     manifest = _cx321_manifest()
     _, identities = live.load_active_hybrid_spec(manifest)
@@ -136,6 +255,19 @@ def test_cx321_runtime_binds_active_and_numerical_policy_domains() -> None:
     ]
     assert identities["active_policy_sha256"] != identities[
         "numerical_policy_sha256"
+    ]
+
+
+def test_integrated_runtime_accepts_explicit_historical_policy_identity() -> None:
+    manifest = _integrated_manifest()
+
+    spec, identities = live.load_active_hybrid_spec(manifest)
+
+    assert spec.run_identity == (
+        CX322_D9_D6_INTEGRATION_PROGRAMME.runtime_run_identity
+    )
+    assert identities["active_policy_sha256"] == manifest["policy"][
+        "policy_sha256"
     ]
 
 
@@ -222,6 +354,120 @@ def _health(
         }
     )
     return health
+
+
+def _set_campaign18_exact_clock(
+    supervisor: live.ActiveHybridLiveSupervisor, *, elapsed_ticks: int
+) -> dict[tuple[str, str], str]:
+    origin = 1_000_000
+    frontier = origin + elapsed_ticks
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["qualified_origin_timestamp_ticks"] = origin
+    supervisor.state["qualified_origin_extended_timestamp_ticks"] = origin
+    supervisor.state["qualified_origin_session_id"] = 1
+    supervisor.state["qualified_frontier_raw_ticks"] = frontier % (1 << 32)
+    supervisor.state["qualified_frontier_extended_ticks"] = frontier
+    health = _health(supervisor, uptime_s="999999999")
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)] = str(
+        frontier % (1 << 32)
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
+        "rp2040_timer0"
+    )
+    return health
+
+
+def test_campaign18_exact_tick_admission_boundary_uses_1500_second_reserve(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    admission_ticks = (
+        CX322_D9_D6_72H_PROGRAMME.qualified_duration_s
+        - CX322_D9_D6_72H_PROGRAMME.correction_response_reserve_s
+    ) * live.RP2040_TIMER0_TICKS_PER_SECOND
+    before = _set_campaign18_exact_clock(
+        supervisor, elapsed_ticks=admission_ticks - 1
+    )
+
+    assert not supervisor._close_response_horizon_if_required(before)
+
+    at_boundary = dict(before)
+    at_boundary[
+        (live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)
+    ] = str((int(before[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)]) + 1) % (1 << 32))
+    assert supervisor._close_response_horizon_if_required(at_boundary)
+    assert supervisor.state["qualified_frontier_extended_ticks"] == (
+        1_000_000 + admission_ticks
+    )
+
+
+def test_campaign18_exact_259200_second_endpoint_and_descriptor_name(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    endpoint_ticks = (
+        CX322_D9_D6_72H_PROGRAMME.qualified_duration_s
+        * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    before = _set_campaign18_exact_clock(
+        supervisor, elapsed_ticks=endpoint_ticks - 1
+    )
+    before.update(
+        {
+            ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
+            ("cx317_active", "first_phase_checkpoint_passed"): "true",
+        }
+    )
+
+    supervisor._maybe_finish(before, 1_800_000_000.0, 0.0)
+    assert supervisor.state["terminal"] is None
+
+    at_endpoint = dict(before)
+    at_endpoint[
+        (live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)
+    ] = str((int(before[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)]) + 1) % (1 << 32))
+    supervisor._maybe_finish(at_endpoint, 1_800_000_000.0, 0.0)
+
+    assert supervisor.state["terminal"]["reason"] == (
+        "cx322_d9_d6_72h_72h_qualified_endpoint_complete"
+    )
+    assert supervisor.state["qualified_endpoint_extended_timestamp_ticks"] == (
+        1_000_000 + endpoint_ticks
+    )
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ("prospective_repeated_alternation", "prospective_low_efficiency_path"),
+)
+def test_campaign18_controller_inhibit_does_not_end_D14_D8_acquisition(
+    tmp_path: Path, reason: str
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    health = _health(
+        supervisor,
+        hybrid_state="FAIL_STATIC",
+        hybrid_reason=reason,
+        fail_static="true",
+    )
+    health.update(
+        {
+            ("cx317_active", "gnss_metadata_hold_active"): "false",
+            ("cx317_active", "gnss_metadata_hold_transaction_pending"): "false",
+            ("cx317_active", "gnss_metadata_hold_entry_sequence"): "0",
+            ("cx317_active", "gnss_metadata_requalification_sequence"): "0",
+            ("cx317_active", "gnss_metadata_qualification_frontier"): "0",
+            ("cx317_active", "d14_d8_observation_sequence"): "1",
+        }
+    )
+
+    supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["arm_pending"] is False
+    assert supervisor.state["controller_authority_inhibited_reason"] == reason
+    assert health[("cx317_active", "fail_static")] == "true"
 
 
 def _ready() -> PrewriteReadiness:
@@ -512,6 +758,182 @@ def test_cx320_prewrite_accepts_the_complete_setup_authority_snapshot(
     assert readiness.mismatches == ()
 
 
+def _forwarded_integration_health() -> dict[tuple[str, str], str]:
+    health = dict(live.FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH)
+    health[("forwarded_clock_output", "first_valid_ticks")] = "16000000"
+    for key in live.FORWARDED_MONITOR_OBSERVABILITY_KEYS:
+        health[key] = "monitor_invalid_or_unavailable" if key[1] == "state" else "0"
+    return health
+
+
+def test_integrated_prewrite_requires_exact_d9_digital_readback() -> None:
+    health = _forwarded_integration_health()
+
+    assert live.forwarded_output_integration_prewrite_evidence(health) == ((), ())
+
+    health[("forwarded_clock_output", "readback_valid")] = "false"
+    missing, mismatches = live.forwarded_output_integration_prewrite_evidence(
+        health
+    )
+
+    assert missing == ()
+    assert mismatches == (
+        "forwarded_clock_output.readback_valid='false', expected 'true'",
+    )
+
+
+def test_integrated_prewrite_keeps_d6_fault_values_zero_authority() -> None:
+    health = _forwarded_integration_health()
+    health[("forwarded_clock_monitor", "configured")] = "0"
+    health[("forwarded_clock_monitor", "running")] = "0"
+    health[("forwarded_clock_monitor", "fault_flags")] = "15"
+
+    assert live.forwarded_output_integration_prewrite_evidence(health) == ((), ())
+
+    del health[("forwarded_clock_monitor", "state")]
+    missing, mismatches = live.forwarded_output_integration_prewrite_evidence(
+        health
+    )
+    assert missing == ("forwarded_clock_monitor.state",)
+    assert mismatches == ()
+
+
+def test_integrated_runtime_rejects_post_bootstrap_promotion_attempt(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    supervisor.state["prewrite_contract_ready_utc"] = "2026-08-28T00:00:00Z"
+    health = _health(supervisor)
+    health.update(GNSS_OPERATIONAL_PREWRITE_EXACT)
+    health.update(_forwarded_integration_health())
+    health[
+        (
+            "gnss_receiver",
+            "post_bootstrap_target_baud_command_attempt_count",
+        )
+    ] = "1"
+
+    with pytest.raises(
+        ValueError, match="integrated GNSS bootstrap/runtime invariant changed"
+    ):
+        supervisor._check_fail_static_health(health)
+
+
+def test_integrated_runtime_holds_during_bounded_gnss_bootstrap(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    health = _health(supervisor)
+    health.update(_forwarded_integration_health())
+    health.update(
+        {
+            ("gnss_receiver", "operational_bootstrap_state"): "in_progress",
+            ("gnss_receiver", "operational_bootstrap_attempt_count"): "1",
+            ("gnss_receiver", "target_baud_command_attempt_count"): "1",
+        }
+    )
+
+    supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["prewrite_contract_ready_utc"] is None
+
+
+def test_integrated_physical_run_stops_after_first_complete_response(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    supervisor.manifest["qualification_evidence"] = True
+    supervisor.state["first_phase_observation_checkpoint_exact"] = True
+    supervisor.state["arm_pending"] = False
+    health = _health(
+        supervisor,
+        state="DISARMED",
+        evidence_phase="evidence_clear",
+        evidence_pending="false",
+        evidence_request_sequence="0",
+        confirmed_applied_code_known="true",
+        confirmed_applied_code=str(0xA837),
+        correction_count="1",
+        cumulative_movement_codes="5",
+        first_phase_checkpoint_passed="true",
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_100.0, 100.0)
+
+    assert supervisor.state["terminal"] == {
+        "result": "healthy_stop",
+        "reason": (
+            "cx322_d9_d6_integration_first_complete_application_"
+            "consumer_and_response"
+        ),
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": 0xA837,
+        "utc": supervisor.state["terminal"]["utc"],
+    }
+
+
+def test_integrated_physical_run_accepts_frequency_only_first_response(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    supervisor.manifest["qualification_evidence"] = True
+    supervisor.state["arm_pending"] = False
+    health = _health(
+        supervisor,
+        state="DISARMED",
+        evidence_phase="evidence_clear",
+        evidence_pending="false",
+        evidence_request_sequence="0",
+        confirmed_applied_code_known="true",
+        confirmed_applied_code=str(0xA837),
+        correction_count="1",
+        cumulative_movement_codes="5",
+        first_phase_checkpoint_passed="false",
+        phase_material_application_count="0",
+        frequency_only_application_count="1",
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_100.0, 100.0)
+
+    assert supervisor.state["terminal"]["result"] == "healthy_stop"
+    assert supervisor.state["terminal"]["reason"].endswith(
+        "first_complete_application_consumer_and_response"
+    )
+    assert supervisor.state["terminal"]["preliminary_decision"] == (
+        "pending_offline_scientific_analysis"
+    )
+
+
+def test_integrated_rehearsal_exercises_same_first_response_terminal(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    supervisor.rehearsal_manifest = True
+    supervisor.manifest["qualification_evidence"] = False
+    supervisor.manifest["rehearsal_endpoint_mode"] = "first_response"
+    supervisor.state["first_phase_observation_checkpoint_exact"] = True
+    health = _health(
+        supervisor,
+        correction_count="1",
+        cumulative_movement_codes="5",
+        confirmed_applied_code=str(0xA837),
+        first_phase_checkpoint_passed="true",
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_100.0, 100.0)
+
+    assert supervisor.state["terminal"]["result"] == "healthy_stop"
+    assert supervisor.state["terminal"]["reason"].endswith(
+        "first_complete_application_consumer_and_response"
+    )
+
+
 def test_qualified_clock_requires_fresh_selected_estimate_from_setup_epoch(
     tmp_path: Path,
 ) -> None:
@@ -548,6 +970,39 @@ def test_qualified_clock_requires_fresh_selected_estimate_from_setup_epoch(
     assert '"source_dac_ref": "live:DAC:1"' in (
         supervisor.events_path.read_text(encoding="utf-8")
     )
+
+
+def test_campaign18_qualified_origin_consumes_exact_retained_frontier(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    origin = (2400 * live.RP2040_TIMER0_TICKS_PER_SECOND) % (1 << 32)
+    _append_selected_estimate(
+        supervisor,
+        estimate_seq=4,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=origin,
+    )
+    health = _health(supervisor, dac_epoch="1")
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)] = str(
+        origin
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
+        "rp2040_timer0"
+    )
+
+    supervisor._maybe_qualify(health)
+
+    assert supervisor.state["qualified_origin_estimate_id"] == (
+        "est:cx317:selected600:000004"
+    )
+    assert supervisor.state["qualified_origin_timestamp_ticks"] == origin
+    assert supervisor.state["qualified_origin_extended_timestamp_ticks"] == origin
+    assert supervisor.state["qualified_frontier_raw_ticks"] == origin
+    assert supervisor.state["qualified_frontier_extended_ticks"] == origin
 
 
 def test_qualified_clock_defers_fractional_origin_until_uptime_lower_bound(
@@ -744,6 +1199,53 @@ def test_exact_setup_then_frequency_acquisition_arm(
     assert commands[1].startswith("ACTIVE ARM 1 ")
     assert commands[1].split()[-1] == str(4000 + live.ARM_LIFETIME_S)
     assert supervisor.state["arm_pending"] is True
+
+
+def test_integrated_setup_waits_for_complete_unarmed_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_prewrite_readiness", lambda health: _ready())
+    monkeypatch.setattr(
+        supervisor,
+        "_setup_command",
+        lambda health: (
+            "ACTIVE SETUP exact",
+            {
+                "authorization_sequence": 1,
+                "status_generation": 7,
+                "query_nonce": 9,
+                "expires_s": 4100,
+                "session_id": 1,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor, "_retain_setup_authority", lambda health, request: None
+    )
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    before_setup = _health(
+        supervisor,
+        manual_start_confirmed="false",
+        confirmed_applied_code_known="false",
+        confirmed_applied_code="unavailable",
+        dac_epoch="0",
+        arm_eligible="false",
+        hybrid_state="SETUP_PENDING",
+    )
+
+    supervisor._maybe_start_or_arm(
+        before_setup, elapsed_monotonic_s=1_799.999
+    )
+    assert commands == []
+    assert supervisor.state["manual_start_sent"] is False
+
+    supervisor._maybe_start_or_arm(before_setup, elapsed_monotonic_s=1_800.0)
+    assert commands == ["ACTIVE SETUP exact"]
+    assert supervisor.state["manual_start_sent"] is True
+    assert supervisor.state["unarmed_observation_complete_utc"] is not None
 
 
 def test_phase_qualify_rearms_despite_continuous_frequency_preview(
@@ -979,6 +1481,83 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
         supervisor._confirm_evidence_acknowledgement(acknowledgement)
 
 
+def test_snapshot_query_rotates_nonce_and_requires_later_generation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["host_attach_query_nonce"] = 99
+    supervisor.state["active_snapshot_request_nonce"] = 99
+    same_generation = _health(
+        supervisor,
+        snapshot_generation_begin="7",
+        snapshot_generation_complete="7",
+        query_nonce="100",
+    )
+    later_generation = _health(
+        supervisor,
+        snapshot_generation_begin="8",
+        snapshot_generation_complete="8",
+        query_nonce="100",
+    )
+    snapshots = iter((same_generation, later_generation))
+    commands: list[str] = []
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    monkeypatch.setattr(
+        supervisor, "_current_health", lambda **_kwargs: next(snapshots)
+    )
+
+    selected = supervisor._fresh_active_snapshot_after(7)
+
+    assert commands == ["ACTIVE SNAPSHOT 100"]
+    assert supervisor.state["host_attach_query_nonce"] == 99
+    assert supervisor.state["active_snapshot_request_nonce"] == 100
+    assert selected[("cx317_active", "snapshot_generation_complete")] == "8"
+    events = [
+        json.loads(line)
+        for line in supervisor.events_path
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    started = next(
+        item
+        for item in events
+        if item["event"].endswith("active_snapshot_query_started")
+    )
+    completed = next(
+        item
+        for item in events
+        if item["event"].endswith("active_snapshot_query_completed")
+    )
+    assert started["query_nonce"] == 100
+    assert started["pre_submit_snapshot_generation"] == 7
+    assert completed["response_snapshot_generation"] == 8
+
+
+def test_ordinary_health_read_uses_rotated_request_not_attach_nonce(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["host_attach_query_nonce"] = 99
+    supervisor.state["active_snapshot_request_nonce"] = 100
+    observed: list[int | None] = []
+
+    def parent_health(
+        _supervisor, *, required_query_nonce: int | None = None
+    ) -> dict[tuple[str, str], str]:
+        observed.append(required_query_nonce)
+        return {}
+
+    monkeypatch.setattr(
+        live.FrequencyControlSupervisor,
+        "_current_health",
+        parent_health,
+    )
+
+    assert supervisor._current_health() == {}
+    assert observed == [100]
+    assert supervisor.state["host_attach_query_nonce"] == 99
+
+
 def test_evidence_prepare_waits_through_causally_stale_snapshot(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1210,6 +1789,22 @@ def test_wall_endpoint_is_right_censored_nonpass_when_static(tmp_path: Path) -> 
         "right_censored_incomplete"
     )
     assert supervisor.state["terminal"]["last_confirmed_code"] == live.SETUP_CODE
+
+
+def test_integrated_wall_endpoint_reports_its_two_hour_authority(tmp_path: Path) -> None:
+    origin = 1_800_000_000.0
+    supervisor = _supervisor(tmp_path, wall_origin_epoch=origin)
+    supervisor.programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+
+    supervisor._maybe_finish(
+        _health(supervisor),
+        origin + supervisor.programme.authorized_absolute_wall_limit_s,
+        0.0,
+    )
+
+    assert supervisor.state["terminal"]["reason"] == (
+        "cx322_d9_d6_integration_2h_absolute_wall_endpoint"
+    )
 
 
 def test_independent_abort_uses_emergency_path_and_classifies_operator_abort(

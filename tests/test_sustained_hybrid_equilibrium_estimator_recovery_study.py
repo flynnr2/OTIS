@@ -50,6 +50,7 @@ def test_recovery_contract_is_separate_frozen_and_offline(
     )
 
 
+@pytest.mark.historical
 def test_exact_plan_recovery_and_raw_bindings_are_identity_validated(
     contract_and_parent: tuple[dict, dict],
 ) -> None:
@@ -70,6 +71,7 @@ def test_exact_plan_recovery_and_raw_bindings_are_identity_validated(
     assert rows and all(row["exact"] for row in rows if row["required"])
 
 
+@pytest.mark.historical
 def test_stage5_supports_reconstruct_exact_counts_and_boundaries(
     reproduced_report: dict,
 ) -> None:
@@ -106,6 +108,7 @@ def test_stage5_supports_reconstruct_exact_counts_and_boundaries(
     assert {row["capture_session"] for row in rows} == {"1"}
 
 
+@pytest.mark.historical
 def test_attempt4_remains_complete_held_out_physical_validation(
     reproduced_report: dict,
 ) -> None:
@@ -122,6 +125,7 @@ def test_attempt4_remains_complete_held_out_physical_validation(
     ].startswith("prediction only")
 
 
+@pytest.mark.historical
 def test_all_frozen_models_have_empty_complete_sets_at_every_gain(
     reproduced_report: dict,
 ) -> None:
@@ -163,6 +167,7 @@ def test_exact_linear_projection_rejects_an_inconsistent_bounded_drift() -> None
     }
 
 
+@pytest.mark.historical
 def test_not_observable_terminal_and_gate_order_are_fail_closed(
     reproduced_report: dict,
 ) -> None:
@@ -189,6 +194,7 @@ def test_not_observable_terminal_and_gate_order_are_fail_closed(
     assert reproduced_report["physical_actions_performed"] == 0
 
 
+@pytest.mark.historical
 def test_published_recovery_report_is_canonical_and_reproducible(
     reproduced_report: dict,
 ) -> None:

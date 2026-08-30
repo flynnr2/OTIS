@@ -28,6 +28,17 @@
       "recovery": "reset_new_evidence_session"
     },
     {
+      "id": "monitor_observation",
+      "implementation": "OtisSpscQueue<OtisMonitorObservationMessage, OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH>",
+      "capacity_symbol": "OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH",
+      "capacity": 16,
+      "producer": "core1_timing",
+      "consumer": "core0_service",
+      "loss_policy": "drop_new_increment_monitor_counter_no_control_or_terminal_authority",
+      "maximum_consumer_absence": "bounded_by_local_queue_only; one_snapshot_and_one_count_per_D14_boundary; core0_drains_separately",
+      "recovery": "continue_authoritative_D14_D8_path; retain_explicit_D6_gap"
+    },
+    {
       "id": "critical",
       "implementation": "OtisSpscQueue<OtisCriticalRecordMessage, OTIS_CRITICAL_QUEUE_DEPTH>",
       "capacity_symbol": "OTIS_CRITICAL_QUEUE_DEPTH",

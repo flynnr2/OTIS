@@ -12,6 +12,8 @@ from host.otis_tools import active_hybrid_live_supervisor as supervisor
 from host.otis_tools.active_hybrid_programme_contract import (
     CX320_PROGRAMME,
     CX321_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
+    CX322_D9_D6_INTEGRATION_PROGRAMME,
     get_active_hybrid_programme,
     programme_from_mapping,
 )
@@ -61,8 +63,71 @@ def test_programme_mapping_requires_an_exact_supported_identity() -> None:
         programme_from_mapping({"run_identity": CX320_PROGRAMME.runtime_run_identity})
         is CX320_PROGRAMME
     )
+    assert get_active_hybrid_programme(
+        "cx322_d9_d6_integration_engineering"
+    ) is CX322_D9_D6_INTEGRATION_PROGRAMME
     with pytest.raises(ValueError, match="does not identify"):
         programme_from_mapping({"programme_id": "CX999"})
+
+
+def test_cx322_d9_d6_descriptor_is_distinct_with_unchanged_controller() -> None:
+    programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    assert programme.profile_id == "cx322_d9_d6_integration_engineering"
+    assert programme.forwarded_output_integration
+    assert programme.fresh_serial_auto_detect
+    assert programme.authorized_maximum_applications == 1
+    assert programme.authorized_maximum_physical_applications == 1
+    assert programme.authorized_maximum_cumulative_movement_codes == 21
+    assert programme.authorized_absolute_wall_limit_s == 7_200
+    assert programme.terminal_after_first_response
+    assert programme.response_checkpoint_observational
+    assert programme.policy_id == "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1"
+    assert programme.natural_policy_programme_id == (
+        "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1"
+    )
+    assert programme.engineering_unarmed_observation_s == 1_800
+    assert programme.engineering_contract_path is not None
+    assert programme.engineering_contract_path.name == (
+        "cx322_d9_d6_integration_engineering_contract_v1.json"
+    )
+    setup_provenance = activation.integrated_setup_provenance_contract(programme)
+    assert activation._authority(programme)["setup_provenance"] == setup_provenance
+    assert setup_provenance["authorized_setup_code"] == 0xA83C
+    assert setup_provenance["prior_or_nominal_state_inferred"] is False
+    assert programme.maximum_physical_applications == 4
+    assert programme.maximum_cumulative_movement_codes == 84
+    assert programme.maximum_step_codes == 21
+    assert programme.runtime_run_identity != "cx322_direct_hybrid:3220001"
+
+
+def test_campaign18_uses_72h_authority_at_every_runtime_projection() -> None:
+    programme = CX322_D9_D6_72H_PROGRAMME
+    authority = activation._authority(programme)
+
+    assert programme.qualified_duration_s == 259_200
+    assert programme.authorized_absolute_wall_limit_s == 280_800
+    assert programme.capture_duration_s == 280_980
+    assert programme.supervisor_duration_s == 280_920
+    assert programme.qualified_endpoint_reason == (
+        "cx322_d9_d6_72h_72h_qualified_endpoint_complete"
+    )
+    assert programme.authorized_maximum_applications == 144
+    assert programme.authorized_maximum_physical_applications == 144
+    assert programme.authorized_maximum_cumulative_movement_codes == 3_024
+    assert programme.minimum_applied_cadence_s == 1_800
+    assert programme.correction_response_reserve_s == 1_500
+    assert authority["maximum_total_automatic_applications"] == 144
+    assert authority["maximum_total_physical_control_applications"] == 144
+    assert authority["maximum_cumulative_absolute_movement_codes"] == 3_024
+    assert authority["qualified_duration_s"] == 259_200
+    assert authority["absolute_wall_clock_limit_s"] == 280_800
+
+    # The unchanged CX322 policy document still carries its historical
+    # numerical envelope. It is controller-law provenance, not Campaign18
+    # live authority; every runtime projection above must use the explicit
+    # engineering overrides.
+    assert programme.maximum_applications == 4
+    assert programme.maximum_cumulative_movement_codes == 84
 
 
 def test_cx321_exact_build_binding_accepts_its_distinct_campaign_macro(
@@ -121,3 +186,54 @@ def test_cx321_exact_build_binding_accepts_its_distinct_campaign_macro(
     assert result["defines"]["OTIS_CX317_ACTIVE_CAMPAIGN"].endswith(
         "CX321_ACTIVE_HYBRID"
     )
+
+
+def test_forwarded_integration_build_requires_exact_gnss_boot_policy(
+    tmp_path: Path,
+) -> None:
+    programme = CX322_D9_D6_72H_PROGRAMME
+    matrix = json.loads(
+        (Path(__file__).resolve().parents[1]
+         / "firmware/arduino/firmware_matrix.json").read_text(encoding="utf-8")
+    )
+    profile = next(
+        item for item in matrix["profiles"] if item["id"] == programme.profile_id
+    )
+    uf2 = tmp_path / "cx322_d9_d6.uf2"
+    uf2.write_bytes(b"cx322-d9-d6-exact-build-fixture")
+    manifest = {
+        "provenance": {
+            "configuration": {
+                "profile_id": programme.profile_id,
+                "defines": profile["defines"],
+                "sha256": "1" * 64,
+            },
+            "source": {
+                "sha256": "2" * 64,
+                "state": "clean",
+                "git_commit": "3" * 40,
+            },
+            "target": {
+                "fqbn": "rp2040:rp2040:arduino_nano_connect:freq=133"
+            },
+            "toolchain": {
+                "compiler_identity": "fixture-compiler",
+                "installed_sha256": "4" * 64,
+            },
+        },
+        "artifacts": [
+            {"name": uf2.name, "sha256": sha256(uf2.read_bytes()).hexdigest()}
+        ],
+    }
+    manifest_path = tmp_path / "firmware_build_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = bundle._validate_build(manifest_path, programme)
+    assert result["defines"]["OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION"] == "1"
+
+    del manifest["provenance"]["configuration"]["defines"][  # type: ignore[index]
+        "OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION"
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="compile-time envelope differs"):
+        bundle._validate_build(manifest_path, programme)

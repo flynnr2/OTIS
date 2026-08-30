@@ -36,6 +36,11 @@ struct RegistryState {
 
 RegistryState registry = {};
 
+bool owner_is_fail_local_diagnostic(const char *owner) {
+  return owner != nullptr &&
+         strcmp(owner, OTIS_OWNER_FORWARDED_CLOCK_MONITOR) == 0;
+}
+
 void note_binding_failure(void) {
   registry.binding_failure_count++;
   registry.valid = false;
@@ -118,6 +123,18 @@ void add_count_observation_owner(void) {
 #endif
 }
 
+void add_forwarded_clock_monitor_owner(void) {
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR
+  add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
+                  OTIS_PIN_FORWARDED_CLOCK_MONITOR,
+                  OTIS_OWNER_FORWARDED_CLOCK_MONITOR,
+                  "d6_gpio18_diagnostic_input");
+  add_pio_owner(OTIS_OWNER_FORWARDED_CLOCK_MONITOR,
+                "d6_d14_cumulative_snapshot",
+                kPpsSnapshotPioProgramLength);
+#endif
+}
+
 void add_pseudo_pps_owner(void) {
 #if OTIS_ENABLE_PSEUDO_PPS_GENERATOR
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
@@ -178,7 +195,7 @@ void add_gnss_receiver_owner(void) {
 bool bind_dynamic_claim(OtisResourceType type, const char *owner,
                         uint8_t instance, uint16_t index, uint16_t span) {
   if (!registry.initialized || owner == nullptr || span == 0u) {
-    note_binding_failure();
+    if (!owner_is_fail_local_diagnostic(owner)) note_binding_failure();
     return false;
   }
 
@@ -194,7 +211,7 @@ bool bind_dynamic_claim(OtisResourceType type, const char *owner,
 
   if (target == kMaxResourceClaims ||
       registry.claims[target].span != span) {
-    note_binding_failure();
+    if (!owner_is_fail_local_diagnostic(owner)) note_binding_failure();
     return false;
   }
 
@@ -204,8 +221,10 @@ bool bind_dynamic_claim(OtisResourceType type, const char *owner,
   for (uint8_t i = 0; i < registry.claim_count; ++i) {
     if (i != target &&
         otis_resource_claims_conflict(registry.claims[i], candidate)) {
-      registry.conflict_count++;
-      registry.valid = false;
+      if (!owner_is_fail_local_diagnostic(owner)) {
+        registry.conflict_count++;
+        registry.valid = false;
+      }
       return false;
     }
   }
@@ -282,6 +301,7 @@ bool otis_resource_registry_begin(void) {
   add_h1_i2c_owner();
   add_gnss_receiver_owner();
   add_pseudo_pps_owner();
+  add_forwarded_clock_monitor_owner();
   return registry.valid;
 }
 
@@ -294,7 +314,8 @@ bool otis_resource_registry_complete(void) {
     return false;
   }
   for (uint8_t i = 0; i < registry.claim_count; ++i) {
-    if (!registry.claims[i].bound) {
+    if (!registry.claims[i].bound &&
+        !owner_is_fail_local_diagnostic(registry.claims[i].owner)) {
       return false;
     }
   }

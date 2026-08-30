@@ -182,6 +182,26 @@ bool otis_gnss_uart_rx_ring_pop(OtisGnssUartRxRing *ring,
   return true;
 }
 
+uint32_t otis_gnss_uart_rx_ring_discard_all(OtisGnssUartRxRing *ring) {
+  if (ring == nullptr) return 0u;
+  uint32_t discarded = 0u;
+  OtisGnssUartObservation observation = {};
+  while (otis_gnss_uart_rx_ring_pop(ring, &observation)) discarded++;
+  return discarded;
+}
+
+uint32_t otis_gnss_uart_rx_bounded_hardware_discard(
+    OtisGnssUartRxByteAvailable byte_available,
+    OtisGnssUartRxDiscardByte discard_byte, void *context, uint32_t budget) {
+  if (byte_available == nullptr || discard_byte == nullptr) return 0u;
+  uint32_t discarded = 0u;
+  while (discarded < budget && byte_available(context)) {
+    discard_byte(context);
+    discarded++;
+  }
+  return discarded;
+}
+
 uint32_t otis_gnss_uart_rx_ring_depth(const OtisGnssUartRxRing *ring) {
   if (ring == nullptr) return 0u;
   const uint32_t depth = static_cast<uint32_t>(

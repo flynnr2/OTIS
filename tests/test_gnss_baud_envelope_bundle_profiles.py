@@ -89,13 +89,14 @@ def _operational(
 def _campaign_inputs(tmp_path: Path, profile_id: str) -> dict[str, Path]:
     matrix = load_matrix()
     profile = next(item for item in matrix["profiles"] if item["id"] == profile_id)
-    elf = tmp_path / "candidate.elf"
-    elf.write_bytes(
-        b"synthetic ELF D14 D8_GPIO20_GPIN0\x00"
+    binary_image = (
+        b"synthetic BIN D14 D8_GPIO20_GPIN0\x00"
         + b"\x00".join(sorted(GNSS_BAUD_CHARACTERIZATION_PACKETS))
         + b"\x00"
         + b"\x00".join(GNSS_BAUD_CHARACTERIZATION_BINARY_MARKERS.values())
     )
+    elf = tmp_path / "candidate.elf"
+    elf.write_bytes(b"synthetic ELF with debug metadata")
     paths = [
         tmp_path / "candidate.bin",
         elf,
@@ -103,7 +104,7 @@ def _campaign_inputs(tmp_path: Path, profile_id: str) -> dict[str, Path]:
         tmp_path / "candidate.map",
         tmp_path / "candidate.uf2",
     ]
-    paths[0].write_bytes(b"synthetic bin")
+    paths[0].write_bytes(binary_image)
     paths[2].write_text("synthetic generated header\n", encoding="utf-8")
     paths[3].write_bytes(b"synthetic map")
     paths[4].write_bytes(b"synthetic uf2")
@@ -234,6 +235,7 @@ def _reidentify(value: dict[str, object], identity_field: str) -> None:
     )
 
 
+@pytest.mark.historical
 def test_continuation_candidate_binds_prefix_mapping_schedule_and_attachment(
     tmp_path: Path, stable_bundle_host: None
 ) -> None:
@@ -259,6 +261,7 @@ def test_continuation_candidate_binds_prefix_mapping_schedule_and_attachment(
     ] == candidate["continuation"]
 
 
+@pytest.mark.historical
 def test_resume_candidate_binds_exact_tail_and_failed_predecessor(
     tmp_path: Path, stable_bundle_host: None
 ) -> None:
@@ -311,6 +314,7 @@ def test_original_candidate_path_remains_full_programme_and_has_no_continuation(
     "mutation",
     ("startup", "prefix", "mapping", "schedule"),
 )
+@pytest.mark.historical
 def test_continuation_candidate_rejects_identity_preserving_semantic_tamper(
     tmp_path: Path, stable_bundle_host: None, mutation: str
 ) -> None:
@@ -334,6 +338,7 @@ def test_continuation_candidate_rejects_identity_preserving_semantic_tamper(
         bundle.validate_candidate(tampered)
 
 
+@pytest.mark.historical
 def test_continuation_candidate_rejects_wrong_build_profile(
     tmp_path: Path, stable_bundle_host: None
 ) -> None:
@@ -354,6 +359,7 @@ def test_continuation_candidate_rejects_wrong_build_profile(
         )
 
 
+@pytest.mark.historical
 def test_candidate_revalidation_rejects_build_manifest_tampering(
     tmp_path: Path, stable_bundle_host: None
 ) -> None:
@@ -369,6 +375,7 @@ def test_candidate_revalidation_rejects_build_manifest_tampering(
 
 
 @pytest.mark.parametrize("mutation", ("attachment", "startup", "prefix", "schedule"))
+@pytest.mark.historical
 def test_continuation_activation_binds_all_continuation_identity_and_rejects_tamper(
     tmp_path: Path, stable_bundle_host: None, mutation: str
 ) -> None:

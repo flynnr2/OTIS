@@ -41,15 +41,16 @@ def _synthetic_build(tmp_path: Path) -> Path:
         for item in matrix["profiles"]
         if item["id"] == GNSS_BAUD_CHARACTERIZATION_PROFILE_ID
     )
-    elf = tmp_path / "candidate.elf"
-    elf.write_bytes(
-        b"synthetic ELF D14 D8_GPIO20_GPIN0\x00"
+    binary_image = (
+        b"synthetic BIN D14 D8_GPIO20_GPIN0\x00"
         + b"\x00".join(sorted(GNSS_BAUD_CHARACTERIZATION_PACKETS))
         + b"\x00"
         + b"\x00".join(GNSS_BAUD_CHARACTERIZATION_BINARY_MARKERS.values())
     )
+    elf = tmp_path / "candidate.elf"
+    elf.write_bytes(b"synthetic ELF with debug metadata")
     binary = tmp_path / "candidate.bin"
-    binary.write_bytes(b"synthetic bin")
+    binary.write_bytes(binary_image)
     map_file = tmp_path / "candidate.map"
     map_file.write_bytes(b"synthetic map")
     uf2 = tmp_path / "candidate.uf2"

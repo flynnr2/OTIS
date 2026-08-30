@@ -6,6 +6,14 @@
 
 #include "otis_build_profile_config.h"
 
+// Exact non-actuating programme role used to keep the D9-disabled,
+// D9-enabled/D6-disabled and D9-enabled/D6-enabled strata on the same
+// dual-core D14/D8 service topology. It grants no receiver, DAC, estimator or
+// control authority by itself.
+#ifndef OTIS_ENABLE_D9_D6_READINESS_PROFILE
+#define OTIS_ENABLE_D9_D6_READINESS_PROFILE 0
+#endif
+
 // The only initial forwarded-output topology is D8/GPIO20/GPIN0 through
 // GPOUT0 to D9/GPIO21 at an integer divide of one.  These are compile-time
 // selectors: neither the source, destination nor divider has a command path.
@@ -25,6 +33,10 @@
 #endif
 #if OTIS_ENABLE_FORWARDED_D6_MONITOR && !OTIS_ENABLE_FORWARDED_D9_OUTPUT
 #error "The D6 diagnostic monitor requires the exact compile-time D9 output."
+#endif
+#if OTIS_ENABLE_D9_D6_READINESS_PROFILE != 0 && \
+    OTIS_ENABLE_D9_D6_READINESS_PROFILE != 1
+#error "OTIS_ENABLE_D9_D6_READINESS_PROFILE must be 0 or 1."
 #endif
 
 #ifndef OTIS_MINIMUM_FREE_STACK_BYTES
@@ -117,8 +129,16 @@
   (OTIS_ENABLE_CX321_ACTIVE_HYBRID || OTIS_ENABLE_CX322_DIRECT_HYBRID || \
    OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION)
 
+#define OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION \
+  (OTIS_ENABLE_CX32X_EXACT_ACTIVE_TIMING || \
+   OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS)
+
 #ifndef OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS
 #define OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS 4u
+#endif
+
+#ifndef OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES
+#define OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES 84u
 #endif
 
 #ifndef OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE
@@ -229,10 +249,20 @@
 #define OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID 14
 #define OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID 15
 #define OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION 16
+#define OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE 17
+#define OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID 18
 
 #ifndef OTIS_CX317_ACTIVE_CAMPAIGN
 #define OTIS_CX317_ACTIVE_CAMPAIGN OTIS_CX317_ACTIVE_CAMPAIGN_NONE
 #endif
+
+// The revised D9/D6 24 h and 72 h programmes retain ACT/AHY v1 and add
+// exact-counter timing sidecars. No historical active profile emits them.
+#define OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS \
+  (OTIS_CX317_ACTIVE_CAMPAIGN == \
+       OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE || \
+   OTIS_CX317_ACTIVE_CAMPAIGN == \
+       OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID)
 
 #ifndef OTIS_CX317_ACTIVE_START_CODE
 #define OTIS_CX317_ACTIVE_START_CODE 0u
@@ -390,6 +420,9 @@
 #define OTIS_FIRMWARE_VERSION "CX318_STAGE4_SINGLE_WRITE_PREMISE_SETUP_V1"
 #elif OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
 #define OTIS_FIRMWARE_VERSION "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1"
+#elif OTIS_CX317_ACTIVE_CAMPAIGN == \
+    OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID
+#define OTIS_FIRMWARE_VERSION "OTIS_CX322_D9_D6_72H_SUSTAINED_HYBRID_V1"
 #elif OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION
 #define OTIS_FIRMWARE_VERSION "OTIS_SUSTAINED_HYBRID_REGULATION_V1"
 #elif OTIS_ENABLE_CX322_DIRECT_HYBRID
@@ -411,6 +444,10 @@
 #define OTIS_FIRMWARE_VERSION "CX317_DUAL_CORE_ACTIVE_I_ONLY_V1"
 #elif OTIS_ENABLE_CX317_BOUNDED_ACTIVE
 #define OTIS_FIRMWARE_VERSION "CX317_BOUNDED_ACTIVE_I_ONLY_V2"
+#elif OTIS_ENABLE_D9_D6_READINESS_PROFILE
+#define OTIS_FIRMWARE_VERSION "OTIS_D9_D6_READINESS_V1"
+#elif OTIS_ENABLE_FORWARDED_D9_OUTPUT
+#define OTIS_FIRMWARE_VERSION "OTIS_D9_FORWARDED_OUTPUT_V1"
 #elif OTIS_ENABLE_DUAL_CORE_PARTITION
 #define OTIS_FIRMWARE_VERSION "CX317_DUAL_CORE_POST_CAMPAIGN_PREVIEW_V1"
 #elif OTIS_ENABLE_CX317_I_ONLY_PREVIEW
@@ -677,11 +714,34 @@
 #endif
 
 #ifndef OTIS_GNSS_UART_BAUD
-// The installed receiver resets to 9600 on a receiver power cycle but retains
-// its selected rate across an MCU reset/flash. Ordinary discovery probes the
-// operational target first, then 9600, and issues the fixed PMTK251 command
-// only after fresh identity establishes which rate is actually active.
+// The installed receiver resets to 9600 on a receiver power cycle and otherwise
+// retains its last selected rate. Operational firmware aligns it to 115200 with
+// the finite configuration-blind promotion policy below. Characterization
+// profiles retain their separate evidence-bearing discovery state machine.
 #define OTIS_GNSS_UART_BAUD 115200u
+#endif
+
+// A write-only boot transaction covers the receiver's only two ordinary start
+// states: reset-default 9600 and retained-operational 115200. It sends the one
+// fixed PMTK251 set-115200 packet at 9600, settles, repeats it idempotently at
+// 115200, settles, and then remains permanently at 115200. It never listens to
+// select a rate and never repeats the promotion after boot. Characterization
+// rates remain confined to the separate characterization profile.
+#ifndef OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+#if OTIS_ENABLE_GNSS_RECEIVER && OTIS_GNSS_UART_TX_ENABLED && \
+    OTIS_GNSS_UART_BAUD == 115200u && \
+    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+#define OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION 1
+#else
+#define OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION 0
+#endif
+#endif
+
+// Peripheral TX completion proves only that the last stop bit left UART0. The
+// receiver gets one full passive interval to parse and apply each PMTK251
+// command before UART0 changes rate or sends the first identity query.
+#ifndef OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS
+#define OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS 1200u
 #endif
 
 // The continuation bundle may retain the freshly rediscovered startup rate
@@ -983,6 +1043,26 @@
 #error "The GNSS receiver target must be 9600 or 115200 baud."
 #endif
 
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION && \
+    (!OTIS_ENABLE_GNSS_RECEIVER || !OTIS_GNSS_UART_TX_ENABLED || \
+     OTIS_GNSS_UART_BAUD != 115200u || \
+     OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION)
+#error "Configuration-blind GNSS promotion requires an ordinary TX-enabled 115200 receiver profile."
+#endif
+
+#if OTIS_ENABLE_GNSS_RECEIVER && OTIS_GNSS_UART_TX_ENABLED && \
+    OTIS_GNSS_UART_BAUD == 115200u && \
+    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    !OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION
+#error "Ordinary 115200 GNSS profiles must use the configuration-blind promotion policy."
+#endif
+
+#if OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION && \
+    (OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS < 1000u || \
+     OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS > 5000u)
+#error "GNSS operational promotion settle must be between 1 and 5 seconds."
+#endif
+
 #if OTIS_GNSS_SERVICE_BYTE_BUDGET < 1u || \
     OTIS_GNSS_SERVICE_BYTE_BUDGET > 64u
 #error "OTIS_GNSS_SERVICE_BYTE_BUDGET must be between 1 and 64 bytes."
@@ -1133,8 +1213,17 @@
       OTIS_CX317_ACTIVE_CAMPAIGN != \
           OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID && \
       OTIS_CX317_ACTIVE_CAMPAIGN != \
-          OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION))
+          OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION && \
+      OTIS_CX317_ACTIVE_CAMPAIGN != \
+          OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID))
 #error "CX320 active hybrid requires its exact dual-core tight-band campaign identity."
+#endif
+
+#if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS && \
+    (!OTIS_ENABLE_DUAL_CORE_PARTITION || \
+     !OTIS_ENABLE_CX317_BOUNDED_ACTIVE || \
+     !OTIS_ENABLE_TIGHT_DEADBAND_ACTIVE_PREVIEW)
+#error "Exact long-run active timing sidecars require the dual-core bounded active transaction path."
 #endif
 
 #if OTIS_ENABLE_CX319_RANGE_MAP_PREVIEW != 0 && \
@@ -1193,8 +1282,22 @@
 
 #if OTIS_ENABLE_DUAL_CORE_PARTITION && !OTIS_ENABLE_CX317_I_ONLY_PREVIEW && \
     !OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW && \
-    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION
+    !OTIS_ENABLE_GNSS_BAUD_CHARACTERIZATION && \
+    !OTIS_ENABLE_FORWARDED_D6_MONITOR && \
+    !OTIS_ENABLE_D9_D6_READINESS_PROFILE
 #error "The dual-core partition requires an explicit protected timing preview."
+#endif
+
+#if OTIS_ENABLE_D9_D6_READINESS_PROFILE && \
+    (!OTIS_ENABLE_DUAL_CORE_PARTITION || OTIS_ENABLE_CX317_BOUNDED_ACTIVE || \
+     OTIS_ENABLE_GNSS_RECEIVER || OTIS_ENABLE_DAC_AD5693R || \
+     OTIS_ENABLE_ENV_SENSORS || OTIS_ENABLE_CX317_I_ONLY_PREVIEW || \
+     OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW)
+#error "The D9/D6 readiness profile is exact dual-core D14/D8 observation with receiver, DAC, estimator and control authority disabled."
+#endif
+
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR && !OTIS_ENABLE_DUAL_CORE_PARTITION
+#error "The D6 diagnostic monitor requires the isolated dual-core partition."
 #endif
 
 #if OTIS_ENABLE_CX318_STAGE4_PREVIEW && !OTIS_ENABLE_DUAL_CORE_PARTITION
@@ -1264,6 +1367,8 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER && \
@@ -1278,7 +1383,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION
+        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID
 #error "CX319 tight preview requires an exact successor leg identity."
 #endif
 
@@ -1306,6 +1413,8 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER && \
@@ -1320,7 +1429,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION
+        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID
 #error "Dual-core bounded authority is restricted to exact historical or current programme profiles."
 #endif
 
@@ -1452,6 +1563,18 @@
 
 #if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
     OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE && \
+    (OTIS_CX317_ACTIVE_START_CODE != 0xA808u || \
+     OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 48u || \
+     OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES != 1008u || \
+     OTIS_CX317_DECISION_CADENCE_S != 1800u || \
+     OTIS_CX317_MINIMUM_APPLIED_CADENCE_S != 1800u || \
+     OTIS_DAC_MIN_CODE != 0xA800u || OTIS_DAC_MAX_CODE != 0xAB00u)
+#error "D9/D6 24-hour frequency-only endurance parameters differ from the nonbinding cadence-derived envelope."
+#endif
+
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER && \
     (OTIS_CX317_ACTIVE_START_CODE != 0xA848u || \
      OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 4u || \
@@ -1524,6 +1647,28 @@
 #error "Sustained hybrid regulation parameters differ from the frozen candidate."
 #endif
 
+#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN == \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID && \
+    (OTIS_CX317_ACTIVE_START_CODE != 0xA83Cu || \
+     OTIS_CX317_ACTIVE_CORRECTION_LIMIT != 144u || \
+     OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES != 3024u || \
+     OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS != 144u || \
+     OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES != 3024u || \
+     OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE != 0 || \
+     OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION != 0 || \
+     OTIS_ENABLE_CX320_ACTIVE_HYBRID != 1 || \
+     OTIS_ENABLE_CX321_ACTIVE_HYBRID != 0 || \
+     OTIS_ENABLE_CX322_DIRECT_HYBRID != 1 || \
+     OTIS_ENABLE_FORWARDED_D9_OUTPUT != 1 || \
+     OTIS_ENABLE_FORWARDED_D6_MONITOR != 1 || \
+     OTIS_ENABLE_D9_D6_READINESS_PROFILE != 0 || \
+     OTIS_CX317_DECISION_CADENCE_S != 1800u || \
+     OTIS_CX317_MINIMUM_APPLIED_CADENCE_S != 1800u || \
+     OTIS_DAC_MIN_CODE != 0xA800u || OTIS_DAC_MAX_CODE != 0xAB00u)
+#error "D9/D6 72-hour sustained-hybrid parameters differ from the exact authority envelope."
+#endif
+
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID && \
     (!OTIS_ENABLE_CX320_ACTIVE_HYBRID || \
      OTIS_CX317_ACTIVE_CAMPAIGN != \
@@ -1536,7 +1681,9 @@
      (OTIS_CX317_ACTIVE_CAMPAIGN != \
           OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID && \
       OTIS_CX317_ACTIVE_CAMPAIGN != \
-          OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION))
+          OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION && \
+      OTIS_CX317_ACTIVE_CAMPAIGN != \
+          OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID))
 #error "CX322 direct hybrid requires its exact CX320-derived profile without CX321 identification."
 #endif
 
@@ -1563,7 +1710,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION
+        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID
 #error "External DAC-epoch candidate reseed is restricted to conditional Part B and active-hybrid profiles."
 #endif
 
@@ -1596,6 +1745,8 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_LOWER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_FREQUENCY_ONLY_ENDURANCE && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_TIGHT_DEADBAND_UPPER && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_RANGE_PART_B_LOWER && \
@@ -1610,7 +1761,9 @@
     OTIS_CX317_ACTIVE_CAMPAIGN != \
         OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID && \
     OTIS_CX317_ACTIVE_CAMPAIGN != \
-        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION
+        OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION && \
+    OTIS_CX317_ACTIVE_CAMPAIGN != \
+        OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID
 #error "Bounded active control requires an exact programme campaign identity."
 #endif
 
@@ -1774,6 +1927,21 @@
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_DUAL_CORE_PARTITION
 #if OTIS_ENABLE_DUAL_CORE_PARTITION != OTIS_BUILD_EXPECTED_OTIS_ENABLE_DUAL_CORE_PARTITION
 #error "Effective OTIS_ENABLE_DUAL_CORE_PARTITION differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_D9_D6_READINESS_PROFILE
+#if OTIS_ENABLE_D9_D6_READINESS_PROFILE != OTIS_BUILD_EXPECTED_OTIS_ENABLE_D9_D6_READINESS_PROFILE
+#error "Effective OTIS_ENABLE_D9_D6_READINESS_PROFILE differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_FORWARDED_D9_OUTPUT
+#if OTIS_ENABLE_FORWARDED_D9_OUTPUT != OTIS_BUILD_EXPECTED_OTIS_ENABLE_FORWARDED_D9_OUTPUT
+#error "Effective OTIS_ENABLE_FORWARDED_D9_OUTPUT differs from the generated profile."
+#endif
+#endif
+#ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_FORWARDED_D6_MONITOR
+#if OTIS_ENABLE_FORWARDED_D6_MONITOR != OTIS_BUILD_EXPECTED_OTIS_ENABLE_FORWARDED_D6_MONITOR
+#error "Effective OTIS_ENABLE_FORWARDED_D6_MONITOR differs from the generated profile."
 #endif
 #endif
 #ifdef OTIS_BUILD_EXPECTED_OTIS_ENABLE_CX317_BOUNDED_ACTIVE

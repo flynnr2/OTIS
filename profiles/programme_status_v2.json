@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": null,
+  "active_programme": "cx322_d9_d6_72h_sustained_engineering",
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
@@ -2663,6 +2663,135 @@
         "phase_or_hybrid_actuation",
         "g4_progression"
       ]
+    },
+    "cx322_d9_d6_integration_engineering": {
+      "state": "superseded_by_cx322_d9_d6_72h_sustained_engineering",
+      "allowed_operations": [],
+      "effective_date": "2026-08-28",
+      "authority": "operator_authorized_nonincremental_engineering_bench_work",
+      "physical_authority_effective": false,
+      "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
+      "predecessor_evidence": {
+        "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
+        "seal_path": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z/reports/cx322_direct_hybrid_physical_seal_v1.json",
+        "seal_file_sha256": "147d602bc9d3a7c0eb47542952330930532d051556ab1aa687395f6d8ed9bf8f",
+        "seal_size_bytes": 12675403,
+        "seal_sha256": "3ccda92c765c7d69af69fe82c86738b9497ddae6bc3667773df44b84f01036d0",
+        "terminal_primary_decision": "bounded_direct_hybrid_evidence_acquired"
+      },
+      "engineering_contract": "docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_d9_d6_integration_engineering_contract_v1.json",
+      "firmware_profile": "cx322_d9_d6_integration_engineering",
+      "serial": {
+        "baud": 115200,
+        "device_selection": "fresh_capture_device_--auto-detect_exactly_one_/dev/cu.usbmodem*",
+        "stored_device_path_authority": false
+      },
+      "finite_envelope": {
+        "unarmed_concurrency_observation_s": 1800,
+        "maximum_total_automatic_applications": 1,
+        "maximum_total_physical_control_applications": 1,
+        "maximum_combined_step_codes": 21,
+        "maximum_cumulative_absolute_movement_codes": 21,
+        "minimum_applied_cadence_s": 1800,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "absolute_wall_clock_limit_s": 7200,
+        "stop_after_first_complete_application_first_consumer_and_response": true,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "extension": false
+      },
+      "authority_invariants": {
+        "D14_reference_authority": true,
+        "D8_oscillator_and_control_truth": true,
+        "D9_measurement_or_control_authority": false,
+        "D6_measurement_control_abort_or_terminal_authority": false,
+        "D10_authority_changed": false,
+        "waveform_qualified": false
+      },
+      "verification": {
+        "exact_build_pending": true,
+        "operational_rehearsal_pending": true,
+        "bench_entry_pending": true,
+        "authority_consumed": false
+      },
+      "next_gate": "exact_build_complete_operational_rehearsal_then_fresh_auto_detect_bench_entry"
+    },
+    "cx322_d9_d6_72h_sustained_engineering": {
+      "state": "operator_authorized_preflight_rehearsal_and_bounded_bench",
+      "allowed_operations": [
+        "offline_preparation",
+        "cx322_d9_d6_72h_sustained_engineering_live"
+      ],
+      "effective_date": "2026-08-30",
+      "authority": "operator_authorized_nonincremental_engineering_bench_work",
+      "physical_authority_effective": true,
+      "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
+      "predecessor_evidence": {
+        "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
+        "seal_path": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z/reports/cx322_direct_hybrid_physical_seal_v1.json",
+        "seal_file_sha256": "147d602bc9d3a7c0eb47542952330930532d051556ab1aa687395f6d8ed9bf8f",
+        "seal_size_bytes": 12675403,
+        "seal_sha256": "3ccda92c765c7d69af69fe82c86738b9497ddae6bc3667773df44b84f01036d0",
+        "terminal_primary_decision": "bounded_direct_hybrid_evidence_acquired"
+      },
+      "engineering_contract": "docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_d9_d6_72h_integrated_engineering_contract_v1.json",
+      "firmware_profile": "cx322_d9_d6_72h_sustained_engineering",
+      "serial": {
+        "baud": 115200,
+        "device_selection": "fresh_capture_device_--auto-detect_exactly_one_/dev/cu.usbmodem*",
+        "stored_device_path_authority": false
+      },
+      "finite_envelope": {
+        "qualified_duration_s": 259200,
+        "maximum_total_automatic_applications": 144,
+        "maximum_total_physical_control_applications": 144,
+        "maximum_total_dac_writes_including_setup": 145,
+        "maximum_combined_step_codes": 21,
+        "maximum_cumulative_absolute_movement_codes": 3024,
+        "minimum_applied_cadence_s": 1800,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "absolute_wall_clock_limit_s": 280800,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "deliberate_reversal_challenge": false,
+        "extension": false
+      },
+      "authority_invariants": {
+        "D14_reference_authority": true,
+        "D8_oscillator_and_control_truth": true,
+        "D9_measurement_or_control_authority": false,
+        "D6_measurement_control_abort_or_terminal_authority": false,
+        "D10_authority_changed": false,
+        "waveform_qualified": false,
+        "authority_ceilings_are_activity_targets": false
+      },
+      "verification": {
+        "frequency_only_24h_attempt9_original_failure_preserved_and_registered": true,
+        "frequency_only_24h_attempt9_original_content_sha256": "a303a80d8e81f09e0dc09122fc97fefbd506e47c418444ca3b9be23d9f94159c",
+        "frequency_only_24h_attempt9_superseding_pass_registered": true,
+        "frequency_only_24h_attempt9_superseding_seal_sha256": "ea6fd21b8b1665d43e6a48218d1fe28f69dfed1cf63d8c79ad56baaec80c9ceb",
+        "frequency_only_24h_attempt9_derived_content_sha256": "f93495719ce0a8648d115e25836b27e777b5f9c3593be58b3e9ea7360620d03e",
+        "exact_build_reused_identity_revalidation_passed": true,
+        "firmware_uf2_sha256": "27b8c73a1ac6b4a8df55920a4641f4303af78688de2fa2eff2f7aa781661bab6",
+        "frequency_only_predecessor_content_binding_passed": true,
+        "active_hybrid_bundle_sha256": "7d7851bad6fe9d3261e18a2242f5c16c24d878f4ac354f34d591a02c3af4e985",
+        "campaign18_adapter_bundle_sha256": "3836a213643001650881ebbf6f65a7514beee63d5e342b2cdef906396099295f",
+        "complete_operational_rehearsal_passed": true,
+        "operational_rehearsal_sha256": "dc65375b9226eb7085c4e567481a3f51e116a8bea93e94322cc7f16942025af8",
+        "campaign18_wrapper_rehearsal_sha256": "ba2b26dfb419dde74eb7d0539ccc0356bd615ddf6fe3344e6abb4ef231bac076",
+        "exact_at2_ahy_sidecar_join_passed": true,
+        "gnss_fixed_115200_bootstrap_and_requalification_path_passed": true,
+        "first_post_requalification_consumer_passed": true,
+        "effective_active_hybrid_activation_ready": true,
+        "active_hybrid_activation_sha256": "bc6f746b6aa82b146266ffe56b238becde79979fe5a29be1d93d44d408d8b567",
+        "effective_adapter_activation_ready": true,
+        "adapter_activation_sha256": "ea5b56f62dc6108cce5422bf3b6452f11e81758e92e9caf40cca8596c6371bde",
+        "bench_entry_pending": true,
+        "authority_consumed": false
+      },
+      "next_gate": "repeat_dynamic_auto_detect_owner_and_prewrite_physical_gates_then_single_finite_72h_live_entry"
     }
   }
 }

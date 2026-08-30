@@ -15,6 +15,7 @@ def test_inventory_matches_every_implemented_queue_and_ring() -> None:
     assert set(resources) == {
         "service_to_timing",
         "observation",
+        "monitor_observation",
         "critical",
         "evidence",
         "telemetry",

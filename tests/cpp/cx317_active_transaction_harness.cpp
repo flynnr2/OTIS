@@ -472,6 +472,104 @@ void observational_responses_remain_nonterminal() {
   assert(transaction.state == OtisCx317ActiveState::Disarmed);
 }
 
+void exact_core0_rejection_during_metadata_hold_discards_without_actuation() {
+  const auto expected = binding(0xA908u, false);
+  const auto eligibility = healthy();
+  auto make_pending = [&]() {
+    OtisCx317ActiveTransaction transaction;
+    otis_cx317_active_transaction_init(&transaction, &expected);
+    transaction.dac_epoch = 4u;
+    auto authorization = arm(expected, 1u, 2400u);
+    assert(otis_cx317_active_arm(&transaction, &authorization, &eligibility,
+                                 2400u));
+    auto numerical = decision(transaction.applied_code, 1u, 2400u, 7);
+    OtisCx317ActionableRequest request;
+    assert(otis_cx317_active_make_request(&transaction, &numerical,
+                                          &eligibility, 2400u, &request));
+    return transaction;
+  };
+
+  auto transaction = make_pending();
+  OtisCx317ActionableRequest pending = transaction.request;
+  bool pending_valid = true;
+  bool metadata_transaction_pending = true;
+  const uint16_t code_before = transaction.applied_code;
+  const uint32_t epoch_before = transaction.dac_epoch;
+  OtisCx317Core0RejectedOutcome exact = {
+      pending.request_sequence,
+      pending.decision_sequence,
+      pending.authorization_sequence,
+      pending.nonce,
+      pending.requested_code,
+      code_before,
+      code_before,
+      true,
+      true,
+      false,
+      false,
+      false,
+  };
+  assert(otis_cx317_active_discard_released_request_on_metadata_rejection(
+      &transaction, &pending, &pending_valid, true,
+      &metadata_transaction_pending, true, code_before, epoch_before, &exact));
+  assert(transaction.state == OtisCx317ActiveState::Disarmed);
+  assert(strcmp(transaction.reason,
+                "gnss_metadata_core0_rejection_discarded") == 0);
+  assert(!transaction.have_arm);
+  assert(!transaction.have_request);
+  assert(!transaction.have_acceptance);
+  assert(!transaction.have_application);
+  assert(!pending_valid);
+  assert(!pending.actionable);
+  assert(pending.request_sequence == 0u);
+  assert(!metadata_transaction_pending);
+  assert(transaction.applied_code == code_before);
+  assert(transaction.dac_epoch == epoch_before);
+  assert(transaction.correction_count == 0u);
+  assert(transaction.cumulative_movement_codes == 0u);
+  // The live path serializes ACT1+AT2 here, then establishes the hold.
+  assert(otis_cx317_active_reference_hold(
+      &transaction, "gnss_metadata_unqualified_hold"));
+  assert(transaction.state == OtisCx317ActiveState::ReferenceHold);
+  assert(strcmp(transaction.reason, "gnss_metadata_unqualified_hold") == 0);
+  assert(transaction.applied_code == code_before);
+  assert(transaction.dac_epoch == epoch_before);
+
+  transaction = make_pending();
+  pending = transaction.request;
+  pending_valid = true;
+  metadata_transaction_pending = true;
+  exact.nonce = pending.nonce + 1u;
+  assert(!otis_cx317_active_discard_released_request_on_metadata_rejection(
+      &transaction, &pending, &pending_valid, true,
+      &metadata_transaction_pending, true, transaction.applied_code,
+      transaction.dac_epoch, &exact));
+  assert(transaction.state == OtisCx317ActiveState::RequestPending);
+  assert(transaction.have_request);
+  assert(pending_valid);
+  assert(metadata_transaction_pending);
+
+  exact.nonce = pending.nonce;
+  exact.metadata_hold_cancelled_before_acceptance = false;
+  assert(!otis_cx317_active_discard_released_request_on_metadata_rejection(
+      &transaction, &pending, &pending_valid, true,
+      &metadata_transaction_pending, true, transaction.applied_code,
+      transaction.dac_epoch, &exact));
+  assert(transaction.state == OtisCx317ActiveState::RequestPending);
+  assert(transaction.have_request);
+  assert(pending_valid);
+  assert(metadata_transaction_pending);
+
+  exact.metadata_hold_cancelled_before_acceptance = true;
+  assert(!otis_cx317_active_discard_released_request_on_metadata_rejection(
+      &transaction, &pending, &pending_valid, false,
+      &metadata_transaction_pending, true, transaction.applied_code,
+      transaction.dac_epoch, &exact));
+  assert(transaction.state == OtisCx317ActiveState::RequestPending);
+  assert(transaction.applied_code == code_before);
+  assert(transaction.dac_epoch == epoch_before);
+}
+
 }  // namespace
 
 int main() {
@@ -485,5 +583,6 @@ int main() {
   stage5_response_ignores_legacy_v2_shadow_deadband();
   prospective_dither_guards_stop_before_write();
   observational_responses_remain_nonterminal();
+  exact_core0_rejection_during_metadata_hold_discards_without_actuation();
   return 0;
 }

@@ -89,6 +89,12 @@ build logs, ELF/UF2 and emitted binary that it contains and propagates:
 - independent abort and bounded delivery evidence; and
 - selected operational receiver baud and finalized UART service path.
 
+For ordinary GNSS operation, this includes the exact configuration-blind
+9600 then 115200 set-115200 sequence, receiver-side settle after every physical UART
+drain, RX baud-epoch isolation, final 115200 identity/configuration validation,
+and structural absence of response-driven discovery, a fallback scan,
+post-bootstrap baud changes or promotion retry.
+
 Also prove absence of:
 
 - the rejected correction-debt/persistence request-law candidates;
@@ -117,6 +123,9 @@ The rehearsal must:
    overflow;
 2. start every supervisor, monitor and bounded shadow consumer;
 3. verify the expected boot/status/output/controller transcript;
+   this includes the complete fixed GNSS bootstrap counters/rate mask, local
+   UART baud/epoch and zero post-bootstrap baud changes before pre-write
+   readiness;
 4. issue repeated representative requests and trace acceptance, application,
    applied code/DAC epoch, first dependent consumer and response;
 5. exercise periodic, settling, cadence, metadata freshness, request expiry,

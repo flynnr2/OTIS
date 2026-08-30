@@ -12,6 +12,18 @@ struct OtisForwardedClockOutputStatus {
   uint32_t destination_gpio;
   uint32_t integer_divider;
   uint32_t fractional_divider;
+  uint32_t applied_auxsrc;
+  uint32_t applied_integer_divider;
+  uint32_t applied_fractional_divider;
+  uint32_t source_gpio_function;
+  uint32_t destination_gpio_function;
+  uint32_t nominal_frequency_hz;
+  uint32_t drive_strength_ma;
+  uint64_t first_valid_ticks;
+  bool inversion;
+  bool slew_rate_fast;
+  const char *contract_id;
+  const char *contract_sha256;
   const char *reason;
 };
 

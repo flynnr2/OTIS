@@ -174,10 +174,16 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
         "cx320_active_hybrid",
         "cx321_active_hybrid",
         "cx322_direct_hybrid",
+        "cx322_d9_d6_integration_engineering",
+        "cx322_d9_d6_72h_sustained_engineering",
         "otis_sustained_hybrid_regulation_v1",
         "otis_gnss_baud_envelope_characterization_v1",
         "otis_gnss_baud_envelope_characterization_continuation_v1",
         "otis_gnss_baud_envelope_characterization_resume_v1",
+        "d9_disabled_no_control_baseline",
+        "d9_forwarded_output_no_control",
+        "d9_d6_forwarded_output_no_control",
+        "d9_d6_frequency_only_lower",
     ]
     assert all(
         profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"

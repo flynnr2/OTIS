@@ -21,14 +21,24 @@ from typing import Any
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
+    integrated_setup_provenance_contract,
     progressive_checkpoint_contract,
     programme_from_mapping,
 )
 
-from .active_hybrid_bundle import REQUIRED_FALSE_AUTHORITY, validate_bundle
+from .active_hybrid_bundle import (
+    FRESH_SERIAL_AUTO_DETECT,
+    REQUIRED_FALSE_AUTHORITY,
+    validate_bundle,
+)
 from .active_hybrid_proposal import validate_proposal
 from .evidence_index import package_identity
-from .run_paths import cx321_csv_files, default_csv_files
+from .run_paths import (
+    cx321_csv_files,
+    default_csv_files,
+    exact_active_timing_csv_files,
+)
 
 
 TOOL_ID = "cx320_active_hybrid_live_activation_v1"
@@ -83,6 +93,16 @@ SUSTAINED_REHEARSAL_COVERAGE = (
     "first_post_recovery_consumer",
     "separate_automatic_physical_challenge_accounting",
     "mandatory_sustained_status_snapshot_identity",
+)
+INTEGRATED_REHEARSAL_COVERAGE = (
+    "integrated_unarmed_concurrency_observation_boundary",
+    "integrated_setup_provenance_boundary",
+)
+CAMPAIGN18_REHEARSAL_COVERAGE = (
+    "campaign18_exact_AT2_AH2_capture",
+    "campaign18_repeated_natural_transaction",
+    "campaign18_GNSS_hold_causal_requalification",
+    "campaign18_exact_72h_endpoint_clock",
 )
 FIFO_PATHS = {
     "normal_command": "control/normal_commands.fifo",
@@ -289,6 +309,12 @@ def validate_operational_rehearsal(
     expected_coverage = set(REHEARSAL_COVERAGE)
     if programme.sustained_regulation:
         expected_coverage.update(SUSTAINED_REHEARSAL_COVERAGE)
+    if programme.engineering_unarmed_observation_s > 0:
+        expected_coverage.add("integrated_unarmed_concurrency_observation_boundary")
+    if programme.forwarded_output_integration:
+        expected_coverage.add("integrated_setup_provenance_boundary")
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        expected_coverage.update(CAMPAIGN18_REHEARSAL_COVERAGE)
     if (
         report.get("schema_version") != 1
         or report.get("report_type") != programme.rehearsal_report_type
@@ -302,6 +328,11 @@ def validate_operational_rehearsal(
         or set(coverage) != expected_coverage
         or any(coverage.get(name) is not True for name in expected_coverage)
         or tool_bindings != bundle.get("host_tools")
+        or (
+            programme.forwarded_output_integration
+            and report.get("setup_provenance_contract")
+            != integrated_setup_provenance_contract(programme)
+        )
     ):
         raise ValueError("CX320 live-topology rehearsal receipt differs or is incomplete")
     if programme.identification_required:
@@ -380,6 +411,73 @@ def validate_operational_rehearsal(
                 "CX321 rehearsal lacks the exact real-process plant-sign "
                 "transaction path"
             )
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        topology = report.get("real_process_topology", {})
+        transaction = (
+            topology.get("cx322_real_transaction_path", {})
+            if isinstance(topology, dict)
+            else {}
+        )
+        clock = report.get("accelerated_qualified_device_clock", {})
+        manifest_path = path.parent / "process_topology/run/run_manifest.json"
+        manifest = _read_object(manifest_path, "Campaign 18 rehearsal manifest")
+        files = manifest.get("files", [])
+        required_exact = {
+            "active_transactions_v2": "csv/active_transactions_v2.csv",
+            "active_hybrid_decisions_v2": "csv/active_hybrid_decisions_v2.csv",
+        }
+        exact_files = {
+            item.get("contract"): item
+            for item in files
+            if isinstance(item, dict)
+            and item.get("contract") in required_exact
+        }
+        domains = manifest.get("domains", [])
+        if (
+            not isinstance(transaction, dict)
+            or transaction.get("complete_multi_transaction_sequence") is not True
+            or transaction.get("request_sequences_consumed") != [1, 2]
+            or transaction.get("gnss_hold_and_causal_requalification") is not True
+            or transaction.get(
+                "gnss_bootstrap_in_progress_observed_by_supervisor"
+            )
+            is not True
+            or transaction.get("first_post_requalification_consumer_exact")
+            is not True
+            or not isinstance(
+                transaction.get(
+                    "first_post_recovery_consumer_decision_sequence"
+                ),
+                int,
+            )
+            or not isinstance(clock, dict)
+            or clock.get("correction_admission_close_elapsed_s") != 257_700
+            or clock.get("qualified_endpoint_elapsed_s") != 259_200
+            or clock.get("admission_open_at_floor_before_exact_boundary") is not True
+            or clock.get("admission_closed_at_exact_boundary") is not True
+            or clock.get("forward_host_utc_step_did_not_close_early") is not True
+            or clock.get("backward_host_utc_step_did_not_delay_endpoint") is not True
+            or manifest.get("programme_id") != programme.programme_id
+            or manifest.get("profile_identity") != programme.profile_id
+            or set(exact_files) != set(required_exact)
+            or any(
+                exact_files[name].get("path") != expected_path
+                or exact_files[name].get("optional") is not None
+                for name, expected_path in required_exact.items()
+            )
+            or manifest.get("contracts", {}).get("active_transactions_v2") != 2
+            or manifest.get("contracts", {}).get("active_hybrid_decisions_v2") != 2
+            or not any(
+                isinstance(item, dict)
+                and item.get("name") == "rp2040_timer0_extended"
+                and item.get("nominal_hz") == 16_000_000
+                for item in domains
+            )
+        ):
+            raise ValueError(
+                "Campaign 18 rehearsal lacks the activation-bearing exact "
+                "transaction, GNSS, or qualified-clock path"
+            )
     if require_current_tools:
         if not isinstance(tool_bindings, dict):
             raise ValueError("CX320 rehearsal tool bindings are unavailable")
@@ -399,7 +497,7 @@ def validate_operational_rehearsal(
 def _authority(
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
-    return {
+    value: dict[str, Any] = {
         "effective": True,
         "physical_execution": True,
         "firmware_flash_limit": 1,
@@ -411,23 +509,34 @@ def _authority(
         "setup_write_limit": 1,
         "control_arm": True,
         "live_acquisition_limit": 1,
-        "maximum_total_automatic_applications": programme.maximum_applications,
-        "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+        "maximum_total_automatic_applications": (
+            programme.authorized_maximum_applications
+        ),
+        "maximum_total_physical_control_applications": (
+            programme.authorized_maximum_physical_applications
+        ),
         "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
         **progressive_checkpoint_contract(programme),
         "maximum_combined_step_codes": programme.maximum_step_codes,
-        "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
+        "maximum_cumulative_absolute_movement_codes": (
+            programme.authorized_maximum_cumulative_movement_codes
+        ),
         "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
         "minimum_code": programme.minimum_code,
         "maximum_code": programme.maximum_code,
         "qualified_duration_s": programme.qualified_duration_s,
-        "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
+        "absolute_wall_clock_limit_s": programme.authorized_absolute_wall_limit_s,
         "maximum_outstanding_requests": 1,
         "automatic_retry": False,
         "automatic_restoration": False,
         "live_extension": False,
         "authority_consumed_by_first_physical_terminal": True,
     }
+    if programme.forwarded_output_integration:
+        value["setup_provenance"] = integrated_setup_provenance_contract(
+            programme
+        )
+    return value
 
 
 def _attempt_descriptor(
@@ -501,12 +610,27 @@ def _attempt_descriptor(
             and isinstance(scientific_checks, dict)
             and scientific_checks.get("qualified_12h_endpoint_complete") is False
         )
+        bounded_pre_setup_provenance = (
+            seal.get("status") == "bounded_nonpass"
+            and seal.get("primary_decision")
+            == "pre_setup_provenance_unresolved"
+            and acquisition_gate.get("passed") is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and seal.get("pre_setup_provenance_terminal", {}).get("exact")
+            is True
+        )
         if (
             not (run_dir / "COMPLETE").is_file()
             or not (
                 failed_physical_gate
                 or failed_post_acquisition_gate
                 or bounded_operator_abort
+                or bounded_pre_setup_provenance
             )
         ):
             raise ValueError(
@@ -545,8 +669,27 @@ def create_activation(
     predecessor_terminal_path: Path | None = None,
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
-    if not serial_device.startswith("/dev/"):
-        raise ValueError("CX320 activation requires an explicit /dev serial path")
+    if programme.fresh_serial_auto_detect:
+        if serial_device not in {"auto-detect", "--auto-detect"}:
+            raise ValueError(
+                "integrated activation requires fresh --auto-detect selection"
+            )
+        device_contract: dict[str, Any] = {
+            "path": None,
+            "selection": FRESH_SERIAL_AUTO_DETECT,
+            "baud": EXPECTED_BAUD,
+            "expected_board_serial": None,
+        }
+    else:
+        if not serial_device.startswith("/dev/"):
+            raise ValueError(
+                "CX320 activation requires an explicit /dev serial path"
+            )
+        device_contract = {
+            "path": serial_device,
+            "baud": EXPECTED_BAUD,
+            "expected_board_serial": EXPECTED_BOARD_SERIAL,
+        }
     if not operator_instruction_ref.strip():
         raise ValueError("CX320 activation requires an operator-instruction reference")
     bundle = _validate_current_bundle(bundle_path, programme)
@@ -600,11 +743,7 @@ def create_activation(
             predecessor_terminal_path=predecessor_terminal_path,
         ),
         "operational_rehearsal": rehearsal,
-        "device": {
-            "path": serial_device,
-            "baud": EXPECTED_BAUD,
-            "expected_board_serial": EXPECTED_BOARD_SERIAL,
-        },
+        "device": device_contract,
         "firmware": bundle["firmware"],
         "policy": bundle["policy"],
         "host_tools": bundle["host_tools"],
@@ -619,6 +758,15 @@ def create_activation(
             "maximum_applications": 1,
             "same_code_reapplication_opens_new_epoch": True,
             "exact_consumer_epoch_propagation_required": True,
+            **(
+                {
+                    "provenance": integrated_setup_provenance_contract(
+                        programme
+                    )
+                }
+                if programme.forwarded_output_integration
+                else {}
+            ),
         },
         "authority": _authority(programme),
     }
@@ -670,6 +818,20 @@ def validate_frozen_activation(
     if not isinstance(host_tools, dict):
         raise ValueError("CX320 activation host-tool binding is malformed")
     fifos = topology.get("fifos", {})
+    expected_device = (
+        {
+            "path": None,
+            "selection": FRESH_SERIAL_AUTO_DETECT,
+            "baud": EXPECTED_BAUD,
+            "expected_board_serial": None,
+        }
+        if programme.fresh_serial_auto_detect
+        else {
+            "path": device.get("path"),
+            "baud": EXPECTED_BAUD,
+            "expected_board_serial": EXPECTED_BOARD_SERIAL,
+        }
+    )
     if (
         activation.get("schema_version") != 1
         or activation.get("tool") != TOOL_ID
@@ -694,13 +856,11 @@ def validate_frozen_activation(
         or activation.get("policy") != bundle.get("policy")
         or activation.get("host_tools") != host_tools
         or activation.get("tool_binding") not in list(host_tools.values())
-        or activation.get("device")
-        != {
-            "path": device.get("path"),
-            "baud": EXPECTED_BAUD,
-            "expected_board_serial": EXPECTED_BOARD_SERIAL,
-        }
-        or not str(device.get("path", "")).startswith("/dev/")
+        or activation.get("device") != expected_device
+        or (
+            not programme.fresh_serial_auto_detect
+            and not str(device.get("path", "")).startswith("/dev/")
+        )
         or topology.get("serial_owner") != "capture_device"
         or topology.get("serial_owner_count") != 1
         or fifos != FIFO_PATHS
@@ -712,6 +872,15 @@ def validate_frozen_activation(
             "maximum_applications": 1,
             "same_code_reapplication_opens_new_epoch": True,
             "exact_consumer_epoch_propagation_required": True,
+            **(
+                {
+                    "provenance": integrated_setup_provenance_contract(
+                        programme
+                    )
+                }
+                if programme.forwarded_output_integration
+                else {}
+            ),
         }
         or activation.get("authority") != _authority(programme)
     ):
@@ -805,7 +974,15 @@ def _required_files(
         "hybrid_preview_decisions_v1",
         "tight_deadband_decisions_v1",
     }
-    source = cx321_csv_files() if programme.identification_required else default_csv_files()
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        source = exact_active_timing_csv_files()
+        required.update(
+            {"active_transactions_v2", "active_hybrid_decisions_v2"}
+        )
+    elif programme.identification_required:
+        source = cx321_csv_files()
+    else:
+        source = default_csv_files()
     files: list[dict[str, Any]] = [dict(entry) for entry in source]
     if programme.identification_required:
         required.add("plant_sign_qualification_v1")
@@ -838,7 +1015,9 @@ def create_run_manifest(
     )
     actual_device = serial_device or str(activation["device"]["path"])
     if not actual_device.startswith("/dev/"):
-        raise ValueError("CX320 live manifest requires an explicit serial device")
+        raise ValueError(
+            "CX320 live manifest requires the freshly resolved serial device"
+        )
     files = _required_files(programme)
     authority = activation["authority"]
     manifest: dict[str, Any] = {
@@ -884,8 +1063,19 @@ def create_run_manifest(
             "analyzer_tool": "host.otis_tools.active_hybrid_live_analyze",
             "serial_device": actual_device,
             "activation_serial_device": activation["device"]["path"],
+            **(
+                {
+                    "activation_device_selection": activation["device"][
+                        "selection"
+                    ]
+                }
+                if programme.fresh_serial_auto_detect
+                else {}
+            ),
             "baud": EXPECTED_BAUD,
-            "expected_board_serial": EXPECTED_BOARD_SERIAL,
+            "expected_board_serial": activation["device"][
+                "expected_board_serial"
+            ],
             "sole_serial_owner": True,
             "serial_owner_count": 1,
             "fifos": FIFO_PATHS,
@@ -900,23 +1090,44 @@ def create_run_manifest(
                 "code": programme.setup_code,
                 "code_hex": f"0x{programme.setup_code:04X}",
                 "maximum_applications": 1,
-                "physical_applied_code_before_setup": "unknown",
+                "physical_applied_code_before_setup": (
+                    integrated_setup_provenance_contract(programme)[
+                        "physical_applied_code_before_setup"
+                    ]
+                    if programme.forwarded_output_integration
+                    else "unknown"
+                ),
                 "same_code_reapplication_opens_new_epoch": True,
                 "exact_consumer_epoch_propagation_required": True,
+                **(
+                    {
+                        "provenance": integrated_setup_provenance_contract(
+                            programme
+                        )
+                    }
+                    if programme.forwarded_output_integration
+                    else {}
+                ),
             },
             "automatic_control": {
                 "authorized": True,
-                "maximum_total_applications": programme.maximum_physical_applications,
+                "maximum_total_applications": (
+                    programme.authorized_maximum_physical_applications
+                ),
                 **(
                     {
-                        "maximum_total_automatic_applications": programme.maximum_applications,
+                        "maximum_total_automatic_applications": (
+                            programme.authorized_maximum_applications
+                        ),
                         "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
                     }
                     if programme.sustained_regulation
                     else {}
                 ),
                 "maximum_step_codes": programme.maximum_step_codes,
-                "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
+                "maximum_cumulative_movement_codes": (
+                    programme.authorized_maximum_cumulative_movement_codes
+                ),
                 "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
                 "minimum_code": programme.minimum_code,
                 "maximum_code": programme.maximum_code,
@@ -929,7 +1140,9 @@ def create_run_manifest(
             },
             "qualification": {
                 "qualified_duration_s": programme.qualified_duration_s,
-                "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
+                "absolute_wall_clock_limit_s": (
+                    programme.authorized_absolute_wall_limit_s
+                ),
                 "qualified_origin": bundle["finite_limits"]["qualified_origin"],
                 "wall_clock_origin": bundle["finite_limits"]["wall_clock_origin"],
                 "no_extension": True,
@@ -940,6 +1153,20 @@ def create_run_manifest(
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],
         "channels": [
+            *(
+                [
+                    {
+                        "channel_id": 0,
+                        "pin": "D10",
+                        "role": (
+                            "independent_external_event_not_control_authority"
+                        ),
+                        "record_family": "raw_events_v1",
+                    }
+                ]
+                if programme.forwarded_output_integration
+                else []
+            ),
             {
                 "channel_id": 1,
                 "pin": "D14",
@@ -954,13 +1181,30 @@ def create_run_manifest(
             },
             {
                 "channel_id": 3,
-                "pin": "D10",
-                "role": "independent_external_event_not_control_authority",
-                "record_family": "raw_events_v1",
+                "pin": "D6" if programme.forwarded_output_integration else "D10",
+                "role": (
+                    "diagnostic_forwarded_d9_clock_monitor_zero_authority"
+                    if programme.forwarded_output_integration
+                    else "independent_external_event_not_control_authority"
+                ),
+                "record_family": (
+                    "forwarded_monitor_snapshots_v1"
+                    if programme.forwarded_output_integration
+                    else "raw_events_v1"
+                ),
             },
         ],
         "contracts": {
-            entry["contract"]: 2 if entry["contract"] == "estimates_v2" else 1
+            entry["contract"]: (
+                2
+                if entry["contract"]
+                in {
+                    "estimates_v2",
+                    "active_transactions_v2",
+                    "active_hybrid_decisions_v2",
+                }
+                else 1
+            )
             for entry in files
         },
         "files": files,
@@ -991,19 +1235,31 @@ def create_run_manifest(
         "known_limitations": [
             "D14 is the sole PPS/reference input and D8 the sole oscillator/count input.",
             "D10 is an independent event input and never enters timing or control authority.",
+            *(
+                [
+                    "D9 digital source/divider/GPIO/readback evidence is not waveform, load, jitter, or independently referenced frequency qualification.",
+                    "D6 is diagnostic-only; absence or local faults do not enter D14/D8 validity or steering authority.",
+                ]
+                if programme.forwarded_output_integration
+                else []
+            ),
             (
                 "The result does not establish UTC, absolute phase, calibrated "
                 "delay, traceable frequency accuracy, or holdover."
             ),
         ],
     }
-    if programme.identification_required:
+    if (
+        programme.identification_required
+        or programme is CX322_D9_D6_72H_PROGRAMME
+    ):
         manifest["domains"].append(
             {
                 "name": "rp2040_timer0_extended",
                 "nominal_hz": 16_000_000,
             }
         )
+    if programme.identification_required:
         manifest["programme_policy"] = bundle["programme_policy"]
         manifest["identification"] = bundle["identification"]
         manifest[programme.manifest_section]["plant_sign_identification"] = {
@@ -1070,31 +1326,65 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         or manifest.get("policy") != bundle["policy"]
         or host.get("tool_bindings") != bundle["host_tools"]
         or host.get("activation_serial_device") != activation["device"]["path"]
+        or (
+            programme.fresh_serial_auto_detect
+            and host.get("activation_device_selection")
+            != activation["device"]["selection"]
+        )
         or not str(host.get("serial_device", "")).startswith("/dev/")
         or host.get("baud") != EXPECTED_BAUD
-        or host.get("expected_board_serial") != EXPECTED_BOARD_SERIAL
+        or host.get("expected_board_serial")
+        != activation["device"]["expected_board_serial"]
         or host.get("sole_serial_owner") is not True
         or host.get("serial_owner_count") != 1
         or host.get("fifos") != FIFO_PATHS
         or len(set(host.get("fifos", {}).values())) != 3
         or section.get("authority") != activation["authority"]
         or section.get("run_identity") != programme.runtime_run_identity
-        or section.get("setup", {}).get("code") != programme.setup_code
-        or section.get("setup", {}).get("maximum_applications") != 1
+        or section.get("setup")
+        != {
+            "code": programme.setup_code,
+            "code_hex": f"0x{programme.setup_code:04X}",
+            "maximum_applications": 1,
+            "physical_applied_code_before_setup": (
+                integrated_setup_provenance_contract(programme)[
+                    "physical_applied_code_before_setup"
+                ]
+                if programme.forwarded_output_integration
+                else "unknown"
+            ),
+            "same_code_reapplication_opens_new_epoch": True,
+            "exact_consumer_epoch_propagation_required": True,
+            **(
+                {
+                    "provenance": integrated_setup_provenance_contract(
+                        programme
+                    )
+                }
+                if programme.forwarded_output_integration
+                else {}
+            ),
+        }
         or control
         != {
             "authorized": True,
-            "maximum_total_applications": programme.maximum_physical_applications,
+            "maximum_total_applications": (
+                programme.authorized_maximum_physical_applications
+            ),
             **(
                 {
-                    "maximum_total_automatic_applications": programme.maximum_applications,
+                    "maximum_total_automatic_applications": (
+                        programme.authorized_maximum_applications
+                    ),
                     "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
                 }
                 if programme.sustained_regulation
                 else {}
             ),
             "maximum_step_codes": programme.maximum_step_codes,
-            "maximum_cumulative_movement_codes": programme.maximum_cumulative_movement_codes,
+            "maximum_cumulative_movement_codes": (
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
             "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
             "minimum_code": programme.minimum_code,
             "maximum_code": programme.maximum_code,
@@ -1107,7 +1397,7 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         or qualification.get("qualified_duration_s")
         != programme.qualified_duration_s
         or qualification.get("absolute_wall_clock_limit_s")
-        != programme.absolute_wall_limit_s
+        != programme.authorized_absolute_wall_limit_s
         or qualification.get("no_extension") is not True
     ):
         raise ValueError("CX320 live run manifest identity, topology, or bounds differ")
@@ -1156,7 +1446,9 @@ def main(argv: list[str] | None = None) -> int:
     activate.add_argument("--bundle", type=Path, required=True)
     activate.add_argument("--proposal", type=Path, required=True)
     activate.add_argument("--operational-rehearsal", type=Path, required=True)
-    activate.add_argument("--serial-device", required=True)
+    device = activate.add_mutually_exclusive_group(required=True)
+    device.add_argument("--serial-device")
+    device.add_argument("--auto-detect", action="store_true")
     activate.add_argument("--operator-instruction-ref", required=True)
     activate.add_argument("--attempt-ordinal", type=int, default=1)
     activate.add_argument("--attempt-reason", default=DEFAULT_ATTEMPT_REASON)
@@ -1187,7 +1479,9 @@ def main(argv: list[str] | None = None) -> int:
                 bundle_path=args.bundle,
                 proposal_path=args.proposal,
                 operational_rehearsal_path=args.operational_rehearsal,
-                serial_device=args.serial_device,
+                serial_device=(
+                    "--auto-detect" if args.auto_detect else args.serial_device
+                ),
                 operator_instruction_ref=args.operator_instruction_ref,
                 output_path=args.output,
                 attempt_ordinal=args.attempt_ordinal,

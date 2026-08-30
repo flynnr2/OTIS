@@ -90,6 +90,9 @@ def _health(supervisor: FrequencyControlSupervisor, **values: str) -> dict[tuple
         ("cx317_active", "uptime_s"): "3000",
         ("cx317_active", "automatic_retry"): "false",
         ("cx317_active", "automatic_restore"): "false",
+        ("cx317_active", "setup_gnss_eligible"): "true",
+        ("cx317_active", "setup_reference_eligible"): "true",
+        ("cx317_active", "setup_partition_healthy"): "true",
         ("cx318_preview", "static_code"): "0xA828",
         ("cx318_preview", "applied_code"): "0xA828",
         ("cx318_preview", "dac_epoch"): "0",
@@ -333,6 +336,28 @@ def test_missing_required_status_fails_after_cheap_startup_grace(
         health, PREWRITE_CONTRACT_STARTUP_GRACE_S - 1
     )
     with pytest.raises(ValueError, match="missing cx317_active.dac_epoch"):
+        supervisor._check_prewrite_contract(
+            health, PREWRITE_CONTRACT_STARTUP_GRACE_S
+        )
+
+
+def test_false_setup_authority_is_a_bounded_no_write_startup_hold(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path, mode="live")
+    commands: list[str] = []
+    supervisor._command = commands.append  # type: ignore[method-assign]
+    health = _health(supervisor, setup_reference_eligible="false")
+
+    supervisor._check_prewrite_contract(
+        health, PREWRITE_CONTRACT_STARTUP_GRACE_S - 1
+    )
+    supervisor._maybe_start_or_arm(health)
+
+    assert commands == []
+    assert supervisor.state["manual_start_sent"] is False
+    assert not (supervisor.run_dir / "reports/setup_authority_input_v1.json").exists()
+    with pytest.raises(ValueError, match="setup_reference_eligible"):
         supervisor._check_prewrite_contract(
             health, PREWRITE_CONTRACT_STARTUP_GRACE_S
         )

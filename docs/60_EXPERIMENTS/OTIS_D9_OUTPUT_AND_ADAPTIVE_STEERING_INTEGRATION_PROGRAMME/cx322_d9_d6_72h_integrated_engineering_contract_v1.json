@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_CONTRACT_V1",
+  "purpose": "Acquire exactly 72 measurement-qualified hours from the unchanged CX322 request law while D9 fixed forwarding and the zero-authority D6 diagnostic sidecar are enabled; cadence-derived authority ceilings permit discipline throughout the interval without making actuation an acceptance target, and this engineering programme cannot promote any D9 electrical or waveform claim.",
+  "semantic_parent": {
+    "contract_id": "OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_CONTRACT_V1",
+    "contract_file": "cx322_d9_d6_integration_engineering_contract_v1.json",
+    "contract_semantic_sha256": "b21b94db83dd5f583f960ebf2339653134604ffd3cf9b902eb3731febaaf52b9"
+  },
+  "firmware": {
+    "profile_id": "cx322_d9_d6_72h_sustained_engineering",
+    "base_profile_id": "cx322_d9_d6_integration_engineering",
+    "profile_matrix_status": "implemented_and_compile_time_guards_verified",
+    "required_define_delta": {
+      "OTIS_CX317_ACTIVE_CAMPAIGN": "OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID",
+      "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": "144u",
+      "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "3024u",
+      "OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS": "144u",
+      "OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES": "3024u"
+    },
+    "cx322_request_law_changed": false,
+    "generic_sustained_regulation_mode": false,
+    "deliberate_reversal_challenge_enabled": false
+  },
+  "serial": {
+    "baud": 115200,
+    "selection": "capture_device_--auto-detect_fresh_for_every_capture_and_reenumeration",
+    "required_candidate_count": 1,
+    "stored_device_path_permitted": false,
+    "stored_board_serial_permitted": false,
+    "sole_serial_owner_required": true,
+    "independent_abort_delivery_required": true
+  },
+  "gnss_uart_policy": {
+    "policy_id": "configuration_blind_default_or_retained_115200_v1",
+    "target_baud": 115200,
+    "ordinary_receiver_start_states": [9600, 115200],
+    "ordered_source_bauds": [9600, 115200],
+    "command": "$PMTK251,115200*1F\r\n",
+    "attempts_per_source_baud": 1,
+    "maximum_total_attempts": 2,
+    "response_gated": false,
+    "autodiscovery_permitted": false,
+    "fallback_scan_permitted": false,
+    "rx_epoch_isolation_required": true,
+    "settle_after_peripheral_drain_ms": 1200,
+    "final_validation_baud": 115200,
+    "post_bootstrap_baud_change_permitted": false,
+    "post_bootstrap_promotion_retry_permitted": false
+  },
+  "time": {
+    "source_counter_domain": "rp2040_timer0",
+    "counter_domain": "rp2040_timer0_extended",
+    "nominal_counter_hz": 16000000,
+    "qualified_duration_s": 259200,
+    "qualification_deadline_s": 5400,
+    "absolute_wall_limit_s": 280800,
+    "milestone_interval_qualified_s": 21600,
+    "milestones_qualified_s": [
+      21600,
+      43200,
+      64800,
+      86400,
+      108000,
+      129600,
+      151200,
+      172800,
+      194400,
+      216000,
+      237600,
+      259200
+    ],
+    "qualification_origin": "first_complete_fresh_selected_600_estimate_after_exact_setup_code_epoch_establishment_and_common_D14_D8_health"
+  },
+  "starting_dac": {
+    "pre_setup_physical_code": "unknown_unreadable_after_power_cycle",
+    "pre_setup_firmware_epoch": 0,
+    "dac_query_role": "driver_session_provenance_only_not_physical_register_readback",
+    "establishment_mode": "one_prospectively_authorized_exact_ACTIVE_SETUP",
+    "setup_code": 43068,
+    "setup_code_hex": "0xA83C",
+    "setup_write_limit": 1,
+    "setup_counts_as_automatic_application": false,
+    "required_established_epoch": 1,
+    "required_first_known_boundary": "setup_acceptance_application_DAC_epoch_and_first_dependent_consumer_exact",
+    "retry_permitted": false,
+    "restoration_permitted": false
+  },
+  "controller_envelope": {
+    "automatic_application_limit": 144,
+    "automatic_application_limit_derivation": "259200_qualified_seconds_divided_by_1800_seconds_per_application",
+    "automatic_cumulative_movement_limit_codes": 3024,
+    "automatic_cumulative_movement_limit_derivation": "144_applications_multiplied_by_21_codes_per_application",
+    "automatic_step_limit_codes": 21,
+    "total_dac_write_limit_including_setup": 145,
+    "authority_ceilings_are_nonbinding_not_targets": true,
+    "minimum_automatic_application_count": 0,
+    "minimum_application_cadence_s": 1800,
+    "maximum_outstanding_transactions": 1,
+    "dac_min_code": 43008,
+    "dac_min_code_hex": "0xA800",
+    "dac_max_code": 43776,
+    "dac_max_code_hex": "0xAB00",
+    "deliberate_reversal_challenge_permitted": false,
+    "automatic_retry_permitted": false,
+    "restoration_write_permitted": false,
+    "close_new_application_admission_before_endpoint_s": 1500
+  },
+  "record_replay": {
+    "record_contract": "otis_cx322_d9_d6_72h_record_v1",
+    "hash_chain_required": true,
+    "counter_domain_exact_through_replay": true,
+    "single_reducer_required_for_supervisor_monitor_and_analyzer": true,
+    "transaction_lifecycle": [
+      "control_opportunity",
+      "automatic_request",
+      "automatic_acceptance",
+      "automatic_application",
+      "first_dependent_consumer",
+      "automatic_response"
+    ],
+    "lost_opportunity_dispositions": [
+      "NO_CORRECTION_REQUESTED",
+      "GNSS_METADATA_HOLD",
+      "POLICY_HOLD",
+      "RANGE_BOUND_HOLD",
+      "ENDPOINT_ADMISSION_CLOSED"
+    ],
+    "gnss_metadata_hold_semantics": "bounded_control_hold_while_D14_D8_measurement_qualification_and_canonical_evidence_continue",
+    "endpoint_semantics": "exact_72h_qualified_ticks_no_pending_opportunity_or_outstanding_transaction_and_no_completion_on_authority_ceiling",
+    "required_metric_families": [
+      "frequency_and_phase_performance",
+      "drift",
+      "measurement_window_support",
+      "transaction_response",
+      "requested_applied_net_and_cumulative_movement",
+      "reversals_and_range_residence",
+      "opportunities_holds_and_lost_opportunities"
+    ]
+  },
+  "timing_truth": {
+    "reference_input": "D14",
+    "oscillator_and_control_input": "D8",
+    "D14_D8_continuity_required": true,
+    "D10_authority_changed": false
+  },
+  "d9": {
+    "role": "fixed_forwarded_output_with_digital_configuration_and_readback_gate_only",
+    "required_state": "configured_10mhz_forwarded_unqualified",
+    "source": "D8_GPIO20_GPIN0",
+    "destination": "D9_GPIO21_GPOUT0",
+    "integer_divider": 1,
+    "fractional_divider": 0,
+    "readback_exact_required": true,
+    "measurement_authority": false,
+    "control_authority": false
+  },
+  "d6": {
+    "role": "D9_through_1k_series_resistor_digital_diagnostic_sidecar",
+    "allowed_statuses": [
+      "present",
+      "local_degraded"
+    ],
+    "measurement_authority": false,
+    "control_authority": false,
+    "failure_policy": "local_drop_new_diagnostic_only_never_alters_D14_D8_validity_control_or_terminal"
+  },
+  "entry_gates": [
+    "exact_signed_contract_bundle_profile_and_binary_identity",
+    "fresh_auto_detect_exactly_one_candidate_at_115200",
+    "sole_serial_owner_and_independent_abort_ready",
+    "D9_exact_source_destination_dividers_gpio_state_and_readback",
+    "D14_D8_continuous_and_control_eligible",
+    "GNSS_metadata_fresh_from_same_D14_receiver",
+    "one_exact_setup_establishment_applied_as_code_0xA83C_epoch_1",
+    "setup_code_epoch_identity_reached_first_dependent_consumer",
+    "first_complete_fresh_selected_600_estimate_after_establishment",
+    "no_outstanding_control_transaction"
+  ],
+  "terminals": {
+    "qualified_complete": "cx322_d9_d6_72h_qualified_engineering_complete",
+    "right_censored_incomplete": "cx322_d9_d6_72h_right_censored_incomplete",
+    "authoritative_capture_fault": "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault",
+    "d9_digital_fault": "cx322_d9_d6_72h_D9_configuration_or_readback_fault",
+    "controller_or_transaction_fault": "cx322_d9_d6_72h_controller_or_transaction_fault",
+    "identity_or_evidence_fault": "cx322_d9_d6_72h_identity_or_evidence_fault",
+    "operator_abort": "cx322_d9_d6_72h_operator_abort",
+    "pre_setup_no_write_abort": "cx322_d9_d6_72h_pre_setup_no_write_abort"
+  },
+  "claim_boundary": {
+    "programme_class": "engineering_non_promotional",
+    "waveform_evidence_status": "unresolved_oscilloscope_deferred",
+    "prompt02_waveform_gate_satisfied": false,
+    "prompt02_promotion_permitted": false,
+    "may_establish": [
+      "72h_D14_D8_measurement_and_control_continuity",
+      "D9_digital_configuration_and_readback_continuity",
+      "D6_local_digital_diagnostic_continuity",
+      "D9_D6_resource_queue_transport_and_control_noninterference",
+      "bounded_unchanged_CX322_response_over_72_qualified_hours"
+    ],
+    "cannot_establish": [
+      "D9_voltage_levels_or_logic_margin",
+      "D9_duty_cycle_rise_fall_ringing_or_load_response",
+      "D9_propagation_delay_or_jitter",
+      "independently_referenced_D9_frequency",
+      "general_D9_waveform_qualification",
+      "Prompt02_or_master_programme_promotion"
+    ]
+  },
+  "physical_execution": {
+    "authorized_by_this_contract_alone": false,
+    "separate_exact_bundle_activation_required": true,
+    "host_programme_record_replay_and_finalization_rehearsal_status": "implemented",
+    "remaining_live_status": "live_capture_adapter_integration_and_exact_physical_activation_required"
+  },
+  "contract_semantic_sha256": "ea727c32798d6eb719ca63840486ebc38395dc05cc8a494ddea29887c134af0c"
+}

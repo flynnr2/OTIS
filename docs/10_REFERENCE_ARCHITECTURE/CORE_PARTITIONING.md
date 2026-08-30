@@ -47,6 +47,12 @@ GNSS parsing, environment I2C, telemetry export, run control and physical DAC
 I2C execution.  GNSS qualification crosses to Core 1 as immutable metadata;
 PPS timestamps never cross from the GNSS service.
 
+Core 0 is the sole executor for the mutable GNSS UART receive ring, parser,
+link state machine, and transmit state. Core 1 never services that state,
+including before the first USB carrier attaches. Core 0 continues the bounded
+GNSS service path while the carrier is absent, so single ownership does not
+make receiver progress depend on host attachment.
+
 The concrete queues and interrupt rings are fixed-size and allocation-free.
 The mechanically checked normative inventory is
 `firmware/arduino/otis_nano_rp2040_connect/otis_resource_inventory.json`.

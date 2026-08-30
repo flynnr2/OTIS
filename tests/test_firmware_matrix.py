@@ -34,8 +34,13 @@ CURRENT_PROFILES = {
     "cx320_active_hybrid",
     "cx321_active_hybrid",
     "cx322_direct_hybrid",
+    "cx322_d9_d6_integration_engineering",
+    "cx322_d9_d6_72h_sustained_engineering",
     "otis_sustained_hybrid_regulation_v1",
     "d9_forwarded_output_no_control",
+    "d9_disabled_no_control_baseline",
+    "d9_d6_forwarded_output_no_control",
+    "d9_d6_frequency_only_lower",
     GNSS_BAUD_CHARACTERIZATION_PROFILE_ID,
     GNSS_BAUD_CONTINUATION_PROFILE_ID,
     GNSS_BAUD_RESUME_PROFILE_ID,
@@ -60,7 +65,7 @@ def test_matrix_contains_only_current_profiles_and_guards() -> None:
     matrix = load_matrix()
     profiles = matrix["profiles"]
     assert {item["id"] for item in profiles} == CURRENT_PROFILES | CURRENT_GUARDS
-    assert len(profiles) == 22
+    assert len(profiles) == 27
     assert {item["lifecycle"] for item in profiles} == {
         "keep_active",
         "keep_compile_only",
@@ -89,7 +94,9 @@ def test_verification_tiers_are_explicit_and_small() -> None:
         GNSS_BAUD_CHARACTERIZATION_PROFILE_ID,
         GNSS_BAUD_CONTINUATION_PROFILE_ID,
         GNSS_BAUD_RESUME_PROFILE_ID,
+        "d9_disabled_no_control_baseline",
         "d9_forwarded_output_no_control",
+        "d9_d6_forwarded_output_no_control",
     ]
     assert {item["id"] for item in _selected_profiles(
         matrix, [], False, verification_tier="campaign"
@@ -118,6 +125,30 @@ def test_ordinary_gnss_profiles_select_characterized_115200_baud() -> None:
     assert {item["id"] for item in _selected_profiles(
         matrix, [], False, verification_tier="bench"
     )} == CURRENT_PROFILES
+
+
+def test_integrated_cx322_profile_changes_only_d9_d6_selectors() -> None:
+    matrix = load_matrix()
+    standalone = _profile(matrix, "cx322_direct_hybrid")["defines"]
+    integrated = _profile(
+        matrix, "cx322_d9_d6_integration_engineering"
+    )["defines"]
+    expected = {
+        **standalone,
+        "OTIS_ENABLE_D9_D6_READINESS_PROFILE": "0",
+        "OTIS_ENABLE_FORWARDED_D9_OUTPUT": "1",
+        "OTIS_ENABLE_FORWARDED_D6_MONITOR": "1",
+    }
+    assert integrated == expected
+    for profile_id in (
+        "cx322_direct_hybrid",
+        "cx322_d9_d6_integration_engineering",
+        "cx322_d9_d6_72h_sustained_engineering",
+        "d9_d6_frequency_only_lower",
+    ):
+        defines = _profile(matrix, profile_id)["defines"]
+        assert defines["OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION"] == "1"
+        assert defines["OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS"] == "1200u"
 
 
 @pytest.mark.parametrize(
@@ -320,9 +351,9 @@ def test_gnss_binary_contract_requires_exact_five_packets_and_topology(
     tmp_path: Path,
 ) -> None:
     profile = _profile(load_matrix(), GNSS_BAUD_CHARACTERIZATION_PROFILE_ID)
-    elf = tmp_path / "candidate.elf"
-    elf.write_bytes(
-        b"synthetic ELF D14 D8_GPIO20_GPIN0\x00"
+    binary = tmp_path / "candidate.bin"
+    binary.write_bytes(
+        b"synthetic BIN D14 D8_GPIO20_GPIN0\x00"
         + b"\x00".join(sorted(GNSS_BAUD_CHARACTERIZATION_PACKETS))
         + b"\x00"
         + b"\x00".join(GNSS_BAUD_CHARACTERIZATION_BINARY_MARKERS.values())
@@ -344,7 +375,7 @@ def test_gnss_binary_contract_requires_exact_five_packets_and_topology(
         "sha256": GNSS_BAUD_CHARACTERIZATION_CONTRACT_SHA256,
     }
 
-    elf.write_bytes(elf.read_bytes() + b"$PMTK251,4800*14\r\n")
+    binary.write_bytes(binary.read_bytes() + b"$PMTK251,4800*14\r\n")
     with pytest.raises(MatrixError, match="packet set differs"):
         _gnss_binary_contract(profile, tmp_path)
 
@@ -366,8 +397,8 @@ def test_ordinary_gnss_binary_contract_omits_characterization_table(
     tmp_path: Path,
 ) -> None:
     profile = _profile(load_matrix(), "cx319_tight_lower")
-    (tmp_path / "candidate.elf").write_bytes(
-        b"synthetic ELF\x00$PMTK251,115200*1F\r\n\x00"
+    (tmp_path / "candidate.bin").write_bytes(
+        b"synthetic BIN\x00$PMTK251,115200*1F\r\n\x00"
     )
 
     report = _gnss_binary_contract(profile, tmp_path)
@@ -375,6 +406,20 @@ def test_ordinary_gnss_binary_contract_omits_characterization_table(
     assert report["characterization_transition_surface"] == "disabled"
     assert report["pmtk251_packets"] == ["$PMTK251,115200*1F\r\n"]
     assert report["campaign_contract"] is None
+
+
+def test_gnss_binary_contract_ignores_non_flashable_elf_debug_text(
+    tmp_path: Path,
+) -> None:
+    profile = _profile(load_matrix(), "d9_forwarded_output_no_control")
+    (tmp_path / "candidate.bin").write_bytes(b"flashable image without GNSS TX")
+    (tmp_path / "candidate.elf").write_bytes(
+        b"non-loadable DWARF spelling\x00$PMTK251,115200*1F\r\n\x00"
+    )
+
+    report = _gnss_binary_contract(profile, tmp_path)
+
+    assert report["pmtk251_packets"] == []
 
 
 def test_matrix_rejects_archived_lifecycle_and_retired_tier(tmp_path: Path) -> None:

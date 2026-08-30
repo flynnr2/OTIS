@@ -37,6 +37,7 @@ enum class OtisRunControlKind : uint8_t {
 
 struct OtisReceiverQualificationMessage {
   uint32_t sequence;
+  uint32_t metadata_sequence;
   uint64_t published_ticks;
   uint32_t metadata_age_ms;
   uint16_t satellites;
@@ -97,6 +98,17 @@ enum class OtisActuatorAckKind : uint8_t {
   Applied,
 };
 
+enum class OtisActuatorRejectionReason : uint8_t {
+  NotRejected,
+  MetadataHoldCancelledBeforeAcceptance,
+  PlatformFailStatic,
+  GuardStartRejected,
+  GuardAcknowledgementRejected,
+  InvalidExecutionPhase,
+  AcknowledgementDeadlineExpired,
+  ExecutionIdentityMismatch,
+};
+
 struct OtisCrossCoreActuatorAck {
   uint32_t request_sequence;
   uint32_t decision_sequence;
@@ -107,6 +119,7 @@ struct OtisCrossCoreActuatorAck {
   uint16_t accepted_code;
   uint16_t applied_code;
   OtisActuatorAckKind kind;
+  OtisActuatorRejectionReason rejection_reason;
   bool i2c_ok;
   bool clamped;
   bool ambiguous;
@@ -161,6 +174,24 @@ struct OtisObservationMessage {
   OtisRawEdgeMessage raw_edge;
   OtisPpsSnapshotMessage snapshot;
   OtisCountObservationMessage count;
+};
+
+// D6 forwarded-output evidence has a separate lossy queue. It cannot consume
+// the authoritative observation queue or make its exhaustion fail D14/D8.
+enum class OtisMonitorObservationKind : uint8_t {
+  Snapshot,
+};
+
+struct OtisMonitorObservationMessage {
+  OtisMonitorObservationKind kind;
+  uint32_t session;
+  uint32_t reference_session;
+  uint32_t sequence;
+  uint32_t cumulative_down_counter;
+  uint32_t reference_sequence;
+  uint64_t reference_timestamp_ticks;
+  uint32_t status;
+  uint8_t channel_id;
 };
 
 enum class OtisCriticalMessageKind : uint8_t {
@@ -331,6 +362,10 @@ bool otis_actuator_guard_start(OtisActuatorTransactionGuard *guard,
 bool otis_actuator_guard_acknowledge(
     OtisActuatorTransactionGuard *guard,
     const OtisCrossCoreActuatorAck *acknowledgement);
+bool otis_actuator_guard_discard_exact_rejection(
+    OtisActuatorTransactionGuard *guard,
+    const OtisCrossCoreActuatorAck *acknowledgement,
+    uint16_t confirmed_applied_code);
 bool otis_actuator_guard_check_deadline(OtisActuatorTransactionGuard *guard,
                                         OtisActuatorMonotonicSeconds now_s);
 

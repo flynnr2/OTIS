@@ -26,7 +26,14 @@ from .active_hybrid_evidence_guard import (
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
     programme_from_mapping,
+    progressive_checkpoint_contract,
+)
+from .active_status_live_state import (
+    LIVE_FRONTIER_COMPONENT,
+    LIVE_FRONTIER_DOMAIN_KEY,
+    LIVE_FRONTIER_TICKS_KEY,
 )
 from .active_control_supervisor import (
     ESTIMATES_CSV,
@@ -37,11 +44,12 @@ from .active_control_supervisor import (
 from .active_transactions import (
     ACTIVE_CSV,
     LEASE_PERIOD_S,
-    QUERY_PERIOD_S,
+QUERY_PERIOD_S,
     CampaignSpec,
     _read_csv,
     _utc_now,
 )
+FORWARDED_OUTPUT_STATUS_PERIOD_S = 60.0
 from .contracts import CsvValidationContext, validate_csv
 from .cx321_plant_sign_evidence_guard import (
     plant_sign_terminal_decision_from_record,
@@ -52,6 +60,7 @@ from .bounded_tight_deadband_prewrite_contract import (
     evaluate_prewrite_readiness as evaluate_setup_prewrite_readiness,
 )
 from .frequency_control_supervisor import (
+    ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S,
     ACTIVE_STATUS_COMPLETE_MAX_AGE_S,
     ARM_LIFETIME_S,
     ARM_PROGRESS_THRESHOLD,
@@ -63,7 +72,11 @@ from .frequency_control_supervisor import (
     FrequencyControlSupervisor,
     TightDeadbandLeg,
 )
+from .gnss_operational_baud_policy import (
+    gnss_operational_runtime_invariant_errors,
+)
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
+from .time_domains import forward_progress
 
 
 TOOL_ID = "cx320_active_hybrid_live_supervisor_v1"
@@ -90,6 +103,84 @@ MINIMUM_PHASE_MATERIAL_APPLICATIONS = 2
 QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S = (
     int(ACTIVE_STATUS_COMPLETE_MAX_AGE_S) + 1
 )
+
+# CONFIG? publishes these non-active records before the solicited ACTIVE
+# snapshot.  The atomic live-health reducer carries their latest values into
+# that snapshot, allowing the integrated programme to fail closed on a D9
+# register/GPIO contradiction without granting D9 measurement or controller
+# authority.  D6 is deliberately different: its status must be observable,
+# but every value (including a local fault) remains admissible here.
+FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH = {
+    ("build", "enable_forwarded_d9_output"): "1",
+    ("build", "enable_forwarded_d6_monitor"): "1",
+    ("build", "enable_d9_d6_readiness_profile"): "0",
+    ("forwarded_clock_output", "contract_id"): (
+        "OTIS_D9_D6_READINESS_CONTRACT_V1"
+    ),
+    ("forwarded_clock_output", "contract_sha256"): (
+        "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d"
+    ),
+    ("forwarded_clock_output", "state"): (
+        "configured_10mhz_forwarded_unqualified"
+    ),
+    ("forwarded_clock_output", "source"): "D8_GPIO20_GPIN0",
+    ("forwarded_clock_output", "destination"): "D9_GPIO21_GPOUT0",
+    ("forwarded_clock_output", "integer_divider"): "1",
+    ("forwarded_clock_output", "fractional_divider"): "0",
+    ("forwarded_clock_output", "applied_auxsrc"): "1",
+    ("forwarded_clock_output", "applied_integer_divider"): "1",
+    ("forwarded_clock_output", "applied_fractional_divider"): "0",
+    ("forwarded_clock_output", "source_gpio_function"): "8",
+    ("forwarded_clock_output", "destination_gpio_function"): "8",
+    ("forwarded_clock_output", "inversion"): "0",
+    ("forwarded_clock_output", "drive_strength_ma"): "2",
+    ("forwarded_clock_output", "slew_rate"): "slow",
+    ("forwarded_clock_output", "nominal_frequency_hz"): "10000000",
+    ("forwarded_clock_output", "readback_valid"): "true",
+}
+FORWARDED_MONITOR_OBSERVABILITY_KEYS = (
+    ("forwarded_clock_monitor", "state"),
+    ("forwarded_clock_monitor", "configured"),
+    ("forwarded_clock_monitor", "running"),
+    ("forwarded_clock_monitor", "session"),
+    ("forwarded_clock_monitor", "snapshot_count"),
+    ("forwarded_clock_monitor", "no_snapshot_count"),
+    ("forwarded_clock_monitor", "fifo_backlog_count"),
+    ("forwarded_clock_monitor", "pio_rxstall_count"),
+    ("forwarded_clock_monitor", "fault_flags"),
+)
+
+
+def forwarded_output_integration_prewrite_evidence(
+    health: dict[tuple[str, str], str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Validate D9 exactness and D6 observability without using either as truth."""
+
+    missing: list[str] = []
+    mismatches: list[str] = []
+    for key, expected in FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH.items():
+        observed = health.get(key)
+        label = f"{key[0]}.{key[1]}"
+        if observed is None:
+            missing.append(label)
+        elif observed != expected:
+            mismatches.append(f"{label}={observed!r}, expected {expected!r}")
+    first_valid_key = ("forwarded_clock_output", "first_valid_ticks")
+    first_valid = health.get(first_valid_key)
+    if first_valid is None:
+        missing.append("forwarded_clock_output.first_valid_ticks")
+    else:
+        try:
+            if int(first_valid) <= 0:
+                raise ValueError
+        except ValueError:
+            mismatches.append(
+                "forwarded_clock_output.first_valid_ticks must be positive"
+            )
+    for key in FORWARDED_MONITOR_OBSERVABILITY_KEYS:
+        if key not in health:
+            missing.append(f"{key[0]}.{key[1]}")
+    return tuple(missing), tuple(mismatches)
 
 HYBRID_STATES = frozenset(
     {
@@ -233,16 +324,16 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         or section.get("profile_id") != programme.profile_id
         or setup.get("code") != programme.setup_code
         or control.get("maximum_total_applications")
-        != programme.maximum_physical_applications
+        != programme.authorized_maximum_physical_applications
         or control.get(
             "maximum_total_automatic_applications",
             control.get("maximum_total_applications"),
         )
-        != programme.maximum_applications
+        != programme.authorized_maximum_applications
         or control.get("maximum_deliberate_challenges", 0)
         != programme.maximum_deliberate_challenges
         or control.get("maximum_cumulative_movement_codes")
-        != programme.maximum_cumulative_movement_codes
+        != programme.authorized_maximum_cumulative_movement_codes
         or control.get("maximum_step_codes") != programme.maximum_step_codes
         or control.get("minimum_applied_cadence_s")
         != programme.minimum_applied_cadence_s
@@ -251,20 +342,24 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         or qualification.get("qualified_duration_s")
         != programme.qualified_duration_s
         or qualification.get("absolute_wall_clock_limit_s")
-        != programme.absolute_wall_limit_s
+        != programme.authorized_absolute_wall_limit_s
         or qualification.get("no_extension") is not True
     ):
         raise ValueError("CX320 live manifest does not carry the exact envelope")
 
-    numerical = natural_policy.get("numerical_policy", {})
-    authority = natural_policy.get("global_authority_limits", {})
-    if (
-        natural_policy.get("programme_id")
-        != (
+    expected_natural_policy_programme_id = (
+        programme.natural_policy_programme_id
+        or (
             programme.programme_id
             if programme.response_checkpoint_observational
             else CX320_PROGRAMME.programme_id
         )
+    )
+    numerical = natural_policy.get("numerical_policy", {})
+    authority = natural_policy.get("global_authority_limits", {})
+    if (
+        natural_policy.get("programme_id")
+        != expected_natural_policy_programme_id
         or natural_policy.get("policy_id") != programme.natural_policy_id
         or natural_policy.get("setup", {}).get("exact_start_code")
         != programme.setup_code
@@ -423,8 +518,10 @@ def load_active_hybrid_spec(
             profile=programme.profile_id,
             run_identity=programme.runtime_run_identity,
             start_code=programme.setup_code,
-            correction_limit=programme.maximum_physical_applications,
-            cumulative_limit=programme.maximum_cumulative_movement_codes,
+            correction_limit=programme.authorized_maximum_physical_applications,
+            cumulative_limit=(
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
             minimum_code=programme.minimum_code,
             maximum_code=programme.maximum_code,
             maximum_step=programme.maximum_step_codes,
@@ -445,6 +542,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         *,
         manifest: dict[str, Any],
         manifest_path: Path,
+        rehearsal_manifest: bool = False,
         **kwargs: object,
     ) -> None:
         envelope = _runtime_envelope(manifest)
@@ -457,6 +555,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         ):
             raise ValueError("CX320 supervisor inputs differ from the live manifest")
         self.programme = envelope.programme
+        self.rehearsal_manifest = rehearsal_manifest
         super().__init__(
             mode="live",
             leg=TightDeadbandLeg(
@@ -507,6 +606,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("qualified_origin_estimate_id", None)
         self.state.setdefault("qualified_origin_timestamp_ticks", None)
         self.state.setdefault("qualified_origin_session_id", None)
+        self.state.setdefault("qualified_origin_extended_timestamp_ticks", None)
+        self.state.setdefault("qualified_frontier_raw_ticks", None)
+        self.state.setdefault("qualified_frontier_extended_ticks", None)
+        self.state.setdefault("qualified_endpoint_extended_timestamp_ticks", None)
         self.state.setdefault("latest_hybrid_state", None)
         self.state.setdefault("first_phase_checkpoint_passed", False)
         self.state.setdefault("first_phase_observation_checkpoint_exact", False)
@@ -517,11 +620,34 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("plant_sign_prearm_sent", False)
         self.state.setdefault("plant_sign_prearm_accepted_intervals", None)
         self.state.setdefault("host_verification_hold", None)
+        self.state.setdefault("gnss_metadata_hold", None)
+        self.state.setdefault("gnss_metadata_hold_count", 0)
+        self.state.setdefault("controller_authority_inhibited_reason", None)
+        self.state.setdefault("controller_authority_inhibited_utc", None)
         self.state.setdefault("persistent_wrong_direction_terminal", False)
+        self.state.setdefault("unarmed_observation_complete_utc", None)
+        # The attachment nonce is immutable package identity. Runtime queries
+        # rotate a separate nonce so a fresh file cannot masquerade as the
+        # causally requested post-frontier snapshot.
+        self.state.setdefault(
+            "active_snapshot_request_nonce",
+            int(self.state["host_attach_query_nonce"]),
+        )
         self._save()
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
         self._event(f"{self.programme.key}_{suffix}", **payload)
+
+    def _current_health(
+        self, *, required_query_nonce: int | None = None
+    ) -> dict[tuple[str, str], str]:
+        if required_query_nonce is None:
+            required_query_nonce = int(
+                self.state["active_snapshot_request_nonce"]
+            )
+        return super()._current_health(
+            required_query_nonce=required_query_nonce
+        )
 
     def _identity_ready(
         self, health: dict[tuple[str, str], str]
@@ -543,18 +669,40 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     def _fresh_active_snapshot_after(
         self, generation: int
     ) -> dict[tuple[str, str], str]:
-        self._command(self._status_query_command())
-        deadline = time.monotonic() + 5.0
+        prior_nonce = int(self.state["active_snapshot_request_nonce"])
+        query_nonce = prior_nonce + 1 if prior_nonce < 0xFFFFFFFF else 1
+        if query_nonce == int(self.state["host_attach_query_nonce"]):
+            query_nonce = query_nonce + 1 if query_nonce < 0xFFFFFFFF else 1
+        self.state["active_snapshot_request_nonce"] = query_nonce
+        self._save()
+        self._programme_event(
+            "active_snapshot_query_started",
+            query_nonce=query_nonce,
+            pre_submit_snapshot_generation=generation,
+        )
+        self._command(f"ACTIVE SNAPSHOT {query_nonce}")
+        # One request remains outstanding until a matching, later complete
+        # generation arrives. Fresh host publication alone is insufficient:
+        # periodic snapshots retain the prior nonce, and a generation at or
+        # behind the pre-submit frontier cannot answer this request.
+        deadline = time.monotonic() + ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S
         while True:
-            health = self._current_health()
+            health = self._current_health(required_query_nonce=query_nonce)
             observed = int(
                 health.get(("cx317_active", "snapshot_generation_complete"), "0")
             )
             if observed > generation:
+                self._programme_event(
+                    "active_snapshot_query_completed",
+                    query_nonce=query_nonce,
+                    pre_submit_snapshot_generation=generation,
+                    response_snapshot_generation=observed,
+                )
                 return health
             if time.monotonic() >= deadline:
                 raise TimeoutError(
-                    "CX320 fresh active snapshot did not follow evidence acknowledgement"
+                    "CX320 causally bound active snapshot did not follow "
+                    f"query_nonce={query_nonce} generation={generation}"
                 )
             time.sleep(0.05)
 
@@ -718,17 +866,24 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             dac_row_count=len(_read_csv(self.run_dir / DAC_CSV)),
             telemetry_drop_baseline=0,
         )
+        missing = list(readiness.missing)
         mismatches = list(readiness.mismatches)
         if health.get(("cx317_active", "query_nonce")) != str(
-            self.state["host_attach_query_nonce"]
+            self.state["active_snapshot_request_nonce"]
         ):
             mismatches.append("solicited post-attachment snapshot is absent")
+        if self.programme.forwarded_output_integration:
+            output_missing, output_mismatches = (
+                forwarded_output_integration_prewrite_evidence(health)
+            )
+            missing.extend(output_missing)
+            mismatches.extend(output_mismatches)
         return PrewriteReadiness(
             contract_id=(
                 f"{self.programme.key}_active_hybrid_prewrite_runtime_contract_v1"
             ),
-            ready=not readiness.missing and not mismatches,
-            missing=readiness.missing,
+            ready=not missing and not mismatches,
+            missing=tuple(dict.fromkeys(missing)),
             mismatches=tuple(dict.fromkeys(mismatches)),
             inherited_preview_baseline_code=(
                 readiness.inherited_preview_baseline_code
@@ -897,11 +1052,15 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         # for CX319 but contradicts CX320's intended combined controller.
         hybrid_state = health.get(("cx317_active", "hybrid_state"))
         hybrid_reason = health.get(("cx317_active", "hybrid_reason"), "unknown")
-        if (
+        prospective_controller_inhibit = (
             self.programme.response_checkpoint_observational
             and hybrid_state == "FAIL_STATIC"
             and hybrid_reason
             in {"prospective_repeated_alternation", "prospective_low_efficiency_path"}
+        )
+        if (
+            prospective_controller_inhibit
+            and self.programme is not CX322_D9_D6_72H_PROGRAMME
         ):
             self.state["arm_pending"] = False
             self.state["arm_sent_at_utc"] = None
@@ -919,8 +1078,64 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 self.state["arm_sent_at_utc"] = None
                 self._abort(decision)
                 return
-        ControlSupervisorBase._check_fail_static_health(self, health)
-        integrity = self._runtime_health_integrity(health)
+        platform_health = health
+        if (
+            prospective_controller_inhibit
+            and self.programme is CX322_D9_D6_72H_PROGRAMME
+        ):
+            self.state["arm_pending"] = False
+            self.state["arm_sent_at_utc"] = None
+            if self.state.get("controller_authority_inhibited_reason") is None:
+                self.state["controller_authority_inhibited_reason"] = hybrid_reason
+                self.state["controller_authority_inhibited_utc"] = _utc_now()
+                self._save()
+                self._programme_event(
+                    "controller_authority_inhibited_acquisition_continues",
+                    reason=hybrid_reason,
+                    d14_d8_acquisition_continues=True,
+                    new_dac_authority=False,
+                    terminal_deferred_to_exact_qualified_endpoint=True,
+                )
+            # This firmware assertion is the intended controller-local
+            # authority inhibition. Preserve all independent platform and
+            # D14/D8 checks while preventing it from terminating Campaign 18.
+            platform_health = dict(health)
+            platform_health[("cx317_active", "fail_static")] = "false"
+        ControlSupervisorBase._check_fail_static_health(self, platform_health)
+        gnss_missing, gnss_mismatches = (
+            gnss_operational_runtime_invariant_errors(
+                health,
+                require_present=(
+                    self.programme.forwarded_output_integration
+                    and self.state["prewrite_contract_ready_utc"] is not None
+                ),
+            )
+            if self.programme.forwarded_output_integration
+            else ((), ())
+        )
+        if gnss_missing or gnss_mismatches:
+            raise ValueError(
+                "integrated GNSS bootstrap/runtime invariant changed: "
+                + "; ".join((*gnss_missing, *gnss_mismatches))
+            )
+        if (
+            self.programme.forwarded_output_integration
+            and self.state["prewrite_contract_ready_utc"] is not None
+        ):
+            output_missing, output_mismatches = (
+                forwarded_output_integration_prewrite_evidence(health)
+            )
+            d9_missing = tuple(
+                item
+                for item in output_missing
+                if not item.startswith("forwarded_clock_monitor.")
+            )
+            if d9_missing or output_mismatches:
+                raise ValueError(
+                    "integrated D9 digital configuration/readback lost: "
+                    + "; ".join((*d9_missing, *output_mismatches))
+                )
+        integrity = self._runtime_health_integrity(platform_health)
         if integrity.mismatches or (
             self.state["prewrite_contract_ready_utc"] is not None
             and integrity.missing
@@ -929,29 +1144,39 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 "CX320 continuous runtime health contract failed: "
                 + integrity.diagnostic()
             )
-        if self.state["manual_start_sent"] and not self._identity_ready(health):
+        setup_established = self.state["setup_confirmed_utc"] is not None
+        if setup_established and not self._identity_ready(health):
             raise ValueError("CX320 exact runtime identity became unavailable")
-        if self.state["manual_start_sent"]:
+        if setup_established:
+            metadata_hold_active = (
+                health.get(("cx317_active", "state")) == "GNSS_METADATA_HOLD"
+                and _truth(health, "gnss_metadata_hold_active")
+            )
             required_true = (
                 "capture_lease_live",
-                "setup_gnss_eligible",
                 "setup_reference_eligible",
                 "setup_partition_healthy",
             )
+            if not metadata_hold_active:
+                required_true = (*required_true, "setup_gnss_eligible")
             unhealthy = [key for key in required_true if not _truth(health, key)]
             if unhealthy:
                 raise ValueError(
                     "CX320 shared D14/D8/GNSS/capture qualification lost: "
                     + ", ".join(unhealthy)
                 )
+            self._update_gnss_metadata_hold(health, metadata_hold_active)
 
         if hybrid_state is None:
-            if self.state["manual_start_sent"]:
+            if setup_established:
                 raise ValueError("CX320 hybrid firmware state is absent")
             return
         if hybrid_state not in self.programme.hybrid_states:
             raise ValueError(f"unexpected CX320 hybrid state: {hybrid_state!r}")
-        if hybrid_state == "FAIL_STATIC":
+        if hybrid_state == "FAIL_STATIC" and not (
+            prospective_controller_inhibit
+            and self.programme is CX322_D9_D6_72H_PROGRAMME
+        ):
             raise ValueError(f"CX320 firmware entered FAIL_STATIC: {hybrid_reason}")
 
         corrections = int(
@@ -1007,9 +1232,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         # frequency_only; each individual count must remain bounded by the
         # global correction count.
         if (
-            corrections > self.programme.maximum_physical_applications
-            or automatic_applications > self.programme.maximum_applications
-            or movement > self.programme.maximum_cumulative_movement_codes
+            corrections
+            > self.programme.authorized_maximum_physical_applications
+            or automatic_applications
+            > self.programme.authorized_maximum_applications
+            or movement
+            > self.programme.authorized_maximum_cumulative_movement_codes
             or material > phase_nonzero
             or phase_nonzero > corrections
             or material + frequency_only > corrections
@@ -1064,6 +1292,105 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if dirty:
             self._save()
 
+    def _update_gnss_metadata_hold(
+        self,
+        health: dict[tuple[str, str], str],
+        active: bool,
+    ) -> None:
+        retained = self.state.get("gnss_metadata_hold")
+        if active:
+            if not _truth(health, "confirmed_applied_code_known"):
+                raise ValueError("GNSS metadata hold lacks confirmed DAC identity")
+            code = int(health[("cx317_active", "confirmed_applied_code")], 0)
+            epoch = int(health[("cx317_active", "dac_epoch")])
+            corrections = int(health[("cx317_active", "correction_count")])
+            movement = int(
+                health[("cx317_active", "cumulative_movement_codes")]
+            )
+            entry_sequence = int(
+                health[("cx317_active", "gnss_metadata_hold_entry_sequence")]
+            )
+            if not isinstance(retained, dict):
+                retained = {
+                    "entry_sequence": entry_sequence,
+                    "applied_code": code,
+                    "dac_epoch": epoch,
+                    "correction_count": corrections,
+                    "cumulative_movement_codes": movement,
+                    "transaction_resolution_pending": _truth(
+                        health, "gnss_metadata_hold_transaction_pending"
+                    ),
+                    "entered_utc": _utc_now(),
+                }
+                self.state["gnss_metadata_hold"] = retained
+                self.state["gnss_metadata_hold_count"] = int(
+                    self.state.get("gnss_metadata_hold_count", 0)
+                ) + 1
+                self._save()
+                self._programme_event(
+                    "gnss_metadata_hold_entered",
+                    **retained,
+                    d14_d8_measurement_continues=True,
+                    new_correction_authority=False,
+                )
+            elif retained.get("transaction_resolution_pending"):
+                if not _truth(
+                    health, "gnss_metadata_hold_transaction_pending"
+                ):
+                    retained.update(
+                        {
+                            "applied_code": code,
+                            "dac_epoch": epoch,
+                            "correction_count": corrections,
+                            "cumulative_movement_codes": movement,
+                            "transaction_resolution_pending": False,
+                        }
+                    )
+                    self._save()
+                    self._programme_event(
+                        "gnss_metadata_hold_transaction_resolved",
+                        applied_code=code,
+                        dac_epoch=epoch,
+                        correction_count=corrections,
+                        cumulative_movement_codes=movement,
+                    )
+            elif (
+                code != retained["applied_code"]
+                or epoch != retained["dac_epoch"]
+                or corrections != retained["correction_count"]
+                or movement != retained["cumulative_movement_codes"]
+                or entry_sequence != retained["entry_sequence"]
+            ):
+                raise ValueError("actuation identity changed during GNSS metadata hold")
+            return
+        if not isinstance(retained, dict):
+            return
+        metadata_sequence = int(
+            health[("cx317_active", "gnss_metadata_requalification_sequence")]
+        )
+        qualification_frontier = int(
+            health[("cx317_active", "gnss_metadata_qualification_frontier")]
+        )
+        observation_sequence = int(
+            health[("cx317_active", "d14_d8_observation_sequence")]
+        )
+        if (
+            metadata_sequence <= retained["entry_sequence"]
+            or observation_sequence <= qualification_frontier
+            or health.get(("cx317_active", "state")) != "DISARMED"
+        ):
+            raise ValueError("GNSS metadata hold cleared without fresh causal requalification")
+        self.state["gnss_metadata_hold"] = None
+        self._save()
+        self._programme_event(
+            "gnss_metadata_hold_requalified",
+            metadata_sequence=metadata_sequence,
+            qualification_frontier=qualification_frontier,
+            post_qualification_observation_sequence=observation_sequence,
+            applied_code=retained["applied_code"],
+            dac_epoch=retained["dac_epoch"],
+        )
+
     @staticmethod
     def _fresh_authoritative_selected_estimate(
         rows: list[dict[str, str]], *, dac_epoch: int,
@@ -1113,24 +1440,73 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             session_id = int(health[("cx317_active", "session_id")])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("CX320 qualified origin device clock is malformed") from exc
-        current_uptime_lower_bound_ticks = (
-            current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
-        )
-        maximum_coherent_origin_ticks = (
-            current_uptime_s + QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
-        ) * RP2040_TIMER0_TICKS_PER_SECOND
-        if (
-            origin_ticks <= 0
-            or session_id <= 0
-            or origin_ticks > maximum_coherent_origin_ticks
-        ):
-            raise ValueError("CX320 qualified origin device clock is incoherent")
-        # The integer uptime value is a conservative lower bound.  Do not
-        # reject a legitimate exact estimator timestamp in its fractional
-        # second (or just after the last complete status snapshot); wait until
-        # a later snapshot's lower bound has actually reached it.
-        if origin_ticks > current_uptime_lower_bound_ticks:
-            return
+        if self.programme is CX322_D9_D6_72H_PROGRAMME:
+            try:
+                frontier_ticks = int(
+                    health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
+                )
+                frontier_domain = health[
+                    (LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)
+                ]
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    "campaign18 exact retained producer frontier is absent"
+                ) from exc
+            if frontier_domain != "rp2040_timer0":
+                raise ValueError(
+                    "campaign18 retained producer frontier domain differs"
+                )
+            forward = forward_progress(
+                origin_ticks,
+                frontier_ticks,
+                domain="rp2040_timer0",
+                allow_equal=True,
+            )
+            reverse = forward_progress(
+                frontier_ticks,
+                origin_ticks,
+                domain="rp2040_timer0",
+                allow_equal=True,
+            )
+            maximum_lead_ticks = (
+                QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
+                * RP2040_TIMER0_TICKS_PER_SECOND
+            )
+            if forward.valid and forward.distance_ticks is not None and (
+                forward.distance_ticks <= maximum_lead_ticks
+            ):
+                self.state["qualified_origin_extended_timestamp_ticks"] = (
+                    origin_ticks
+                )
+                self.state["qualified_frontier_raw_ticks"] = frontier_ticks
+                self.state["qualified_frontier_extended_ticks"] = (
+                    origin_ticks + forward.distance_ticks
+                )
+            elif reverse.valid and reverse.distance_ticks is not None and (
+                reverse.distance_ticks <= maximum_lead_ticks
+            ):
+                return
+            else:
+                raise ValueError("CX320 qualified origin device clock is incoherent")
+        else:
+            current_uptime_lower_bound_ticks = (
+                current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
+            )
+            maximum_coherent_origin_ticks = (
+                current_uptime_s + QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
+            ) * RP2040_TIMER0_TICKS_PER_SECOND
+            if (
+                origin_ticks <= 0
+                or session_id <= 0
+                or origin_ticks > maximum_coherent_origin_ticks
+            ):
+                raise ValueError("CX320 qualified origin device clock is incoherent")
+            # The integer uptime value is a conservative lower bound.  Do not
+            # reject a legitimate exact estimator timestamp in its fractional
+            # second (or just after the last complete status snapshot); wait until
+            # a later snapshot's lower bound has actually reached it.
+            if origin_ticks > current_uptime_lower_bound_ticks:
+                return
         self.state["qualification_started_utc"] = _utc_now()
         self.state["qualified_origin_estimate_id"] = estimate["estimate_id"]
         self.state["qualified_origin_timestamp_ticks"] = origin_ticks
@@ -1164,6 +1540,48 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             raise ValueError("CX320 current qualified device clock is malformed") from exc
         if current_session != origin_session:
             raise ValueError("CX320 capture session changed after qualified origin")
+        if self.programme is CX322_D9_D6_72H_PROGRAMME:
+            try:
+                current_raw_ticks = int(
+                    health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
+                )
+                frontier_domain = health[
+                    (LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)
+                ]
+                origin_extended = int(
+                    self.state["qualified_origin_extended_timestamp_ticks"]
+                )
+                prior_raw_ticks = int(self.state["qualified_frontier_raw_ticks"])
+                prior_extended_ticks = int(
+                    self.state["qualified_frontier_extended_ticks"]
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    "campaign18 exact retained qualified clock is incomplete"
+                ) from exc
+            if frontier_domain != "rp2040_timer0":
+                raise ValueError(
+                    "campaign18 retained producer frontier domain differs"
+                )
+            progress = forward_progress(
+                prior_raw_ticks,
+                current_raw_ticks,
+                domain="rp2040_timer0",
+                allow_equal=True,
+            )
+            if not progress.valid or progress.distance_ticks is None:
+                raise ValueError(
+                    "campaign18 retained producer frontier moved backward"
+                )
+            current_extended = prior_extended_ticks + progress.distance_ticks
+            if current_extended != prior_extended_ticks:
+                self.state["qualified_frontier_raw_ticks"] = current_raw_ticks
+                self.state["qualified_frontier_extended_ticks"] = current_extended
+                self._save()
+            elapsed = current_extended - origin_extended
+            if elapsed < 0:
+                raise ValueError("CX320 device clock moved behind qualified origin")
+            return elapsed
         elapsed = current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND - origin
         if elapsed < 0:
             raise ValueError("CX320 device clock moved behind qualified origin")
@@ -1176,7 +1594,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if elapsed_ticks is None:
             return False
         admission_ticks = (
-            self.programme.qualified_duration_s - CORRECTION_RESPONSE_RESERVE_S
+            self.programme.qualified_duration_s
+            - self.programme.correction_response_reserve_s
         ) * RP2040_TIMER0_TICKS_PER_SECOND
         if elapsed_ticks < admission_ticks:
             return False
@@ -1192,12 +1611,35 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     self.programme.qualified_duration_s
                     - elapsed_ticks // RP2040_TIMER0_TICKS_PER_SECOND,
                 ),
-                required_response_reserve_s=CORRECTION_RESPONSE_RESERVE_S,
+                required_response_reserve_s=(
+                    self.programme.correction_response_reserve_s
+                ),
+            )
+        return True
+
+    def _unarmed_observation_complete(
+        self, elapsed_monotonic_s: float | None
+    ) -> bool:
+        required_s = self.programme.engineering_unarmed_observation_s
+        if required_s <= 0:
+            return True
+        if elapsed_monotonic_s is None or elapsed_monotonic_s < required_s:
+            return False
+        if self.state["unarmed_observation_complete_utc"] is None:
+            self.state["unarmed_observation_complete_utc"] = _utc_now()
+            self._save()
+            self._programme_event(
+                "unarmed_concurrency_observation_complete",
+                required_s=required_s,
+                observed_elapsed_monotonic_s=elapsed_monotonic_s,
+                setup_commands_issued=0,
             )
         return True
 
     def _maybe_start_or_arm(
-        self, health: dict[tuple[str, str], str]
+        self,
+        health: dict[tuple[str, str], str],
+        elapsed_monotonic_s: float | None = None,
     ) -> None:
         if self.state.get("host_verification_hold") is not None:
             return
@@ -1207,7 +1649,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         reason = health.get(("cx317_active", "reason"), "")
         if state in {"FAULT", "ABORTED"}:
             raise ValueError(f"device active state {state.lower()}: {reason}")
-        if state == "REFERENCE_HOLD":
+        if state in {"REFERENCE_HOLD", "GNSS_METADATA_HOLD"}:
             return
         if state == "OUT_OF_MODEL_HOLD":
             raise ValueError(f"device entered out-of-model hold: {reason}")
@@ -1218,6 +1660,13 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             and not self.state["manual_start_sent"]
             and state == "DISARMED"
         ):
+            if (
+                not self.rehearsal_manifest
+                and not self._unarmed_observation_complete(
+                    elapsed_monotonic_s
+                )
+            ):
+                return
             if not self._prewrite_readiness(health).ready:
                 return
             command, request = self._setup_command(health)
@@ -1322,7 +1771,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             and not _truth(health, "deliberate_challenge_unexercised")
         )
         if (
-            automatic_count >= self.programme.maximum_applications
+            automatic_count >= self.programme.authorized_maximum_applications
             and not challenge_pending
         ):
             return
@@ -1395,7 +1844,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if not self.programme.minimum_code <= code <= self.programme.maximum_code:
             return False
         rows = _read_csv(self.run_dir / ACTIVE_CSV)
-        if rows and rows[-1].get("event") not in {"manual_start", "response"}:
+        if rows and rows[-1].get("event") not in {
+            "manual_start",
+            "response",
+            "request_withdrawn",
+        }:
             return False
         self.state["terminal_static_code"] = code
         return True
@@ -1450,13 +1903,59 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._abort("phase_channel_degraded_frequency_control_retained")
             return
 
+        if (
+            self.programme.terminal_after_first_response
+            and (
+                self.manifest.get("qualification_evidence") is True
+                or (
+                    self.rehearsal_manifest
+                    and self.manifest.get("rehearsal_endpoint_mode")
+                    == "first_response"
+                )
+            )
+            and (
+                not progressive_checkpoint_contract(self.programme).get(
+                    "phase_material_application_count_is_acquisition_pass_gate",
+                    True,
+                )
+                or (
+                    self.state.get("first_phase_observation_checkpoint_exact") is True
+                    and _truth(health, "first_phase_checkpoint_passed")
+                )
+            )
+            and int(health.get(("cx317_active", "correction_count"), "0")) == 1
+            and self._healthy_terminal_ready(health)
+        ):
+            self._set_healthy_endpoint(
+                health,
+                endpoint=(
+                    f"{self.programme.key}_first_complete_application_"
+                    "consumer_and_response"
+                ),
+            )
+            return
+
         qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
+        qualified_target_ticks = (
+            self.programme.qualified_duration_s
+            * RP2040_TIMER0_TICKS_PER_SECOND
+        )
+        if (
+            self.programme is CX322_D9_D6_72H_PROGRAMME
+            and qualified_elapsed_ticks is not None
+            and qualified_elapsed_ticks >= qualified_target_ticks
+            and self.state.get("qualified_endpoint_extended_timestamp_ticks")
+            is None
+        ):
+            self.state["qualified_endpoint_extended_timestamp_ticks"] = (
+                int(self.state["qualified_origin_extended_timestamp_ticks"])
+                + qualified_target_ticks
+            )
+            self._save()
         hold = self.state.get("host_verification_hold")
         if (
             qualified_elapsed_ticks is not None
-            and qualified_elapsed_ticks
-            >= self.programme.qualified_duration_s
-            * RP2040_TIMER0_TICKS_PER_SECOND
+            and qualified_elapsed_ticks >= qualified_target_ticks
             and isinstance(hold, dict)
         ):
             if (
@@ -1482,19 +1981,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             return
         if (
             qualified_elapsed_ticks is not None
-            and qualified_elapsed_ticks
-            >= self.programme.qualified_duration_s
-            * RP2040_TIMER0_TICKS_PER_SECOND
+            and qualified_elapsed_ticks >= qualified_target_ticks
             and self._healthy_terminal_ready(health)
         ):
             self._set_healthy_endpoint(
                 health,
-                endpoint=(
-                    f"{self.programme.key}_"
-                    f"{self.programme.qualified_duration_s // 3600}h_qualified_endpoint_complete"
-                    if self.programme.sustained_regulation
-                    else f"{self.programme.key}_12h_qualified_endpoint_complete"
-                ),
+                endpoint=self.programme.qualified_endpoint_reason,
             )
             return
 
@@ -1503,16 +1995,14 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             isinstance(wall_origin, str)
             and wall_origin
             and now_epoch - _parse_utc_epoch(wall_origin)
-            >= self.programme.absolute_wall_limit_s
+            >= self.programme.authorized_absolute_wall_limit_s
         ):
             if self._healthy_terminal_ready(health):
                 self.state["terminal"] = {
                     "result": "nonpass",
                     "reason": (
                         f"{self.programme.key}_"
-                        f"{self.programme.absolute_wall_limit_s // 3600}h_absolute_wall_endpoint"
-                        if self.programme.sustained_regulation
-                        else f"{self.programme.key}_16h_absolute_wall_endpoint"
+                        f"{self.programme.authorized_absolute_wall_limit_s // 3600}h_absolute_wall_endpoint"
                     ),
                     "primary_decision": "right_censored_incomplete",
                     "last_confirmed_code": self.state["terminal_static_code"],
@@ -1583,6 +2073,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         started = time.monotonic()
         last_lease = 0.0
         last_query = 0.0
+        last_output_status_query = time.monotonic()
         with AbortFifo(self.abort_fifo) as abort:
             self._live_command_ack_required = True
             self._programme_event(
@@ -1612,8 +2103,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     self._renew_lease()
                     last_lease = now
                 if now - last_query >= QUERY_PERIOD_S:
-                    self._command(self._status_query_command())
-                    last_query = now
+                    current = self._current_health()
+                    generation = int(
+                        current.get(
+                            ("cx317_active", "snapshot_generation_complete"),
+                            "0",
+                        )
+                    )
+                    self._fresh_active_snapshot_after(generation)
+                    last_query = time.monotonic()
+                if (
+                    self.programme.forwarded_output_integration
+                    and now - last_output_status_query
+                    >= FORWARDED_OUTPUT_STATUS_PERIOD_S
+                ):
+                    self._command("CONFIG?")
+                    last_output_status_query = now
                 self._process_transactions()
                 health = self._current_health()
                 self._check_fail_static_health(health)
@@ -1622,7 +2127,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 self._maybe_qualify(health)
                 self._maybe_finish(health, time.time(), now - started)
                 if self.state["terminal"] is None:
-                    self._maybe_start_or_arm(health)
+                    self._maybe_start_or_arm(
+                        health, elapsed_monotonic_s=now - started
+                    )
                 if self.state["terminal"] is not None:
                     if not self.state["terminal_event_emitted"]:
                         self._programme_event(
@@ -1676,6 +2183,7 @@ def create_supervisor(
         expected_build_identity=build_identity,
         duration_s=duration_s,
         console_events=console_events,
+        rehearsal_manifest=rehearsal_manifest,
     )
 
 

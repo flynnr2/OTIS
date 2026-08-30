@@ -13,9 +13,15 @@ from .active_hybrid_policy import load_policy
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
+    PROGRAMMES,
     get_active_hybrid_programme,
+    integrated_setup_provenance_contract,
     progressive_checkpoint_contract,
     programme_from_mapping,
+)
+from .gnss_operational_baud_policy import (
+    GNSS_OPERATIONAL_BAUD_POLICY,
+    GNSS_OPERATIONAL_REQUIRED_DEFINES,
 )
 
 
@@ -26,6 +32,9 @@ PROFILE_ID = "cx320_active_hybrid"
 PROGRAMME_ID = "CX320_BOUNDED_ACTIVE_HYBRID_PHASE_FREQUENCY_V1"
 RUNTIME_RUN_IDENTITY = "cx320_active_hybrid:3200001"
 EXPECTED_BOARD_SERIAL = "503533748A919118"
+FRESH_SERIAL_AUTO_DETECT = (
+    "capture_device_--auto-detect_exactly_one_/dev/cu.usbmodem*"
+)
 REQUIRED_FALSE_AUTHORITY = (
     "effective",
     "firmware_flash",
@@ -150,6 +159,89 @@ def _binding(path: Path) -> dict[str, Any]:
     }
 
 
+def _engineering_contract_binding(
+    programme: ActiveHybridProgramme,
+) -> dict[str, Any]:
+    path = programme.engineering_contract_path
+    if path is None or not path.is_file():
+        raise ValueError("integrated engineering contract is unavailable")
+    contract = _read_object(path)
+    claimed = contract.get("contract_semantic_sha256")
+    unsigned = {
+        key: value
+        for key, value in contract.items()
+        if key != "contract_semantic_sha256"
+    }
+    if contract.get("contract_id") == (
+        "OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_CONTRACT_V1"
+    ):
+        from .cx322_d9_d6_72h_engineering import load_contract
+
+        checked = load_contract(path)
+        firmware = checked["firmware"]
+        timing = checked["time"]
+        envelope = checked["controller_envelope"]
+        serial = checked["serial"]
+        if (
+            claimed != _canonical_sha256(unsigned)
+            or firmware.get("profile_id") != programme.profile_id
+            or timing.get("qualified_duration_s")
+            != programme.qualified_duration_s
+            or timing.get("absolute_wall_limit_s")
+            != programme.authorized_absolute_wall_limit_s
+            or timing.get("counter_domain") != "rp2040_timer0_extended"
+            or envelope.get("automatic_application_limit")
+            != programme.authorized_maximum_applications
+            or envelope.get("automatic_cumulative_movement_limit_codes")
+            != programme.authorized_maximum_cumulative_movement_codes
+            or envelope.get("automatic_step_limit_codes")
+            != programme.maximum_step_codes
+            or envelope.get("total_dac_write_limit_including_setup")
+            != programme.authorized_maximum_physical_applications + 1
+            or envelope.get("minimum_application_cadence_s")
+            != programme.minimum_applied_cadence_s
+            or envelope.get(
+                "close_new_application_admission_before_endpoint_s"
+            )
+            != programme.correction_response_reserve_s
+            or envelope.get("authority_ceilings_are_nonbinding_not_targets")
+            is not True
+            or serial.get("baud") != 115200
+            or serial.get("stored_device_path_permitted") is not False
+        ):
+            raise ValueError("72h integrated engineering contract semantics differ")
+        return {
+            **_binding(path),
+            "contract_semantic_sha256": claimed,
+        }
+    envelope = contract.get("initial_bench_envelope", {})
+    if (
+        claimed != _canonical_sha256(unsigned)
+        or contract.get("contract_id")
+        != "OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_CONTRACT_V1"
+        or contract.get("firmware_profile", {}).get("profile_id")
+        != programme.profile_id
+        or envelope.get("unarmed_concurrency_observation_seconds")
+        != programme.engineering_unarmed_observation_s
+        or envelope.get("maximum_automatic_applications")
+        != programme.authorized_maximum_applications
+        or envelope.get("maximum_cumulative_movement_codes")
+        != programme.authorized_maximum_cumulative_movement_codes
+        or envelope.get("maximum_step_codes") != programme.maximum_step_codes
+        or envelope.get("absolute_wall_limit_seconds")
+        != programme.authorized_absolute_wall_limit_s
+        or envelope.get("starting_code_policy")
+        != "query_if_observable_else_establish_first_known_state_by_exact_authorized_setup_never_infer_or_restore"
+        or envelope.get("starting_state_provenance")
+        != integrated_setup_provenance_contract(programme)
+    ):
+        raise ValueError("integrated engineering contract semantics differ")
+    return {
+        **_binding(path),
+        "contract_semantic_sha256": claimed,
+    }
+
+
 def _validate_build(
     build_manifest_path: Path,
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
@@ -169,17 +261,24 @@ def _validate_build(
         "OTIS_ENABLE_CX320_ACTIVE_HYBRID": "1",
         "OTIS_ENABLE_CX317_BOUNDED_ACTIVE": "1",
         "OTIS_CX317_ACTIVE_CAMPAIGN": (
-            "OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID"
-            if programme.identification_required
-            else "OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION"
-            if programme.sustained_regulation
-            else "OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID"
-            if programme.response_checkpoint_observational
-            else "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID"
+            programme.firmware_campaign_macro
+            or (
+                "OTIS_CX317_ACTIVE_CAMPAIGN_CX321_ACTIVE_HYBRID"
+                if programme.identification_required
+                else "OTIS_CX317_ACTIVE_CAMPAIGN_SUSTAINED_HYBRID_REGULATION"
+                if programme.sustained_regulation
+                else "OTIS_CX317_ACTIVE_CAMPAIGN_CX322_DIRECT_HYBRID"
+                if programme.response_checkpoint_observational
+                else "OTIS_CX317_ACTIVE_CAMPAIGN_CX320_ACTIVE_HYBRID"
+            )
         ),
         "OTIS_CX317_ACTIVE_START_CODE": "0xA83Cu",
-        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": f"{programme.maximum_physical_applications}u",
-        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": "84u",
+        "OTIS_CX317_ACTIVE_CORRECTION_LIMIT": (
+            f"{programme.authorized_maximum_physical_applications}u"
+        ),
+        "OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES": (
+            f"{programme.authorized_maximum_cumulative_movement_codes}u"
+        ),
         "OTIS_CX317_MINIMUM_APPLIED_CADENCE_S": "1800u",
         "OTIS_DAC_MIN_CODE": "0xA800u",
         "OTIS_DAC_MAX_CODE": "0xAB00u",
@@ -189,6 +288,15 @@ def _validate_build(
         expected_defines["OTIS_ENABLE_CX321_ACTIVE_HYBRID"] = "1"
     if programme.response_checkpoint_observational:
         expected_defines["OTIS_ENABLE_CX322_DIRECT_HYBRID"] = "1"
+    if programme.forwarded_output_integration:
+        expected_defines.update(
+            {
+                "OTIS_ENABLE_D9_D6_READINESS_PROFILE": "0",
+                "OTIS_ENABLE_FORWARDED_D9_OUTPUT": "1",
+                "OTIS_ENABLE_FORWARDED_D6_MONITOR": "1",
+                **GNSS_OPERATIONAL_REQUIRED_DEFINES,
+            }
+        )
     if programme.sustained_regulation:
         expected_defines.update(
             {
@@ -197,6 +305,14 @@ def _validate_build(
                 "OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE": "1",
             }
         )
+    if programme.firmware_hybrid_maximum_automatic_applications is not None:
+        expected_defines["OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS"] = (
+            f"{programme.firmware_hybrid_maximum_automatic_applications}u"
+        )
+    if programme.firmware_hybrid_maximum_cumulative_movement_codes is not None:
+        expected_defines[
+            "OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES"
+        ] = f"{programme.firmware_hybrid_maximum_cumulative_movement_codes}u"
     if any(defines.get(name) != value for name, value in expected_defines.items()):
         raise ValueError(
             f"firmware build {programme.key.upper()} compile-time envelope differs"
@@ -313,6 +429,11 @@ def create_bundle(
             "policy_sha256": policy.policy_sha256,
         },
         "firmware": firmware,
+        **(
+            {"gnss_uart_policy": GNSS_OPERATIONAL_BAUD_POLICY}
+            if programme.forwarded_output_integration
+            else {}
+        ),
         "offline_replay": replay,
         "host_tools": {name: _binding(path) for name, path in TOOL_PATHS.items()},
         "topology": {
@@ -320,16 +441,45 @@ def create_bundle(
             "sole_oscillator_count_input": "D8",
             "independent_event_input_not_authority": "D10",
             "gnss_role": "same_receiver_D14_qualification_metadata_only",
-            "D9_GPOUT0": "deferred_unchanged",
+            "D9_GPOUT0": (
+                "D8_GPIO20_GPIN0_to_D9_GPIO21_GPOUT0_integer_divide_one"
+                if programme.forwarded_output_integration
+                else "deferred_unchanged"
+            ),
+            **(
+                {
+                    "D6_forwarded_monitor": (
+                        "D9_through_1k_series_resistor_to_D6_GPIO18_"
+                        "diagnostic_zero_authority"
+                    )
+                }
+                if programme.forwarded_output_integration
+                else {}
+            ),
             "serial_owner_count": 1,
             "serial_owner": "capture_device",
             "normal_and_priority_abort_fifos_distinct": True,
-            "expected_board_serial": EXPECTED_BOARD_SERIAL,
+            "expected_board_serial": (
+                None
+                if programme.fresh_serial_auto_detect
+                else EXPECTED_BOARD_SERIAL
+            ),
+            **(
+                {"serial_device_selection": FRESH_SERIAL_AUTO_DETECT}
+                if programme.fresh_serial_auto_detect
+                else {}
+            ),
         },
         "setup": {
             "exact_code": programme.setup_code,
             "exact_code_hex": f"0x{programme.setup_code:04X}",
-            "physical_applied_code_before_setup": "unknown",
+            "physical_applied_code_before_setup": (
+                integrated_setup_provenance_contract(programme)[
+                    "physical_applied_code_before_setup"
+                ]
+                if programme.forwarded_output_integration
+                else "unknown"
+            ),
             "one_setup_application": True,
             "same_code_reapplication_opens_new_epoch": True,
             "exact_acknowledgement_required": True,
@@ -345,13 +495,21 @@ def create_bundle(
         "finite_limits": {
             "qualified_duration_s": programme.qualified_duration_s,
             "qualified_origin": "first_complete_fresh_authoritative_600s_estimate_after_exact_setup_support_and_common_health_qualification",
-            "absolute_wall_clock_limit_s": programme.absolute_wall_limit_s,
+            "absolute_wall_clock_limit_s": (
+                programme.authorized_absolute_wall_limit_s
+            ),
             "wall_clock_origin": "sole_capture_owner_records_exact_run_identity_before_setup_submission",
-            "maximum_total_automatic_applications": programme.maximum_applications,
-            "maximum_total_physical_control_applications": programme.maximum_physical_applications,
+            "maximum_total_automatic_applications": (
+                programme.authorized_maximum_applications
+            ),
+            "maximum_total_physical_control_applications": (
+                programme.authorized_maximum_physical_applications
+            ),
             "maximum_deliberate_challenges": programme.maximum_deliberate_challenges,
             "maximum_combined_step_codes": programme.maximum_step_codes,
-            "maximum_cumulative_absolute_movement_codes": programme.maximum_cumulative_movement_codes,
+            "maximum_cumulative_absolute_movement_codes": (
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
             "minimum_applied_cadence_s": programme.minimum_applied_cadence_s,
             "minimum_code": programme.minimum_code,
             "maximum_code": programme.maximum_code,
@@ -421,6 +579,11 @@ def create_bundle(
         },
         "authority": authority,
     }
+    if programme.forwarded_output_integration:
+        bundle["engineering_contract"] = _engineering_contract_binding(programme)
+        bundle["setup"]["provenance"] = integrated_setup_provenance_contract(
+            programme
+        )
     if programme.sustained_regulation:
         bundle["reversal_challenge"] = policy_document["reversal_challenge"]
         bundle["sustained_regulation_acceptance"] = (
@@ -533,13 +696,34 @@ def validate_bundle(
             and bundle.get("profile_identity") != programme.profile_id
         )
         or bundle.get("topology", {}).get("expected_board_serial")
-        != EXPECTED_BOARD_SERIAL
+        != (
+            None
+            if programme.fresh_serial_auto_detect
+            else EXPECTED_BOARD_SERIAL
+        )
+        or (
+            programme.fresh_serial_auto_detect
+            and bundle.get("topology", {}).get("serial_device_selection")
+            != FRESH_SERIAL_AUTO_DETECT
+        )
         or bundle.get("command_envelope", {}).get("arm")
         != "ACTIVE ARM <authorization_sequence> <nonce> <absolute_expiry_s>"
     ):
         raise ValueError("unexpected CX320 bundle identity")
     if any(bundle.get("authority", {}).get(name) is not False for name in REQUIRED_FALSE_AUTHORITY):
         raise ValueError("CX320 bundle contains effective physical authority")
+    if programme.forwarded_output_integration and (
+        bundle.get("engineering_contract")
+        != _engineering_contract_binding(programme)
+        or bundle.get("gnss_uart_policy") != GNSS_OPERATIONAL_BAUD_POLICY
+        or bundle.get("setup", {}).get("provenance")
+        != integrated_setup_provenance_contract(programme)
+        or bundle.get("setup", {}).get("physical_applied_code_before_setup")
+        != integrated_setup_provenance_contract(programme)[
+            "physical_applied_code_before_setup"
+        ]
+    ):
+        raise ValueError("integrated setup provenance or contract binding differs")
     if set(bundle.get("host_tools", {})) != set(TOOL_PATHS):
         raise ValueError("CX320 bundle does not bind the complete current host path")
     for section, bindings in (("host_tools", bundle.get("host_tools", {})),):
@@ -674,7 +858,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--validate", type=Path)
     parser.add_argument(
-        "--programme", choices=("cx320", "cx321", "cx322", "sustained_hybrid"), default="cx320"
+        "--programme", choices=tuple(PROGRAMMES), default="cx320"
     )
     args = parser.parse_args(argv)
     programme = get_active_hybrid_programme(args.programme)
