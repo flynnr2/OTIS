@@ -8,19 +8,27 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import active_hybrid_activation as activation
+from host.otis_tools import active_hybrid_live_analyze as live_analyze
 from host.otis_tools import active_hybrid_live_rehearsal as rehearsal
 from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_PROGRAMME,
 )
+from host.otis_tools.active_hybrid_live_analyze import (
+    _response_dependent_consumer_propagation,
+)
 from host.otis_tools.active_status_contract import (
     complete_active_status_snapshots,
 )
 from host.otis_tools.active_status_live_state import ActiveStatusLiveReducer
 from host.otis_tools.capture_serial import CsvRecordSplitter
-from host.otis_tools.contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
-from host.otis_tools.contracts import CONTRACT_FIELDS
+from host.otis_tools.contracts import (
+    ACTIVE_HYBRID_DECISION_V1_FIELDS,
+    ACTIVE_HYBRID_DECISION_V2_FIELDS,
+    ACTIVE_TRANSACTION_V2_FIELDS,
+    CONTRACT_FIELDS,
+)
 
 
 def _binding(path: Path) -> dict[str, object]:
@@ -127,6 +135,130 @@ def test_campaign18_multi_transaction_reporting_uses_observed_cardinality() -> N
         "later_authority_release_reason": (
             "first_phase_observation_recorded_and_tight_reacquired"
         ),
+    }
+
+
+def test_campaign18_fixture_defers_a_zero_authority_consumer_after_requalification() -> None:
+    policy_path = CX322_D9_D6_72H_PROGRAMME.policy_path
+    bundle = {
+        "programme_id": CX322_D9_D6_72H_PROGRAMME.programme_id,
+        "firmware": {
+            "build_identity": "a" * 64 + ":" + "b" * 64,
+            "profile_id": CX322_D9_D6_72H_PROGRAMME.profile_id,
+        },
+        "policy": {
+            "path": str(policy_path),
+            "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+        },
+    }
+
+    decisions, transactions, summary = (
+        rehearsal._sustained_multi_transaction_fixture(bundle)
+    )
+    sequence = summary["first_post_recovery_consumer_decision_sequence"]
+    consumer = next(
+        row for row in decisions if int(row["decision_sequence"]) == sequence
+    )
+
+    assert sequence == int(decisions[-1]["decision_sequence"])
+    assert consumer["requested_delta_codes"] == "0"
+    assert consumer["request_sequence"] == "0"
+    assert _response_dependent_consumer_propagation(
+        transactions, decisions
+    )["exact"] is True
+
+    stale = dict(decisions[9])
+    stale.update(
+        {
+            "decision_sequence": "9",
+            "request_sequence": "0",
+            "application_sequence": "0",
+            "response_class": "unavailable",
+            "actual_applied_code": "0",
+            "actual_dac_epoch": "0",
+            "downstream_epoch_exact": "false",
+        }
+    )
+    mutated = [*decisions[:8], stale, *decisions[8:]]
+    assert _response_dependent_consumer_propagation(
+        transactions, mutated
+    )["exact"] is False
+
+
+def test_campaign18_exact_sidecars_round_trip_through_capture_splitter(
+    tmp_path: Path,
+) -> None:
+    policy_path = CX322_D9_D6_72H_PROGRAMME.policy_path
+    bundle = {
+        "programme_id": CX322_D9_D6_72H_PROGRAMME.programme_id,
+        "firmware": {
+            "build_identity": "a" * 64 + ":" + "b" * 64,
+            "profile_id": CX322_D9_D6_72H_PROGRAMME.profile_id,
+        },
+        "policy": {
+            "path": str(policy_path),
+            "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+        },
+    }
+    decisions, transactions, _summary = (
+        rehearsal._sustained_multi_transaction_fixture(bundle)
+    )
+    response_times = {
+        int(row["request_sequence"]): int(row["decision_timestamp_s"])
+        for row in decisions
+        if row["authority_state"] == "AWAITING_RESPONSE"
+    }
+    at2 = [
+        rehearsal._campaign18_exact_timing_sidecar_row(
+            row,
+            decision=False,
+            timing_record_sequence=index,
+            response_timestamp_s=response_times,
+        )
+        for index, row in enumerate(transactions, start=1)
+    ]
+    ah2 = [
+        rehearsal._campaign18_exact_timing_sidecar_row(
+            row,
+            decision=True,
+            timing_record_sequence=len(at2) + index,
+            response_timestamp_s=response_times,
+        )
+        for index, row in enumerate(decisions, start=1)
+    ]
+    targets = {
+        "active_transactions_v2": tmp_path / "active_transactions_v2.csv",
+        "active_hybrid_decisions_v2": tmp_path
+        / "active_hybrid_decisions_v2.csv",
+    }
+    with CsvRecordSplitter(targets) as splitter:
+        for row, fields in (
+            *((row, ACTIVE_TRANSACTION_V2_FIELDS) for row in at2),
+            *((row, ACTIVE_HYBRID_DECISION_V2_FIELDS) for row in ah2),
+        ):
+            line = rehearsal._wire_rows([row], fields).decode().strip()
+            assert splitter.process_line(line) in targets
+
+    captured_at2 = list(
+        csv.DictReader(targets["active_transactions_v2"].open(encoding="utf-8"))
+    )
+    captured_ah2 = list(
+        csv.DictReader(
+            targets["active_hybrid_decisions_v2"].open(encoding="utf-8")
+        )
+    )
+    join = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=captured_at2,
+        decision_timings=captured_ah2,
+    )
+    assert join == {
+        "exact": True,
+        "AT2_rows": len(transactions),
+        "AH2_rows": len(decisions),
+        "mismatches": [],
+        "coarse_seconds_used_as_ticks": False,
     }
 
 
@@ -520,6 +652,7 @@ def test_integrated_wire_fixture_captures_d14_d8_d9_d6_and_localizes_d6_fault(
         "d6_monitor_snapshot_rows_captured": 3,
         "d6_local_fault_observed": True,
         "d6_fault_has_control_authority": False,
+        "gnss_bootstrap_in_progress_then_complete_exact": True,
         "d9_waveform_or_load_claim": False,
     }
 

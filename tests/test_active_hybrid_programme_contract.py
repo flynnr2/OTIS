@@ -100,6 +100,36 @@ def test_cx322_d9_d6_descriptor_is_distinct_with_unchanged_controller() -> None:
     assert programme.runtime_run_identity != "cx322_direct_hybrid:3220001"
 
 
+def test_campaign18_uses_72h_authority_at_every_runtime_projection() -> None:
+    programme = CX322_D9_D6_72H_PROGRAMME
+    authority = activation._authority(programme)
+
+    assert programme.qualified_duration_s == 259_200
+    assert programme.authorized_absolute_wall_limit_s == 280_800
+    assert programme.capture_duration_s == 280_980
+    assert programme.supervisor_duration_s == 280_920
+    assert programme.qualified_endpoint_reason == (
+        "cx322_d9_d6_72h_72h_qualified_endpoint_complete"
+    )
+    assert programme.authorized_maximum_applications == 144
+    assert programme.authorized_maximum_physical_applications == 144
+    assert programme.authorized_maximum_cumulative_movement_codes == 3_024
+    assert programme.minimum_applied_cadence_s == 1_800
+    assert programme.correction_response_reserve_s == 1_500
+    assert authority["maximum_total_automatic_applications"] == 144
+    assert authority["maximum_total_physical_control_applications"] == 144
+    assert authority["maximum_cumulative_absolute_movement_codes"] == 3_024
+    assert authority["qualified_duration_s"] == 259_200
+    assert authority["absolute_wall_clock_limit_s"] == 280_800
+
+    # The unchanged CX322 policy document still carries its historical
+    # numerical envelope. It is controller-law provenance, not Campaign18
+    # live authority; every runtime projection above must use the explicit
+    # engineering overrides.
+    assert programme.maximum_applications == 4
+    assert programme.maximum_cumulative_movement_codes == 84
+
+
 def test_cx321_exact_build_binding_accepts_its_distinct_campaign_macro(
     tmp_path: Path,
 ) -> None:

@@ -65,6 +65,79 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         "bounded_nonpass",
         "cx322_d9_d6_72h_controller_or_transaction_fault",
     )
+
+
+def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() -> None:
+    transaction = {
+        "transaction_record_sequence": "1",
+        "event": "manual_start",
+        "run_identity": CX322_D9_D6_72H_PROGRAMME.runtime_run_identity,
+        "build_identity": "a" * 64 + ":" + "b" * 64,
+        "profile_identity": CX322_D9_D6_72H_PROGRAMME.profile_id,
+        "session_id": "1",
+        "request_sequence": "0",
+        "decision_sequence": "0",
+        "source_first_sequence": "0",
+        "source_last_sequence": "0",
+        "authorization_sequence": "0",
+        "nonce": "0",
+        "accepted_code": "43068",
+        "applied_code": "43068",
+        "application_sequence": "0",
+        "dac_epoch": "1",
+        "reason": "manual_start_established",
+    }
+    decision = {
+        "hybrid_record_sequence": "1",
+        "decision_sequence": "1",
+        "run_identity": transaction["run_identity"],
+        "build_identity": transaction["build_identity"],
+        "profile_identity": transaction["profile_identity"],
+        "capture_session": "1",
+        "source_first_sequence": "1",
+        "source_last_sequence": "600",
+        "reason": "phase_qualification_progress",
+    }
+    at2 = {
+        **transaction,
+        "record_type": "AT2",
+        "schema_version": "2",
+        "timing_record_sequence": "1",
+        "event_timestamp_ticks": "16000001",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    ah2 = {
+        **decision,
+        "record_type": "AH2",
+        "schema_version": "2",
+        "timing_record_sequence": "2",
+        "decision_timestamp_ticks": "9600000101",
+        "time_domain": "rp2040_timer0_extended",
+    }
+
+    exact = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=[transaction],
+        decisions=[decision],
+        transaction_timings=[at2],
+        decision_timings=[ah2],
+    )
+    assert exact["exact"] is True
+
+    for transactions, at2_rows, ah2_rows in (
+        ([], [at2], [ah2]),
+        ([transaction, dict(transaction)], [at2], [ah2]),
+        ([transaction], [{**at2, "time_domain": "rp2040_timer0"}], [ah2]),
+        ([transaction], [at2], [{**ah2, "timing_record_sequence": "1"}]),
+        ([transaction], [at2], [{**ah2, "decision_timestamp_ticks": "-1"}]),
+    ):
+        observed = live_analyze.campaign18_exact_timing_sidecar_join(
+            transactions=transactions,
+            decisions=[decision],
+            transaction_timings=at2_rows,
+            decision_timings=ah2_rows,
+        )
+        assert observed["exact"] is False
+        assert observed["mismatches"]
 from host.otis_tools.active_hybrid_policy import load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
     _modeled_transaction,

@@ -438,6 +438,18 @@ def validate_operational_rehearsal(
             or transaction.get("complete_multi_transaction_sequence") is not True
             or transaction.get("request_sequences_consumed") != [1, 2]
             or transaction.get("gnss_hold_and_causal_requalification") is not True
+            or transaction.get(
+                "gnss_bootstrap_in_progress_observed_by_supervisor"
+            )
+            is not True
+            or transaction.get("first_post_requalification_consumer_exact")
+            is not True
+            or not isinstance(
+                transaction.get(
+                    "first_post_recovery_consumer_decision_sequence"
+                ),
+                int,
+            )
             or not isinstance(clock, dict)
             or clock.get("correction_admission_close_elapsed_s") != 257_700
             or clock.get("qualified_endpoint_elapsed_s") != 259_200

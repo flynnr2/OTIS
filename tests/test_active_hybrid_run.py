@@ -46,6 +46,59 @@ class FakeProcess:
         self.returned = -9
 
 
+def test_campaign18_exact_sidecar_join_is_required_before_analyze_or_register(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    analyzed = False
+    registered = False
+    monkeypatch.setattr(runner, "_terminal", lambda _run_dir: {})
+    monkeypatch.setattr(runner, "_write_complete", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "advance_phase", lambda *args, **kwargs: None)
+    snapshot = run_dir / "evidence_manifest.json"
+    monkeypatch.setattr(
+        runner, "create_evidence_snapshot", lambda *args, **kwargs: snapshot
+    )
+    manifest = SimpleNamespace(data={"programme_id": "campaign18"})
+    monkeypatch.setattr(runner, "load_manifest", lambda _run_dir: manifest)
+    monkeypatch.setattr(
+        runner, "validate_evidence_snapshot", lambda *args: ([], [])
+    )
+    monkeypatch.setattr(
+        runner, "_snapshotted_artifact_identities", lambda *args: {}
+    )
+
+    def reject(_run_dir: Path, _manifest: object) -> dict[str, object]:
+        raise ValueError("Campaign18 exact AT2/AH2 lifecycle join failed")
+
+    def analyze(_run_dir: Path) -> tuple[Path, dict[str, object]]:
+        nonlocal analyzed
+        analyzed = True
+        return run_dir / "seal.json", {}
+
+    def register(**_kwargs: object) -> dict[str, object]:
+        nonlocal registered
+        registered = True
+        return {}
+
+    monkeypatch.setattr(runner, "_require_campaign18_exact_timing_sidecars", reject)
+    monkeypatch.setattr(runner, "_analyze", analyze)
+    monkeypatch.setattr(runner, "_registration", register)
+
+    with pytest.raises(ValueError, match="exact AT2/AH2 lifecycle join"):
+        runner._finalize_and_register(
+            run_dir=run_dir,
+            activation={},
+            evidence_index_path=tmp_path / "index.json",
+            finalization_journal=tmp_path / "journal.json",
+            orchestration_error=None,
+        )
+
+    assert analyzed is False
+    assert registered is False
+
+
 def _write(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")

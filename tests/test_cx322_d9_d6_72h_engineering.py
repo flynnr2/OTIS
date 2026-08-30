@@ -61,9 +61,107 @@ def _build_manifest(tmp_path: Path) -> Path:
     return path
 
 
+def _frequency_only_predecessor_product(
+    tmp_path: Path, *, status: str = "passed"
+) -> Path:
+    reports = tmp_path / "frequency-only-predecessor" / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+    source_content_sha256 = "1" * 64
+    analysis_path = reports / Path(
+        programme.FREQUENCY_ONLY_PREDECESSOR_ANALYSIS
+    ).name
+    analysis_path.write_text(
+        json.dumps({"terminal": programme.FREQUENCY_ONLY_PREDECESSOR_TERMINAL}),
+        encoding="utf-8",
+    )
+    analysis_file_sha256 = sha256(analysis_path.read_bytes()).hexdigest()
+
+    supersession_unsigned = {
+        "schema_version": 1,
+        "result_type": "d9_d6_frequency_only_analysis_supersession_v1",
+        "status": status,
+        "source_package": {
+            "run_id": programme.FREQUENCY_ONLY_PREDECESSOR_RUN_ID,
+            "content_sha256": source_content_sha256,
+        },
+        "replacement_product": {
+            "analysis_file_sha256": analysis_file_sha256,
+            "analysis_terminal": programme.FREQUENCY_ONLY_PREDECESSOR_TERMINAL,
+        },
+        "criterion_changed": False,
+        "raw_evidence_unchanged": True,
+        "physical_rerun": False,
+        "hardware_interaction": False,
+        "actionable": False,
+        "actuation_authorized": False,
+        "claims_boundary": dict(programme.FREQUENCY_ONLY_PREDECESSOR_CLAIMS),
+    }
+    supersession = {
+        **supersession_unsigned,
+        "supersession_sha256": programme.canonical_sha256(
+            supersession_unsigned
+        ),
+    }
+    supersession_path = reports / Path(
+        programme.FREQUENCY_ONLY_PREDECESSOR_SUPERSESSION
+    ).name
+    supersession_path.write_text(json.dumps(supersession), encoding="utf-8")
+    supersession_file_sha256 = sha256(supersession_path.read_bytes()).hexdigest()
+
+    seal_unsigned = {
+        "schema_version": 1,
+        "seal_type": "d9_d6_frequency_only_superseding_seal_v1",
+        "status": status,
+        "source_content_sha256": source_content_sha256,
+        "analysis_file_sha256": analysis_file_sha256,
+        "supersession_file_sha256": supersession_file_sha256,
+        "supersession_sha256": supersession["supersession_sha256"],
+        "review_authority": "operator_test_authority",
+        "claims_boundary": dict(programme.FREQUENCY_ONLY_PREDECESSOR_CLAIMS),
+        "hardware_interaction": False,
+        "actionable": False,
+        "actuation_authorized": False,
+    }
+    seal = {
+        **seal_unsigned,
+        "seal_sha256": programme.canonical_sha256(seal_unsigned),
+    }
+    seal_path = reports / Path(programme.FREQUENCY_ONLY_PREDECESSOR_SEAL).name
+    seal_path.write_text(json.dumps(seal), encoding="utf-8")
+
+    product_root = reports.parent
+    files = []
+    for path in sorted(reports.iterdir()):
+        files.append(
+            {
+                "path": path.relative_to(product_root).as_posix(),
+                "sha256": sha256(path.read_bytes()).hexdigest(),
+                "size_bytes": path.stat().st_size,
+            }
+        )
+    manifest_unsigned = {
+        "schema_version": 1,
+        "product_type": programme.FREQUENCY_ONLY_PREDECESSOR_PRODUCT_TYPE,
+        "source_content_sha256": source_content_sha256,
+        "files": files,
+    }
+    manifest = {
+        **manifest_unsigned,
+        "product_manifest_sha256": programme.canonical_sha256(
+            manifest_unsigned
+        ),
+    }
+    manifest_path = product_root / "product_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return manifest_path
+
+
 def _bundle(tmp_path: Path) -> dict[str, object]:
     return programme.freeze_bundle(
         build_manifest_path=_build_manifest(tmp_path),
+        frequency_only_predecessor_product_manifest_path=(
+            _frequency_only_predecessor_product(tmp_path)
+        ),
         source_revision="a" * 40,
     )
 
@@ -574,6 +672,87 @@ def test_bundle_binds_exact_build_contract_and_no_io_preflight(
     assert result["remaining_live_components"] == [
         "separate_exact_physical_activation"
     ]
+    predecessor = checked["frequency_only_predecessor"]
+    assert predecessor["analysis_terminal"] == (
+        programme.FREQUENCY_ONLY_PREDECESSOR_TERMINAL
+    )
+    assert predecessor["seal_sha256"]
+    assert result["frequency_only_predecessor"] == predecessor
+
+
+def test_bundle_rejects_self_consistent_nonpassing_frequency_predecessor(
+    tmp_path: Path,
+) -> None:
+    predecessor = _frequency_only_predecessor_product(
+        tmp_path, status="incomplete"
+    )
+
+    with pytest.raises(
+        ValueError, match="frequency-only predecessor supersession is not exact"
+    ):
+        programme.freeze_bundle(
+            build_manifest_path=_build_manifest(tmp_path),
+            frequency_only_predecessor_product_manifest_path=predecessor,
+            source_revision="a" * 40,
+        )
+
+
+def test_live_preflight_rejects_frequency_predecessor_product_drift(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    activation = programme.draft_live_activation(
+        bundle=bundle,
+        run_directory=tmp_path / "future-run",
+        run_identity=programme.CAMPAIGN18_RUN_IDENTITY,
+    )
+    manifest_path = Path(
+        bundle["bindings"]["frequency_only_predecessor_product_manifest"][
+            "path"
+        ]
+    )
+    seal_path = manifest_path.parent / programme.FREQUENCY_ONLY_PREDECESSOR_SEAL
+    seal_path.write_text(
+        seal_path.read_text(encoding="utf-8") + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(
+        ValueError, match="frequency-only predecessor product file differs"
+    ):
+        programme.validate_live_activation(
+            bundle=bundle,
+            activation=activation,
+        )
+
+
+def test_preflight_cli_can_retain_exact_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bundle = _bundle(tmp_path)
+    bundle_path = tmp_path / "bundle.json"
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    output_path = tmp_path / "retained" / "adapter_preflight.json"
+
+    assert (
+        programme.main(
+            [
+                "preflight",
+                "--bundle",
+                str(bundle_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    retained = json.loads(output_path.read_text(encoding="utf-8"))
+    printed = json.loads(capsys.readouterr().out)
+    assert retained == printed
+    assert retained["status"] == "passed"
+    assert retained["frequency_only_predecessor"] == bundle[
+        "frequency_only_predecessor"
+    ]
 
 
 def test_bundle_rejects_profile_selector_and_bound_file_drift(
@@ -588,6 +767,9 @@ def test_bundle_rejects_profile_selector_and_bound_file_drift(
     with pytest.raises(ValueError, match="exact CX322 D9/D6"):
         programme.freeze_bundle(
             build_manifest_path=build_path,
+            frequency_only_predecessor_product_manifest_path=(
+                _frequency_only_predecessor_product(tmp_path)
+            ),
             source_revision="a" * 40,
         )
 
@@ -618,6 +800,9 @@ def test_freeze_rejects_stale_pending_profile_status_even_with_valid_hash(
     with pytest.raises(ValueError, match="integrated profile status differs"):
         programme.freeze_bundle(
             build_manifest_path=_build_manifest(tmp_path),
+            frequency_only_predecessor_product_manifest_path=(
+                _frequency_only_predecessor_product(tmp_path)
+            ),
             source_revision="a" * 40,
             contract_path=path,
         )
@@ -666,7 +851,9 @@ def test_live_activation_is_no_io_and_requires_separate_physical_binding(
 
 
 def test_adapter_activation_binds_one_exact_campaign18_physical_activation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     bundle = _bundle(tmp_path / "bundle")
     draft = programme.draft_live_activation(
@@ -711,6 +898,36 @@ def test_adapter_activation_binds_one_exact_campaign18_physical_activation(
     assert result["status"] == "ready"
     assert result["serial_selection"] == bundle["serial"]["selection"]
     assert result["baud"] == 115200
+    assert result["frequency_only_predecessor"] == bundle[
+        "frequency_only_predecessor"
+    ]
+
+    bundle_path = tmp_path / "adapter-bundle.json"
+    adapter_path = tmp_path / "effective-adapter-activation.json"
+    output_path = tmp_path / "retained-campaign18-entry-preflight.json"
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    adapter_path.write_text(json.dumps(effective), encoding="utf-8")
+    assert (
+        programme.main(
+            [
+                "campaign18-entry-preflight",
+                "--bundle",
+                str(bundle_path),
+                "--adapter-activation",
+                str(adapter_path),
+                "--active-hybrid-activation",
+                str(physical_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+    retained = json.loads(output_path.read_text(encoding="utf-8"))
+    assert retained == json.loads(capsys.readouterr().out)
+    assert retained["frequency_only_predecessor"] == bundle[
+        "frequency_only_predecessor"
+    ]
 
 
 def test_campaign18_physical_binding_accepts_shared_auto_detect_identifier(

@@ -84,6 +84,9 @@ def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(
                 "complete_multi_transaction_sequence": True,
                 "request_sequences_consumed": [1, 2],
                 "gnss_hold_and_causal_requalification": True,
+                "gnss_bootstrap_in_progress_observed_by_supervisor": True,
+                "first_post_requalification_consumer_exact": True,
+                "first_post_recovery_consumer_decision_sequence": 12,
             }
         },
         "accelerated_qualified_device_clock": {
@@ -142,6 +145,9 @@ def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(
             "complete_multi_transaction_sequence": True,
             "request_sequences_consumed": [1, 2],
             "gnss_hold_and_causal_requalification": False,
+            "gnss_bootstrap_in_progress_observed_by_supervisor": True,
+            "first_post_requalification_consumer_exact": True,
+            "first_post_recovery_consumer_decision_sequence": 12,
         }
     }
     changed_unsigned = {

@@ -95,6 +95,28 @@ LIVE_ADAPTER_REPORT_TYPE = "otis_cx322_d9_d6_72h_live_adapter_report_v1"
 EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
 CAMPAIGN18_PROGRAMME_ID = "OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_V1"
 CAMPAIGN18_RUN_IDENTITY = "cx322_d9_d6_72h_sustained_engineering:1"
+FREQUENCY_ONLY_PREDECESSOR_PRODUCT_TYPE = (
+    "d9_d6_frequency_only_reanalysis_product_v1"
+)
+FREQUENCY_ONLY_PREDECESSOR_RUN_ID = "frequency_only_24h_attempt9"
+FREQUENCY_ONLY_PREDECESSOR_TERMINAL = (
+    "frequency_only_d9_d6_digital_endurance_passed"
+)
+FREQUENCY_ONLY_PREDECESSOR_ANALYSIS = (
+    "reports/d9_d6_frequency_only_digital_endurance_reanalysis_v1.json"
+)
+FREQUENCY_ONLY_PREDECESSOR_SUPERSESSION = (
+    "reports/d9_d6_frequency_only_analysis_supersession_v1.json"
+)
+FREQUENCY_ONLY_PREDECESSOR_SEAL = (
+    "reports/d9_d6_frequency_only_superseding_seal_v1.json"
+)
+FREQUENCY_ONLY_PREDECESSOR_CLAIMS = {
+    "engineering_digital_endurance": True,
+    "delivered_output_waveform_qualified": False,
+    "hybrid_steering_exercised": False,
+    "gnss_glitch_forced_or_observed": False,
+}
 
 # The shared capture contracts carry exact AT2/AH2 counter sidecars.  The
 # retained adapter still refuses to reinterpret ACT/AHY v1 seconds as ticks.
@@ -219,6 +241,128 @@ def _validate_binding(binding: Mapping[str, Any], *, label: str) -> Path:
     if dict(binding) != expected:
         raise ValueError(f"{label} bound-file identity differs")
     return path
+
+
+def _validate_frequency_only_predecessor_product(
+    product_manifest_path: Path,
+) -> dict[str, object]:
+    """Validate and project the exact successful frequency-only predecessor."""
+
+    manifest_path = product_manifest_path.resolve()
+    manifest = _read_json(manifest_path)
+    if (
+        manifest.get("schema_version") != 1
+        or manifest.get("product_type")
+        != FREQUENCY_ONLY_PREDECESSOR_PRODUCT_TYPE
+        or manifest.get("product_manifest_sha256")
+        != _semantic_identity(manifest, "product_manifest_sha256")
+    ):
+        raise ValueError("frequency-only predecessor product manifest differs")
+
+    expected_paths = {
+        FREQUENCY_ONLY_PREDECESSOR_ANALYSIS,
+        FREQUENCY_ONLY_PREDECESSOR_SUPERSESSION,
+        FREQUENCY_ONLY_PREDECESSOR_SEAL,
+    }
+    declared_files = manifest.get("files")
+    if not isinstance(declared_files, list):
+        raise ValueError("frequency-only predecessor product files are absent")
+    files: dict[str, Mapping[str, Any]] = {}
+    for item in declared_files:
+        if not isinstance(item, Mapping):
+            raise ValueError("frequency-only predecessor file binding is malformed")
+        relative = Path(str(item.get("path", "")))
+        relative_text = relative.as_posix()
+        if relative.is_absolute() or ".." in relative.parts or relative_text in files:
+            raise ValueError("frequency-only predecessor file path is invalid")
+        files[relative_text] = item
+    if set(files) != expected_paths:
+        raise ValueError("frequency-only predecessor product file set differs")
+
+    product_root = manifest_path.parent
+    for relative_path, declared in files.items():
+        observed = file_binding(product_root / relative_path)
+        if (
+            declared.get("sha256") != observed["sha256"]
+            or declared.get("size_bytes") != observed["size_bytes"]
+        ):
+            raise ValueError(
+                f"frequency-only predecessor product file differs: {relative_path}"
+            )
+
+    analysis = _read_json(product_root / FREQUENCY_ONLY_PREDECESSOR_ANALYSIS)
+    supersession = _read_json(
+        product_root / FREQUENCY_ONLY_PREDECESSOR_SUPERSESSION
+    )
+    seal = _read_json(product_root / FREQUENCY_ONLY_PREDECESSOR_SEAL)
+    analysis_file_sha256 = str(files[FREQUENCY_ONLY_PREDECESSOR_ANALYSIS]["sha256"])
+    supersession_file_sha256 = str(
+        files[FREQUENCY_ONLY_PREDECESSOR_SUPERSESSION]["sha256"]
+    )
+    source_content_sha256 = str(manifest.get("source_content_sha256", ""))
+    source_package = supersession.get("source_package")
+    replacement = supersession.get("replacement_product")
+    if (
+        analysis.get("terminal") != FREQUENCY_ONLY_PREDECESSOR_TERMINAL
+        or supersession.get("schema_version") != 1
+        or supersession.get("result_type")
+        != "d9_d6_frequency_only_analysis_supersession_v1"
+        or supersession.get("status") != "passed"
+        or supersession.get("supersession_sha256")
+        != _semantic_identity(supersession, "supersession_sha256")
+        or not isinstance(source_package, Mapping)
+        or source_package.get("run_id") != FREQUENCY_ONLY_PREDECESSOR_RUN_ID
+        or source_package.get("content_sha256") != source_content_sha256
+        or re.fullmatch(r"[0-9a-f]{64}", source_content_sha256) is None
+        or not isinstance(replacement, Mapping)
+        or replacement.get("analysis_file_sha256") != analysis_file_sha256
+        or replacement.get("analysis_terminal")
+        != FREQUENCY_ONLY_PREDECESSOR_TERMINAL
+        or supersession.get("criterion_changed") is not False
+        or supersession.get("raw_evidence_unchanged") is not True
+        or supersession.get("physical_rerun") is not False
+        or supersession.get("hardware_interaction") is not False
+        or supersession.get("actionable") is not False
+        or supersession.get("actuation_authorized") is not False
+        or supersession.get("claims_boundary")
+        != FREQUENCY_ONLY_PREDECESSOR_CLAIMS
+    ):
+        raise ValueError("frequency-only predecessor supersession is not exact")
+    if (
+        seal.get("schema_version") != 1
+        or seal.get("seal_type") != "d9_d6_frequency_only_superseding_seal_v1"
+        or seal.get("status") != "passed"
+        or seal.get("seal_sha256") != _semantic_identity(seal, "seal_sha256")
+        or seal.get("source_content_sha256") != source_content_sha256
+        or seal.get("analysis_file_sha256") != analysis_file_sha256
+        or seal.get("supersession_file_sha256") != supersession_file_sha256
+        or seal.get("supersession_sha256")
+        != supersession.get("supersession_sha256")
+        or seal.get("claims_boundary") != FREQUENCY_ONLY_PREDECESSOR_CLAIMS
+        or seal.get("hardware_interaction") is not False
+        or seal.get("actionable") is not False
+        or seal.get("actuation_authorized") is not False
+    ):
+        raise ValueError("frequency-only predecessor superseding seal is not exact")
+
+    product_identity = package_identity(product_root)
+    if product_identity.get("file_count") != 4:
+        raise ValueError("frequency-only predecessor package file set differs")
+    return {
+        "product_type": FREQUENCY_ONLY_PREDECESSOR_PRODUCT_TYPE,
+        "source_run_id": FREQUENCY_ONLY_PREDECESSOR_RUN_ID,
+        "product_content_sha256": product_identity["content_sha256"],
+        "product_manifest_sha256": manifest["product_manifest_sha256"],
+        "source_content_sha256": source_content_sha256,
+        "analysis_file_sha256": analysis_file_sha256,
+        "analysis_terminal": FREQUENCY_ONLY_PREDECESSOR_TERMINAL,
+        "supersession_file_sha256": supersession_file_sha256,
+        "supersession_sha256": supersession["supersession_sha256"],
+        "seal_file_sha256": files[FREQUENCY_ONLY_PREDECESSOR_SEAL]["sha256"],
+        "seal_sha256": seal["seal_sha256"],
+        "review_authority": seal.get("review_authority"),
+        "claims_boundary": dict(FREQUENCY_ONLY_PREDECESSOR_CLAIMS),
+    }
 
 
 def _profiles() -> dict[str, dict[str, Any]]:
@@ -510,6 +654,7 @@ def _validate_build_manifest(
 def freeze_bundle(
     *,
     build_manifest_path: Path,
+    frequency_only_predecessor_product_manifest_path: Path,
     source_revision: str,
     contract_path: Path = CONTRACT_PATH,
 ) -> dict[str, object]:
@@ -519,12 +664,18 @@ def freeze_bundle(
         raise ValueError("source revision must be one exact lowercase Git SHA-1")
     contract = load_contract(contract_path)
     _validate_build_manifest(build_manifest_path, contract)
+    frequency_only_predecessor = _validate_frequency_only_predecessor_product(
+        frequency_only_predecessor_product_manifest_path
+    )
     bindings = {
         "contract": file_binding(contract_path),
         "parent_engineering_contract": file_binding(PARENT_CONTRACT_PATH),
         "firmware_matrix": file_binding(MATRIX_PATH),
         "cx322_policy": file_binding(POLICY_PATH),
         "firmware_build_manifest": file_binding(build_manifest_path),
+        "frequency_only_predecessor_product_manifest": file_binding(
+            frequency_only_predecessor_product_manifest_path
+        ),
         "programme_tool": file_binding(Path(__file__)),
         "capture_tool": file_binding(ROOT / "host/otis_tools/capture_device.py"),
         "rotation_tool": file_binding(
@@ -554,6 +705,7 @@ def freeze_bundle(
         "record_replay": contract["record_replay"],
         "terminals": contract["terminals"],
         "claim_boundary": contract["claim_boundary"],
+        "frequency_only_predecessor": frequency_only_predecessor,
         "bindings": bindings,
         "remaining_live_components": ["separate_exact_physical_activation"],
     }
@@ -580,6 +732,7 @@ def validate_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
         "firmware_matrix",
         "cx322_policy",
         "firmware_build_manifest",
+        "frequency_only_predecessor_product_manifest",
         "programme_tool",
         "capture_tool",
         "rotation_tool",
@@ -592,6 +745,9 @@ def validate_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
     contract = load_contract(contract_path)
     _validate_build_manifest(
         Path(str(bindings["firmware_build_manifest"]["path"])), contract
+    )
+    frequency_only_predecessor = _validate_frequency_only_predecessor_product(
+        Path(str(bindings["frequency_only_predecessor_product_manifest"]["path"]))
     )
     copied = (
         "serial",
@@ -613,6 +769,8 @@ def validate_bundle(bundle: Mapping[str, Any]) -> dict[str, Any]:
         or value.get("profile_id") != contract["firmware"]["profile_id"]
         or value.get("firmware_profile_matrix_integrated")
         != _profile_matrix_integrated(contract)
+        or value.get("frequency_only_predecessor")
+        != frequency_only_predecessor
         or any(value.get(key) != contract[key] for key in copied)
     ):
         raise ValueError("72h bundle contract projection differs")
@@ -939,6 +1097,7 @@ def validate_campaign18_entrypoint(
         "run_identity": CAMPAIGN18_RUN_IDENTITY,
         "profile_identity": active_activation["profile_identity"],
         "bundle_sha256": bundle["bundle_sha256"],
+        "frequency_only_predecessor": bundle["frequency_only_predecessor"],
         "active_hybrid_bundle_sha256": active_bundle["bundle_sha256"],
         "active_hybrid_activation_sha256": active_activation[
             "activation_sha256"
@@ -3944,6 +4103,7 @@ def no_io_preflight(bundle: Mapping[str, Any]) -> dict[str, object]:
         "waveform_evidence_status": checked["claim_boundary"][
             "waveform_evidence_status"
         ],
+        "frequency_only_predecessor": checked["frequency_only_predecessor"],
         "promotion_permitted": False,
         "remaining_live_components": checked["remaining_live_components"],
     }
@@ -4554,10 +4714,16 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     freeze = commands.add_parser("freeze")
     freeze.add_argument("--build-manifest", type=Path, required=True)
+    freeze.add_argument(
+        "--frequency-only-predecessor-product-manifest",
+        type=Path,
+        required=True,
+    )
     freeze.add_argument("--source-revision", required=True)
     freeze.add_argument("--output", type=Path, required=True)
     preflight = commands.add_parser("preflight")
     preflight.add_argument("--bundle", type=Path, required=True)
+    preflight.add_argument("--output", type=Path)
     activation_draft = commands.add_parser("activation-draft")
     activation_draft.add_argument("--bundle", type=Path, required=True)
     activation_draft.add_argument("--run-dir", type=Path, required=True)
@@ -4566,6 +4732,15 @@ def main(argv: list[str] | None = None) -> int:
     activation_preflight = commands.add_parser("activation-preflight")
     activation_preflight.add_argument("--bundle", type=Path, required=True)
     activation_preflight.add_argument("--activation", type=Path, required=True)
+    entry_preflight = commands.add_parser("campaign18-entry-preflight")
+    entry_preflight.add_argument("--bundle", type=Path, required=True)
+    entry_preflight.add_argument(
+        "--adapter-activation", type=Path, required=True
+    )
+    entry_preflight.add_argument(
+        "--active-hybrid-activation", type=Path, required=True
+    )
+    entry_preflight.add_argument("--output", type=Path)
     activation_bind = commands.add_parser("activation-bind")
     activation_bind.add_argument("--bundle", type=Path, required=True)
     activation_bind.add_argument("--draft", type=Path, required=True)
@@ -4597,11 +4772,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "freeze":
         result = freeze_bundle(
             build_manifest_path=args.build_manifest,
+            frequency_only_predecessor_product_manifest_path=(
+                args.frequency_only_predecessor_product_manifest
+            ),
             source_revision=args.source_revision,
         )
         _write_new_json(args.output, result)
     elif args.command == "preflight":
         result = no_io_preflight(_read_json(args.bundle))
+        if args.output is not None:
+            _write_new_json(args.output, result)
     elif args.command == "activation-draft":
         result = draft_live_activation(
             bundle=_read_json(args.bundle),
@@ -4614,6 +4794,14 @@ def main(argv: list[str] | None = None) -> int:
             bundle=_read_json(args.bundle),
             activation=_read_json(args.activation),
         )
+    elif args.command == "campaign18-entry-preflight":
+        result = validate_campaign18_entrypoint(
+            bundle=_read_json(args.bundle),
+            adapter_activation=_read_json(args.adapter_activation),
+            active_hybrid_activation_path=args.active_hybrid_activation,
+        )
+        if args.output is not None:
+            _write_new_json(args.output, result)
     elif args.command == "activation-bind":
         result = bind_effective_live_activation(
             bundle=_read_json(args.bundle),

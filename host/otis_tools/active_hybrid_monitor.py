@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import csv
 from datetime import datetime, timezone
+import io
 import json
 import os
 from pathlib import Path
@@ -20,9 +21,16 @@ from typing import Any
 from .active_hybrid_activation import validate_frozen_run_manifest
 from .active_hybrid_programme_contract import (
     CX320_PROGRAMME,
+    CX322_D9_D6_72H_PROGRAMME,
     programme_from_mapping,
 )
 from .capture_runtime_checks import _serial_owner_pids
+from .contracts import (
+    ACTIVE_HYBRID_DECISION_V1_FIELDS,
+    ACTIVE_HYBRID_DECISION_V2_FIELDS,
+    ACTIVE_TRANSACTION_V1_FIELDS,
+    ACTIVE_TRANSACTION_V2_FIELDS,
+)
 
 
 TOOL_ID = "cx320_active_hybrid_monitor_v1"
@@ -33,8 +41,30 @@ ESTIMATES = Path("csv/estimates_v2.csv")
 ACTIVE = Path("csv/active_transactions_v1.csv")
 HYBRID = Path("csv/active_hybrid_decisions_v1.csv")
 PLANT_SIGN = Path("csv/plant_sign_qualification_v1.csv")
+ACTIVE_EXACT = Path("csv/active_transactions_v2.csv")
+HYBRID_EXACT = Path("csv/active_hybrid_decisions_v2.csv")
 CAPTURE_MAX_AGE_S = 15.0
 EVIDENCE_MAX_AGE_S = 15.0
+EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
+
+_AT2_NON_JOIN_FIELDS = frozenset(
+    {
+        "record_type",
+        "schema_version",
+        "timing_record_sequence",
+        "event_timestamp_ticks",
+        "time_domain",
+    }
+)
+_AH2_NON_JOIN_FIELDS = frozenset(
+    {
+        "record_type",
+        "schema_version",
+        "timing_record_sequence",
+        "decision_timestamp_ticks",
+        "time_domain",
+    }
+)
 
 
 def _utc_now() -> str:
@@ -73,6 +103,180 @@ def _row_summary(path: Path, fields: tuple[str, ...]) -> dict[str, Any]:
     return {"rows": rows, "latest": latest}
 
 
+def _stable_contract_rows(path: Path, fields: list[str]) -> list[dict[str, str]]:
+    """Read only newline-complete rows while capture may still be appending."""
+
+    if not path.is_file():
+        raise ValueError(f"required retained CSV is missing: {path}")
+    payload = path.read_bytes()
+    newline = payload.rfind(b"\n")
+    if newline < 0:
+        raise ValueError(f"required retained CSV header is unavailable: {path}")
+    try:
+        text = payload[: newline + 1].decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"retained CSV is not UTF-8: {path}") from exc
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    if reader.fieldnames != fields:
+        raise ValueError(f"retained CSV header differs: {path}")
+    rows = list(reader)
+    if any(None in row or any(value is None for value in row.values()) for row in rows):
+        raise ValueError(f"retained CSV row width differs: {path}")
+    return rows
+
+
+def _exact_sidecar_progress(
+    *,
+    source_rows: list[dict[str, str]],
+    timing_rows: list[dict[str, str]],
+    source_sequence_field: str,
+    timestamp_field: str,
+    record_type: str,
+    join_fields: tuple[str, ...],
+    source_age_s: float | None,
+    sidecar_age_s: float | None,
+) -> dict[str, Any]:
+    mismatches: list[str] = []
+    source_by_sequence: dict[str, dict[str, str]] = {}
+    for row in source_rows:
+        sequence = row[source_sequence_field]
+        if sequence in source_by_sequence:
+            mismatches.append(
+                f"{record_type} source duplicate {source_sequence_field}={sequence}"
+            )
+        source_by_sequence[sequence] = row
+
+    joined_sequences: set[str] = set()
+    timing_source_sequences: set[str] = set()
+    previous_timing_sequence = 0
+    previous_ticks: int | None = None
+    latest: dict[str, str] | None = None
+    for row_number, timing in enumerate(timing_rows, start=1):
+        source_sequence = timing[source_sequence_field]
+        try:
+            timing_sequence = int(timing["timing_record_sequence"])
+            ticks = int(timing[timestamp_field])
+        except (TypeError, ValueError) as exc:
+            mismatches.append(f"{record_type} row {row_number} counter is malformed")
+            continue
+        if (
+            timing["record_type"] != record_type
+            or timing["schema_version"] != "2"
+            or timing["time_domain"] != EXACT_LIFECYCLE_TIME_DOMAIN
+            or timing_sequence <= previous_timing_sequence
+            or (previous_ticks is not None and ticks < previous_ticks)
+        ):
+            mismatches.append(f"{record_type} row {row_number} identity differs")
+        previous_timing_sequence = timing_sequence
+        previous_ticks = ticks
+        if source_sequence in timing_source_sequences:
+            mismatches.append(
+                f"{record_type} duplicate {source_sequence_field}={source_sequence}"
+            )
+        timing_source_sequences.add(source_sequence)
+        source = source_by_sequence.get(source_sequence)
+        if source is None:
+            mismatches.append(
+                f"{record_type} orphan {source_sequence_field}={source_sequence}"
+            )
+        else:
+            differing = [
+                field for field in join_fields if timing[field] != source[field]
+            ]
+            if differing:
+                mismatches.append(
+                    f"{record_type} join mismatch {source_sequence_field}="
+                    f"{source_sequence}:" + ",".join(differing)
+                )
+            else:
+                joined_sequences.add(source_sequence)
+        latest = {
+            "timing_record_sequence": timing["timing_record_sequence"],
+            source_sequence_field: source_sequence,
+            timestamp_field: timing[timestamp_field],
+            "time_domain": timing["time_domain"],
+        }
+
+    pending = sorted(
+        set(source_by_sequence) - timing_source_sequences,
+        key=lambda value: int(value),
+    )
+    join_lag = len(source_rows) - len(timing_rows)
+    lag_stale = bool(
+        join_lag > 0
+        and source_age_s is not None
+        and source_age_s > EVIDENCE_MAX_AGE_S
+    )
+    return {
+        "source_rows": len(source_rows),
+        "sidecar_rows": len(timing_rows),
+        "joined_rows": len(joined_sequences),
+        "join_lag_rows": join_lag,
+        "pending_source_sequences": pending,
+        "source_age_s": source_age_s,
+        "sidecar_age_s": sidecar_age_s,
+        "lag_stale": lag_stale,
+        "mismatches": mismatches,
+        "latest": latest,
+    }
+
+
+def _campaign18_exact_timing_progress(run_dir: Path, *, now: float) -> dict[str, Any]:
+    transaction_rows = _stable_contract_rows(
+        run_dir / ACTIVE, ACTIVE_TRANSACTION_V1_FIELDS
+    )
+    transaction_timings = _stable_contract_rows(
+        run_dir / ACTIVE_EXACT, ACTIVE_TRANSACTION_V2_FIELDS
+    )
+    decision_rows = _stable_contract_rows(
+        run_dir / HYBRID, ACTIVE_HYBRID_DECISION_V1_FIELDS
+    )
+    decision_timings = _stable_contract_rows(
+        run_dir / HYBRID_EXACT, ACTIVE_HYBRID_DECISION_V2_FIELDS
+    )
+    transactions = _exact_sidecar_progress(
+        source_rows=transaction_rows,
+        timing_rows=transaction_timings,
+        source_sequence_field="transaction_record_sequence",
+        timestamp_field="event_timestamp_ticks",
+        record_type="AT2",
+        join_fields=tuple(
+            field
+            for field in ACTIVE_TRANSACTION_V2_FIELDS
+            if field not in _AT2_NON_JOIN_FIELDS
+        ),
+        source_age_s=_age_s(run_dir / ACTIVE, now=now),
+        sidecar_age_s=_age_s(run_dir / ACTIVE_EXACT, now=now),
+    )
+    decisions = _exact_sidecar_progress(
+        source_rows=decision_rows,
+        timing_rows=decision_timings,
+        source_sequence_field="hybrid_record_sequence",
+        timestamp_field="decision_timestamp_ticks",
+        record_type="AH2",
+        join_fields=tuple(
+            field
+            for field in ACTIVE_HYBRID_DECISION_V2_FIELDS
+            if field not in _AH2_NON_JOIN_FIELDS
+        ),
+        source_age_s=_age_s(run_dir / HYBRID, now=now),
+        sidecar_age_s=_age_s(run_dir / HYBRID_EXACT, now=now),
+    )
+    mismatches = [*transactions["mismatches"], *decisions["mismatches"]]
+    return {
+        "required": True,
+        "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
+        "AT2": transactions,
+        "AH2": decisions,
+        "join_exact_at_observed_frontier": bool(
+            not mismatches
+            and transactions["join_lag_rows"] == 0
+            and decisions["join_lag_rows"] == 0
+        ),
+        "mismatches": mismatches,
+    }
+
+
 def _pid_alive(value: object) -> bool:
     try:
         pid = int(value)
@@ -104,6 +308,32 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
     capture_age = _age_s(run_dir / CAPTURE_STATE, now=now)
     raw_age = _age_s(run_dir / RAW_SERIAL, now=now)
     integrity_faults: list[str] = []
+    exact_timing: dict[str, Any] | None = None
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        try:
+            exact_timing = _campaign18_exact_timing_progress(run_dir, now=now)
+        except (OSError, TypeError, ValueError) as exc:
+            exact_timing = {
+                "required": True,
+                "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
+                "join_exact_at_observed_frontier": False,
+                "unavailable": True,
+                "mismatches": [str(exc)],
+            }
+        if exact_timing.get("unavailable") is True:
+            integrity_faults.append("exact_timing_sidecar_unavailable")
+        elif exact_timing["mismatches"]:
+            integrity_faults.append("exact_timing_sidecar_identity_mismatch")
+        for record_type in ("AT2", "AH2"):
+            progress = exact_timing.get(record_type)
+            if not isinstance(progress, dict):
+                continue
+            if int(progress["join_lag_rows"]) < 0:
+                integrity_faults.append(
+                    f"{record_type}_sidecar_ahead_of_canonical_source"
+                )
+            elif int(progress["join_lag_rows"]) > 1 or progress["lag_stale"]:
+                integrity_faults.append(f"{record_type}_sidecar_join_lag_stale")
     if capture is None:
         integrity_faults.append("capture_state_missing")
     else:
@@ -247,6 +477,7 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "estimates": estimates,
             "active_transactions": transactions,
             "active_hybrid_decisions": hybrid,
+            "exact_timing_sidecars": exact_timing,
             "plant_sign_qualification": plant_sign,
             "plant_sign_state": (
                 None if supervisor is None else supervisor.get("latest_plant_sign_state")

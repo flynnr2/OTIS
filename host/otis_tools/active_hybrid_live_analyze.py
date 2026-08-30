@@ -91,6 +91,36 @@ SEAL_TYPE = "cx320_active_hybrid_physical_seal_v1"
 DEFAULT_SEAL = Path("reports/cx320_active_hybrid_physical_seal_v1.json")
 ACTIVE_HYBRID_CSV = Path("csv/active_hybrid_decisions_v1.csv")
 PRE_SETUP_PROVENANCE_UNRESOLVED = "pre_setup_provenance_unresolved"
+_AT2_JOIN_FIELDS = (
+    "transaction_record_sequence",
+    "event",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "session_id",
+    "request_sequence",
+    "decision_sequence",
+    "source_first_sequence",
+    "source_last_sequence",
+    "authorization_sequence",
+    "nonce",
+    "accepted_code",
+    "applied_code",
+    "application_sequence",
+    "dac_epoch",
+    "reason",
+)
+_AH2_JOIN_FIELDS = (
+    "hybrid_record_sequence",
+    "decision_sequence",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "capture_session",
+    "source_first_sequence",
+    "source_last_sequence",
+    "reason",
+)
 TERMINAL_DECISIONS = frozenset(
     {
         "bounded_active_hybrid_control_passed",
@@ -131,6 +161,163 @@ def _canonical_sha256(value: dict[str, Any]) -> str:
             value, sort_keys=True, separators=(",", ":"), allow_nan=False
         ).encode()
     ).hexdigest()
+
+
+def campaign18_exact_timing_sidecar_join(
+    *,
+    transactions: list[dict[str, str]],
+    decisions: list[dict[str, str]],
+    transaction_timings: list[dict[str, str]],
+    decision_timings: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Prove the mandatory one-to-one Campaign18 V1/V2 lifecycle join."""
+
+    mismatches: list[str] = []
+
+    def inspect(
+        *,
+        label: str,
+        record_type: str,
+        source_rows: list[dict[str, str]],
+        timing_rows: list[dict[str, str]],
+        sequence_field: str,
+        timestamp_field: str,
+        join_fields: tuple[str, ...],
+    ) -> None:
+        source_counts: dict[str, int] = {}
+        source_by_sequence: dict[str, dict[str, str]] = {}
+        for source in source_rows:
+            sequence = source.get(sequence_field, "")
+            source_counts[sequence] = source_counts.get(sequence, 0) + 1
+            source_by_sequence[sequence] = source
+            if not sequence.isdigit() or int(sequence) <= 0:
+                mismatches.append(
+                    f"{label} malformed V1 {sequence_field}={sequence}"
+                )
+        duplicate_sources = sorted(
+            (sequence for sequence, count in source_counts.items() if count != 1),
+            key=lambda value: int(value) if value.isdigit() else -1,
+        )
+        if duplicate_sources:
+            mismatches.append(
+                f"{label} duplicate V1 {sequence_field}="
+                + ",".join(duplicate_sources)
+            )
+        timing_counts: dict[str, int] = {}
+        prior_timing_sequence = 0
+        prior_timestamp = -1
+        for timing in timing_rows:
+            sequence = timing.get(sequence_field, "")
+            timing_counts[sequence] = timing_counts.get(sequence, 0) + 1
+            try:
+                timing_sequence = int(timing["timing_record_sequence"])
+                timestamp = int(timing[timestamp_field])
+            except (KeyError, TypeError, ValueError):
+                mismatches.append(f"{label} malformed exact counter row")
+                continue
+            if (
+                timing.get("record_type") != record_type
+                or timing.get("schema_version") != "2"
+                or timing.get("time_domain") != "rp2040_timer0_extended"
+                or timing_sequence <= prior_timing_sequence
+                or timestamp < prior_timestamp
+                or timing_sequence <= 0
+                or timestamp < 0
+            ):
+                mismatches.append(
+                    f"{label} exact identity/order mismatch {sequence_field}={sequence}"
+                )
+            prior_timing_sequence = timing_sequence
+            prior_timestamp = timestamp
+            source = source_by_sequence.get(sequence)
+            if source is None:
+                mismatches.append(f"{label} orphan {sequence_field}={sequence}")
+            elif any(timing.get(field) != source.get(field) for field in join_fields):
+                mismatches.append(f"{label} join mismatch {sequence_field}={sequence}")
+        duplicates = sorted(
+            (sequence for sequence, count in timing_counts.items() if count != 1),
+            key=lambda value: int(value) if value.isdigit() else -1,
+        )
+        if duplicates:
+            mismatches.append(
+                f"{label} duplicate {sequence_field}=" + ",".join(duplicates)
+            )
+        missing = sorted(
+            set(source_by_sequence) - set(timing_counts),
+            key=lambda value: int(value) if value.isdigit() else -1,
+        )
+        if missing:
+            mismatches.append(
+                f"{label} missing {sequence_field}=" + ",".join(missing)
+            )
+
+    inspect(
+        label="AT2",
+        record_type="AT2",
+        source_rows=transactions,
+        timing_rows=transaction_timings,
+        sequence_field="transaction_record_sequence",
+        timestamp_field="event_timestamp_ticks",
+        join_fields=_AT2_JOIN_FIELDS,
+    )
+    inspect(
+        label="AH2",
+        record_type="AH2",
+        source_rows=decisions,
+        timing_rows=decision_timings,
+        sequence_field="hybrid_record_sequence",
+        timestamp_field="decision_timestamp_ticks",
+        join_fields=_AH2_JOIN_FIELDS,
+    )
+    all_timing_sequences: list[int] = []
+    for timing in [*transaction_timings, *decision_timings]:
+        try:
+            all_timing_sequences.append(int(timing["timing_record_sequence"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if sorted(all_timing_sequences) != list(
+        range(1, len(all_timing_sequences) + 1)
+    ):
+        mismatches.append("AT2/AH2 global timing_record_sequence is not contiguous")
+    return {
+        "exact": bool(
+            transactions
+            and decisions
+            and transaction_timings
+            and decision_timings
+            and not mismatches
+        ),
+        "AT2_rows": len(transaction_timings),
+        "AH2_rows": len(decision_timings),
+        "mismatches": mismatches,
+        "coarse_seconds_used_as_ticks": False,
+    }
+
+
+def require_campaign18_exact_timing_sidecars(
+    run_dir: Path, manifest: RunManifest
+) -> dict[str, Any]:
+    """Reject Campaign18 evidence before sealing unless exact sidecars join."""
+
+    programme = programme_from_mapping(manifest.data)
+    if programme is not CX322_D9_D6_72H_PROGRAMME:
+        return {"required": False, "exact": True}
+    result = campaign18_exact_timing_sidecar_join(
+        transactions=_read_csv(_contract_path(manifest, "active_transactions_v1")),
+        decisions=_read_csv(_contract_path(manifest, "active_hybrid_decisions_v1")),
+        transaction_timings=_read_csv(
+            _contract_path(manifest, "active_transactions_v2")
+        ),
+        decision_timings=_read_csv(
+            _contract_path(manifest, "active_hybrid_decisions_v2")
+        ),
+    )
+    if not result["exact"]:
+        raise ValueError(
+            "Campaign18 exact AT2/AH2 lifecycle join failed: "
+            + json.dumps(result, sort_keys=True)
+        )
+    return {"required": True, **result}
 
 
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
@@ -2316,6 +2503,18 @@ def analyze(
 
     active_rows = _read_csv(run_dir / ACTIVE_CSV)
     decision_rows = _read_csv(run_dir / ACTIVE_HYBRID_CSV)
+    exact_timing_sidecar_join: dict[str, Any] | None = None
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        exact_timing_sidecar_join = campaign18_exact_timing_sidecar_join(
+            transactions=active_rows,
+            decisions=decision_rows,
+            transaction_timings=_read_csv(
+                _contract_path(manifest, "active_transactions_v2")
+            ),
+            decision_timings=_read_csv(
+                _contract_path(manifest, "active_hybrid_decisions_v2")
+            ),
+        )
     rph_rows = _read_csv(run_dir / RPH_CSV)
     tdb_rows = _read_csv(run_dir / TDB_CSV)
     dac_rows = _read_csv(run_dir / DAC_CSV)
@@ -2973,6 +3172,16 @@ def analyze(
         "terminal_disarmed_evidence_clear_no_outstanding_static_code": static_terminal_exact,
         "registration_source_artifacts_present": not missing_source_artifacts,
         "retained_inputs_readable": not retained_input_failures,
+        **(
+            {
+                "campaign18_exact_AT2_AH2_lifecycle_join": bool(
+                    exact_timing_sidecar_join
+                    and exact_timing_sidecar_join["exact"]
+                )
+            }
+            if programme is CX322_D9_D6_72H_PROGRAMME
+            else {}
+        ),
         "plant_sign_evidence_replay_exact": bool(
             plant_sign_replay.get("exact_replay")
         ),
@@ -3232,6 +3441,11 @@ def analyze(
             "detail": measurement_replay,
         },
         "active_hybrid_replay": ahy_replay,
+        **(
+            {"campaign18_exact_timing_sidecar_join": exact_timing_sidecar_join}
+            if exact_timing_sidecar_join is not None
+            else {}
+        ),
         "application_counts_and_budgets": applications,
         "pre_setup_provenance_terminal": pre_setup_provenance,
         **(

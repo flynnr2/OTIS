@@ -92,7 +92,9 @@ from .capture_runtime_checks import _capture_state_ready, _serial_owner_pids
 from .capture_segment_rotation import prepare_transition, request_rotation
 from .contracts import (
     ACTIVE_HYBRID_DECISION_V1_FIELDS,
+    ACTIVE_HYBRID_DECISION_V2_FIELDS,
     ACTIVE_TRANSACTION_V1_FIELDS,
+    ACTIVE_TRANSACTION_V2_FIELDS,
     CONTRACT_FIELDS,
     PPS_SNAPSHOT_FIELDS,
 )
@@ -103,6 +105,7 @@ from .cx321_plant_sign_evidence_guard import (
     replay_plant_sign_evidence,
     replay_plant_sign_windows_against_snapshots,
 )
+from .gnss_operational_baud_policy import GNSS_OPERATIONAL_PREWRITE_EXACT
 from .run_paths import (
     cx321_csv_files,
     default_csv_files,
@@ -469,6 +472,89 @@ def _wire_rows(rows: list[dict[str, str]], fields: tuple[str, ...] | list[str]) 
     ).encode()
 
 
+def _campaign18_exact_timing_sidecar_row(
+    row: dict[str, str],
+    *,
+    decision: bool,
+    timing_record_sequence: int,
+    response_timestamp_s: dict[int, int],
+) -> dict[str, str]:
+    """Build the exact-domain record emitted beside one Campaign18 V1 row."""
+
+    if decision:
+        return {
+            "record_type": "AH2",
+            "schema_version": "2",
+            "timing_record_sequence": str(timing_record_sequence),
+            "hybrid_record_sequence": row["hybrid_record_sequence"],
+            "decision_sequence": row["decision_sequence"],
+            "decision_timestamp_ticks": str(
+                int(row["decision_timestamp_s"])
+                * RP2040_TIMER0_TICKS_PER_SECOND
+                + 101
+            ),
+            "time_domain": "rp2040_timer0_extended",
+            **{
+                field: row[field]
+                for field in (
+                    "run_identity",
+                    "build_identity",
+                    "profile_identity",
+                    "capture_session",
+                    "source_first_sequence",
+                    "source_last_sequence",
+                    "reason",
+                )
+            },
+        }
+    event = row["event"]
+    if event == "manual_start":
+        event_s, offset = int(row["application_timestamp_s"]), 1
+    elif event in {"request_created", "request_withdrawn"}:
+        event_s, offset = int(row["decision_timestamp_s"]), 201
+    elif event in {"core0_accepted", "request_accepted"}:
+        event_s, offset = int(row["accepted_timestamp_s"]), 301
+    elif event in {"application", "application_fault"}:
+        event_s, offset = int(row["application_timestamp_s"]), 401
+    elif event == "response":
+        event_s, offset = response_timestamp_s[int(row["request_sequence"])], 501
+    else:
+        raise RuntimeError(
+            f"Campaign18 exact timing fixture lacks event {event!r}"
+        )
+    return {
+        "record_type": "AT2",
+        "schema_version": "2",
+        "timing_record_sequence": str(timing_record_sequence),
+        "transaction_record_sequence": row["transaction_record_sequence"],
+        "event": event,
+        "event_timestamp_ticks": str(
+            event_s * RP2040_TIMER0_TICKS_PER_SECOND + offset
+        ),
+        "time_domain": "rp2040_timer0_extended",
+        **{
+            field: row[field]
+            for field in (
+                "run_identity",
+                "build_identity",
+                "profile_identity",
+                "session_id",
+                "request_sequence",
+                "decision_sequence",
+                "source_first_sequence",
+                "source_last_sequence",
+                "authorization_sequence",
+                "nonce",
+                "accepted_code",
+                "applied_code",
+                "application_sequence",
+                "dac_epoch",
+                "reason",
+            )
+        },
+    }
+
+
 def _forwarded_integration_health_fixture(
     *, local_monitor_fault: bool
 ) -> dict[tuple[str, str], str]:
@@ -504,7 +590,19 @@ def _forwarded_integration_health_fixture(
     return health
 
 
-def _forwarded_integration_wire_fixture() -> bytes:
+def _gnss_operational_complete_wire_fixture() -> bytes:
+    return "".join(
+        f"STS,1,{500 + sequence},{(500 + sequence) * 16000},"
+        f"rp2040_timer0,{component},{key},{value},INFO,0\r\n"
+        for sequence, ((component, key), value) in enumerate(
+            sorted(GNSS_OPERATIONAL_PREWRITE_EXACT.items()), start=1
+        )
+    ).encode("ascii")
+
+
+def _forwarded_integration_wire_fixture(
+    *, complete_gnss_bootstrap: bool = True
+) -> bytes:
     """Exercise integrated D9/D6 capture while retaining D14/D8 truth."""
 
     lines: list[str] = []
@@ -541,7 +639,20 @@ def _forwarded_integration_wire_fixture() -> bytes:
             f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
             f"{key[0]},{key[1]},{degraded[key]},WARN,8"
         )
-    return ("\r\n".join(lines) + "\r\n").encode("ascii")
+    for key, value in (
+        ("operational_bootstrap_state", "in_progress"),
+        ("operational_bootstrap_attempt_count", "1"),
+        ("target_baud_command_attempt_count", "1"),
+    ):
+        sequence += 1
+        lines.append(
+            f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
+            f"gnss_receiver,{key},{value},INFO,0"
+        )
+    payload = ("\r\n".join(lines) + "\r\n").encode("ascii")
+    if complete_gnss_bootstrap:
+        payload += _gnss_operational_complete_wire_fixture()
+    return payload
 
 
 def _forwarded_integration_capture_summary(run_dir: Path) -> dict[str, Any]:
@@ -550,6 +661,12 @@ def _forwarded_integration_capture_summary(run_dir: Path) -> dict[str, Any]:
         (row["component"], row["status_key"]): row["status_value"]
         for row in health_rows
     }
+    gnss_states = [
+        row["status_value"]
+        for row in health_rows
+        if row["component"] == "gnss_receiver"
+        and row["status_key"] == "operational_bootstrap_state"
+    ]
     missing, mismatches = forwarded_output_integration_prewrite_evidence(latest)
     monitor_rows = _read_csv_rows(
         run_dir / "csv/forwarded_monitor_snapshots.csv"
@@ -568,6 +685,13 @@ def _forwarded_integration_capture_summary(run_dir: Path) -> dict[str, Any]:
         )
         == "monitor_invalid_or_unavailable",
         "d6_fault_has_control_authority": False,
+        "gnss_bootstrap_in_progress_then_complete_exact": (
+            gnss_states == ["in_progress", "complete"]
+            and all(
+                latest.get(key) == expected
+                for key, expected in GNSS_OPERATIONAL_PREWRITE_EXACT.items()
+            )
+        ),
         "d9_waveform_or_load_claim": False,
     }
 
@@ -1408,6 +1532,8 @@ def _sustained_multi_transaction_fixture(
     if programme is CX322_D9_D6_72H_PROGRAMME:
         second_consumer = observe(6902, 0)
         append_decision(second_consumer)
+        first_post_requalification_consumer = observe(7502, 0)
+        append_decision(first_post_requalification_consumer)
         first = transactions[0]
         manual = dict(first)
         manual.update(
@@ -1454,6 +1580,7 @@ def _sustained_multi_transaction_fixture(
             snapshot["correction_count"] == 2
             and not snapshot["transaction_outstanding"]
             and second_consumer.requested_delta_codes == 0
+            and first_post_requalification_consumer.requested_delta_codes == 0
         ):
             raise RuntimeError(
                 "campaign18 repeated natural transaction fixture differs"
@@ -1462,7 +1589,9 @@ def _sustained_multi_transaction_fixture(
             "applications": applications,
             "final_snapshot": snapshot,
             "first_response_consumer_reason": release.reason,
-            "first_post_recovery_consumer_decision_sequence": None,
+            "first_post_recovery_consumer_decision_sequence": (
+                first_post_requalification_consumer.decision_sequence
+            ),
         }
 
     # Keep the declared wrapping TIMER0 domain causally reconstructable while
@@ -3233,6 +3362,7 @@ def _exercise_cx321_real_transaction_path(
     finally:
         stop.set()
         emulator.join(timeout=2.0)
+
     captured_psq = list(
         csv.DictReader(psq_path.open("r", newline="", encoding="utf-8"))
     )
@@ -3318,6 +3448,22 @@ def _exercise_cx322_real_transaction_path(
             }
         }
     estimates = _cx322_selected_estimate_fixture(ahy, bundle)
+    deferred_decision: dict[str, str] | None = None
+    deferred_estimate: dict[str, str] | None = None
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        deferred_sequence = int(
+            summary["first_post_recovery_consumer_decision_sequence"]
+        )
+        deferred_index = next(
+            index
+            for index, row in enumerate(ahy)
+            if int(row["decision_sequence"]) == deferred_sequence
+        )
+        deferred_decision = ahy[deferred_index]
+        deferred_estimate = estimates[deferred_index]
+    initial_estimates = [
+        row for row in estimates if row is not deferred_estimate
+    ]
     stop = threading.Event()
     phase4_observed = threading.Event()
     write_lock = threading.Lock()
@@ -3342,6 +3488,7 @@ def _exercise_cx322_real_transaction_path(
         "d14_d8_observation_sequence": 0,
         "frontier_timestamp_ticks": None,
     }
+    gnss_bootstrap_in_progress_observed_by_supervisor = False
     response_frontier_ticks = {
         int(row["request_sequence"]): (
             int(row["decision_timestamp_s"])
@@ -3366,6 +3513,46 @@ def _exercise_cx322_real_transaction_path(
         ]
         for request_sequence, application in applications.items()
     }
+    response_timestamp_s = {
+        int(row["request_sequence"]): int(row["decision_timestamp_s"])
+        for row in ahy
+        if row.get("authority_state") == "AWAITING_RESPONSE"
+        and int(row.get("request_sequence", "0")) > 0
+    }
+    timing_record_sequence = 0
+
+    def wire_active_rows(
+        rows: list[dict[str, str]], *, decision: bool
+    ) -> bytes:
+        """Interleave Campaign18 exact sidecars through the real PTY splitter."""
+
+        nonlocal timing_record_sequence
+        v1_fields = (
+            ACTIVE_HYBRID_DECISION_V1_FIELDS
+            if decision
+            else ACTIVE_TRANSACTION_V1_FIELDS
+        )
+        if programme is not CX322_D9_D6_72H_PROGRAMME:
+            return _wire_rows(rows, v1_fields)
+        payload = bytearray()
+        for row in rows:
+            payload.extend(_wire_rows([row], v1_fields))
+            timing_record_sequence += 1
+            timing = _campaign18_exact_timing_sidecar_row(
+                row,
+                decision=decision,
+                timing_record_sequence=timing_record_sequence,
+                response_timestamp_s=response_timestamp_s,
+            )
+            payload.extend(
+                _wire_rows(
+                    [timing],
+                    ACTIVE_HYBRID_DECISION_V2_FIELDS
+                    if decision
+                    else ACTIVE_TRANSACTION_V2_FIELDS,
+                )
+            )
+        return bytes(payload)
 
     def emit_active_status() -> None:
         state["generation"] += 1
@@ -3560,23 +3747,55 @@ def _exercise_cx322_real_transaction_path(
             15.0,
             "CX322 initial complete status identity before ACT",
         )
+        if programme.forwarded_output_integration:
+            initial_live_health = read_live_health_state(run_dir / LIVE_STATE_PATH)
+            gnss_bootstrap_in_progress_observed_by_supervisor = bool(
+                initial_live_health.state == "complete"
+                and initial_live_health.health.get(
+                    ("gnss_receiver", "operational_bootstrap_state")
+                )
+                == "in_progress"
+                and _read_object(
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                ).get("terminal")
+                is None
+            )
+            if not gnss_bootstrap_in_progress_observed_by_supervisor:
+                raise RuntimeError(
+                    "integrated GNSS bootstrap hold did not reach the live supervisor"
+                )
+            with write_lock:
+                _write_all_fd(master, _gnss_operational_complete_wire_fixture())
+            emit_active_status()
+            _wait_until(
+                lambda: (
+                    (live := read_live_health_state(run_dir / LIVE_STATE_PATH)).state
+                    == "complete"
+                    and all(
+                        live.health.get(key) == expected
+                        for key, expected in GNSS_OPERATIONAL_PREWRITE_EXACT.items()
+                    )
+                ),
+                10.0,
+                "integrated GNSS bootstrap completion at fixed 115200",
+            )
         with write_lock:
             _write_all_fd(
                 master,
-                _wire_rows(estimates, CONTRACT_FIELDS["estimates_v2"]),
+                _wire_rows(initial_estimates, CONTRACT_FIELDS["estimates_v2"]),
             )
         estimate_path = run_dir / "csv/estimates_v2.csv"
         _wait_until(
             lambda: estimate_path.is_file()
             and sum(1 for _ in estimate_path.open(encoding="utf-8"))
-            >= len(estimates) + 1,
+            >= len(initial_estimates) + 1,
             10.0,
             "CX322 exact selected-estimate timestamps before AHY replay",
         )
         if programme is CX322_D9_D6_72H_PROGRAMME:
             setup_epoch_estimates = [
                 row
-                for row in estimates
+                for row in initial_estimates
                 if row.get("source_dac_ref") == "live:DAC:1"
             ]
             if not setup_epoch_estimates:
@@ -3614,7 +3833,7 @@ def _exercise_cx322_real_transaction_path(
         with write_lock:
             _write_all_fd(
                 master,
-                _wire_rows([manual], ACTIVE_TRANSACTION_V1_FIELDS),
+                wire_active_rows([manual], decision=False),
             )
         _wait_until(
             lambda: 1
@@ -3649,14 +3868,14 @@ def _exercise_cx322_real_transaction_path(
                 state["evidence_phase"] = "request_pending"
                 _write_all_fd(
                     master,
-                    _wire_rows(
+                    wire_active_rows(
                         ahy[decision_cursor : response_decision_index + 1],
-                        ACTIVE_HYBRID_DECISION_V1_FIELDS,
+                        decision=True,
                     ),
                 )
                 _write_all_fd(
                     master,
-                    _wire_rows(group, ACTIVE_TRANSACTION_V1_FIELDS),
+                    wire_active_rows(group, decision=False),
                 )
             response_record_sequence = int(group[-1]["transaction_record_sequence"])
             _wait_until(
@@ -3672,12 +3891,15 @@ def _exercise_cx322_real_transaction_path(
                 raise RuntimeError("CX322 firmware emulator failed: " + errors[0])
             decision_cursor = response_decision_index + 1
         if decision_cursor < len(ahy):
+            remaining_decisions = [
+                row
+                for row in ahy[decision_cursor:]
+                if row is not deferred_decision
+            ]
             with write_lock:
                 _write_all_fd(
                     master,
-                    _wire_rows(
-                        ahy[decision_cursor:], ACTIVE_HYBRID_DECISION_V1_FIELDS
-                    ),
+                    wire_active_rows(remaining_decisions, decision=True),
                 )
         first_response_consumer_exact = True
         first_response_consumer_reason = summary.get(
@@ -3801,9 +4023,60 @@ def _exercise_cx322_real_transaction_path(
                 10.0,
                 "campaign18 GNSS causal requalification",
             )
+            if deferred_decision is None or deferred_estimate is None:
+                raise RuntimeError(
+                    "Campaign18 rehearsal lacks its deferred post-requalification consumer"
+                )
+            with write_lock:
+                _write_all_fd(
+                    master,
+                    _wire_rows(
+                        [deferred_estimate], CONTRACT_FIELDS["estimates_v2"]
+                    ),
+                )
+            _wait_until(
+                lambda: estimate_path.is_file()
+                and sum(1 for _ in estimate_path.open(encoding="utf-8"))
+                >= len(estimates) + 1,
+                10.0,
+                "campaign18 fresh estimate after GNSS requalification",
+            )
+            with write_lock:
+                _write_all_fd(
+                    master,
+                    wire_active_rows([deferred_decision], decision=True),
+                )
+            ahy_path = run_dir / "csv/active_hybrid_decisions_v1.csv"
+            _wait_until(
+                lambda: ahy_path.is_file()
+                and sum(1 for _ in ahy_path.open(encoding="utf-8"))
+                >= len(ahy) + 1,
+                10.0,
+                "campaign18 first decision after GNSS requalification",
+            )
     finally:
         stop.set()
         emulator.join(timeout=2.0)
+
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        _wait_until(
+            lambda: all(
+                path.is_file()
+                and sum(1 for _ in path.open(encoding="utf-8")) >= count + 1
+                for path, count in (
+                    (
+                        run_dir / "csv/active_transactions_v2.csv",
+                        len(transactions),
+                    ),
+                    (
+                        run_dir / "csv/active_hybrid_decisions_v2.csv",
+                        len(ahy),
+                    ),
+                )
+            ),
+            10.0,
+            "Campaign18 exact AT2/AH2 capture",
+        )
 
     events_path = run_dir / "reports/cx317_active_supervisor_events.jsonl"
     events = [
@@ -3821,6 +4094,72 @@ def _exercise_cx322_real_transaction_path(
         for event in events
         if event.get("event") == "response_retained_as_nonterminal_observation"
     ]
+    captured_ahy = list(
+        csv.DictReader(
+            (run_dir / "csv/active_hybrid_decisions_v1.csv").open(
+                "r", newline="", encoding="utf-8"
+            )
+        )
+    )
+    captured_transactions = list(
+        csv.DictReader(
+            (run_dir / "csv/active_transactions_v1.csv").open(
+                "r", newline="", encoding="utf-8"
+            )
+        )
+    )
+    exact_timing_sidecar_join: dict[str, Any] | None = None
+    if programme is CX322_D9_D6_72H_PROGRAMME:
+        from .active_hybrid_live_analyze import (
+            campaign18_exact_timing_sidecar_join,
+        )
+
+        exact_timing_sidecar_join = campaign18_exact_timing_sidecar_join(
+            transactions=captured_transactions,
+            decisions=captured_ahy,
+            transaction_timings=list(
+                csv.DictReader(
+                    (run_dir / "csv/active_transactions_v2.csv").open(
+                        "r", newline="", encoding="utf-8"
+                    )
+                )
+            ),
+            decision_timings=list(
+                csv.DictReader(
+                    (run_dir / "csv/active_hybrid_decisions_v2.csv").open(
+                        "r", newline="", encoding="utf-8"
+                    )
+                )
+            ),
+        )
+    from .active_hybrid_live_analyze import (
+        _response_dependent_consumer_propagation,
+    )
+
+    response_consumers = _response_dependent_consumer_propagation(
+        captured_transactions, captured_ahy
+    )
+    first_response_consumer_exact = bool(response_consumers["exact"])
+    post_requalification_consumer_exact = (
+        programme is not CX322_D9_D6_72H_PROGRAMME
+        or (
+            deferred_decision is not None
+            and deferred_estimate is not None
+            and any(
+                row["decision_sequence"] == deferred_decision["decision_sequence"]
+                and row["current_applied_code"] == str(state["applied_code"])
+                and row["actual_applied_code"] == str(state["applied_code"])
+                and row["actual_dac_epoch"] == str(state["dac_epoch"])
+                and row["requested_delta_codes"] == "0"
+                for row in captured_ahy
+            )
+            and any(
+                event.get("event")
+                == "cx322_d9_d6_72h_gnss_metadata_hold_requalified"
+                for event in events
+            )
+        )
+    )
     transaction_labels = _observational_transaction_result_labels(
         applications=applications,
         summary=summary,
@@ -3837,6 +4176,11 @@ def _exercise_cx322_real_transaction_path(
         == 4 * len(applications),
         "first_phase_observation_checkpoint_exact": True,
         "first_response_consumer_exact": first_response_consumer_exact,
+        "gnss_bootstrap_in_progress_observed_by_supervisor": (
+            gnss_bootstrap_in_progress_observed_by_supervisor
+        ),
+        "response_dependent_consumer_propagation": response_consumers,
+        "campaign18_exact_timing_sidecar_join": exact_timing_sidecar_join,
         "setup_establishment_exact": setup_establishment_exact,
         "first_setup_consumer_exact": first_setup_consumer_exact,
         "setup_establishment": {
@@ -3880,6 +4224,9 @@ def _exercise_cx322_real_transaction_path(
         "first_post_recovery_consumer_decision_sequence": summary.get(
             "first_post_recovery_consumer_decision_sequence"
         ),
+        "first_post_requalification_consumer_exact": (
+            post_requalification_consumer_exact
+        ),
         "physical_actions_performed": 0,
         "gnss_hold_and_causal_requalification": (
             programme is not CX322_D9_D6_72H_PROGRAMME
@@ -3914,6 +4261,12 @@ def _exercise_cx322_real_transaction_path(
                 "d6_fault_retained_through_first_response_consumer"
             ]
             and integration["d6_fault_has_control_authority"] is False
+            and integration[
+                "gnss_bootstrap_in_progress_then_complete_exact"
+            ]
+            and result[
+                "gnss_bootstrap_in_progress_observed_by_supervisor"
+            ]
         ):
             raise RuntimeError(
                 "integrated D9/D6 real-process capture rehearsal failed"
@@ -3927,6 +4280,14 @@ def _exercise_cx322_real_transaction_path(
         and result["first_response_consumer_exact"]
         and result["complete_multi_transaction_sequence"]
         and result["gnss_hold_and_causal_requalification"]
+        and result["first_post_requalification_consumer_exact"]
+        and (
+            programme is not CX322_D9_D6_72H_PROGRAMME
+            or bool(
+                exact_timing_sidecar_join
+                and exact_timing_sidecar_join["exact"]
+            )
+        )
     ):
         raise RuntimeError("CX322 real-process response checkpoint rehearsal failed")
     return result
@@ -4098,7 +4459,12 @@ def _run_real_process_topology(
             "initial live-supervisor command acknowledgements",
         )
         if programme.forwarded_output_integration:
-            _write_all_fd(master, _forwarded_integration_wire_fixture())
+            _write_all_fd(
+                master,
+                _forwarded_integration_wire_fixture(
+                    complete_gnss_bootstrap=False
+                ),
+            )
         if _selected_programme(bundle).identification_required:
             real_transaction_path = _exercise_cx321_real_transaction_path(
                 master=master,
@@ -4544,9 +4910,18 @@ def run(
             }
         )
     if programme is CX322_D9_D6_72H_PROGRAMME:
+        exact_sidecar_join = topology["cx322_real_transaction_path"][
+            "campaign18_exact_timing_sidecar_join"
+        ]
+        if not exact_sidecar_join or not exact_sidecar_join.get("exact"):
+            raise RuntimeError(
+                "Campaign18 retained AT2/AH2 topology join was not exact"
+            )
         coverage.update(
             {
-                "campaign18_exact_AT2_AH2_capture": True,
+                "campaign18_exact_AT2_AH2_capture": bool(
+                    exact_sidecar_join["exact"]
+                ),
                 "campaign18_repeated_natural_transaction": True,
                 "campaign18_GNSS_hold_causal_requalification": True,
                 "campaign18_exact_72h_endpoint_clock": True,

@@ -921,6 +921,16 @@ def _analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
     return analyze(run_dir)
 
 
+def _require_campaign18_exact_timing_sidecars(
+    run_dir: Path, manifest: Any
+) -> dict[str, Any]:
+    from .active_hybrid_live_analyze import (
+        require_campaign18_exact_timing_sidecars,
+    )
+
+    return require_campaign18_exact_timing_sidecars(run_dir, manifest)
+
+
 def _finalize_and_register(
     *,
     run_dir: Path,
@@ -969,6 +979,14 @@ def _finalize_and_register(
     )
     frozen_acquisition_identities = _snapshotted_artifact_identities(
         run_dir, snapshot
+    )
+    exact_timing_sidecar_join = _require_campaign18_exact_timing_sidecars(
+        run_dir, loaded
+    )
+    advance_phase(
+        finalization_journal,
+        "exact_timing_sidecars",
+        exact_timing_sidecar_join,
     )
     seal_path, seal = _analyze(run_dir)
     if frozen_acquisition_identities != _snapshotted_artifact_identities(
