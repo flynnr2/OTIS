@@ -467,6 +467,9 @@ def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
     assert set(rehearsal.REHEARSAL_COVERAGE) == set(
         activation.REHEARSAL_COVERAGE
     )
+    assert set(rehearsal.CAMPAIGN18_REHEARSAL_COVERAGE) == set(
+        activation.CAMPAIGN18_REHEARSAL_COVERAGE
+    )
 
 
 def test_obstruction_requires_the_exact_final_status_generation(

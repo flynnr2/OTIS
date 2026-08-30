@@ -103,6 +103,7 @@ CAMPAIGN18_REHEARSAL_COVERAGE = (
     "campaign18_repeated_natural_transaction",
     "campaign18_GNSS_hold_causal_requalification",
     "campaign18_exact_72h_endpoint_clock",
+    "campaign18_authoritative_capture_fault_terminal",
 )
 FIFO_PATHS = {
     "normal_command": "control/normal_commands.fifo",
