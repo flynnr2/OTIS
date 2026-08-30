@@ -1814,6 +1814,7 @@ def _cx322_active_status_wire_fixture(
     gnss_metadata_qualification_frontier: int = 0,
     d14_d8_observation_sequence: int = 0,
     frontier_timestamp_ticks: int | None = None,
+    authoritative_capture_overrides: Mapping[str, str] | None = None,
 ) -> bytes:
     """Return one complete CX322 status snapshot for a phase frontier."""
 
@@ -1976,6 +1977,8 @@ def _cx322_active_status_wire_fixture(
         ).items()
         if key[0] == "pps_gate"
     }
+    if authoritative_capture_overrides is not None:
+        capture_health.update(authoritative_capture_overrides)
     capture_records = list(capture_health.items())
 
     def capture_timestamp_ticks(sequence: int) -> int:
@@ -4393,10 +4396,15 @@ def _run_real_process_topology(
     endpoint_mode: str = "abort_path",
 ) -> dict[str, Any]:
     programme = _selected_programme(bundle)
-    if endpoint_mode not in {"abort_path", "first_response"}:
+    if endpoint_mode not in {"abort_path", "first_response", "capture_fault"}:
         raise ValueError("unknown real-process rehearsal endpoint mode")
     if endpoint_mode == "first_response" and not programme.terminal_after_first_response:
         raise ValueError("first-response topology selected for a different programme")
+    if (
+        endpoint_mode == "capture_fault"
+        and programme is not CX322_D9_D6_72H_PROGRAMME
+    ):
+        raise ValueError("capture-fault topology selected for a different programme")
     # The sustained path now preserves and confirms four causal phase-4
     # transactions instead of exposing one pre-batched CSV frontier.  Keep
     # both processes bounded, but give that real acknowledgement sequence its
@@ -4552,6 +4560,166 @@ def _run_real_process_topology(
                 run_dir=run_dir,
                 bundle=bundle,
             )
+            if endpoint_mode == "capture_fault":
+                supervisor_state_path = (
+                    run_dir / "reports/cx317_active_supervisor_state.json"
+                )
+                before = _read_object(supervisor_state_path)
+                if before.get("qualified_origin_session_id") != 1:
+                    raise RuntimeError(
+                        "Campaign18 capture-fault rehearsal lacks a qualified origin"
+                    )
+                retained_paths = (
+                    run_dir / "csv/active_transactions_v1.csv",
+                    run_dir / "csv/active_hybrid_decisions_v1.csv",
+                    run_dir / "csv/dac_steps.csv",
+                )
+                retained_before = {
+                    str(path): len(_read_csv_rows(path)) for path in retained_paths
+                }
+                live_selection = read_live_health_state(
+                    run_dir / LIVE_STATE_PATH
+                )
+                current_query_nonce = live_selection.health.get(
+                    ("cx317_active", "query_nonce"), "0"
+                )
+                prior_frontier = int(before["qualified_frontier_raw_ticks"])
+                fault_frontier = (
+                    prior_frontier + RP2040_TIMER0_TICKS_PER_SECOND
+                ) % RP2040_TIMER0_MICROS_WRAP_TICKS
+                fault_generation = int(
+                    real_transaction_path["last_status_generation"]
+                ) + 1
+                _write_all_fd(
+                    master,
+                    _cx322_active_status_wire_fixture(
+                        generation=fault_generation,
+                        query_nonce=current_query_nonce,
+                        evidence_phase="evidence_clear",
+                        bundle=bundle,
+                        applied=True,
+                        checkpoint_passed=True,
+                        applied_code=int(real_transaction_path["applied_code"]),
+                        dac_epoch=int(
+                            real_transaction_path["applied_dac_epoch"]
+                        ),
+                        correction_count=len(
+                            real_transaction_path["request_sequences_consumed"]
+                        ),
+                        automatic_application_count=len(
+                            real_transaction_path["request_sequences_consumed"]
+                        ),
+                        cumulative_movement_codes=int(
+                            real_transaction_path["cumulative_movement_codes"]
+                        ),
+                        frontier_timestamp_ticks=fault_frontier,
+                        authoritative_capture_overrides={
+                            "control_eligible": "false",
+                            "aperture_validity": "invalid",
+                            "observation_pair_validity": "invalid",
+                            "association_state": "lost",
+                        },
+                    ),
+                )
+                supervisor.wait(timeout=10)
+                observed_commands = _read_until(master, b"ACTIVE ABORT\n")
+                _wait_until(
+                    lambda: int(
+                        _read_object(
+                            run_dir / "reports/capture_device_state.json"
+                        ).get("emergency_aborts_sent", 0)
+                    )
+                    == 1,
+                    10.0,
+                    "Campaign18 capture-fault priority abort delivery",
+                )
+                terminal_state = _read_object(supervisor_state_path)
+                terminal = terminal_state.get("terminal") or {}
+                if (
+                    supervisor.returncode != 2
+                    or terminal.get("primary_decision")
+                    != "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+                    or terminal.get("last_confirmed_code")
+                    != int(real_transaction_path["applied_code"])
+                ):
+                    raise RuntimeError(
+                        "Campaign18 capture-fault terminal was not exact: "
+                        f"exit={supervisor.returncode}; terminal={terminal!r}"
+                    )
+                _write_all_fd(
+                    master,
+                    _post_abort_active_status_wire_fixture(
+                        generation=fault_generation + 1,
+                        bundle=bundle,
+                        applied_code=int(real_transaction_path["applied_code"]),
+                        dac_epoch=int(
+                            real_transaction_path["applied_dac_epoch"]
+                        ),
+                        correction_count=len(
+                            real_transaction_path["request_sequences_consumed"]
+                        ),
+                        cumulative_movement_codes=int(
+                            real_transaction_path["cumulative_movement_codes"]
+                        ),
+                    ),
+                )
+                _wait_for_terminal_abort_delivery(run_dir, terminal)
+                retained_after = {
+                    str(path): len(_read_csv_rows(path)) for path in retained_paths
+                }
+                post_fault_commands = [
+                    line
+                    for line in observed_commands.decode(
+                        "ascii", errors="replace"
+                    ).splitlines()
+                    if line
+                ]
+                forbidden = tuple(
+                    command
+                    for command in post_fault_commands
+                    if command.startswith(
+                        ("ACTIVE EVIDENCE ", "ACTIVE ARM ", "ACTIVE SETUP ")
+                    )
+                )
+                if retained_after != retained_before or forbidden:
+                    raise RuntimeError(
+                        "Campaign18 capture-fault rehearsal allowed post-fault "
+                        f"authority: retained={retained_before!r}->{retained_after!r}; "
+                        f"commands={forbidden!r}"
+                    )
+                capture.send_signal(signal.SIGINT)
+                capture_output, _ = capture.communicate(timeout=15)
+                if capture.returncode != 0:
+                    raise RuntimeError(
+                        "capture-fault capture did not close cleanly: "
+                        f"{capture_output[-2000:]}"
+                    )
+                state = _read_object(
+                    run_dir / "reports/capture_device_state.json"
+                )
+                os.close(master)
+                master = -1
+                return {
+                    "rehearsal_endpoint_mode": endpoint_mode,
+                    "capture_pid": capture.pid,
+                    "supervisor_pid": supervisor.pid,
+                    "device": device,
+                    "owners_before": sorted(owners_before),
+                    "priority_abort_observed": "ACTIVE ABORT"
+                    in post_fault_commands,
+                    "capture_emergency_aborts_sent": state.get(
+                        "emergency_aborts_sent"
+                    ),
+                    "supervisor_terminal": terminal,
+                    "post_abort_complete_active_snapshot": True,
+                    "post_fault_authority_commands": list(forbidden),
+                    "retained_row_counts_before_fault": retained_before,
+                    "retained_row_counts_after_fault": retained_after,
+                    "real_transaction_path": real_transaction_path,
+                    "cx322_real_transaction_path": real_transaction_path,
+                    "physical_actions_performed": 0,
+                    "qualification_evidence": False,
+                }
             if endpoint_mode == "first_response":
                 supervisor.wait(timeout=15)
                 supervisor_output, _ = supervisor.communicate(timeout=5)
@@ -4958,6 +5126,18 @@ def run(
         if programme.identification_required
         else None
     )
+    capture_fault_topology = (
+        _run_real_process_topology(
+            output_dir=output_dir / "capture_discontinuity",
+            bundle_path=bundle_path,
+            bundle=bundle,
+            proposal_path=proposal_path,
+            proposal=proposal,
+            endpoint_mode="capture_fault",
+        )
+        if programme is CX322_D9_D6_72H_PROGRAMME
+        else None
+    )
     coverage = {name: True for name in REHEARSAL_COVERAGE}
     if programme.engineering_unarmed_observation_s > 0:
         coverage["integrated_unarmed_concurrency_observation_boundary"] = True
@@ -4994,6 +5174,23 @@ def run(
                 "campaign18_repeated_natural_transaction": True,
                 "campaign18_GNSS_hold_causal_requalification": True,
                 "campaign18_exact_72h_endpoint_clock": True,
+                "campaign18_authoritative_capture_fault_terminal": bool(
+                    capture_fault_topology
+                    and capture_fault_topology["priority_abort_observed"]
+                    and capture_fault_topology[
+                        "capture_emergency_aborts_sent"
+                    ]
+                    == 1
+                    and not capture_fault_topology[
+                        "post_fault_authority_commands"
+                    ]
+                    and capture_fault_topology[
+                        "retained_row_counts_before_fault"
+                    ]
+                    == capture_fault_topology[
+                        "retained_row_counts_after_fault"
+                    ]
+                ),
             }
         )
     unsigned: dict[str, Any] = {
@@ -5019,6 +5216,7 @@ def run(
         "accelerated_prewrite_boundary": prewrite_boundary,
         "accelerated_qualified_device_clock": qualified_device_clock,
         "cx321_identification_ordering": cx321_ordering,
+        "campaign18_capture_fault_topology": capture_fault_topology,
         "accelerated_boundary_result": {
             "status": accelerated["status"],
             "seal_sha256": accelerated["seal_sha256"],
@@ -5084,6 +5282,7 @@ def run(
                         "campaign18_exact_AT2_AH2_capture",
                         "campaign18_repeated_natural_transaction",
                         "campaign18_GNSS_hold_causal_requalification",
+                        "campaign18_authoritative_capture_fault_terminal",
                     ]
                     if programme is CX322_D9_D6_72H_PROGRAMME
                     else []
