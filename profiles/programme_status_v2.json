@@ -2768,13 +2768,30 @@
         "authority_ceilings_are_activity_targets": false
       },
       "verification": {
-        "frequency_only_24h_attempt9_finalization_pending": true,
-        "exact_build_reused_pending_identity_revalidation": true,
-        "operational_rehearsal_pending": true,
+        "frequency_only_24h_attempt9_original_failure_preserved_and_registered": true,
+        "frequency_only_24h_attempt9_original_content_sha256": "a303a80d8e81f09e0dc09122fc97fefbd506e47c418444ca3b9be23d9f94159c",
+        "frequency_only_24h_attempt9_superseding_pass_registered": true,
+        "frequency_only_24h_attempt9_superseding_seal_sha256": "ea6fd21b8b1665d43e6a48218d1fe28f69dfed1cf63d8c79ad56baaec80c9ceb",
+        "frequency_only_24h_attempt9_derived_content_sha256": "f93495719ce0a8648d115e25836b27e777b5f9c3593be58b3e9ea7360620d03e",
+        "exact_build_reused_identity_revalidation_passed": true,
+        "firmware_uf2_sha256": "27b8c73a1ac6b4a8df55920a4641f4303af78688de2fa2eff2f7aa781661bab6",
+        "frequency_only_predecessor_content_binding_passed": true,
+        "active_hybrid_bundle_sha256": "7d7851bad6fe9d3261e18a2242f5c16c24d878f4ac354f34d591a02c3af4e985",
+        "campaign18_adapter_bundle_sha256": "3836a213643001650881ebbf6f65a7514beee63d5e342b2cdef906396099295f",
+        "complete_operational_rehearsal_passed": true,
+        "operational_rehearsal_sha256": "dc65375b9226eb7085c4e567481a3f51e116a8bea93e94322cc7f16942025af8",
+        "campaign18_wrapper_rehearsal_sha256": "ba2b26dfb419dde74eb7d0539ccc0356bd615ddf6fe3344e6abb4ef231bac076",
+        "exact_at2_ahy_sidecar_join_passed": true,
+        "gnss_fixed_115200_bootstrap_and_requalification_path_passed": true,
+        "first_post_requalification_consumer_passed": true,
+        "effective_active_hybrid_activation_ready": true,
+        "active_hybrid_activation_sha256": "bc6f746b6aa82b146266ffe56b238becde79979fe5a29be1d93d44d408d8b567",
+        "effective_adapter_activation_ready": true,
+        "adapter_activation_sha256": "ea5b56f62dc6108cce5422bf3b6452f11e81758e92e9caf40cca8596c6371bde",
         "bench_entry_pending": true,
         "authority_consumed": false
       },
-      "next_gate": "frequency_only_attempt9_superseding_seal_then_exact_bundle_revalidation_and_complete_operational_rehearsal"
+      "next_gate": "repeat_dynamic_auto_detect_owner_and_prewrite_physical_gates_then_single_finite_72h_live_entry"
     }
   }
 }
