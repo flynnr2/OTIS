@@ -3464,6 +3464,9 @@ def _exercise_cx322_real_transaction_path(
     initial_estimates = [
         row for row in estimates if row is not deferred_estimate
     ]
+    pre_requalification_decision_count = len(ahy) - int(
+        deferred_decision is not None
+    )
     stop = threading.Event()
     phase4_observed = threading.Event()
     write_lock = threading.Lock()
@@ -3910,7 +3913,7 @@ def _exercise_cx322_real_transaction_path(
             _wait_until(
                 lambda: ahy_path.is_file()
                 and sum(1 for _ in ahy_path.open(encoding="utf-8"))
-                >= len(ahy) + 1,
+                >= pre_requalification_decision_count + 1,
                 10.0,
                 "first response consumer AHY capture",
             )
