@@ -182,6 +182,7 @@ def campaign18_exact_timing_sidecar_join(
         timing_rows: list[dict[str, str]],
         sequence_field: str,
         timestamp_field: str,
+        session_field: str,
         join_fields: tuple[str, ...],
     ) -> None:
         source_counts: dict[str, int] = {}
@@ -205,7 +206,7 @@ def campaign18_exact_timing_sidecar_join(
             )
         timing_counts: dict[str, int] = {}
         prior_timing_sequence = 0
-        prior_timestamp = -1
+        prior_timestamps: dict[tuple[str, str], int] = {}
         for timing in timing_rows:
             sequence = timing.get(sequence_field, "")
             timing_counts[sequence] = timing_counts.get(sequence, 0) + 1
@@ -215,10 +216,13 @@ def campaign18_exact_timing_sidecar_join(
             except (KeyError, TypeError, ValueError):
                 mismatches.append(f"{label} malformed exact counter row")
                 continue
+            time_domain = timing.get("time_domain", "")
+            session = timing.get(session_field, "")
+            prior_timestamp = prior_timestamps.get((time_domain, session), -1)
             if (
                 timing.get("record_type") != record_type
                 or timing.get("schema_version") != "2"
-                or timing.get("time_domain") != "rp2040_timer0_extended"
+                or time_domain != "rp2040_timer0_extended"
                 or timing_sequence <= prior_timing_sequence
                 or timestamp < prior_timestamp
                 or timing_sequence <= 0
@@ -228,7 +232,7 @@ def campaign18_exact_timing_sidecar_join(
                     f"{label} exact identity/order mismatch {sequence_field}={sequence}"
                 )
             prior_timing_sequence = timing_sequence
-            prior_timestamp = timestamp
+            prior_timestamps[(time_domain, session)] = timestamp
             source = source_by_sequence.get(sequence)
             if source is None:
                 mismatches.append(f"{label} orphan {sequence_field}={sequence}")
@@ -258,6 +262,7 @@ def campaign18_exact_timing_sidecar_join(
         timing_rows=transaction_timings,
         sequence_field="transaction_record_sequence",
         timestamp_field="event_timestamp_ticks",
+        session_field="session_id",
         join_fields=_AT2_JOIN_FIELDS,
     )
     inspect(
@@ -267,6 +272,7 @@ def campaign18_exact_timing_sidecar_join(
         timing_rows=decision_timings,
         sequence_field="hybrid_record_sequence",
         timestamp_field="decision_timestamp_ticks",
+        session_field="capture_session",
         join_fields=_AH2_JOIN_FIELDS,
     )
     all_timing_sequences: list[int] = []

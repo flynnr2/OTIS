@@ -152,6 +152,74 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
         )
         assert observed["exact"] is False
         assert observed["mismatches"]
+
+    # Exact TIMER0 extension is scoped to the capture session. A recoverable
+    # association reset can therefore begin a lower counter epoch without
+    # weakening ordering or the one-to-one V1/V2 identity join.
+    decision_session_2 = {
+        **decision,
+        "hybrid_record_sequence": "2",
+        "decision_sequence": "2",
+        "capture_session": "2",
+        "source_first_sequence": "0",
+        "source_last_sequence": "600",
+        "reason": "measurement_authority_or_common_health_fault",
+    }
+    ah2_session_2 = {
+        **decision_session_2,
+        "record_type": "AH2",
+        "schema_version": "2",
+        "timing_record_sequence": "3",
+        "decision_timestamp_ticks": "1000",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    session_reset = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=[transaction],
+        decisions=[decision, decision_session_2],
+        transaction_timings=[at2],
+        decision_timings=[ah2, ah2_session_2],
+    )
+    assert session_reset["exact"] is True
+
+    decision_session_2_later = {
+        **decision_session_2,
+        "hybrid_record_sequence": "3",
+        "decision_sequence": "3",
+        "source_first_sequence": "600",
+        "source_last_sequence": "1200",
+    }
+    ah2_session_2_backward = {
+        **decision_session_2_later,
+        "record_type": "AH2",
+        "schema_version": "2",
+        "timing_record_sequence": "4",
+        "decision_timestamp_ticks": "999",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    within_session_backward = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=[transaction],
+        decisions=[decision, decision_session_2, decision_session_2_later],
+        transaction_timings=[at2],
+        decision_timings=[ah2, ah2_session_2, ah2_session_2_backward],
+    )
+    assert within_session_backward["exact"] is False
+    assert within_session_backward["mismatches"] == [
+        "AH2 exact identity/order mismatch hybrid_record_sequence=3"
+    ]
+
+    session_identity_mismatch = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=[transaction],
+        decisions=[decision, decision_session_2],
+        transaction_timings=[at2],
+        decision_timings=[
+            ah2,
+            {**ah2_session_2, "capture_session": "3"},
+        ],
+    )
+    assert session_identity_mismatch["exact"] is False
+    assert session_identity_mismatch["mismatches"] == [
+        "AH2 join mismatch hybrid_record_sequence=2"
+    ]
 from host.otis_tools.active_hybrid_policy import load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
     _modeled_transaction,
