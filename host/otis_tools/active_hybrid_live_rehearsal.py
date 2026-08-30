@@ -564,6 +564,19 @@ def _forwarded_integration_health_fixture(
     health[("forwarded_clock_output", "first_valid_ticks")] = "16000000"
     health.update(
         {
+            ("pps_gate", "valid"): "true",
+            ("pps_gate", "control_eligible"): "true",
+            ("pps_gate", "reference_validity"): "valid",
+            ("pps_gate", "count_validity"): "valid",
+            ("pps_gate", "boundary_validity"): "valid",
+            ("pps_gate", "aperture_validity"): "valid",
+            ("pps_gate", "observation_pair_validity"): "valid",
+            ("pps_gate", "fifo_continuity"): "continuous",
+            ("pps_gate", "association_state"): "clean",
+            ("pps_gate", "snapshot_session"): "1",
+            ("pps_gate", "rejected_window_count"): "0",
+            ("pps_gate", "physical_aperture_incomplete_count"): "1",
+            ("pps_gate", "association_loss_count"): "0",
             ("forwarded_clock_monitor", "state"): (
                 "monitor_invalid_or_unavailable"
                 if local_monitor_fault
@@ -1947,12 +1960,39 @@ def _cx322_active_status_wire_fixture(
             frontier_timestamp_ticks - remaining_records * 16000
         ) % RP2040_TIMER0_MICROS_WRAP_TICKS
 
-    return "".join(
+    active_wire = "".join(
         f"STS,1,{generation * 1000 + sequence},"
         f"{record_timestamp_ticks(sequence)},rp2040_timer0,"
         f"cx317_active,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(records, start=1)
     ).encode()
+    if programme is not CX322_D9_D6_72H_PROGRAMME:
+        return active_wire
+
+    capture_health = {
+        key[1]: value
+        for key, value in _forwarded_integration_health_fixture(
+            local_monitor_fault=False
+        ).items()
+        if key[0] == "pps_gate"
+    }
+    capture_records = list(capture_health.items())
+
+    def capture_timestamp_ticks(sequence: int) -> int:
+        if frontier_timestamp_ticks is None:
+            return (generation * 1000 - 100 + sequence) * 16000
+        remaining_records = len(records) + len(capture_records) - sequence + 1
+        return (
+            frontier_timestamp_ticks - remaining_records * 16000
+        ) % RP2040_TIMER0_MICROS_WRAP_TICKS
+
+    capture_wire = "".join(
+        f"STS,1,{generation * 1000 - 100 + sequence},"
+        f"{capture_timestamp_ticks(sequence)},rp2040_timer0,"
+        f"pps_gate,{key},{value},INFO,0\r\n"
+        for sequence, (key, value) in enumerate(capture_records, start=1)
+    ).encode()
+    return capture_wire + active_wire
 
 
 def _cx321_active_status_wire_fixture(
