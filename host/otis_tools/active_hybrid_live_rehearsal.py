@@ -3632,6 +3632,24 @@ def _exercise_cx322_real_transaction_path(
         with write_lock:
             _write_all_fd(master, payload)
 
+    def wait_for_supervisor_frontier(frontier_ticks: int) -> None:
+        """Keep accelerated timer advances below the live half-wrap boundary."""
+
+        _wait_until(
+            lambda: bool(errors)
+            or _read_object(
+                run_dir / "reports/cx317_active_supervisor_state.json"
+            ).get("qualified_frontier_raw_ticks")
+            == frontier_ticks,
+            10.0,
+            "Campaign18 intermediate producer frontier consumption",
+        )
+        if errors:
+            raise RuntimeError(
+                "CX322 firmware emulator failed while retaining producer "
+                f"frontier: {errors[0]}"
+            )
+
     def emulate_firmware() -> None:
         buffered = b""
         try:
@@ -3693,6 +3711,14 @@ def _exercise_cx322_real_transaction_path(
                                 request_frontier_ticks[request_sequence]
                             )
                             emit_active_status()
+                            # The accelerated fixture must preserve the real
+                            # device's sub-half-wrap status cadence.  Do not
+                            # let a later complete generation overwrite this
+                            # causal frontier before the live supervisor has
+                            # extended and retained it.
+                            wait_for_supervisor_frontier(
+                                request_frontier_ticks[request_sequence]
+                            )
                         if phase >= 2:
                             state["applied"] = True
                             application = applications[request_sequence]
