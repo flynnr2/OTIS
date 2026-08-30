@@ -84,6 +84,9 @@ TOOL_PATHS = {
     "contract_validator": Path(__file__).with_name("contracts.py"),
     "time_domain_contract": Path(__file__).with_name("time_domains.py"),
     "evidence_snapshot": Path(__file__).with_name("evidence.py"),
+    "evidence_finalization_journal": Path(__file__).with_name(
+        "evidence_finalization.py"
+    ),
     "registration": Path(__file__).with_name("evidence_index.py"),
     "live_activation_and_manifest": Path(__file__).with_name("active_hybrid_activation.py"),
     "live_supervisor": Path(__file__).with_name("active_hybrid_live_supervisor.py"),

@@ -27,6 +27,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Mapping
 
@@ -49,7 +50,7 @@ from .evidence_finalization import (
     recover_registration,
     set_registration_intent,
 )
-from .evidence_index import DEFAULT_INDEX, package_identity
+from .evidence_index import DEFAULT_INDEX, package_identity, validate_index
 from .active_hybrid_live_supervisor import (
     FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH,
     FORWARDED_MONITOR_OBSERVABILITY_KEYS,
@@ -4617,27 +4618,40 @@ def pty_operational_rehearsal(
         "result_or_failure_reason": "canonical 72h host rehearsal passed",
         "analyzer_identity": TOOL_ID,
     }
-    journal = begin_finalization(
-        run_dir=evidence_dir,
-        index_path=output_dir / "evidence-index.json",
-        registration=registration_metadata,
-        required_seal=Path("reports/seal.json"),
-    )
-    for phase, details in (
-        ("capture_closed", {"mode": "PTY_fixture"}),
-        ("completion", {"terminal": summary["terminal"]}),
-        ("snapshot", {"last_record_sha256": summary["last_record_sha256"]}),
-        ("analysis", {"consumer": analysis["consumer"]}),
-        ("seal", {"path": "reports/seal.json"}),
-    ):
-        advance_phase(journal, phase, details)
-    evidence_identity = package_identity(evidence_dir)["content_sha256"]
-    set_registration_intent(
-        journal,
-        registration=registration_metadata,
-        expected_content_sha256=evidence_identity,
-    )
-    registration = recover_registration(journal)
+    with tempfile.TemporaryDirectory(
+        prefix="cx322-d9-d6-72h-rehearsal-registration-"
+    ) as temporary:
+        index_path = Path(temporary) / "evidence_index_v1.json"
+        journal = begin_finalization(
+            run_dir=evidence_dir,
+            index_path=index_path,
+            registration=registration_metadata,
+            required_seal=Path("reports/seal.json"),
+        )
+        for phase, details in (
+            ("capture_closed", {"mode": "PTY_fixture"}),
+            ("completion", {"terminal": summary["terminal"]}),
+            ("snapshot", {"last_record_sha256": summary["last_record_sha256"]}),
+            ("analysis", {"consumer": analysis["consumer"]}),
+            ("seal", {"path": "reports/seal.json"}),
+        ):
+            advance_phase(journal, phase, details)
+        evidence_identity = package_identity(evidence_dir)["content_sha256"]
+        set_registration_intent(
+            journal,
+            registration=registration_metadata,
+            expected_content_sha256=evidence_identity,
+        )
+        registration = recover_registration(journal)
+        index_validation = validate_index(index_path)
+        if (
+            not index_validation["valid"]
+            or index_validation["package_count"] != 1
+            or index_validation["packages"][0]["content_sha256"]
+            != evidence_identity
+        ):
+            raise RuntimeError("temporary external rehearsal registration differs")
+        temporary_index_sha256 = sha256(index_path.read_bytes()).hexdigest()
     report: dict[str, object] = {
         "tool": TOOL_ID,
         "status": "passed",
@@ -4663,6 +4677,12 @@ def pty_operational_rehearsal(
             "journal": str(journal),
             "content_sha256": registration["content_sha256"],
             "registered": True,
+            "registration_mode": "actual_temporary_external_index_registration",
+            "production_evidence_index_used": False,
+            "temporary_index_retained": False,
+            "temporary_index_sha256": temporary_index_sha256,
+            "index_validation": index_validation,
+            "registration_record": registration,
         },
         "terminal_derived_from_contract": summary["terminal"],
         "d6_local_degradation_did_not_change_terminal": True,

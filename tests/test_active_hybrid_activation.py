@@ -526,8 +526,12 @@ def _inputs(tmp_path: Path) -> tuple[Path, dict, Path, dict, Path, dict]:
 def _current_validators(
     monkeypatch: pytest.MonkeyPatch, bundle: dict, proposal: dict
 ) -> None:
-    monkeypatch.setattr(activation, "validate_bundle", lambda _path: bundle)
-    monkeypatch.setattr(activation, "validate_proposal", lambda _path: proposal)
+    monkeypatch.setattr(
+        activation, "validate_bundle", lambda _path, *_args: bundle
+    )
+    monkeypatch.setattr(
+        activation, "validate_proposal", lambda _path, *_args: proposal
+    )
     monkeypatch.setattr(activation, "_git_clean", lambda: True)
 
 
@@ -667,6 +671,54 @@ def test_later_activation_accepts_exact_bounded_operator_abort_terminal(
     assert observed["attempt"]["predecessor_physical_terminal"][
         "primary_decision"
     ] == "operator_abort"
+
+
+def test_campaign18_later_activation_accepts_programme_operator_abort_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del monkeypatch
+    predecessor_run = tmp_path / "campaign18-attempt-1"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "bounded_nonpass",
+        "run_id": "campaign18-attempt-1",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx322_d9_d6_72h_operator_abort",
+        "acquisition_gate": {"passed": True},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": True
+        },
+        "scientific_acceptance_checks": {},
+        "descriptive_prior_comparisons": {
+            "qualified_endpoint_complete": False,
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "reason": "independent_host_abort_fifo",
+            },
+        },
+    }
+    predecessor_path = reports / "cx322_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=2,
+        reason="repair host-only finalization after pre-actuation abort",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX322_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 2
+    assert observed["predecessor_physical_terminal"][
+        "primary_decision"
+    ] == "cx322_d9_d6_72h_operator_abort"
 
 
 def test_later_activation_accepts_exact_pre_setup_provenance_terminal(

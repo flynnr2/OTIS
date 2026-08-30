@@ -506,7 +506,14 @@ def _terminal_expected(
         terminal.get("preliminary_decision")
         in programme.healthy_preliminary_decisions
         if result == "healthy_stop"
-        else terminal.get("primary_decision") in programme.terminal_decisions
+        else (
+            terminal.get("primary_decision") in programme.terminal_decisions
+            or (
+                result == "aborted"
+                and terminal.get("primary_decision") == "operator_abort"
+                and terminal.get("reason") == "independent_host_abort_fifo"
+            )
+        )
     )
     static_code = terminal.get("last_confirmed_code")
     static_code_is_valid = type(static_code) is int or (
@@ -983,11 +990,6 @@ def _finalize_and_register(
     exact_timing_sidecar_join = _require_campaign18_exact_timing_sidecars(
         run_dir, loaded
     )
-    advance_phase(
-        finalization_journal,
-        "exact_timing_sidecars",
-        exact_timing_sidecar_join,
-    )
     seal_path, seal = _analyze(run_dir)
     if frozen_acquisition_identities != _snapshotted_artifact_identities(
         run_dir, snapshot
@@ -1000,6 +1002,7 @@ def _finalize_and_register(
             "status": seal["status"],
             "primary_decision": seal["primary_decision"],
             "tool_sha256": seal["tool_sha256"],
+            "exact_timing_sidecar_join": exact_timing_sidecar_join,
         },
     )
     advance_phase(
@@ -1139,7 +1142,7 @@ def run_active_hybrid_qualification(
                 raise RuntimeError(
                     "fresh serial path changed before capture ownership"
                 )
-        create_run_manifest(
+        created_manifest = create_run_manifest(
             activation_path=run_activation,
             bundle_path=run_bundle,
             proposal_path=run_proposal,
@@ -1147,6 +1150,11 @@ def run_active_hybrid_qualification(
             output_path=manifest_path,
             serial_device=device,
         )
+        generic_manifest = load_manifest(run_dir)
+        if generic_manifest.data != created_manifest:
+            raise RuntimeError(
+                "live manifest differs across producer and evidence loader"
+            )
         finalization_journal = begin_finalization(
             run_dir=run_dir,
             index_path=evidence_index_path,
@@ -1484,6 +1492,10 @@ def recover_active_hybrid_finalization(
     frozen_acquisition_identities = _snapshotted_artifact_identities(
         run_dir, snapshot
     )
+    loaded = load_manifest(run_dir)
+    exact_timing_sidecar_join = _require_campaign18_exact_timing_sidecars(
+        run_dir, loaded
+    )
     seal_path = run_dir / programme.physical_seal_path
     if seal_path.is_file():
         seal = _read_json(seal_path)
@@ -1500,6 +1512,7 @@ def recover_active_hybrid_finalization(
                 "status": seal["status"],
                 "primary_decision": seal["primary_decision"],
                 "tool_sha256": seal["tool_sha256"],
+                "exact_timing_sidecar_join": exact_timing_sidecar_join,
             },
         )
     journal = _read_json(journal_path) or journal

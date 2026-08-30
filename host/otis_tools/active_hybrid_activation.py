@@ -544,6 +544,7 @@ def _attempt_descriptor(
     ordinal: int,
     reason: str,
     predecessor_terminal_path: Path | None,
+    programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> dict[str, Any]:
     if type(ordinal) is not int or ordinal < 1:
         raise ValueError("CX320 attempt ordinal must be a positive integer")
@@ -573,6 +574,24 @@ def _attempt_descriptor(
         acquisition_gate = seal.get("acquisition_gate", {})
         offline_finalization_gate = seal.get("offline_finalization_gate", {})
         scientific_checks = seal.get("scientific_acceptance_checks", {})
+        if not scientific_checks and isinstance(
+            seal.get("descriptive_prior_comparisons"), dict
+        ):
+            scientific_checks = seal["descriptive_prior_comparisons"]
+        endpoint_complete_check = (
+            scientific_checks.get("qualified_endpoint_complete")
+            if isinstance(scientific_checks, dict)
+            else None
+        )
+        if endpoint_complete_check is None and isinstance(
+            scientific_checks, dict
+        ):
+            endpoint_complete_check = scientific_checks.get(
+                "qualified_12h_endpoint_complete"
+            )
+        operator_abort_decisions = {"operator_abort"}
+        if programme is CX322_D9_D6_72H_PROGRAMME:
+            operator_abort_decisions.add("cx322_d9_d6_72h_operator_abort")
         failed_physical_gate = (
             seal.get("status") == "failed"
             and seal.get("primary_decision")
@@ -598,7 +617,7 @@ def _attempt_descriptor(
         )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
-            and seal.get("primary_decision") == "operator_abort"
+            and seal.get("primary_decision") in operator_abort_decisions
             and isinstance(terminal, dict)
             and terminal.get("abort_submission_count") == 1
             and terminal.get("abort_delivery_count") == 1
@@ -607,8 +626,7 @@ def _attempt_descriptor(
             and supervisor_terminal.get("reason")
             == "independent_host_abort_fifo"
             and terminal.get("endpoint_complete") is False
-            and isinstance(scientific_checks, dict)
-            and scientific_checks.get("qualified_12h_endpoint_complete") is False
+            and endpoint_complete_check is False
         )
         bounded_pre_setup_provenance = (
             seal.get("status") == "bounded_nonpass"
@@ -741,6 +759,7 @@ def create_activation(
             ordinal=attempt_ordinal,
             reason=attempt_reason,
             predecessor_terminal_path=predecessor_terminal_path,
+            programme=programme,
         ),
         "operational_rehearsal": rehearsal,
         "device": device_contract,
@@ -898,6 +917,7 @@ def validate_frozen_activation(
         ordinal=attempt.get("ordinal"),
         reason=str(attempt.get("reason", "")),
         predecessor_terminal_path=predecessor_path,
+        programme=programme,
     )
     if attempt != expected_attempt:
         raise ValueError("CX320 activation attempt lineage differs")
