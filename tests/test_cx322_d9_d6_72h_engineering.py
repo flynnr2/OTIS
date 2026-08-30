@@ -2212,6 +2212,18 @@ def test_pty_rehearsal_exercises_capture_commands_abort_rotation_and_72h_counter
     ]
     assert report["finalization_rehearsal"]["status"] == "passed"
     assert report["finalization_rehearsal"]["registered"] is True
+    assert report["finalization_rehearsal"]["registration_mode"] == (
+        "actual_temporary_external_index_registration"
+    )
+    assert report["finalization_rehearsal"]["production_evidence_index_used"] is False
+    assert report["finalization_rehearsal"]["temporary_index_retained"] is False
+    assert len(report["finalization_rehearsal"]["temporary_index_sha256"]) == 64
+    assert report["finalization_rehearsal"]["index_validation"]["valid"] is True
+    assert report["finalization_rehearsal"]["index_validation"]["package_count"] == 1
+    assert report["finalization_rehearsal"]["registration_record"][
+        "content_sha256"
+    ] == report["finalization_rehearsal"]["content_sha256"]
+    assert not (tmp_path / "rehearsal" / "evidence-index.json").exists()
     assert report["waveform_evidence_status"] == (
         "unresolved_oscilloscope_deferred"
     )
