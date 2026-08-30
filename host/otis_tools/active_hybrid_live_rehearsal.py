@@ -244,6 +244,37 @@ def _read_until(master: int, expected: bytes, timeout_s: float = 10.0) -> bytes:
     )
 
 
+def _read_until_quiet(
+    master: int, *, timeout_s: float = 1.0, quiet_s: float = 0.2
+) -> bytes:
+    """Drain PTY output until it stays quiet or the bounded deadline expires."""
+
+    deadline = time.monotonic() + timeout_s
+    quiet_deadline = time.monotonic() + quiet_s
+    observed = b""
+    while time.monotonic() < min(deadline, quiet_deadline):
+        wait_s = max(
+            0.0,
+            min(
+                0.05,
+                deadline - time.monotonic(),
+                quiet_deadline - time.monotonic(),
+            ),
+        )
+        readable, _, _ = select.select([master], [], [], wait_s)
+        if not readable:
+            continue
+        try:
+            chunk = os.read(master, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        observed += chunk
+        quiet_deadline = time.monotonic() + quiet_s
+    return observed
+
+
 def _selected_programme(
     value: dict[str, Any],
 ) -> ActiveHybridProgramme:
@@ -2223,10 +2254,18 @@ def _create_rehearsal_run_manifest(
     endpoint_mode: str = "abort_path",
 ) -> Path:
     programme = _selected_programme(bundle)
-    if endpoint_mode not in {"abort_path", "first_response"}:
+    if endpoint_mode not in {"abort_path", "first_response", "capture_fault"}:
         raise ValueError("unknown rehearsal endpoint mode")
-    if endpoint_mode == "first_response" and not programme.terminal_after_first_response:
+    if (
+        endpoint_mode == "first_response"
+        and not programme.terminal_after_first_response
+    ):
         raise ValueError("first-response rehearsal selected for a different programme")
+    if (
+        endpoint_mode == "capture_fault"
+        and programme is not CX322_D9_D6_72H_PROGRAMME
+    ):
+        raise ValueError("capture-fault rehearsal selected for a different programme")
     if programme is CX322_D9_D6_72H_PROGRAMME:
         source_files = exact_active_timing_csv_files()
     elif programme.identification_required:
@@ -2453,10 +2492,14 @@ def validate_rehearsal_run_manifest(path: Path) -> dict[str, Any]:
         or value.get("profile_identity") != programme.profile_id
         or value.get("qualification_evidence") is not False
         or value.get("rehearsal_endpoint_mode")
-        not in {"abort_path", "first_response"}
+        not in {"abort_path", "first_response", "capture_fault"}
         or (
             value.get("rehearsal_endpoint_mode") == "first_response"
             and not programme.terminal_after_first_response
+        )
+        or (
+            value.get("rehearsal_endpoint_mode") == "capture_fault"
+            and programme is not CX322_D9_D6_72H_PROGRAMME
         )
         or value.get("physical_actions_performed") != 0
         or value.get("actionable") is not False
@@ -4614,10 +4657,15 @@ def _run_real_process_topology(
                         ),
                         frontier_timestamp_ticks=fault_frontier,
                         authoritative_capture_overrides={
+                            "valid": "false",
                             "control_eligible": "false",
                             "aperture_validity": "invalid",
                             "observation_pair_validity": "invalid",
                             "association_state": "lost",
+                            "snapshot_session": "2",
+                            "rejected_window_count": "1",
+                            "physical_aperture_incomplete_count": "2",
+                            "association_loss_count": "1",
                         },
                     ),
                 )
@@ -4635,12 +4683,47 @@ def _run_real_process_topology(
                 )
                 terminal_state = _read_object(supervisor_state_path)
                 terminal = terminal_state.get("terminal") or {}
+                expected_fault_reason = (
+                    "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault:"
+                    "valid:'false'!='true',"
+                    "control_eligible:'false'!='true',"
+                    "aperture_validity:'invalid'!='valid',"
+                    "observation_pair_validity:'invalid'!='valid',"
+                    "association_state:'lost'!='clean',"
+                    "capture_session_changed:1->2,"
+                    "rejected_window_count_changed:0->1,"
+                    "physical_aperture_incomplete_count_changed:1->2,"
+                    "association_loss_count_changed:0->1"
+                )
+                expected_fault_detail = {
+                    "reason": expected_fault_reason,
+                    "qualified_origin_session_id": 1,
+                    "observed_capture_session_id": 2,
+                    "authoritative_capture_baseline": {
+                        "rejected_window_count": 0,
+                        "physical_aperture_incomplete_count": 1,
+                        "association_loss_count": 0,
+                    },
+                    "observed_authoritative_capture_counters": {
+                        "rejected_window_count": 1,
+                        "physical_aperture_incomplete_count": 2,
+                        "association_loss_count": 1,
+                    },
+                    "last_confirmed_code": int(
+                        real_transaction_path["applied_code"]
+                    ),
+                    "new_control_authority": False,
+                }
                 if (
                     supervisor.returncode != 2
+                    or terminal.get("result") != "aborted"
+                    or terminal.get("reason") != expected_fault_reason
                     or terminal.get("primary_decision")
                     != "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
                     or terminal.get("last_confirmed_code")
                     != int(real_transaction_path["applied_code"])
+                    or terminal_state.get("authoritative_capture_terminal_detail")
+                    != expected_fault_detail
                 ):
                     raise RuntimeError(
                         "Campaign18 capture-fault terminal was not exact: "
@@ -4664,6 +4747,75 @@ def _run_real_process_topology(
                     ),
                 )
                 _wait_for_terminal_abort_delivery(run_dir, terminal)
+                live = read_live_health_state(run_dir / LIVE_STATE_PATH)
+                if live.state == "complete":
+                    post_abort_health = live.health
+                    post_abort_source = "atomic_live_state"
+                    post_abort_generation = live.generation
+                else:
+                    post_abort_health = _retained_abort_consumption_health(run_dir)
+                    post_abort_source = "retained_raw_serial"
+                    post_abort_generation = (
+                        int(
+                            post_abort_health[
+                                ("cx317_active", "snapshot_generation_complete")
+                            ]
+                        )
+                        if post_abort_health is not None
+                        else None
+                    )
+                if post_abort_health is None or not (
+                    post_abort_health.get(("cx317_active", "state")) == "ABORTED"
+                    and post_abort_health.get(("cx317_active", "fail_static"))
+                    == "true"
+                    and post_abort_health.get(
+                        ("cx317_active", "evidence_pending")
+                    )
+                    == "false"
+                    and post_abort_health.get(
+                        ("cx317_active", "evidence_phase")
+                    )
+                    == "evidence_clear"
+                    and post_abort_health.get(
+                        ("cx317_active", "evidence_request_sequence")
+                    )
+                    == "0"
+                    and post_abort_health.get(
+                        ("cx317_active", "confirmed_applied_code_known")
+                    )
+                    == "true"
+                    and int(
+                        post_abort_health.get(
+                            ("cx317_active", "confirmed_applied_code"), "-1"
+                        )
+                    )
+                    == int(real_transaction_path["applied_code"])
+                ):
+                    raise RuntimeError(
+                        "Campaign18 capture-fault rehearsal did not retain a "
+                        "causally later complete fail-static abort snapshot"
+                    )
+                post_abort_snapshot = {
+                    "source": post_abort_source,
+                    "generation": post_abort_generation,
+                    "state": post_abort_health[("cx317_active", "state")],
+                    "fail_static": post_abort_health[
+                        ("cx317_active", "fail_static")
+                    ],
+                    "confirmed_applied_code": int(
+                        post_abort_health[
+                            ("cx317_active", "confirmed_applied_code")
+                        ]
+                    ),
+                }
+                capture.send_signal(signal.SIGINT)
+                capture_output, _ = capture.communicate(timeout=15)
+                if capture.returncode != 0:
+                    raise RuntimeError(
+                        "capture-fault capture did not close cleanly: "
+                        f"{capture_output[-2000:]}"
+                    )
+                observed_commands += _read_until_quiet(master)
                 retained_after = {
                     str(path): len(_read_csv_rows(path)) for path in retained_paths
                 }
@@ -4687,13 +4839,6 @@ def _run_real_process_topology(
                         f"authority: retained={retained_before!r}->{retained_after!r}; "
                         f"commands={forbidden!r}"
                     )
-                capture.send_signal(signal.SIGINT)
-                capture_output, _ = capture.communicate(timeout=15)
-                if capture.returncode != 0:
-                    raise RuntimeError(
-                        "capture-fault capture did not close cleanly: "
-                        f"{capture_output[-2000:]}"
-                    )
                 state = _read_object(
                     run_dir / "reports/capture_device_state.json"
                 )
@@ -4711,7 +4856,10 @@ def _run_real_process_topology(
                         "emergency_aborts_sent"
                     ),
                     "supervisor_terminal": terminal,
-                    "post_abort_complete_active_snapshot": True,
+                    "supervisor_terminal_detail": terminal_state.get(
+                        "authoritative_capture_terminal_detail"
+                    ),
+                    "post_abort_complete_active_snapshot": post_abort_snapshot,
                     "post_fault_authority_commands": list(forbidden),
                     "retained_row_counts_before_fault": retained_before,
                     "retained_row_counts_after_fault": retained_after,
@@ -5190,6 +5338,14 @@ def run(
                     == capture_fault_topology[
                         "retained_row_counts_after_fault"
                     ]
+                    and capture_fault_topology[
+                        "post_abort_complete_active_snapshot"
+                    ]["state"]
+                    == "ABORTED"
+                    and capture_fault_topology[
+                        "post_abort_complete_active_snapshot"
+                    ]["fail_static"]
+                    == "true"
                 ),
             }
         )
