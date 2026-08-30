@@ -4614,7 +4614,9 @@ def _run_real_process_topology(
                     )
                 retained_paths = (
                     run_dir / "csv/active_transactions_v1.csv",
+                    run_dir / "csv/active_transactions_v2.csv",
                     run_dir / "csv/active_hybrid_decisions_v1.csv",
+                    run_dir / "csv/active_hybrid_decisions_v2.csv",
                     run_dir / "csv/dac_steps.csv",
                 )
                 retained_before = {
@@ -4808,6 +4810,11 @@ def _run_real_process_topology(
                         ]
                     ),
                 }
+                if post_abort_generation != fault_generation + 1:
+                    raise RuntimeError(
+                        "Campaign18 retained abort snapshot generation was not "
+                        f"exact: {post_abort_generation!r} != {fault_generation + 1}"
+                    )
                 capture.send_signal(signal.SIGINT)
                 capture_output, _ = capture.communicate(timeout=15)
                 if capture.returncode != 0:
@@ -4826,18 +4833,42 @@ def _run_real_process_topology(
                     ).splitlines()
                     if line
                 ]
+                legal_post_fault_commands = tuple(
+                    command
+                    for command in post_fault_commands
+                    if command == "ACTIVE ABORT"
+                    or command in {
+                        "CONFIG?",
+                        "DUALCORE?",
+                        "DAC?",
+                        "ACTIVE?",
+                    }
+                    or command.startswith(
+                        ("ACTIVE SNAPSHOT ", "ACTIVE LEASE ")
+                    )
+                )
                 forbidden = tuple(
                     command
                     for command in post_fault_commands
-                    if command.startswith(
-                        ("ACTIVE EVIDENCE ", "ACTIVE ARM ", "ACTIVE SETUP ")
-                    )
+                    if command not in legal_post_fault_commands
                 )
-                if retained_after != retained_before or forbidden:
+                priority_abort_count = post_fault_commands.count("ACTIVE ABORT")
+                raw_abort_marker_count = (
+                    run_dir / "raw/serial.log"
+                ).read_text(encoding="utf-8").count(
+                    '"event": "emergency_abort_sent"'
+                )
+                if (
+                    retained_after != retained_before
+                    or forbidden
+                    or priority_abort_count != 1
+                    or raw_abort_marker_count != 1
+                ):
                     raise RuntimeError(
                         "Campaign18 capture-fault rehearsal allowed post-fault "
                         f"authority: retained={retained_before!r}->{retained_after!r}; "
-                        f"commands={forbidden!r}"
+                        f"commands={forbidden!r}; aborts={priority_abort_count}; "
+                        f"markers={raw_abort_marker_count}"
                     )
                 state = _read_object(
                     run_dir / "reports/capture_device_state.json"
@@ -4852,6 +4883,8 @@ def _run_real_process_topology(
                     "owners_before": sorted(owners_before),
                     "priority_abort_observed": "ACTIVE ABORT"
                     in post_fault_commands,
+                    "priority_abort_command_count": priority_abort_count,
+                    "priority_abort_raw_marker_count": raw_abort_marker_count,
                     "capture_emergency_aborts_sent": state.get(
                         "emergency_aborts_sent"
                     ),
@@ -5325,6 +5358,14 @@ def run(
                 "campaign18_authoritative_capture_fault_terminal": bool(
                     capture_fault_topology
                     and capture_fault_topology["priority_abort_observed"]
+                    and capture_fault_topology[
+                        "priority_abort_command_count"
+                    ]
+                    == 1
+                    and capture_fault_topology[
+                        "priority_abort_raw_marker_count"
+                    ]
+                    == 1
                     and capture_fault_topology[
                         "capture_emergency_aborts_sent"
                     ]
