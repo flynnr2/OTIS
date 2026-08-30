@@ -27,6 +27,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Mapping
 
@@ -4617,27 +4618,30 @@ def pty_operational_rehearsal(
         "result_or_failure_reason": "canonical 72h host rehearsal passed",
         "analyzer_identity": TOOL_ID,
     }
-    journal = begin_finalization(
-        run_dir=evidence_dir,
-        index_path=output_dir / "evidence-index.json",
-        registration=registration_metadata,
-        required_seal=Path("reports/seal.json"),
-    )
-    for phase, details in (
-        ("capture_closed", {"mode": "PTY_fixture"}),
-        ("completion", {"terminal": summary["terminal"]}),
-        ("snapshot", {"last_record_sha256": summary["last_record_sha256"]}),
-        ("analysis", {"consumer": analysis["consumer"]}),
-        ("seal", {"path": "reports/seal.json"}),
-    ):
-        advance_phase(journal, phase, details)
-    evidence_identity = package_identity(evidence_dir)["content_sha256"]
-    set_registration_intent(
-        journal,
-        registration=registration_metadata,
-        expected_content_sha256=evidence_identity,
-    )
-    registration = recover_registration(journal)
+    with tempfile.TemporaryDirectory(
+        prefix="cx322-d9-d6-72h-rehearsal-registration-"
+    ) as temporary:
+        journal = begin_finalization(
+            run_dir=evidence_dir,
+            index_path=Path(temporary) / "evidence_index_v1.json",
+            registration=registration_metadata,
+            required_seal=Path("reports/seal.json"),
+        )
+        for phase, details in (
+            ("capture_closed", {"mode": "PTY_fixture"}),
+            ("completion", {"terminal": summary["terminal"]}),
+            ("snapshot", {"last_record_sha256": summary["last_record_sha256"]}),
+            ("analysis", {"consumer": analysis["consumer"]}),
+            ("seal", {"path": "reports/seal.json"}),
+        ):
+            advance_phase(journal, phase, details)
+        evidence_identity = package_identity(evidence_dir)["content_sha256"]
+        set_registration_intent(
+            journal,
+            registration=registration_metadata,
+            expected_content_sha256=evidence_identity,
+        )
+        registration = recover_registration(journal)
     report: dict[str, object] = {
         "tool": TOOL_ID,
         "status": "passed",

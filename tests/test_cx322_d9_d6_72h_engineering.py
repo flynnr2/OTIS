@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import cx322_d9_d6_72h_engineering as programme
+from host.otis_tools import evidence_index
 from host.otis_tools.active_control_supervisor import (
     RP2040_TIMER0_TICKS_PER_SECOND,
 )
@@ -2143,7 +2144,11 @@ def test_step_and_range_envelopes_fail_static(applied_code: int) -> None:
 
 def test_pty_rehearsal_exercises_capture_commands_abort_rotation_and_72h_counter(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Exercise the production layout, where the retained rehearsal package is
+    # inside Git but its disposable registration index must remain outside.
+    monkeypatch.setattr(evidence_index, "REPO_ROOT", tmp_path)
     report = programme.pty_operational_rehearsal(
         bundle=_bundle(tmp_path),
         output_dir=tmp_path / "rehearsal",
