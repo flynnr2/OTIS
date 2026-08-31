@@ -900,6 +900,128 @@ def test_cx323_later_activation_accepts_exact_firmware_fail_static_terminal(
     )
 
 
+def test_cx323_later_activation_accepts_exact_legacy_ack_observation_terminal(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "cx323-attempt-7"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    source_hashes = {
+        path: str(index) * 64
+        for index, path in enumerate(
+            (
+                "COMPLETE",
+                "csv/health.csv",
+                "raw/serial.log",
+                "reports/cx317_active_supervisor_events.jsonl",
+                "reports/cx317_active_supervisor_state.json",
+            ),
+            start=1,
+        )
+    }
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "cx323-attempt-7",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "evidence_snapshot_validation": {"failures": [], "warnings": []},
+        "source_artifacts_sha256": source_hashes,
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "latest_hybrid_state": "FIRST_PHASE_TRANSACTION",
+            "static_code": 43085,
+            "static_terminal_exact": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": (
+                    "cx323_d9_d6_72h_identity_or_evidence_fault"
+                ),
+                "reason": (
+                    "cx323_d9_d6_72h_live_supervisor_fault:"
+                    "active-hybrid evidence acknowledgement reached the host "
+                    "serial write boundary but firmware consumption is unconfirmed"
+                ),
+                "last_confirmed_code": 43085,
+            },
+        },
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=3,
+        reason="rerun after exact evidence-frontier admission correction",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 3
+    assert observed["automatic_retry"] is False
+    assert observed["predecessor_physical_terminal"]["run_id"] == (
+        "cx323-attempt-7"
+    )
+
+
+def test_cx323_legacy_ack_observation_terminal_requires_retained_health_hash(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "cx323-attempt-7"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "cx323-attempt-7",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "evidence_snapshot_validation": {"failures": [], "warnings": []},
+        "source_artifacts_sha256": {},
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "latest_hybrid_state": "FIRST_PHASE_TRANSACTION",
+            "static_code": 43085,
+            "static_terminal_exact": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": (
+                    "cx323_d9_d6_72h_identity_or_evidence_fault"
+                ),
+                "reason": (
+                    "cx323_d9_d6_72h_live_supervisor_fault:"
+                    "active-hybrid evidence acknowledgement reached the host "
+                    "serial write boundary but firmware consumption is unconfirmed"
+                ),
+                "last_confirmed_code": 43085,
+            },
+        },
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    with pytest.raises(ValueError, match="incomplete physical gate"):
+        activation._attempt_descriptor(
+            ordinal=3,
+            reason="rerun after exact evidence-frontier admission correction",
+            predecessor_terminal_path=predecessor_path,
+            programme=CX323_D9_D6_72H_PROGRAMME,
+        )
+
+
 def test_later_activation_accepts_exact_pre_setup_provenance_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

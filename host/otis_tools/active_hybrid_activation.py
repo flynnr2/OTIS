@@ -707,6 +707,62 @@ def _attempt_descriptor(
             and supervisor_terminal.get("last_confirmed_code")
             == terminal["static_code"]
         )
+        # Campaign19 Attempt 7 reached the first request frontier before the
+        # original host inspected the already-retained firmware partition
+        # fault.  Its sealed terminal therefore carries the old
+        # acknowledgement-observation diagnosis instead of the later exact
+        # ``live active_fail_static asserted`` reason.  Accept only that
+        # complete, immutable legacy shape as evidence of an incomplete gate;
+        # this authorizes a new identified attempt without reclassifying the
+        # predecessor as a successful acquisition.
+        cx323_legacy_ack_observation_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and acquisition_gate.get("passed") is False
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is False
+            and seal.get("evidence_snapshot_validation")
+            == {"failures": [], "warnings": []}
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("latest_hybrid_state")
+            == "FIRST_PHASE_TRANSACTION"
+            and terminal.get("static_terminal_exact") is False
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(terminal.get("static_code"), int)
+            and programme.minimum_code
+            <= terminal["static_code"]
+            <= programme.maximum_code
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and supervisor_terminal.get("reason")
+            == (
+                "cx323_d9_d6_72h_live_supervisor_fault:"
+                "active-hybrid evidence acknowledgement reached the host "
+                "serial write boundary but firmware consumption is unconfirmed"
+            )
+            and supervisor_terminal.get("last_confirmed_code")
+            == terminal["static_code"]
+            and isinstance(seal.get("source_artifacts_sha256"), dict)
+            and all(
+                isinstance(seal["source_artifacts_sha256"].get(path), str)
+                and len(seal["source_artifacts_sha256"][path]) == 64
+                for path in (
+                    "COMPLETE",
+                    "csv/health.csv",
+                    "raw/serial.log",
+                    "reports/cx317_active_supervisor_events.jsonl",
+                    "reports/cx317_active_supervisor_state.json",
+                )
+            )
+        )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
             and seal.get("primary_decision") in operator_abort_decisions
@@ -741,6 +797,7 @@ def _attempt_descriptor(
                 or failed_post_acquisition_gate
                 or campaign18_capture_terminal
                 or cx323_firmware_fail_static_terminal
+                or cx323_legacy_ack_observation_terminal
                 or bounded_operator_abort
                 or bounded_pre_setup_provenance
             )
