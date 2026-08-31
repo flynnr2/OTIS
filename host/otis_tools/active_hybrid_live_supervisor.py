@@ -922,45 +922,47 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         }[phase]
         # A periodic status query submitted immediately before the evidence
         # command can arrive after the pre-submit baseline and is therefore
-        # generation-fresh but causally stale.  Retry a bounded number of
-        # complete snapshots while the exact pre-submit frontier persists.
-        # Four five-second queries remain inside the frozen 30-second host
-        # replay/acknowledgement deadline.
-        health: dict[tuple[str, str], str] | None = None
-        observed_phase = ""
-        for _ in range(4):
-            health = self._fresh_active_snapshot_after(baseline)
-            baseline = int(
-                health[("cx317_active", "snapshot_generation_complete")]
-            )
-            observed_phase = health.get(("cx317_active", "evidence_phase"), "")
-            observed_request = int(
-                health.get(("cx317_active", "evidence_request_sequence"), "0")
-            )
-            if observed_phase == pre_submit_phase:
-                if observed_request != request_sequence:
-                    raise ValueError(
-                        "CX320 evidence acknowledgement retained a contradictory "
-                        "request identity"
-                    )
-                continue
-            if (
-                observed_phase == "evidence_clear"
-                and observed_request != 0
-            ) or (
-                observed_phase != "evidence_clear"
-                and observed_request != request_sequence
-            ):
+        # generation-fresh but causally stale.  Observe one complete snapshot
+        # per supervisor pass and persist that frontier in the inflight record.
+        # This keeps platform-health checks interleaved with acknowledgement
+        # observation instead of blocking them behind four back-to-back queries.
+        baseline = int(
+            acknowledgement.get("last_observed_snapshot_generation", baseline)
+        )
+        health = self._fresh_active_snapshot_after(baseline)
+        observed_generation = int(
+            health[("cx317_active", "snapshot_generation_complete")]
+        )
+        acknowledgement["last_observed_snapshot_generation"] = observed_generation
+        observed_phase = health.get(("cx317_active", "evidence_phase"), "")
+        observed_request = int(
+            health.get(("cx317_active", "evidence_request_sequence"), "0")
+        )
+        if observed_phase == pre_submit_phase:
+            if observed_request != request_sequence:
                 raise ValueError(
-                    "CX320 evidence acknowledgement advanced to a contradictory "
+                    "CX320 evidence acknowledgement retained a contradictory "
                     "request identity"
                 )
-            if observed_phase not in permitted:
-                return False
-            break
-        else:
             return False
-        assert health is not None
+        if (
+            observed_phase == "evidence_clear" and observed_request != 0
+        ) or (
+            observed_phase != "evidence_clear"
+            and observed_request != request_sequence
+        ):
+            raise ValueError(
+                "CX320 evidence acknowledgement advanced to a contradictory "
+                "request identity"
+            )
+        if observed_phase not in permitted:
+            raise ValueError(
+                "CX320 evidence acknowledgement advanced to an impossible "
+                "phase ordering: "
+                f"submitted_phase={phase} "
+                f"pre_submit_phase={pre_submit_phase} "
+                f"observed_phase={observed_phase}"
+            )
         self._programme_event(
             "firmware_evidence_acknowledgement_confirmed",
             request_sequence=request_sequence,
@@ -1135,6 +1137,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
             self._abort("hybrid_response_wrong_or_frequency_not_reacquired")
             self._validate_hybrid_decisions()
+            return
+        if self.state.get("inflight_evidence_acknowledgement") is not None:
+            # The already-written command is awaiting a causally later
+            # firmware snapshot.  Do not perform downstream transaction or
+            # controller accounting and, critically, do not resend it.
             return
         # The shared frequency supervisor historically treated exhausted
         # frequency authority as an early campaign success.  CX320 instead
@@ -2430,6 +2437,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     last_output_status_query = now
                 health = self._current_health()
                 if not self._abort_on_authoritative_capture_discontinuity(health):
+                    # A genuine firmware/platform fault takes precedence over
+                    # interpreting an unchanged acknowledgement frontier.  In
+                    # Attempt 7 the reverse order masked EvidenceExhausted as
+                    # a host consumption-confirmation failure.
+                    self._check_fail_static_health(health)
                     self._process_transactions()
                     health = self._current_health()
                     if not self._abort_on_authoritative_capture_discontinuity(

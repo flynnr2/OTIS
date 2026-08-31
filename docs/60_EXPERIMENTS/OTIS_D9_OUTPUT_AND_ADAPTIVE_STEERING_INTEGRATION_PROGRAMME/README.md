@@ -26,6 +26,13 @@ and
 then
 [`08_HYBRID_72H_ATTEMPT4_CONTROLLER_TERMINAL.md`](08_HYBRID_72H_ATTEMPT4_CONTROLLER_TERMINAL.md).
 
+The successor CX323 Campaign19 Attempt 7 then retained about three qualified
+hours through its first actionable +1-code decision. A deterministic
+cross-core evidence-capacity defect stopped the trailing CTL record before any
+correction was accepted or applied. The complete causal verdict and bounded
+Attempt 8 correction are recorded in
+[`09_HYBRID_72H_ATTEMPT7_EVIDENCE_QUEUE_TERMINAL.md`](09_HYBRID_72H_ATTEMPT7_EVIDENCE_QUEUE_TERMINAL.md).
+
 This authority supersedes the original Gate B waveform dependency and the
 Prompt 04 stop boundary only for these explicitly identified engineering
 acquisitions. It does not change the Prompt 02 waveform terminal, qualify the

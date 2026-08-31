@@ -53,11 +53,11 @@
       "id": "evidence",
       "implementation": "OtisEvidenceBurstQueue evidence_to_service",
       "capacity_symbol": "OTIS_EVIDENCE_QUEUE_DEPTH",
-      "capacity": 8,
+      "capacity": 10,
       "producer": "core1_timing",
       "consumer": "core0_service",
       "loss_policy": "non_droppable_latch_fail_static",
-      "maximum_consumer_absence": "min(2000ms_transport_horizon,queue_fill_time); one_complete_frame_retains_wire_owner",
+      "maximum_consumer_absence": "min(2000ms_transport_horizon,queue_fill_time); exact CX323 selected request frontier 9 and response frontier 10 require no concurrent core0 drainage",
       "recovery": "reset_new_evidence_session"
     },
     {

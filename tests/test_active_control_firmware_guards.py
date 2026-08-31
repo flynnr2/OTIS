@@ -788,7 +788,7 @@ def test_cx323_live_bridge_uses_exact_native_controller_and_atomic_lifecycles() 
 
     assert "otis_cx323_engine_decide" in decision
     assert "otis_active_hybrid_decide" not in decision
-    assert "otis_dual_core_evidence_can_publish(total_capacity)" in decision
+    assert "otis_dual_core_evidence_can_publish(required_capacity)" in decision
     assert "begin_cx323_evidence_burst(decision_burst_count)" in decision
     assert "queue_cx323_maintenance_record" in decision
     assert "commit_cx323_evidence_burst" in decision
@@ -801,7 +801,15 @@ def test_cx323_live_bridge_uses_exact_native_controller_and_atomic_lifecycles() 
         "      (!engine_before.request_pending && engine_after.request_pending)"
     ) in decision
     assert "native_decision.maintenance_request" not in decision
-    assert "request_producing_decision ? 5u : 3u" in decision
+    assert "OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT" in decision
+    assert "OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT" in decision
+    assert "OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT" in decision
+    assert "OTIS_CX323_FAIL_TRANSITION_EVIDENCE_COUNT" in decision
+    assert (
+        "total_capacity + OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT"
+        in decision
+    )
+    assert "if (completing_response && request_producing_decision)" in decision
     assert (
         "projected_source.control_eligible =\n"
         "      request_producing_decision"

@@ -8,7 +8,49 @@
 constexpr uint32_t OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
 constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
-constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
+// A selected CX323 boundary publishes three estimator/deadband frames before
+// active control and one control frame after it.  The largest active-control
+// request burst is five frames; a response boundary instead publishes a
+// three-frame decision burst followed by a three-frame response burst.  Core
+// 1 produces each complete boundary synchronously, so the evidence queue must
+// absorb the exact largest producer frontier without relying on concurrent
+// Core 0 drainage.
+constexpr uint32_t OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT = 3u;
+constexpr uint32_t OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT = 1u;
+constexpr uint32_t OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT = 5u;
+constexpr uint32_t OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT = 3u;
+constexpr uint32_t OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT = 3u;
+constexpr uint32_t OTIS_CX323_FAIL_TRANSITION_EVIDENCE_COUNT = 1u;
+constexpr uint32_t OTIS_CX323_REQUEST_EVIDENCE_FRONTIER =
+    OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT +
+    OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT +
+    OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT;
+constexpr uint32_t OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER =
+    OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT +
+    OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT +
+    OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT +
+    OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT;
+constexpr uint32_t OTIS_CX323_REQUEST_FAIL_EVIDENCE_FRONTIER =
+    OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT +
+    OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT +
+    OTIS_CX323_FAIL_TRANSITION_EVIDENCE_COUNT +
+    OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT;
+constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 10u;
+static_assert(OTIS_CX323_REQUEST_EVIDENCE_FRONTIER == 9u,
+              "CX323 selected request frontier must remain exact");
+static_assert(OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER == 10u,
+              "CX323 selected response frontier must remain exact");
+static_assert(OTIS_CX323_REQUEST_FAIL_EVIDENCE_FRONTIER == 10u,
+              "CX323 selected request/fail frontier must remain exact");
+static_assert(OTIS_EVIDENCE_QUEUE_DEPTH >=
+                  OTIS_CX323_REQUEST_EVIDENCE_FRONTIER,
+              "evidence queue must absorb one complete CX323 request boundary");
+static_assert(OTIS_EVIDENCE_QUEUE_DEPTH >=
+                  OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER,
+              "evidence queue must absorb one complete CX323 response boundary");
+static_assert(OTIS_EVIDENCE_QUEUE_DEPTH >=
+                  OTIS_CX323_REQUEST_FAIL_EVIDENCE_FRONTIER,
+              "evidence queue must absorb a CX323 request/fail boundary");
 constexpr uint32_t OTIS_PHASE_PREVIEW_QUEUE_DEPTH = 32u;
 constexpr uint32_t OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH = 16u;
 // The non-active portion of Stage 7 timing health reaches 67 telemetry

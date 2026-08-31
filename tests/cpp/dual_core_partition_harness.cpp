@@ -548,13 +548,16 @@ void evidence_bursts_are_atomic_ordered_and_bounded() {
   assert(otis_dual_core_evidence_can_publish(
       OTIS_EVIDENCE_QUEUE_DEPTH));
   assert(otis_dual_core_publish_evidence_burst(burst, 3u));
-  assert(otis_dual_core_evidence_can_publish(5u));
-  assert(!otis_dual_core_evidence_can_publish(6u));
+  assert(otis_dual_core_evidence_can_publish(
+      OTIS_EVIDENCE_QUEUE_DEPTH - 3u));
+  assert(!otis_dual_core_evidence_can_publish(
+      OTIS_EVIDENCE_QUEUE_DEPTH - 2u));
   otis_dual_core_get_stats(&stats);
   assert(stats.fault == OtisPartitionFault::None);
   assert(!stats.fail_static);
   assert(otis_dual_core_take_evidence(&received));
-  assert(otis_dual_core_evidence_can_publish(6u));
+  assert(otis_dual_core_evidence_can_publish(
+      OTIS_EVIDENCE_QUEUE_DEPTH - 2u));
   while (otis_dual_core_take_evidence(&received)) {
   }
 
@@ -587,19 +590,21 @@ void evidence_bursts_are_atomic_ordered_and_bounded() {
   // remain intact and ordered; the failed burst changes neither depth nor
   // high-water, and uses the established fail-static evidence fault.
   otis_dual_core_partition_reset();
-  for (uint32_t sequence = 1u; sequence <= 6u; ++sequence) {
+  const uint32_t near_full_depth = OTIS_EVIDENCE_QUEUE_DEPTH - 2u;
+  for (uint32_t sequence = 1u; sequence <= near_full_depth; ++sequence) {
     const OtisEvidenceFrameMessage frame = evidence(sequence);
     assert(otis_dual_core_publish_evidence(&frame));
   }
   OtisEvidenceFrameMessage too_large_for_remaining[3] = {
-      evidence(7u), evidence(8u), evidence(9u)};
+      evidence(near_full_depth + 1u), evidence(near_full_depth + 2u),
+      evidence(near_full_depth + 3u)};
   assert(!otis_dual_core_publish_evidence_burst(too_large_for_remaining, 3u));
   otis_dual_core_get_stats(&stats);
-  assert(stats.evidence_depth == 6u);
-  assert(stats.evidence_high_water == 6u);
+  assert(stats.evidence_depth == near_full_depth);
+  assert(stats.evidence_high_water == near_full_depth);
   assert(stats.fault == OtisPartitionFault::EvidenceExhausted);
   assert(stats.fail_static);
-  for (uint32_t sequence = 1u; sequence <= 6u; ++sequence) {
+  for (uint32_t sequence = 1u; sequence <= near_full_depth; ++sequence) {
     assert(otis_dual_core_take_evidence(&received));
     assert(received.sequence == sequence);
   }
@@ -609,7 +614,8 @@ void evidence_bursts_are_atomic_ordered_and_bounded() {
   // wrap the ring and is still committed as one ordered suffix behind the
   // previously published frames that remain.
   otis_dual_core_partition_reset();
-  for (uint32_t sequence = 1u; sequence <= 7u; ++sequence) {
+  for (uint32_t sequence = 1u;
+       sequence < OTIS_EVIDENCE_QUEUE_DEPTH; ++sequence) {
     const OtisEvidenceFrameMessage frame = evidence(sequence);
     assert(otis_dual_core_publish_evidence(&frame));
   }
@@ -618,12 +624,15 @@ void evidence_bursts_are_atomic_ordered_and_bounded() {
   assert(otis_dual_core_take_evidence(&received));
   assert(received.sequence == 2u);
   OtisEvidenceFrameMessage after_drain[3] = {
-      evidence(8u), evidence(9u), evidence(10u)};
+      evidence(OTIS_EVIDENCE_QUEUE_DEPTH),
+      evidence(OTIS_EVIDENCE_QUEUE_DEPTH + 1u),
+      evidence(OTIS_EVIDENCE_QUEUE_DEPTH + 2u)};
   assert(otis_dual_core_publish_evidence_burst(after_drain, 3u));
   otis_dual_core_get_stats(&stats);
   assert(stats.evidence_depth == OTIS_EVIDENCE_QUEUE_DEPTH);
   assert(stats.evidence_high_water == OTIS_EVIDENCE_QUEUE_DEPTH);
-  for (uint32_t sequence = 3u; sequence <= 10u; ++sequence) {
+  for (uint32_t sequence = 3u;
+       sequence <= OTIS_EVIDENCE_QUEUE_DEPTH + 2u; ++sequence) {
     assert(otis_dual_core_take_evidence(&received));
     assert(received.sequence == sequence);
   }
@@ -680,6 +689,155 @@ void evidence_bursts_are_atomic_ordered_and_bounded() {
   assert(otis_dual_core_publish_evidence(&after_reset));
   assert(otis_dual_core_take_evidence(&received));
   assert(received.sequence == 401u);
+}
+
+void cx323_selected_frontiers_fit_evidence_queue() {
+  OtisDualCoreQueueStats stats = {};
+  OtisEvidenceFrameMessage received = {};
+  uint32_t next_sequence = 1u;
+
+  // Model the exact synchronous selected-request producer order: diagnostic
+  // EST, selected EST, tight-deadband, five-frame CX323 request decision, CTL.
+  otis_dual_core_partition_reset();
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT; ++index) {
+    const OtisEvidenceFrameMessage frame = evidence(next_sequence++);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  OtisEvidenceFrameMessage request_burst[
+      OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT] = {};
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT; ++index)
+    request_burst[index] = evidence(next_sequence++);
+  assert(otis_dual_core_publish_evidence_burst(
+      request_burst, OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT));
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT; ++index) {
+    const OtisEvidenceFrameMessage frame = evidence(next_sequence++);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  otis_dual_core_get_stats(&stats);
+  assert(stats.evidence_depth == OTIS_CX323_REQUEST_EVIDENCE_FRONTIER);
+  assert(stats.evidence_high_water == OTIS_CX323_REQUEST_EVIDENCE_FRONTIER);
+  assert(stats.fault == OtisPartitionFault::None);
+  assert(!stats.fail_static);
+  for (uint32_t sequence = 1u;
+       sequence <= OTIS_CX323_REQUEST_EVIDENCE_FRONTIER; ++sequence) {
+    assert(otis_dual_core_take_evidence(&received));
+    assert(received.sequence == sequence);
+  }
+  assert(!otis_dual_core_take_evidence(&received));
+
+  // A request-producing decision followed by its one-frame native fail
+  // transition is the other exact ten-frame legal frontier.  The fail path
+  // returns before response completion, so no response burst overlaps it.
+  otis_dual_core_partition_reset();
+  next_sequence = 1u;
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT; ++index) {
+    const OtisEvidenceFrameMessage frame = evidence(next_sequence++);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT; ++index)
+    request_burst[index] = evidence(next_sequence++);
+  assert(otis_dual_core_publish_evidence_burst(
+      request_burst, OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT));
+  const OtisEvidenceFrameMessage fail_transition = evidence(next_sequence++);
+  assert(otis_dual_core_publish_evidence_burst(
+      &fail_transition, OTIS_CX323_FAIL_TRANSITION_EVIDENCE_COUNT));
+  const OtisEvidenceFrameMessage fail_suffix = evidence(next_sequence++);
+  assert(otis_dual_core_publish_evidence(&fail_suffix));
+  otis_dual_core_get_stats(&stats);
+  assert(stats.evidence_depth ==
+         OTIS_CX323_REQUEST_FAIL_EVIDENCE_FRONTIER);
+  assert(stats.evidence_high_water == OTIS_EVIDENCE_QUEUE_DEPTH);
+  assert(stats.fault == OtisPartitionFault::None);
+  assert(!stats.fail_static);
+  while (otis_dual_core_take_evidence(&received)) {
+  }
+
+  // Model the response boundary: the same prefix, a three-frame decision,
+  // the three-frame response completion, and CTL.  This is the exact maximum
+  // frontier and must fill, but not fault, the queue.
+  otis_dual_core_partition_reset();
+  next_sequence = 1u;
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT; ++index) {
+    const OtisEvidenceFrameMessage frame = evidence(next_sequence++);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  OtisEvidenceFrameMessage response_decision[
+      OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT] = {};
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT; ++index)
+    response_decision[index] = evidence(next_sequence++);
+  assert(otis_dual_core_publish_evidence_burst(
+      response_decision, OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT));
+  OtisEvidenceFrameMessage response_completion[
+      OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT] = {};
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT; ++index)
+    response_completion[index] = evidence(next_sequence++);
+  assert(otis_dual_core_publish_evidence_burst(
+      response_completion, OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT));
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT; ++index) {
+    const OtisEvidenceFrameMessage frame = evidence(next_sequence++);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  otis_dual_core_get_stats(&stats);
+  assert(stats.evidence_depth == OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER);
+  assert(stats.evidence_high_water == OTIS_EVIDENCE_QUEUE_DEPTH);
+  assert(stats.fault == OtisPartitionFault::None);
+  assert(!stats.fail_static);
+
+  // One unrelated retained frame plus this boundary's prefix leaves room for
+  // the six active response records, but not for the mandatory CTL.  The live
+  // admission check reserves all seven remaining records and must reject
+  // before beginning either active-control burst.
+  otis_dual_core_partition_reset();
+  const OtisEvidenceFrameMessage retained = evidence(501u);
+  assert(otis_dual_core_publish_evidence(&retained));
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT; ++index) {
+    const OtisEvidenceFrameMessage frame = evidence(502u + index);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  const uint32_t response_with_suffix =
+      OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT +
+      OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT +
+      OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT;
+  assert(!otis_dual_core_evidence_can_publish(response_with_suffix));
+  otis_dual_core_get_stats(&stats);
+  assert(stats.evidence_depth ==
+         1u + OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT);
+  assert(stats.fault == OtisPartitionFault::None);
+  assert(!stats.fail_static);
+  while (otis_dual_core_take_evidence(&received)) {
+  }
+
+  // Return to the exact full response frontier to prove one further frame is
+  // the first invalid capacity boundary.
+  otis_dual_core_partition_reset();
+  next_sequence = 1u;
+  for (uint32_t index = 0u;
+       index < OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER; ++index) {
+    const OtisEvidenceFrameMessage frame = evidence(next_sequence++);
+    assert(otis_dual_core_publish_evidence(&frame));
+  }
+  const OtisEvidenceFrameMessage overflow = evidence(next_sequence);
+  assert(!otis_dual_core_publish_evidence(&overflow));
+  otis_dual_core_get_stats(&stats);
+  assert(stats.evidence_depth == OTIS_EVIDENCE_QUEUE_DEPTH);
+  assert(stats.fault == OtisPartitionFault::EvidenceExhausted);
+  assert(stats.fail_static);
+  for (uint32_t sequence = 1u;
+       sequence <= OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER; ++sequence) {
+    assert(otis_dual_core_take_evidence(&received));
+    assert(received.sequence == sequence);
+  }
+  assert(!otis_dual_core_take_evidence(&received));
 }
 
 void cx318_numerical_records_cross_by_value_in_order() {
@@ -1210,6 +1368,7 @@ int main() {
   service_plane_load_matrix_preserves_timing_state();
   complete_evidence_frames_cross_by_value_in_order();
   evidence_bursts_are_atomic_ordered_and_bounded();
+  cx323_selected_frontiers_fit_evidence_queue();
   cx318_numerical_records_cross_by_value_in_order();
   non_droppable_exhaustion_is_fail_static();
   every_non_droppable_queue_exhaustion_is_fail_static();

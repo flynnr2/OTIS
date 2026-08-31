@@ -1375,6 +1375,37 @@ def test_campaign18_capture_discontinuity_aborts_before_transaction_processing(
     assert reason_fragment in supervisor.state["terminal"]["reason"]
 
 
+def test_firmware_partition_fault_is_classified_before_ack_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    capture_flag = supervisor.run_dir / live.CAPTURE_IN_PROGRESS_FLAG
+    capture_flag.parent.mkdir(parents=True, exist_ok=True)
+    capture_flag.write_text("fixture\n", encoding="utf-8")
+    faulted = _health(supervisor)
+    faulted[("dual_core", "partition_fault")] = "evidence_queue_exhausted"
+    faulted[("dual_core", "fail_static")] = "true"
+    monkeypatch.setattr(supervisor, "_command", lambda _command: None)
+    monkeypatch.setattr(supervisor, "_check_capture_transport_state", lambda: None)
+    monkeypatch.setattr(supervisor, "_renew_lease", lambda: None)
+    monkeypatch.setattr(supervisor, "_current_health", lambda **_kwargs: faulted)
+    monkeypatch.setattr(
+        supervisor, "_fresh_active_snapshot_after", lambda _generation: faulted
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_process_transactions",
+        lambda: pytest.fail(
+            "firmware fault must be classified before acknowledgement processing"
+        ),
+    )
+
+    with pytest.raises(
+        ValueError, match="dual-core partition fault: evidence_queue_exhausted"
+    ):
+        supervisor.run()
+
+
 def test_campaign18_missing_counter_aborts_before_optional_event_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1980,6 +2011,8 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
         "_fresh_active_snapshot_after",
         lambda _generation: next(stale_then_advanced),
     )
+    acknowledgement.pop("last_observed_snapshot_generation", None)
+    assert supervisor._confirm_evidence_acknowledgement(acknowledgement) is False
     assert supervisor._confirm_evidence_acknowledgement(acknowledgement) is True
 
     contradictory = dict(advanced)
@@ -1990,6 +2023,48 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
         lambda _generation: contradictory,
     )
     with pytest.raises(ValueError, match="contradictory request identity"):
+        supervisor._confirm_evidence_acknowledgement(acknowledgement)
+
+
+@pytest.mark.parametrize(
+    ("phase", "pre_submit_phase", "observed_phase"),
+    (
+        (1, "request_pending", "unknown_phase"),
+        (2, "acceptance_pending", "request_pending"),
+        (3, "application_pending", "acceptance_pending"),
+        (4, "response_pending", "application_pending"),
+    ),
+)
+def test_evidence_acknowledgement_rejects_backward_or_unknown_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: int,
+    pre_submit_phase: str,
+    observed_phase: str,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    acknowledgement = {
+        "record_sequence": phase + 1,
+        "request_sequence": 1,
+        "phase": phase,
+        "host_write_confirmed": True,
+        "pre_submit_snapshot_generation": 7,
+        "pre_submit_evidence_phase": pre_submit_phase,
+    }
+    impossible = _health(
+        supervisor,
+        snapshot_generation_begin="8",
+        snapshot_generation_complete="8",
+        evidence_phase=observed_phase,
+        evidence_request_sequence="1",
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: impossible,
+    )
+
+    with pytest.raises(ValueError, match="impossible phase ordering"):
         supervisor._confirm_evidence_acknowledgement(acknowledgement)
 
 

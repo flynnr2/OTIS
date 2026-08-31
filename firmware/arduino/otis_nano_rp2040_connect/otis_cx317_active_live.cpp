@@ -2583,6 +2583,16 @@ static void cx323_active_live_on_decision_impl(
       engine_after.fail_static_reason != nullptr;
   const bool request_producing_decision =
       native_decision.requested_delta_codes != 0;
+  // An AwaitingResponse transaction deliberately makes cadence_eligible
+  // false above.  It may close the pending response on this boundary, but it
+  // must not create the next request in the same producer frontier.
+  if (completing_response && request_producing_decision) {
+    otis_cx317_active_fault(
+        &transaction, "cx323_response_and_request_overlap_fault");
+    outcome->faulted = true;
+    outcome->reason = transaction.reason;
+    return;
+  }
   if (request_producing_decision !=
       (!engine_before.request_pending && engine_after.request_pending)) {
     otis_cx317_active_fault(&transaction,
@@ -2592,12 +2602,28 @@ static void cx323_active_live_on_decision_impl(
     return;
   }
   const uint8_t decision_burst_count =
-      request_producing_decision ? 5u : 3u;
+      request_producing_decision
+          ? OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT
+          : OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT;
+  // A native fail transition is terminal at this boundary and returns before
+  // response completion below.  These follow-up bursts are therefore
+  // mutually exclusive by control flow, not merely by observed history.
+  const uint8_t followup_burst_count =
+      native_fail_transition
+          ? OTIS_CX323_FAIL_TRANSITION_EVIDENCE_COUNT
+          : (completing_response
+                 ? OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT
+                 : 0u);
   const uint8_t total_capacity = static_cast<uint8_t>(
-      decision_burst_count + (completing_response ? 3u : 0u) +
-      (native_fail_transition ? 1u : 0u));
-  if (total_capacity > OTIS_EVIDENCE_QUEUE_DEPTH ||
-      !otis_dual_core_evidence_can_publish(total_capacity)) {
+      decision_burst_count + followup_burst_count);
+  // Preview has already queued this boundary's three-record prefix.  Reserve
+  // the active lifecycle and its guaranteed trailing CTL before committing
+  // any part of the lifecycle, so queue pressure cannot reproduce Attempt 7's
+  // complete request followed by a missing CTL.
+  const uint8_t required_capacity = static_cast<uint8_t>(
+      total_capacity + OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT);
+  if (required_capacity > OTIS_EVIDENCE_QUEUE_DEPTH ||
+      !otis_dual_core_evidence_can_publish(required_capacity)) {
     otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
     otis_cx317_active_fault(&transaction,
                             "cx323_combined_evidence_capacity_fault");

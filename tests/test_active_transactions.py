@@ -417,8 +417,7 @@ def test_cx320_restart_never_confuses_host_write_with_firmware_consumption(
         first, "_confirm_evidence_acknowledgement", lambda _value: False
     )
 
-    with pytest.raises(ValueError, match="firmware consumption is unconfirmed"):
-        first._preserve_and_acknowledge(row, 1)
+    assert first._preserve_and_acknowledge(row, 1) is False
 
     assert submitted == ["ACTIVE EVIDENCE 1 1"]
     assert first.state["acknowledged_record_sequences"] == []
@@ -428,7 +427,13 @@ def test_cx320_restart_never_confuses_host_write_with_firmware_consumption(
         "phase": 1,
         "host_write_confirmed": True,
         "pre_submit_snapshot_generation": 7,
+        "pending_observation_count": 1,
     }
+    assert first._preserve_and_acknowledge(row, 1) is False
+    assert submitted == ["ACTIVE EVIDENCE 1 1"]
+    assert first.state["inflight_evidence_acknowledgement"][
+        "pending_observation_count"
+    ] == 2
 
     restarted = supervisor()
     monkeypatch.setattr(
@@ -439,7 +444,7 @@ def test_cx320_restart_never_confuses_host_write_with_firmware_consumption(
     monkeypatch.setattr(
         restarted, "_confirm_evidence_acknowledgement", lambda _value: True
     )
-    restarted._preserve_and_acknowledge(row, 1)
+    assert restarted._preserve_and_acknowledge(row, 1) is True
 
     assert restarted.state["acknowledged_record_sequences"] == [2]
     assert restarted.state["inflight_evidence_acknowledgement"] is None
