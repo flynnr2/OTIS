@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V1",
+  "contract_sha256": "fdb0d247c1f4e744a16c1df4d9ddabf1ba924d891d1023e619f2ae7422f4e359",
+  "status": "prospectively_frozen_before_candidate_results",
+  "question": "Can one minimal phase-preserving maintenance rule prevent the demonstrated 600-second count-quantization alternation while retaining bounded authority for persistent real drift?",
+  "source": {
+    "run_id": "hybrid_72h_attempt4",
+    "run_dir": "runs/d9_adaptive_steering_integration_20260828/long_runs/hybrid_72h_attempt4",
+    "run_identity": "cx322_d9_d6_72h_sustained_engineering:1",
+    "profile_identity": "cx322_d9_d6_72h_sustained_engineering",
+    "source_revision": "6f9c8a820c1ef91dd08371d8443ab5e503204bc2",
+    "firmware_build_identity": "920c3999121ee6fc372665a59268358cf9da7350ce82850a09e59ae894765566:3da04ff034b9211ffcc323f3416426f0cfdd45f153c1f3c55133909db7ee2a32",
+    "uf2_sha256": "7a483827be7e063cd2764a4d871c3313c5bd91d93e5121a7b62fe80f5697915d",
+    "registered_content_sha256": "e6f5cf5e9d6138a9dad86698a45f98691903f923735df6d8660508048ca5b747",
+    "frozen_failed_seal_sha256": "925993082994c9c5831444bc5b9866a3805e379d389f04789c50e171a2586bef",
+    "superseding_host_replay_sha256": "d7c8210c8c49515739beea3b1103ac9855798e8d16ad1ae3c2fa08513d35717c",
+    "bound_files": {
+      "run_manifest.json": "261f247eb9a9d886e79e0f44319512466650a176f17b58ee685245965aeb3989",
+      "evidence_manifest.json": "68fa933e42b51d3de7af5731aab0c6772fc1523ff64704eb57329b14c79ac1f5",
+      "reports/cx322_d9_d6_72h_physical_seal_v1.json": "11632f529f16817eb9dd27e07e9d249b19727a309c59a9f4bfbf89fa492ce85b",
+      "csv/active_hybrid_decisions_v1.csv": "f5ee3035bcee9dda9be0f008997377f72ad6c378698846eaa24682de2f1ab95c",
+      "csv/active_transactions_v1.csv": "b928ff4f78e33148b7acc3d5ec1903c59804581a559fa880b65efb559d01c22a",
+      "csv/estimates_v2.csv": "428496fcb900a30d860acee2c94a8b354d75d34f6a9363818fba616907a66a60",
+      "csv/tight_deadband_decisions_v1.csv": "cedabd203b1374c102770e335e7898aa6b3482cf60bd98acb3e9454e41514772",
+      "csv/phase_estimator_outputs_v1.csv": "688e96775bff5a698706711d9714aec29efd9ef46f7b615d195f6ba068264d67",
+      "csv/relative_phase_observations_v1.csv": "05fda1b4846e5ac01e148cf567d1938b6f5e1e2baf98d3b327b276c43259a9da",
+      "csv/pps_snapshots.csv": "eb11d43e00e5e94534f5c4517675fdfe3a9346a7e462ddb316b7e4e2e187ef27",
+      "csv/count_observations.csv": "20152e9b759ab430d88eabe63b6667b1ffe8e08a6a0fe8f841529f69d3df27eb"
+    }
+  },
+  "observed_terminal": {
+    "qualified_duration_ticks": 653585742432,
+    "qualified_duration_s": 40849.108902,
+    "decision_count": 51,
+    "automatic_application_count": 12,
+    "phase_material_application_count": 7,
+    "cumulative_absolute_movement_codes": 47,
+    "last_confirmed_code": 43085,
+    "last_confirmed_dac_epoch": 13,
+    "natural_application_tail_codes": [-5, 5, -5],
+    "prospective_delta_codes": 5,
+    "terminal": "prospective_repeated_alternation"
+  },
+  "retained_unchanged_semantics": {
+    "reference_input": "D14_authoritative_PPS",
+    "oscillator_input": "D8_authoritative_count",
+    "D9_role": "forwarded_output_zero_control_authority",
+    "D6_role": "diagnostic_monitor_zero_control_authority",
+    "frequency_estimator_id": "cx317_selected_600s_nonoverlap_v1",
+    "frequency_window_s": 600,
+    "phase_pull_in_s": 21600,
+    "phase_bias_cap_hz": "1/600",
+    "legacy_integrator_gain_codes_per_hz_per_decision": "2884.5027706464516",
+    "minimum_applied_cadence_s": 1800,
+    "settling_exclusion_s": 900,
+    "fresh_response_support_s": 600,
+    "maximum_step_codes": 21,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "maximum_automatic_applications": 144,
+    "maximum_cumulative_absolute_movement_codes": 3024,
+    "alternation_guard": "unchanged",
+    "low_efficiency_guard": "unchanged",
+    "phase_material_path": "unchanged_legacy_numerical_and_transaction_semantics",
+    "outside_tight_frequency_acquisition_path": "unchanged_legacy_numerical_and_transaction_semantics"
+  },
+  "exact_maintenance_observation": {
+    "unit": "1_over_21600_hz",
+    "frequency_centre_units": "-36_multiplied_by_accumulated_edge_error_counts",
+    "phase_centre_units": "clamp_negative_relative_phase_cycles_between_minus_36_and_plus_36",
+    "combined_centre_units": "frequency_centre_units_plus_phase_centre_units",
+    "half_width_units": 18,
+    "closed_interval": "combined_centre_units_plus_or_minus_18",
+    "sign_rule": "positive_only_if_lower_bound_gt_0_negative_only_if_upper_bound_lt_0_otherwise_zero_containing",
+    "positive_plant_gain_maximum_hz_per_code_conservative_rational": "173340101/1000000000000",
+    "safe_cap_formula": "floor(nearest_zero_interval_units*1000000000000/(21600*173340101))",
+    "one_count_absolute_cap_codes": 4,
+    "general_cap_codes": 21,
+    "rounding": "half_away_from_zero"
+  },
+  "persistence": {
+    "required_consecutive_intervals": 2,
+    "requires": [
+      "fresh",
+      "nonoverlapping",
+      "contiguous_selected_estimator_windows",
+      "same_strict_interval_sign",
+      "same_capture_session",
+      "same_applied_code",
+      "same_dac_epoch",
+      "same_phase_epoch_and_validity",
+      "same_selected_estimator_identity"
+    ],
+    "reset_on": [
+      "zero_containing_interval",
+      "opposite_interval_sign",
+      "application",
+      "phase_material_evaluation",
+      "outside_tight_frequency_acquisition",
+      "capture_session_or_DAC_epoch_change",
+      "settling_or_reference_invalidity",
+      "authority_loss"
+    ],
+    "metadata_hold": "freeze_without_accrual_then_require_one_fresh_complete_post_requalification_interval"
+  },
+  "candidates": [
+    {
+      "candidate_id": "cx323_unchanged_baseline",
+      "selectable": false,
+      "semantics": "unchanged_CX322_exact_replay_only"
+    },
+    {
+      "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+      "selectable": true,
+      "complexity_rank": 1,
+      "semantics": "preserve_legacy_acquisition_and_phase_material_paths_then_apply_exact_two_interval_persistence_and_no_zero_cross_cap_to_TIGHT_INSIDE_phase_nonmaterial_maintenance_without_fractional_state"
+    },
+    {
+      "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+      "selectable": true,
+      "complexity_rank": 2,
+      "semantics": "same_phase_priority_persistence_and_cap_plus_bounded_provenance_bearing_fractional_maintenance_debt",
+      "debt": {
+        "representation": "signed_picocodes_integer_1e_minus_12_code",
+        "raw_increment": "combined_centre_units*1000000000000/(21600*2*173340101)",
+        "maximum_absolute_committed_residual_codes": "1/2",
+        "component_tags": ["FLL", "PLL"],
+        "no_pre_persistence_accrual": true,
+        "no_cadence_held_accrual": true,
+        "zero_request_commits_bounded_residual_without_ACT_transaction": true,
+        "nonzero_application_commits_residual_only_after_exact_application_and_first_consumer": true,
+        "request_rejection_or_expiry_preserves_prior_committed_state": true,
+        "safe_cap_range_and_step_removal_is_back_calculated_not_hidden": true,
+        "zero_containing_or_opposite_evidence_resets_stale_maintenance_debt": true,
+        "phase_material_or_outside_tight_path_resets_maintenance_debt": true,
+        "metadata_hold_freezes_debt": true,
+        "phase_loss_discards_PLL_origin_debt": true,
+        "unknown_application_or_epoch": "actuator_provenance_fail_static"
+      }
+    }
+  ],
+  "frozen_evaluation": {
+    "exact_physical_prefix": {
+      "last_exact_decision_sequence": 27,
+      "expected_exact_application_count": 8,
+      "expected_exact_phase_material_application_count": 7,
+      "expected_first_candidate_divergence_decision_sequence": 28,
+      "expected_first_candidate_action": "persistence_first_interval_hold"
+    },
+    "same_frontier_diagnostic_only": {
+      "source_decision_range": [28, 51],
+      "claim": "term_attribution_and_candidate_decision_diagnostic_not_physical_post_divergence_replay",
+      "required_no_controller_terminal": true,
+      "required_no_more_applications_than_unchanged_source": true,
+      "required_no_more_cumulative_movement_than_unchanged_source": true,
+      "required_no_more_reversals_than_unchanged_source": true
+    },
+    "deterministic_sequences": [
+      {"case_id": "isolated_positive_one_count", "counts": [1, 0], "expected_applications": 0},
+      {"case_id": "isolated_negative_one_count", "counts": [-1, 0], "expected_applications": 0},
+      {"case_id": "alternating_one_count", "counts": [1, -1, 1, -1], "expected_applications": 0},
+      {"case_id": "persistent_positive_one_count", "counts": [1, 1], "expected_delta_sign": -1, "maximum_absolute_delta_codes": 4},
+      {"case_id": "persistent_negative_one_count", "counts": [-1, -1], "expected_delta_sign": 1, "maximum_absolute_delta_codes": 4},
+      {"case_id": "zero_containing_combined_interval", "counts": [0, 0], "expected_applications": 0},
+      {"case_id": "outside_tight_two_count_recovery", "counts": [2, 2], "expected_path": "unchanged_frequency_acquisition"},
+      {"case_id": "phase_material_rounding_boundary", "counts": [1, 1], "expected_path": "unchanged_phase_material"},
+      {"case_id": "real_alternating_application_guard", "counts": [4, -4, 4, -4], "tight_states": ["OUTSIDE", "OUTSIDE", "OUTSIDE", "OUTSIDE"], "expected_guard": "prospective_repeated_alternation"},
+      {"case_id": "bounded_debt_residual_release", "combined_interval_centre_units": [40, 41, 41], "expected_no_debt_final_delta_codes": 5, "expected_tagged_debt_final_delta_codes": 6, "expected_final_safe_cap_codes": 6, "expected_additional_transactions": 0}
+    ],
+    "gain_cases": [
+      "16357422282453626/100000000000000000000",
+      "17008467693813145/100000000000000000000",
+      "173340101/1000000000000"
+    ],
+    "identity_and_fault_cases": [
+      "source_overlap",
+      "source_gap",
+      "capture_session_change",
+      "applied_code_change",
+      "DAC_epoch_change",
+      "phase_epoch_change",
+      "settling_hold",
+      "metadata_hold_and_causal_requalification",
+      "reference_invalidity",
+      "request_rejection",
+      "application_and_first_consumer",
+      "response_completion",
+      "unknown_application_or_epoch"
+    ]
+  },
+  "selection_rule": {
+    "common_mandatory_gates": [
+      "exact_physical_prefix_and_first_divergence",
+      "all_deterministic_sequence_expectations",
+      "all_gain_no_zero_cross_proofs",
+      "all_identity_and_fault_transitions",
+      "unchanged_alternation_and_low_efficiency_guards",
+      "same_frontier_no_terminal_and_nonincreasing_actuator_cost"
+    ],
+    "tagged_debt_preference": "select_tagged_debt_only_if_all_common_gates_pass_and_the_frozen_bounded_debt_residual_release_case_uses_confirmed_residual_to_issue_the_strictly_closer_safe_capped_integer_request_without_an_additional_transaction_and_without_increasing_attempt4_same_frontier_applications_movement_or_reversals",
+    "otherwise": "select_no_debt_only_with_a_prospective_amendment_to_the_current_correction_debt_architecture_decision",
+    "no_selection": "if_neither_candidate_passes_all_common_gates"
+  },
+  "successor_identifiers_if_selected": {
+    "policy_id": "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
+    "policy_path": "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
+    "firmware_profile": "cx323_d9_d6_72h_adaptive_hybrid",
+    "operation": "cx323_d9_d6_72h_adaptive_hybrid_live",
+    "runtime_run_identity": "cx323_d9_d6_72h_adaptive_hybrid:1",
+    "bundle_id": "cx323_d9_d6_72h_adaptive_hybrid_bundle_v1",
+    "activation_id": "cx323_d9_d6_72h_adaptive_hybrid_activation_v1",
+    "maintenance_record_type": "AHM",
+    "maintenance_contract": "active_hybrid_maintenance_v1"
+  },
+  "claim_boundary": [
+    "Attempt4 observations and unchanged replay remain physical facts only at their exact retained identities",
+    "candidate decisions after first divergence are deterministic counterfactuals not observed plant behavior",
+    "no waveform load calibrated accuracy UTC or oscillator_only stability claim",
+    "no changed policy selection before this frozen comparison completes"
+  ],
+  "authority": {
+    "offline_analysis": true,
+    "source_or_document_changes": true,
+    "serial_access": false,
+    "firmware_flash": false,
+    "reset": false,
+    "dac_write": false,
+    "control_arm": false,
+    "physical_command_fifo": false,
+    "physical_rehearsal": false,
+    "live_acquisition": false,
+    "live_activation": false,
+    "separate_operator_authority_lineage_required_before_physical_promotion": true
+  },
+  "terminal_outcomes": [
+    "cx323_tagged_debt_candidate_selected_non_effective",
+    "cx323_no_debt_candidate_selected_architecture_amendment_required",
+    "cx323_no_successor_selected"
+  ]
+}
