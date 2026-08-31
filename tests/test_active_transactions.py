@@ -433,11 +433,18 @@ def test_cx320_restart_never_confuses_host_write_with_firmware_consumption(
     assert restarted.state["inflight_evidence_acknowledgement"] is None
 
 
+@pytest.mark.parametrize(
+    "profile",
+    [
+        "otis_sustained_hybrid_regulation_v1",
+        "cx322_d9_d6_72h_sustained_engineering",
+    ],
+)
 def test_sustained_phase4_retains_replay_before_acknowledgement(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, profile: str
 ) -> None:
     inherited, identities, _ = load_no_write_qualification_spec("A")
-    spec = replace(inherited, profile="otis_sustained_hybrid_regulation_v1")
+    spec = replace(inherited, profile=profile)
     run_dir = tmp_path / "run"
     active_csv = run_dir / "csv" / "active_transactions_v1.csv"
     active_csv.parent.mkdir(parents=True)
@@ -502,6 +509,10 @@ def test_sustained_phase4_retains_replay_before_acknowledgement(
 
     assert len(replay_calls) == 1
     assert replay_calls[0]["active_transactions_csv"] == active_csv
+    assert replay_calls[0]["maximum_applications"] == spec.correction_limit
+    assert replay_calls[0]["maximum_cumulative_movement_codes"] == (
+        spec.cumulative_limit
+    )
     assert submitted == ["ACTIVE EVIDENCE 1 4"]
     assert supervisor.state["acknowledged_record_sequences"] == [5]
 

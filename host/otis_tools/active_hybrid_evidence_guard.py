@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
 from hashlib import sha256
 import json
 import math
@@ -196,9 +197,6 @@ def replay_active_hybrid_history(
     setup_application_s = (
         int(manual[0]["application_timestamp_s"]) if len(manual) == 1 else None
     )
-    controller = ActiveHybridController(
-        policy, setup_application_s=setup_application_s
-    )
     authorized_maximum_applications = (
         policy.maximum_applications
         if maximum_applications is None
@@ -214,6 +212,25 @@ def replay_active_hybrid_history(
         or authorized_maximum_cumulative_movement_codes < 0
     ):
         raise ValueError("active-hybrid authority budgets must be non-negative")
+    # The retained policy identity describes the request law, while a live
+    # campaign may compile a larger finite authority envelope around that law.
+    # Replay the explicit larger envelope in the controller itself; otherwise
+    # controller.decide() silently falls back to the generic four-application
+    # policy and diverges after the fourth live application.  A smaller caller
+    # limit remains an external authority-suppression check below.
+    replay_policy = replace(
+        policy,
+        maximum_applications=max(
+            policy.maximum_applications, authorized_maximum_applications
+        ),
+        maximum_cumulative_movement_codes=max(
+            policy.maximum_cumulative_movement_codes,
+            authorized_maximum_cumulative_movement_codes,
+        ),
+    )
+    controller = ActiveHybridController(
+        replay_policy, setup_application_s=setup_application_s
+    )
     exact_timestamps_s = _exact_decision_timestamps_s(
         decisions, estimate_rows, estimator_id=policy.frequency_estimator_id
     )

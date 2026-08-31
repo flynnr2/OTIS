@@ -466,6 +466,8 @@ def test_campaign18_controller_inhibit_does_not_end_D14_D8_acquisition(
     )
     health.update(
         {
+            ("cx317_active", "state"): "FAULT",
+            ("cx317_active", "reason"): reason,
             ("cx317_active", "gnss_metadata_hold_active"): "false",
             ("cx317_active", "gnss_metadata_hold_transaction_pending"): "false",
             ("cx317_active", "gnss_metadata_hold_entry_sequence"): "0",
@@ -476,11 +478,37 @@ def test_campaign18_controller_inhibit_does_not_end_D14_D8_acquisition(
     )
 
     supervisor._check_fail_static_health(health)
+    supervisor._maybe_start_or_arm(health)
 
     assert supervisor.state["terminal"] is None
     assert supervisor.state["arm_pending"] is False
     assert supervisor.state["controller_authority_inhibited_reason"] == reason
     assert health[("cx317_active", "fail_static")] == "true"
+
+
+def test_campaign18_unlatched_or_unrecognized_device_fault_still_stops_arm_path(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    health = _health(
+        supervisor,
+        hybrid_state="FAIL_STATIC",
+        hybrid_reason="unexpected_policy_fault",
+        fail_static="true",
+    )
+    health.update(
+        {
+            ("cx317_active", "state"): "FAULT",
+            ("cx317_active", "reason"): "unexpected_policy_fault",
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="device active state fault: unexpected_policy_fault",
+    ):
+        supervisor._maybe_start_or_arm(health)
 
 
 def _ready() -> PrewriteReadiness:

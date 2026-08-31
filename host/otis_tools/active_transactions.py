@@ -573,6 +573,7 @@ class ActiveTransactionSupervisor:
             "cx321_active_hybrid",
             "cx322_direct_hybrid",
             "cx322_d9_d6_integration_engineering",
+            "cx322_d9_d6_72h_sustained_engineering",
             SUSTAINED_HYBRID_PROFILE_ID,
         }
         acknowledgement_command = f"ACTIVE EVIDENCE {request_sequence} {phase}"
@@ -705,6 +706,8 @@ class ActiveTransactionSupervisor:
                     else None
                 ),
                 estimates_csv=self.run_dir / "csv/estimates_v2.csv",
+                maximum_applications=self.spec.correction_limit,
+                maximum_cumulative_movement_codes=self.spec.cumulative_limit,
             )
             attestation_path = capsule_dir / (
                 f"record_{record_sequence:06d}_response_replay_attestation.json"

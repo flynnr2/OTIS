@@ -31,6 +31,7 @@ from host.otis_tools.active_hybrid_rehearsal import (
     run as run_accelerated_rehearsal,
 )
 from host.otis_tools import active_hybrid_rehearsal as rehearsal_tool
+from host.otis_tools import active_hybrid_evidence_guard as evidence_guard_tool
 from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
@@ -952,6 +953,38 @@ def test_replay_accepts_exact_nonzero_demand_suppressed_at_engineering_cap() -> 
         maximum_applications=1,
         maximum_cumulative_movement_codes=21,
     )["exact"]
+
+
+def test_replay_controller_uses_explicit_larger_campaign_authority_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    constructed = []
+
+    class ReplayControllerProbe:
+        transaction_outstanding = False
+
+        def __init__(self, policy, *, setup_application_s=None) -> None:
+            del setup_application_s
+            constructed.append(policy)
+
+    monkeypatch.setattr(
+        evidence_guard_tool, "ActiveHybridController", ReplayControllerProbe
+    )
+    identity = _bundle()
+    replay_active_hybrid_history(
+        [],
+        [],
+        expected_run_identity=str(identity["run_identity"]),
+        expected_build_identity=str(identity["firmware"]["build_identity"]),
+        expected_profile_identity="cx322_d9_d6_72h_sustained_engineering",
+        maximum_applications=144,
+        maximum_cumulative_movement_codes=3024,
+    )
+
+    assert len(constructed) == 1
+    assert constructed[0].maximum_applications == 144
+    assert constructed[0].maximum_cumulative_movement_codes == 3024
+    assert constructed[0].policy_sha256 == load_policy().policy_sha256
 
 
 def test_inside_deadband_checkpoint_still_requires_observed_command_sign(

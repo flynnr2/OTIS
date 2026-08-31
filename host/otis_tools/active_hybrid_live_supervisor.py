@@ -1789,6 +1789,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             return
         state = health.get(("cx317_active", "state"), "")
         reason = health.get(("cx317_active", "reason"), "")
+        campaign18_controller_inhibit = (
+            self.programme is CX322_D9_D6_72H_PROGRAMME
+            and state == "FAULT"
+            and reason
+            in {
+                "prospective_repeated_alternation",
+                "prospective_low_efficiency_path",
+            }
+            and self.state.get("controller_authority_inhibited_reason") == reason
+        )
+        if campaign18_controller_inhibit:
+            # _check_fail_static_health() has already converted this exact
+            # firmware policy terminal into Campaign 18's controller-local
+            # no-new-authority state.  The next run-loop consumer must not
+            # reinterpret the same retained FAULT record as a platform fault.
+            return
         if state in {"FAULT", "ABORTED"}:
             raise ValueError(f"device active state {state.lower()}: {reason}")
         if state in {"REFERENCE_HOLD", "GNSS_METADATA_HOLD"}:
