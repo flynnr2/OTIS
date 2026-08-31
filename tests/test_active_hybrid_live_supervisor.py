@@ -1602,6 +1602,7 @@ def test_exact_setup_then_frequency_acquisition_arm(
     tmp_path: Path, monkeypatch
 ) -> None:
     supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
     commands: list[str] = []
     monkeypatch.setattr(supervisor, "_prewrite_readiness", lambda health: _ready())
     monkeypatch.setattr(
@@ -1629,6 +1630,12 @@ def test_exact_setup_then_frequency_acquisition_arm(
 
     assert commands == ["ACTIVE SETUP exact"]
     assert supervisor.state["manual_start_sent"] is True
+    setup_event = next(
+        json.loads(line)
+        for line in supervisor.events_path.read_text(encoding="utf-8").splitlines()
+        if json.loads(line)["event"].endswith("exact_setup_requested")
+    )
+    assert setup_event["code"] == CX323_D9_D6_72H_PROGRAMME.setup_code
 
     _write_control_hold(supervisor)
     acquiring = _health(supervisor, selected_interval_count="0")

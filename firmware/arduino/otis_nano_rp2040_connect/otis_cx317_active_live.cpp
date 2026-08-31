@@ -2444,8 +2444,12 @@ bool otis_cx317_active_live_confirm_setup_consumers_exact(
                             "cx323_setup_controller_initialization_failed");
     return false;
   }
-  cx323_engine.last_application_available = true;
-  cx323_engine.last_application_s = transaction.last_application_s;
+  if (!otis_cx323_engine_bind_exact_setup_application(
+          &cx323_engine, setup_application_ticks)) {
+    otis_cx317_active_fault(
+        &transaction, "cx323_setup_application_binding_failed");
+    return false;
+  }
   const OtisCx323Engine activation_before = cx323_engine;
   OtisCx323Engine activation_after = activation_before;
   if (!otis_cx323_engine_new_policy_activation(&activation_after) ||

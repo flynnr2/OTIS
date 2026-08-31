@@ -143,6 +143,12 @@ bool otis_cx323_engine_init(OtisCx323Engine *engine,
                             int32_t setup_applied_code,
                             uint64_t setup_dac_epoch);
 
+// Bind the exact setup application before policy activation.  The exact
+// counter is authoritative; the whole-second value is only its floor-divided
+// projection for legacy/status consumers.
+bool otis_cx323_engine_bind_exact_setup_application(
+    OtisCx323Engine *engine, uint64_t setup_application_ticks);
+
 // Frozen exact conversion.  The implementation uses reduced checked
 // target-portable quotient/remainder arithmetic and never forms centre*1e24.
 bool otis_cx323_centre_to_picocodes(OtisCx323Wide centre_units,

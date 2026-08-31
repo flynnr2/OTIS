@@ -1931,7 +1931,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._save()
             self._programme_event(
                 "exact_setup_requested",
-                code=SETUP_CODE,
+                code=self.programme.setup_code,
                 authorization_sequence=request["authorization_sequence"],
                 status_generation=request["status_generation"],
                 query_nonce=request["query_nonce"],

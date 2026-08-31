@@ -8,8 +8,11 @@
 namespace {
 
 constexpr uint16_t kStartCode = 43085u;
-constexpr uint32_t kDecisionTimeS = 2400u;
 constexpr uint64_t kCaptureTicksPerSecond = 16000000ull;
+constexpr uint64_t kSetupApplicationTicks = 9937789536ull;
+constexpr uint64_t kFirstSelectedObservationTicks = 38425559872ull;
+constexpr uint64_t kCadenceBoundaryTicks =
+    kSetupApplicationTicks + 1800ull * kCaptureTicksPerSecond;
 
 OtisCx317ActiveBinding binding() {
   return {
@@ -24,12 +27,13 @@ OtisCx317ActiveEligibility healthy() {
           true, true, true, true, true, true, true, true, true, true};
 }
 
-OtisCx323Observation outside_tight_observation() {
+OtisCx323Observation outside_tight_observation(
+    uint64_t timestamp_ticks, uint64_t source_first_sequence) {
   return {
-      kDecisionTimeS,
+      timestamp_ticks / kCaptureTicksPerSecond,
       1u,
-      1000u,
-      1600u,
+      source_first_sequence,
+      source_first_sequence + 600u,
       1u,
       kStartCode,
       2,
@@ -42,7 +46,7 @@ OtisCx323Observation outside_tight_observation() {
       true,
       true,
       true,
-      static_cast<uint64_t>(kDecisionTimeS) * kCaptureTicksPerSecond,
+      timestamp_ticks,
   };
 }
 
@@ -55,21 +59,39 @@ int main() {
   otis_cx317_active_transaction_init(&transaction, &expected);
   transaction.dac_epoch = 1u;
   transaction.have_last_application = true;
-  transaction.last_application_s = 600u;
-
-  const OtisCx317ArmRequest arm = {
-      expected, 1u, 0xC3230001u, kDecisionTimeS + 60u};
-  assert(otis_cx317_active_arm(&transaction, &arm, &eligibility,
-                               kDecisionTimeS));
+  transaction.last_application_s = static_cast<uint32_t>(
+      kSetupApplicationTicks / kCaptureTicksPerSecond);
 
   const OtisCx323Policy policy = otis_cx323_default_policy();
   OtisCx323Engine controller = {};
   assert(otis_cx323_engine_init(&controller, &policy, kStartCode, 1u));
-  controller.last_application_available = true;
-  controller.last_application_s = 600u;
-  controller.last_application_ticks = 600u * kCaptureTicksPerSecond;
+  assert(otis_cx323_engine_bind_exact_setup_application(
+      &controller, kSetupApplicationTicks));
+  assert(controller.last_application_available);
+  assert(controller.last_application_ticks == kSetupApplicationTicks);
+  assert(controller.last_application_s ==
+         kSetupApplicationTicks / kCaptureTicksPerSecond);
+  assert(otis_cx323_engine_new_policy_activation(&controller));
 
-  const OtisCx323Observation observation = outside_tight_observation();
+  const OtisCx323Observation first_selected = outside_tight_observation(
+      kFirstSelectedObservationTicks, 1000u);
+  OtisCx323Decision cadence_hold = {};
+  assert(otis_cx323_engine_decide(&controller, &first_selected,
+                                  &cadence_hold));
+  assert(strcmp(cadence_hold.reason, "cadence_hold") == 0);
+  assert(cadence_hold.requested_delta_codes == 0);
+  assert(cadence_hold.cadence_limited);
+  assert(!cadence_hold.maintenance_request);
+  assert(!controller.request_pending);
+
+  const OtisCx323Observation observation = outside_tight_observation(
+      kCadenceBoundaryTicks, 1600u);
+  const uint32_t decision_time_s =
+      static_cast<uint32_t>(observation.timestamp_s);
+  const OtisCx317ArmRequest arm = {
+      expected, 1u, 0xC3230001u, decision_time_s + 60u};
+  assert(otis_cx317_active_arm(&transaction, &arm, &eligibility,
+                               decision_time_s));
   OtisCx323Decision native_decision = {};
   assert(!controller.request_pending);
   assert(otis_cx323_engine_decide(&controller, &observation,
@@ -92,7 +114,7 @@ int main() {
   };
   OtisCx317ActionableRequest request = {};
   assert(otis_cx317_active_make_request(&transaction, &transaction_decision,
-                                        &eligibility, kDecisionTimeS,
+                                        &eligibility, decision_time_s,
                                         &request));
   assert(request.actionable);
   assert(request.requested_delta_codes ==
@@ -100,7 +122,7 @@ int main() {
   assert(request.requested_code == native_decision.requested_code);
 
   OtisCx317AcceptedRequest accepted = {};
-  assert(otis_cx317_active_accept(&transaction, &request, kDecisionTimeS,
+  assert(otis_cx317_active_accept(&transaction, &request, decision_time_s,
                                   &accepted));
   const OtisCx317AppliedAck applied = {
       request.request_sequence,
@@ -110,7 +132,7 @@ int main() {
       accepted.accepted_code,
       request.requested_code,
       1u,
-      kDecisionTimeS,
+      decision_time_s,
       true,
       false,
       false,

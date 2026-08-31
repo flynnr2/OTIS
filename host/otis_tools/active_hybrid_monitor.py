@@ -48,7 +48,6 @@ CAPTURE_MAX_AGE_S = 15.0
 EVIDENCE_MAX_AGE_S = 15.0
 EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
 PREWRITE_QUALIFICATION_DEADLINE_S = 660.0
-MAINTENANCE_EVIDENCE_MAX_AGE_S = 660.0
 
 _AT2_NON_JOIN_FIELDS = frozenset(
     {
@@ -442,12 +441,6 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             integrity_faults.append("maintenance_evidence_unavailable")
         elif maintenance["mismatches"]:
             integrity_faults.append("maintenance_evidence_identity_mismatch")
-        elif (
-            not terminal_reached
-            and maintenance.get("age_s") is not None
-            and float(maintenance["age_s"]) > MAINTENANCE_EVIDENCE_MAX_AGE_S
-        ):
-            integrity_faults.append("maintenance_evidence_stale")
     if capture is None:
         integrity_faults.append("capture_state_missing")
     else:
@@ -562,7 +555,6 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "plant_sign_ack_deadline_s": 30,
             "evidence_stale_after_s": EVIDENCE_MAX_AGE_S,
             "prewrite_qualification_deadline_s": PREWRITE_QUALIFICATION_DEADLINE_S,
-            "maintenance_evidence_stale_after_s": MAINTENANCE_EVIDENCE_MAX_AGE_S,
         },
         "capture": {
             "pid": capture_pid,

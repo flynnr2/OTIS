@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from pathlib import Path
 
 from host.otis_tools import active_hybrid_activation as live_manifest
@@ -516,6 +517,21 @@ def test_cx323_long_run_monitor_requires_exact_maintenance_evidence(
     assert maintenance["mismatches"] == []
 
     maintenance_path = run_dir / "csv/active_hybrid_maintenance_v1.csv"
+    # AHM is causal transition evidence, not a periodic heartbeat. Legal
+    # controller quiet periods exceed the old 660-second file-age threshold
+    # during startup and after an application; age remains informational.
+    os.utime(maintenance_path, (now - 3_600.0, now - 3_600.0))
+    monkeypatch.setattr(
+        monitor,
+        "_age_s",
+        lambda path, *, now: 3_600.0 if path == maintenance_path else 1.0,
+    )
+    old_but_complete = monitor.snapshot(run_dir, now=now)
+    assert old_but_complete["status"] == "running"
+    assert old_but_complete["progress"]["maintenance_evidence"]["age_s"] == (
+        3_600.0
+    )
+
     row = monitor._stable_contract_rows(
         maintenance_path, monitor.ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS
     )[0]

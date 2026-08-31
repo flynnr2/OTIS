@@ -602,6 +602,21 @@ bool otis_cx323_engine_init(OtisCx323Engine *engine,
   return true;
 }
 
+bool otis_cx323_engine_bind_exact_setup_application(
+    OtisCx323Engine *engine, uint64_t setup_application_ticks) {
+  if (engine == nullptr || setup_application_ticks == 0u ||
+      engine->last_application_available || engine->request_pending ||
+      engine->response_pending || engine->application_count != 0u ||
+      engine->dac_epoch == 0u)
+    return false;
+  const uint64_t setup_application_s =
+      setup_application_ticks / kCaptureTicksPerSecond;
+  engine->last_application_s = setup_application_s;
+  engine->last_application_ticks = setup_application_ticks;
+  engine->last_application_available = true;
+  return true;
+}
+
 bool otis_cx323_engine_decide(OtisCx323Engine *engine,
                               const OtisCx323Observation *observation,
                               OtisCx323Decision *decision) {
