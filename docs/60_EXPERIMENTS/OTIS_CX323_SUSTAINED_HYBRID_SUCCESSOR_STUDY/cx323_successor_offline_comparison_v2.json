@@ -1,0 +1,1041 @@
+{
+  "candidates": [
+    {
+      "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+      "common_gates": {
+        "all_deterministic_sequence_expectations": true,
+        "all_gain_no_zero_cross_proofs": true,
+        "all_identity_and_fault_transitions": true,
+        "exact_physical_prefix_and_first_divergence": true,
+        "same_frontier_no_terminal_and_nonincreasing_actuator_cost": true,
+        "unchanged_alternation_and_low_efficiency_guards": true
+      },
+      "common_gates_pass": true,
+      "deterministic_sequences": [
+        {
+          "applications": [],
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "isolated_positive_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "zero_containing_interval"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [],
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "isolated_negative_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "zero_containing_interval"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [],
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "alternating_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "persistence_first_interval_hold",
+            "persistence_first_interval_hold",
+            "persistence_first_interval_hold"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [
+            -4
+          ],
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "persistent_positive_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "maintenance_request_ready"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [
+            4
+          ],
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "persistent_negative_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "maintenance_request_ready"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [],
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "zero_containing_combined_interval",
+          "pass": true,
+          "reasons": [
+            "zero_containing_interval",
+            "zero_containing_interval"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [
+            -10,
+            -10
+          ],
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "outside_tight_two_count_recovery",
+          "pass": true,
+          "reasons": [
+            "unchanged_frequency_acquisition",
+            "unchanged_frequency_acquisition"
+          ],
+          "terminal": null
+        },
+        {
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "phase_material_rounding_boundary",
+          "details": [
+            {
+              "centre_units": 41,
+              "legacy_combined_delta_codes": 5,
+              "legacy_frequency_only_delta_codes": 5,
+              "pass": true,
+              "path": "maintenance_phase_nonmaterial"
+            },
+            {
+              "centre_units": 42,
+              "legacy_combined_delta_codes": 6,
+              "legacy_frequency_only_delta_codes": 5,
+              "pass": true,
+              "path": "unchanged_phase_material"
+            }
+          ],
+          "pass": true
+        },
+        {
+          "applications": [
+            -19,
+            19,
+            -19
+          ],
+          "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+          "case_id": "real_alternating_application_guard",
+          "pass": true,
+          "reasons": [
+            "unchanged_frequency_acquisition",
+            "unchanged_frequency_acquisition",
+            "unchanged_frequency_acquisition",
+            "prospective_repeated_alternation"
+          ],
+          "terminal": "prospective_repeated_alternation"
+        },
+        {
+          "additional_transactions": 0,
+          "case_id": "bounded_debt_residual_release",
+          "exact": true,
+          "exact_fraction_audit_only_first_residual_codes": "1599086365/4680182727",
+          "exact_fraction_audit_only_tagged_distance_codes": "31741111/173340101",
+          "final_safe_cap_codes": 6,
+          "first_cap_codes": 5,
+          "first_hold": "persistence_first_interval_hold",
+          "no_debt_distance_picocodes": 475213574925,
+          "no_debt_final_delta_codes": 5,
+          "no_debt_total_picocodes": 5475213574925,
+          "no_debt_transaction_count": 2,
+          "pass": true,
+          "tagged_debt_distance_picocodes": 183114644660,
+          "tagged_debt_final_delta_codes": 6,
+          "tagged_debt_fll_picocodes": 307504602373,
+          "tagged_debt_pll_picocodes": 34167178042,
+          "tagged_debt_residual_picocodes": 341671780415,
+          "tagged_debt_total_picocodes": 5816885355340,
+          "tagged_debt_transaction_count": 2
+        }
+      ],
+      "same_frontier_diagnostic": {
+        "application_count": 0,
+        "applications": [],
+        "candidate_id": "cx323_phase_priority_persistent_cap_no_debt_v1",
+        "claim": "term_attribution_and_candidate_decision_diagnostic_not_physical_post_divergence_replay",
+        "controller_terminal": null,
+        "cumulative_absolute_movement_codes": 0,
+        "decision_range": [
+          28,
+          51
+        ],
+        "decisions": [
+          {
+            "decision_sequence": 28,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          },
+          {
+            "decision_sequence": 29,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "unchanged_frequency_acquisition",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 30,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 5
+          },
+          {
+            "decision_sequence": 31,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "unchanged_frequency_acquisition",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 32,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 33,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          },
+          {
+            "decision_sequence": 34,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "unchanged_frequency_acquisition",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 35,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 36,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 5
+          },
+          {
+            "decision_sequence": 37,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "unchanged_frequency_acquisition",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 38,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 39,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          },
+          {
+            "decision_sequence": 40,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 41,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 42,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 43,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 44,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 45,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          },
+          {
+            "decision_sequence": 46,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 47,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 48,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 49,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 50,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 51,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          }
+        ],
+        "first_decision": {
+          "decision_sequence": 28,
+          "provenance": "counterfactual_not_observed_after_divergence",
+          "reason": "persistence_first_interval_hold",
+          "requested_delta_codes": 0,
+          "safe_cap_codes": 4
+        },
+        "provenance": "counterfactual_not_observed_after_divergence",
+        "reversal_count": 0
+      }
+    },
+    {
+      "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+      "common_gates": {
+        "all_deterministic_sequence_expectations": true,
+        "all_gain_no_zero_cross_proofs": true,
+        "all_identity_and_fault_transitions": true,
+        "exact_physical_prefix_and_first_divergence": true,
+        "same_frontier_no_terminal_and_nonincreasing_actuator_cost": true,
+        "unchanged_alternation_and_low_efficiency_guards": true
+      },
+      "common_gates_pass": true,
+      "deterministic_sequences": [
+        {
+          "applications": [],
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "isolated_positive_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "zero_containing_interval"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [],
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "isolated_negative_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "zero_containing_interval"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [],
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "alternating_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "persistence_first_interval_hold",
+            "persistence_first_interval_hold",
+            "persistence_first_interval_hold"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [
+            -4
+          ],
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "persistent_positive_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "maintenance_request_ready"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [
+            4
+          ],
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "persistent_negative_one_count",
+          "pass": true,
+          "reasons": [
+            "persistence_first_interval_hold",
+            "maintenance_request_ready"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [],
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "zero_containing_combined_interval",
+          "pass": true,
+          "reasons": [
+            "zero_containing_interval",
+            "zero_containing_interval"
+          ],
+          "terminal": null
+        },
+        {
+          "applications": [
+            -10,
+            -10
+          ],
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "outside_tight_two_count_recovery",
+          "pass": true,
+          "reasons": [
+            "unchanged_frequency_acquisition",
+            "unchanged_frequency_acquisition"
+          ],
+          "terminal": null
+        },
+        {
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "phase_material_rounding_boundary",
+          "details": [
+            {
+              "centre_units": 41,
+              "legacy_combined_delta_codes": 5,
+              "legacy_frequency_only_delta_codes": 5,
+              "pass": true,
+              "path": "maintenance_phase_nonmaterial"
+            },
+            {
+              "centre_units": 42,
+              "legacy_combined_delta_codes": 6,
+              "legacy_frequency_only_delta_codes": 5,
+              "pass": true,
+              "path": "unchanged_phase_material"
+            }
+          ],
+          "pass": true
+        },
+        {
+          "applications": [
+            -19,
+            19,
+            -19
+          ],
+          "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+          "case_id": "real_alternating_application_guard",
+          "pass": true,
+          "reasons": [
+            "unchanged_frequency_acquisition",
+            "unchanged_frequency_acquisition",
+            "unchanged_frequency_acquisition",
+            "prospective_repeated_alternation"
+          ],
+          "terminal": "prospective_repeated_alternation"
+        },
+        {
+          "additional_transactions": 0,
+          "case_id": "bounded_debt_residual_release",
+          "exact": true,
+          "exact_fraction_audit_only_first_residual_codes": "1599086365/4680182727",
+          "exact_fraction_audit_only_tagged_distance_codes": "31741111/173340101",
+          "final_safe_cap_codes": 6,
+          "first_cap_codes": 5,
+          "first_hold": "persistence_first_interval_hold",
+          "no_debt_distance_picocodes": 475213574925,
+          "no_debt_final_delta_codes": 5,
+          "no_debt_total_picocodes": 5475213574925,
+          "no_debt_transaction_count": 2,
+          "pass": true,
+          "tagged_debt_distance_picocodes": 183114644660,
+          "tagged_debt_final_delta_codes": 6,
+          "tagged_debt_fll_picocodes": 307504602373,
+          "tagged_debt_pll_picocodes": 34167178042,
+          "tagged_debt_residual_picocodes": 341671780415,
+          "tagged_debt_total_picocodes": 5816885355340,
+          "tagged_debt_transaction_count": 2
+        }
+      ],
+      "same_frontier_diagnostic": {
+        "application_count": 0,
+        "applications": [],
+        "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+        "claim": "term_attribution_and_candidate_decision_diagnostic_not_physical_post_divergence_replay",
+        "controller_terminal": null,
+        "cumulative_absolute_movement_codes": 0,
+        "decision_range": [
+          28,
+          51
+        ],
+        "decisions": [
+          {
+            "decision_sequence": 28,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          },
+          {
+            "decision_sequence": 29,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "unchanged_frequency_acquisition",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 30,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 5
+          },
+          {
+            "decision_sequence": 31,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "unchanged_frequency_acquisition",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 32,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 33,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          },
+          {
+            "decision_sequence": 34,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "unchanged_frequency_acquisition",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 35,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 36,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 5
+          },
+          {
+            "decision_sequence": 37,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "unchanged_frequency_acquisition",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 38,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 39,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          },
+          {
+            "decision_sequence": 40,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 41,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 42,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 43,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 44,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 45,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          },
+          {
+            "decision_sequence": 46,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 47,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 48,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 49,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 50,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "zero_containing_interval",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 0
+          },
+          {
+            "decision_sequence": 51,
+            "provenance": "counterfactual_not_observed_after_divergence",
+            "reason": "persistence_first_interval_hold",
+            "requested_delta_codes": 0,
+            "safe_cap_codes": 4
+          }
+        ],
+        "first_decision": {
+          "decision_sequence": 28,
+          "provenance": "counterfactual_not_observed_after_divergence",
+          "reason": "persistence_first_interval_hold",
+          "requested_delta_codes": 0,
+          "safe_cap_codes": 4
+        },
+        "provenance": "counterfactual_not_observed_after_divergence",
+        "reversal_count": 0
+      }
+    }
+  ],
+  "claim_boundary": [
+    "Attempt4 observations and unchanged replay remain physical facts only at their exact retained identities",
+    "candidate decisions after first divergence are deterministic counterfactuals not observed plant behavior",
+    "no waveform load calibrated accuracy UTC or oscillator_only stability claim",
+    "no changed policy selection before this frozen comparison completes"
+  ],
+  "contract_id": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V2",
+  "contract_sha256": "20b729dce477349704ce09e7cacf14047525450d50230c8f114f75959289d707",
+  "exact_physical_prefix": {
+    "application_count": 8,
+    "candidate_identity": {
+      "cx323_phase_priority_persistent_cap_no_debt_v1": "exact_source_semantics_identical_through_decision_27",
+      "cx323_phase_priority_persistent_cap_tagged_debt_v1": "exact_source_semantics_identical_through_decision_27",
+      "cx323_unchanged_baseline": "exact_source_semantics_identical_through_decision_27"
+    },
+    "decision_count": 27,
+    "last_decision_sequence": 27,
+    "phase_material_application_count": 7,
+    "provenance": "exact_physical_source_replay",
+    "semantic_transcript_sha256": "20f4e064fdc6e640e1729656f34cc5277479e4239e0cb1dc06a756159f471fa4"
+  },
+  "fixed_point_mandatory_checks": [
+    {
+      "check": "controller_committed_debt_fields_are_integers",
+      "pass": true
+    },
+    {
+      "check": "tag_sum_equals_bounded_total_residual_exactly",
+      "pass": true
+    },
+    {
+      "check": "positive_and_negative_half_away_rounding_boundaries",
+      "pass": true
+    },
+    {
+      "check": "positive_and_negative_residual_clamp_boundaries",
+      "pass": true
+    },
+    {
+      "check": "overflow_safe_reduced_quotient_remainder_proof",
+      "maximum_q_times_reduced_numerator": 44341403516250000000000000000000,
+      "maximum_r_times_reduced_numerator": 1542141866250000000000000000000,
+      "pass": true,
+      "signed_128_maximum": 170141183460469231731687303715884105727
+    },
+    {
+      "check": "independent_integer_quotient_remainder_reference_matches_Python_oracle",
+      "pass": true,
+      "scope": "offline reference equivalence only; native firmware parity remains a promotion gate"
+    }
+  ],
+  "gain_no_zero_cross_proofs": [
+    {
+      "centre_units": -72,
+      "gain": "16357422282453626/100000000000000000000",
+      "pass": true,
+      "safe_cap_codes": 14
+    },
+    {
+      "centre_units": -36,
+      "gain": "16357422282453626/100000000000000000000",
+      "pass": true,
+      "safe_cap_codes": 4
+    },
+    {
+      "centre_units": 36,
+      "gain": "16357422282453626/100000000000000000000",
+      "pass": true,
+      "safe_cap_codes": 4
+    },
+    {
+      "centre_units": 72,
+      "gain": "16357422282453626/100000000000000000000",
+      "pass": true,
+      "safe_cap_codes": 14
+    },
+    {
+      "centre_units": -72,
+      "gain": "17008467693813145/100000000000000000000",
+      "pass": true,
+      "safe_cap_codes": 14
+    },
+    {
+      "centre_units": -36,
+      "gain": "17008467693813145/100000000000000000000",
+      "pass": true,
+      "safe_cap_codes": 4
+    },
+    {
+      "centre_units": 36,
+      "gain": "17008467693813145/100000000000000000000",
+      "pass": true,
+      "safe_cap_codes": 4
+    },
+    {
+      "centre_units": 72,
+      "gain": "17008467693813145/100000000000000000000",
+      "pass": true,
+      "safe_cap_codes": 14
+    },
+    {
+      "centre_units": -72,
+      "gain": "173340101/1000000000000",
+      "pass": true,
+      "safe_cap_codes": 14
+    },
+    {
+      "centre_units": -36,
+      "gain": "173340101/1000000000000",
+      "pass": true,
+      "safe_cap_codes": 4
+    },
+    {
+      "centre_units": 36,
+      "gain": "173340101/1000000000000",
+      "pass": true,
+      "safe_cap_codes": 4
+    },
+    {
+      "centre_units": 72,
+      "gain": "173340101/1000000000000",
+      "pass": true,
+      "safe_cap_codes": 14
+    }
+  ],
+  "identity_and_fault_transitions": [
+    {
+      "case_id": "source_overlap",
+      "expected_transition": "persistence_state_unchanged_no_debt_accrual_no_request",
+      "pass": true
+    },
+    {
+      "case_id": "source_gap",
+      "expected_transition": "persistence_restarted_at_one_no_debt_accrual_no_request",
+      "pass": true
+    },
+    {
+      "case_id": "capture_session_change",
+      "expected_transition": "maintenance_state_reset_then_common_session_policy_applies",
+      "pass": true
+    },
+    {
+      "case_id": "applied_code_or_DAC_epoch_change_without_owned_application",
+      "expected_transition": "actuator_provenance_fail_static",
+      "pass": true
+    },
+    {
+      "case_id": "phase_epoch_change",
+      "expected_transition": "persistence_reset_and_PLL_debt_discarded_without_invalidating_FLL_evidence",
+      "pass": true
+    },
+    {
+      "case_id": "settling_hold",
+      "expected_transition": "persistence_reset_no_debt_accrual_no_request",
+      "pass": true
+    },
+    {
+      "case_id": "metadata_hold_and_causal_requalification",
+      "expected_transition": "debt_frozen_in_hold_persistence_reset_first_window_hold_second_window_eligible",
+      "pass": true
+    },
+    {
+      "case_id": "reference_invalidity",
+      "expected_transition": "maintenance_state_reset_and_existing_authoritative_fault_or_hold_semantics_unchanged",
+      "pass": true
+    },
+    {
+      "case_id": "request_rejection_or_expiry",
+      "expected_transition": "request_pending_cleared_prior_committed_debt_unchanged_response_pending_false",
+      "pass": true
+    },
+    {
+      "case_id": "application_and_first_consumer",
+      "expected_transition": "exact_application_commits_back_calculated_residual_resets_persistence_clears_request_pending_and_sets_response_pending",
+      "pass": true
+    },
+    {
+      "case_id": "response_completion",
+      "expected_transition": "fresh_exact_response_clears_response_pending_without_changing_committed_residual",
+      "pass": true
+    },
+    {
+      "case_id": "unknown_application_or_epoch",
+      "expected_transition": "actuator_provenance_fail_static",
+      "pass": true
+    }
+  ],
+  "post_divergence_provenance": "counterfactual_not_observed_after_divergence",
+  "report_sha256": "8096abbee3ee8295fc6cb53a6d0c6ca9af876bf529d464521e55776e105fb982",
+  "report_type": "otis_cx323_successor_offline_comparison_v2",
+  "schema_version": 2,
+  "selection": {
+    "effective_or_promoted": false,
+    "physical_authority_granted": false,
+    "selected_candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+    "terminal": "cx323_tagged_debt_candidate_selected_non_effective"
+  },
+  "source_validation": {
+    "bound_file_count": 11,
+    "bound_files": [
+      {
+        "path": "run_manifest.json",
+        "sha256": "261f247eb9a9d886e79e0f44319512466650a176f17b58ee685245965aeb3989"
+      },
+      {
+        "path": "evidence_manifest.json",
+        "sha256": "68fa933e42b51d3de7af5731aab0c6772fc1523ff64704eb57329b14c79ac1f5"
+      },
+      {
+        "path": "reports/cx322_d9_d6_72h_physical_seal_v1.json",
+        "sha256": "11632f529f16817eb9dd27e07e9d249b19727a309c59a9f4bfbf89fa492ce85b"
+      },
+      {
+        "path": "csv/active_hybrid_decisions_v1.csv",
+        "sha256": "f5ee3035bcee9dda9be0f008997377f72ad6c378698846eaa24682de2f1ab95c"
+      },
+      {
+        "path": "csv/active_transactions_v1.csv",
+        "sha256": "b928ff4f78e33148b7acc3d5ec1903c59804581a559fa880b65efb559d01c22a"
+      },
+      {
+        "path": "csv/estimates_v2.csv",
+        "sha256": "428496fcb900a30d860acee2c94a8b354d75d34f6a9363818fba616907a66a60"
+      },
+      {
+        "path": "csv/tight_deadband_decisions_v1.csv",
+        "sha256": "cedabd203b1374c102770e335e7898aa6b3482cf60bd98acb3e9454e41514772"
+      },
+      {
+        "path": "csv/phase_estimator_outputs_v1.csv",
+        "sha256": "688e96775bff5a698706711d9714aec29efd9ef46f7b615d195f6ba068264d67"
+      },
+      {
+        "path": "csv/relative_phase_observations_v1.csv",
+        "sha256": "05fda1b4846e5ac01e148cf567d1938b6f5e1e2baf98d3b327b276c43259a9da"
+      },
+      {
+        "path": "csv/pps_snapshots.csv",
+        "sha256": "eb11d43e00e5e94534f5c4517675fdfe3a9346a7e462ddb316b7e4e2e187ef27"
+      },
+      {
+        "path": "csv/count_observations.csv",
+        "sha256": "20152e9b759ab430d88eabe63b6667b1ffe8e08a6a0fe8f841529f69d3df27eb"
+      }
+    ],
+    "firmware_build_identity": "920c3999121ee6fc372665a59268358cf9da7350ce82850a09e59ae894765566:3da04ff034b9211ffcc323f3416426f0cfdd45f153c1f3c55133909db7ee2a32",
+    "frozen_failed_seal_sha256": "925993082994c9c5831444bc5b9866a3805e379d389f04789c50e171a2586bef",
+    "profile_identity": "cx322_d9_d6_72h_sustained_engineering",
+    "registered_content_sha256": "e6f5cf5e9d6138a9dad86698a45f98691903f923735df6d8660508048ca5b747",
+    "run_id": "hybrid_72h_attempt4",
+    "run_identity": "cx322_d9_d6_72h_sustained_engineering:1",
+    "superseding_host_replay_sha256": "d7c8210c8c49515739beea3b1103ac9855798e8d16ad1ae3c2fa08513d35717c",
+    "uf2_sha256": "7a483827be7e063cd2764a4d871c3313c5bd91d93e5121a7b62fe80f5697915d"
+  },
+  "superseded_v1_execution": {
+    "physical_authority_granted": false,
+    "reason": "post_execution_review_found_the_v1_identity_fixture_frontier_wording_contradicted_the_bound_shared_endpoint_estimator_semantics_and_the_v1_response_completion_gate_was_not_discriminating",
+    "selection_effective_or_promoted": false,
+    "v1_report_file_sha256": "bad831b7dc1ac9612e0d16a95397912ae5d96348c6fb210fb298fab147009b3d",
+    "v1_report_semantic_sha256": "b43068276a2fb716a3b45a350d61485e09bfcc4865e0751cdf9480eaa05571c9",
+    "v1_selected_candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+    "v1_selection_may_not_be_used_for_promotion": true
+  },
+  "tagged_debt_preference_case": {
+    "additional_transactions": 0,
+    "case_id": "bounded_debt_residual_release",
+    "exact": true,
+    "exact_fraction_audit_only_first_residual_codes": "1599086365/4680182727",
+    "exact_fraction_audit_only_tagged_distance_codes": "31741111/173340101",
+    "final_safe_cap_codes": 6,
+    "first_cap_codes": 5,
+    "first_hold": "persistence_first_interval_hold",
+    "no_debt_distance_picocodes": 475213574925,
+    "no_debt_final_delta_codes": 5,
+    "no_debt_total_picocodes": 5475213574925,
+    "no_debt_transaction_count": 2,
+    "pass": true,
+    "tagged_debt_distance_picocodes": 183114644660,
+    "tagged_debt_final_delta_codes": 6,
+    "tagged_debt_fll_picocodes": 307504602373,
+    "tagged_debt_pll_picocodes": 34167178042,
+    "tagged_debt_residual_picocodes": 341671780415,
+    "tagged_debt_total_picocodes": 5816885355340,
+    "tagged_debt_transaction_count": 2
+  },
+  "tool_id": "otis_cx323_successor_offline_study_v2",
+  "unchanged_baseline_same_frontier": {
+    "application_count": 4,
+    "applications": [
+      -5,
+      -5,
+      5,
+      -5
+    ],
+    "candidate_id": "cx323_unchanged_baseline",
+    "controller_terminal": "prospective_repeated_alternation",
+    "cumulative_absolute_movement_codes": 20,
+    "decision_range": [
+      28,
+      51
+    ],
+    "provenance": "exact_physical_source_replay",
+    "reversal_count": 2
+  },
+  "unchanged_guards": {
+    "alternation": {
+      "pass": true
+    },
+    "low_efficiency": {
+      "pass": true
+    }
+  },
+  "unmet_promotion_time_fixed_point_gates": [
+    {
+      "gate": "native_firmware_and_Python_decisions_are_bit_exact_for_all_frozen_fixtures",
+      "status": "unmet_future_promotion_gate"
+    },
+    {
+      "gate": "native_firmware_and_Python_committed_FLL_and_PLL_debt_picocodes_are_bit_exact",
+      "status": "unmet_future_promotion_gate"
+    },
+    {
+      "gate": "native_firmware_boundary_and_maximum_input_sanitizer_results_are_bit_exact",
+      "status": "unmet_future_promotion_gate"
+    },
+    {
+      "gate": "the_exact_live_firmware_profile_compiles_the_checked_fixed_point_path",
+      "status": "unmet_future_promotion_gate"
+    }
+  ],
+  "v1_base_contract": {
+    "contract_id": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V1",
+    "contract_sha256": "8041ebb49269fdf5b81ca23e6e5637029d356e83af6e48428ab5cc88f8df827c",
+    "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v1.json"
+  }
+}

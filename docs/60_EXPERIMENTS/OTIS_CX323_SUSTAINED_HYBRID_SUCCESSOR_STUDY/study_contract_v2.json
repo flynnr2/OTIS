@@ -1,0 +1,176 @@
+{
+  "schema_version": 2,
+  "contract_id": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V2",
+  "contract_sha256": "20b729dce477349704ce09e7cacf14047525450d50230c8f114f75959289d707",
+  "status": "prospectively_refrozen_after_v1_contract_defect_before_candidate_reexecution",
+  "base_contract": {
+    "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v1.json",
+    "contract_id": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V1",
+    "contract_sha256": "8041ebb49269fdf5b81ca23e6e5637029d356e83af6e48428ab5cc88f8df827c"
+  },
+  "superseded_candidate_execution": {
+    "v1_report_semantic_sha256": "b43068276a2fb716a3b45a350d61485e09bfcc4865e0751cdf9480eaa05571c9",
+    "v1_report_file_sha256": "bad831b7dc1ac9612e0d16a95397912ae5d96348c6fb210fb298fab147009b3d",
+    "v1_selected_candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+    "selection_effective_or_promoted": false,
+    "physical_authority_granted": false,
+    "reason": "post_execution_review_found_the_v1_identity_fixture_frontier_wording_contradicted_the_bound_shared_endpoint_estimator_semantics_and_the_v1_response_completion_gate_was_not_discriminating",
+    "v1_selection_may_not_be_used_for_promotion": true
+  },
+  "semantic_corrections": {
+    "selected_window_frontier_domain": {
+      "fields": [
+        "source_first_sequence",
+        "source_last_sequence"
+      ],
+      "meaning": "PPS_snapshot_endpoint_sequences_framing_accumulated_count_support_(opening_closing]",
+      "fresh_window": "closing_frontier_gt_opening_frontier",
+      "overlap": "opening_frontier_lt_previous_closing_frontier",
+      "contiguous": "opening_frontier_eq_previous_closing_frontier",
+      "gap": "opening_frontier_gt_previous_closing_frontier",
+      "shared_endpoint_double_counts_no_count_interval": true,
+      "bound_implementation": "host.otis_tools.adaptive_steering_offline.advance_persistence"
+    },
+    "identity_and_fault_case_replacements": {
+      "source_overlap": {
+        "input": "opening_frontier_lt_previous_closing_frontier",
+        "expected": "persistence_state_unchanged_no_debt_accrual_no_request"
+      },
+      "source_gap": {
+        "input": "opening_frontier_gt_previous_closing_frontier",
+        "expected": "persistence_restarted_at_one_no_debt_accrual_no_request"
+      },
+      "request_rejection_or_expiry": {
+        "expected": "request_pending_cleared_prior_committed_debt_unchanged_response_pending_false"
+      },
+      "application_and_first_consumer": {
+        "expected": "exact_application_commits_back_calculated_residual_resets_persistence_clears_request_pending_and_sets_response_pending"
+      },
+      "response_completion": {
+        "expected": "fresh_exact_response_clears_response_pending_without_changing_committed_residual"
+      }
+    },
+    "mandatory_discrimination": [
+      "overlap_and_gap_must_produce_distinct_transitions",
+      "a_shared_frontier_must_advance_same_identity_same_sign_persistence",
+      "request_rejection_or_expiry_must_observe_a_true_to_false_request_pending_transition",
+      "application_and_first_consumer_must_observe_request_pending_true_to_false_response_pending_false_to_true_and_exact_residual_commit",
+      "response_completion_must_observe_response_pending_true_to_false_with_bit_exact_residual_preservation",
+      "no_identity_or_fault_gate_may_be_satisfied_by_a_tautological_comparison"
+    ],
+    "fixed_point_debt_representation": {
+      "authoritative_state_unit": "signed_integer_picocode_1e_minus_12_code",
+      "exact_fraction_values": "analysis_only_not_controller_state",
+      "raw_combined_demand_picocodes": "round_half_away_from_zero(exact_combined_demand_codes*1000000000000)",
+      "raw_FLL_demand_picocodes": "round_half_away_from_zero(exact_FLL_demand_codes*1000000000000)",
+      "raw_PLL_demand_picocodes": "raw_combined_demand_picocodes_minus_raw_FLL_demand_picocodes",
+      "candidate_total_demand_picocodes": "raw_combined_demand_picocodes_plus_committed_FLL_debt_picocodes_plus_committed_PLL_debt_picocodes",
+      "integer_code_request_rounding": "round_half_away_from_zero(candidate_total_demand_picocodes/1000000000000)",
+      "unallocated_residual_picocodes": "clamp(candidate_total_demand_picocodes_minus_applied_delta_codes*1000000000000,-500000000000,+500000000000)",
+      "tag_allocation": {
+        "FLL_origin_weight": "absolute(raw_FLL_demand_picocodes_plus_prior_committed_FLL_debt_picocodes)",
+        "PLL_origin_weight": "absolute(raw_PLL_demand_picocodes_plus_prior_committed_PLL_debt_picocodes)",
+        "committed_FLL_debt_picocodes": "round_half_away_from_zero(unallocated_residual_picocodes*FLL_origin_weight/(FLL_origin_weight+PLL_origin_weight))",
+        "committed_PLL_debt_picocodes": "unallocated_residual_picocodes_minus_committed_FLL_debt_picocodes",
+        "zero_total_weight": "assign_the_complete_residual_to_FLL",
+        "sum_invariant": "committed_FLL_debt_picocodes_plus_committed_PLL_debt_picocodes_eq_unallocated_residual_picocodes"
+      },
+      "phase_loss": "discard_committed_PLL_debt_picocodes_and_preserve_committed_FLL_debt_picocodes",
+      "exact_picocode_conversion": {
+        "reduced_numerator": 625000000000000000000,
+        "reduced_denominator": 4680182727,
+        "input": "combined_centre_units_or_component_centre_units",
+        "algorithm": "on_absolute_input_compute_q_and_r_by_divmod(input,reduced_denominator);compute_q_times_reduced_numerator_plus_round_half_away_from_zero(r_times_reduced_numerator/reduced_denominator);restore_input_sign",
+        "prohibited_intermediate": "do_not_form_input_times_1000000000000000000000000",
+        "required_intermediate": "signed_128_bit_or_equivalent_checked_quotient_remainder_arithmetic",
+        "signed_64_bit_count_domain_maximum_absolute_centre_units": 332041393326771929088,
+        "maximum_q_times_reduced_numerator": 44341403516250000000000000000000,
+        "maximum_r_times_reduced_numerator": 1542141866250000000000000000000,
+        "signed_128_maximum": 170141183460469231731687303715884105727
+      },
+      "maximum_absolute_committed_total_picocodes": 500000000000,
+      "bounded_debt_fixture": {
+        "first_committed_total_debt_picocodes": 341671780415,
+        "next_raw_combined_demand_picocodes": 5475213574925,
+        "next_candidate_total_demand_picocodes": 5816885355340,
+        "no_debt_final_delta_codes": 5,
+        "tagged_debt_final_delta_codes": 6,
+        "no_debt_distance_picocodes": 475213574925,
+        "tagged_debt_distance_picocodes": 183114644660,
+        "transactions_per_candidate": 2,
+        "exact_fraction_audit_only_first_residual_codes": "1599086365/4680182727",
+        "exact_fraction_audit_only_tagged_distance_codes": "31741111/173340101"
+      }
+    },
+    "fixed_point_mandatory_checks": [
+      "controller_committed_debt_fields_are_integers",
+      "tag_sum_equals_bounded_total_residual_exactly",
+      "positive_and_negative_half_away_rounding_boundaries",
+      "positive_and_negative_residual_clamp_boundaries",
+      "overflow_safe_reduced_quotient_remainder_proof",
+      "independent_integer_quotient_remainder_reference_matches_Python_oracle"
+    ],
+    "committed_debt_transition_table": {
+      "preserve_without_accrual": [
+        "persistence_first_interval_hold",
+        "cadence_hold",
+        "source_overlap_hold",
+        "source_gap_persistence_restart",
+        "settling_hold",
+        "reference_invalidity_or_authority_hold",
+        "metadata_hold",
+        "request_rejection_or_expiry",
+        "response_pending_hold",
+        "response_completion"
+      ],
+      "reset_FLL_and_PLL": [
+        "zero_containing_interval",
+        "opposite_interval_sign",
+        "phase_material_legacy_path",
+        "outside_tight_legacy_path",
+        "capture_session_change",
+        "selected_estimator_identity_change",
+        "new_policy_activation"
+      ],
+      "preserve_FLL_discard_PLL": [
+        "phase_epoch_change",
+        "phase_validity_loss"
+      ],
+      "replace_with_back_calculated_bounded_tags": [
+        "exact_application_and_first_dependent_consumer"
+      ],
+      "freeze_and_fail_static": [
+        "unknown_or_contradictory_application_or_DAC_epoch"
+      ],
+      "application_without_exact_first_consumer": "actuator_provenance_fail_static_not_request_rejection",
+      "unaccepted_request_rejection_or_expiry": "explicit_request_pending_true_to_false_transition_with_no_application_and_no_debt_change"
+    },
+    "promotion_time_fixed_point_checks": [
+      "native_firmware_and_Python_decisions_are_bit_exact_for_all_frozen_fixtures",
+      "native_firmware_and_Python_committed_FLL_and_PLL_debt_picocodes_are_bit_exact",
+      "native_firmware_boundary_and_maximum_input_sanitizer_results_are_bit_exact",
+      "the_exact_live_firmware_profile_compiles_the_checked_fixed_point_path"
+    ]
+  },
+  "inherited_semantics": {
+    "source_bindings": "exactly_study_contract_v1",
+    "candidate_set": "exactly_study_contract_v1",
+    "arithmetic_and_request_order": "exactly_study_contract_v1_except_the_explicit_frontier_lifecycle_and_fixed_point_corrections_above",
+    "deterministic_sequences": "exactly_study_contract_v1_with_shared_endpoint_contiguous_fixture_frontiers_and_the_V2_integer_picocode_bounded_debt_expectations",
+    "selection_rule": "exactly_study_contract_v1",
+    "architecture_binding": "exactly_study_contract_v1"
+  },
+  "execution_rule": {
+    "candidate_execution_must_bind_this_v2_contract": true,
+    "all_v1_source_hashes_must_be_revalidated": true,
+    "v1_report_must_not_be_reused_as_a_v2_result": true,
+    "v2_selection_remains_non_effective_until_architecture_promotion": true,
+    "native_fixed_point_parity_is_a_promotion_gate_not_an_offline_selection_claim": true,
+    "physical_authority_from_this_study": false
+  },
+  "terminal_outcomes": [
+    "cx323_tagged_debt_candidate_selected_non_effective",
+    "cx323_no_debt_candidate_selected_architecture_amendment_required",
+    "cx323_no_successor_selected"
+  ]
+}

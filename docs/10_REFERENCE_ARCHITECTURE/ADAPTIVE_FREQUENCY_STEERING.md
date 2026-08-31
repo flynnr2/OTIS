@@ -344,6 +344,47 @@ holdover retains the last confirmed safe code. Predictive holdover is a future
 estimator use case and inherits the containment and promotion requirements
 above.
 
+## Selected CX323 maintenance policy
+
+The prospective CX323 successor study selected
+`cx323_phase_priority_persistent_cap_tagged_debt_v1`. The selection binds
+`OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V2` at semantic SHA-256
+`20b729dce477349704ce09e7cacf14047525450d50230c8f114f75959289d707`
+and comparison-report semantic SHA-256
+`8096abbee3ee8295fc6cb53a6d0c6ca9af876bf529d464521e55776e105fb982`.
+It is a counterfactual policy decision, not physical post-divergence evidence.
+
+CX323 preserves the complete CX322 numerical and transaction path whenever the
+selected frequency state is outside `TIGHT_INSIDE` or the legacy combined
+FLL/PLL integer request is materially different from the legacy frequency-only
+integer request. The new maintenance rule applies only to `TIGHT_INSIDE`,
+legacy phase-nonmaterial decisions. This is a priority boundary inside one
+coherent controller, not a second loop or a second DAC authority.
+
+The maintenance rule requires two fresh contiguous selected 600-second windows
+with the same strict combined-demand sign, capture session, applied code, DAC
+epoch, phase epoch/validity, and selected-estimator identity. Consecutive
+windows share their framing PPS endpoint: their counted supports are
+`(opening, closing]`, so equality of the next opening and prior closing is
+contiguous and does not double-count a count interval. Isolated, opposite,
+zero-containing, overlapping, or gapped evidence cannot issue a request.
+
+After persistence and cadence eligibility, the combined demand is represented
+in signed integer picocodes and rounded half away from zero. The integer request
+is bounded by the existing 21-code step, range, movement, application,
+direction, and chatter limits and by a conservative plant-envelope cap that
+cannot cross the demand interval's zero-nearest boundary. The controller keeps
+at most one-half code of residual after an exactly acknowledged application and
+its first dependent consumer. It records deterministic FLL- and PLL-origin
+shares; phase loss discards only the PLL share. Holds, rejection, and response
+completion preserve committed residual without accrual. Invalidating evidence
+resets it, and an unknown or incompletely propagated application fails static.
+
+The authoritative controller state uses signed integer picocodes. Exact
+rational values remain analysis-only. Firmware must implement the frozen
+overflow-safe quotient/remainder conversion and demonstrate bit-exact parity
+with the Python oracle before this policy may enter the bench.
+
 ## Proportionate work for a changed policy
 
 The next work must not be another open-ended equilibrium characterization or a
