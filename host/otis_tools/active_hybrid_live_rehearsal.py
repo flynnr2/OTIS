@@ -238,6 +238,20 @@ def _wait_until(
     raise TimeoutError(f"timed out waiting for {description}")
 
 
+def _supervisor_and_abort_ready(
+    supervisor: subprocess.Popen[str], host_abort: Path
+) -> bool:
+    """Fail immediately when supervisor startup exits before abort ingress."""
+
+    if supervisor.poll() is not None:
+        output = supervisor.stdout.read() if supervisor.stdout else ""
+        raise RuntimeError(
+            "real live supervisor exited before host-abort FIFO: "
+            f"exit={supervisor.returncode}; {output[-2000:]}"
+        )
+    return host_abort.is_fifo()
+
+
 def _read_until(master: int, expected: bytes, timeout_s: float = 10.0) -> bytes:
     deadline = time.monotonic() + timeout_s
     observed = b""
@@ -1768,7 +1782,12 @@ def _cx322_selected_estimate_fixture(
 ) -> list[dict[str, str]]:
     """Provide the exact timer coordinates consumed by the live replay guard."""
 
-    policy = load_policy(Path(str(bundle["policy"]["path"])))
+    policy_path = Path(str(bundle["policy"]["path"]))
+    policy = load_policy(policy_path)
+    policy_document = _read_object(policy_path)
+    frequency_estimator_sha256 = str(
+        policy_document["bindings"]["frequency_estimator"]["sha256"]
+    )
     rows: list[dict[str, str]] = []
     for index, decision in enumerate(ahy, start=1):
         frequency_error_hz = float(decision["frequency_error_hz"])
@@ -1798,7 +1817,7 @@ def _cx322_selected_estimate_fixture(
                     "firmware_config:" + str(bundle["firmware"]["profile_id"])
                 ),
                 "estimator_version": policy.frequency_estimator_id,
-                "config_hash": policy.frequency_estimator_sha256,
+                "config_hash": frequency_estimator_sha256,
                 "observation_validity": "valid",
                 "observation_reason_codes": "contiguous_snapshot_span",
                 "reference_validity": "valid",
@@ -4832,17 +4851,8 @@ def _run_real_process_topology(
             text=True,
         )
 
-        def supervisor_and_abort_ready() -> bool:
-            if supervisor.poll() is not None:
-                output = supervisor.stdout.read() if supervisor.stdout else ""
-                raise RuntimeError(
-                    "real live supervisor exited before host-abort FIFO: "
-                    f"exit={supervisor.returncode}; {output[-2000:]}"
-                )
-            return host_abort.is_fifo()
-
         _wait_until(
-            supervisor_and_abort_ready,
+            lambda: _supervisor_and_abort_ready(supervisor, host_abort),
             15.0,
             "real live supervisor and host-abort FIFO",
         )

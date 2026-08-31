@@ -29,6 +29,7 @@ from .active_hybrid_programme_contract import (
     programme_from_mapping,
     progressive_checkpoint_contract,
 )
+from .active_hybrid_policy import load_cx323_policy
 from .active_status_live_state import (
     LIVE_FRONTIER_COMPONENT,
     LIVE_FRONTIER_DOMAIN_KEY,
@@ -378,6 +379,12 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
     )
     authority = natural_policy.get("global_authority_limits", {})
     if programme.persistent_maintenance_policy:
+        try:
+            selected_policy = load_cx323_policy(natural_policy_path)
+        except ValueError as exc:
+            raise ValueError(
+                "current CX323 policy does not carry the exact live envelope"
+            ) from exc
         selection = natural_policy.get("maintenance_selection", {})
         finite_timing = natural_policy.get("finite_timing", {})
         controller_inhibit = natural_policy.get("live_controller_inhibit", {})
@@ -400,15 +407,34 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             != programme.maximum_deliberate_challenges
             or authority.get("automatic_retry") is not False
             or authority.get("automatic_restoration") is not False
+            or selection.get("requires_tight_state") != "TIGHT_INSIDE"
+            or selection.get("requires_legacy_phase_material") is not False
+            or selection.get("selected_frequency_estimator")
+            != selected_policy.frequency_estimator_id
             or selection.get("window_s") != 600
+            or selection.get("frontier_support") != "(opening_closing]"
+            or selection.get("contiguous_frontier")
+            != "next_opening_eq_prior_closing"
+            or selection.get("overlap_frontier")
+            != "next_opening_lt_prior_closing"
+            or selection.get("gap_frontier")
+            != "next_opening_gt_prior_closing"
             or selection.get("required_consecutive_same_sign_windows") != 2
             or finite_timing.get("qualified_duration_s")
             != programme.qualified_duration_s
+            or finite_timing.get("qualified_clock")
+            != "D14_D8_qualified_firmware_tick_domain"
+            or finite_timing.get("qualification_deadline_s") != 5_400
             or finite_timing.get("wall_clock_limit_s")
             != programme.authorized_absolute_wall_limit_s
+            or finite_timing.get("milestone_interval_qualified_s") != 21_600
+            or finite_timing.get("milestones_qualified_s")
+            != list(range(21_600, programme.qualified_duration_s + 1, 21_600))
             or finite_timing.get("minimum_final_response_reserve_s") != 1500
             or finite_timing.get("extension") != "forbidden"
             or finite_timing.get("inherited_24h_or_12h_duration") is not False
+            or controller_inhibit.get("alternation_or_low_efficiency")
+            != "latch_controller_authority_inhibited_acquisition_continues"
             or controller_inhibit.get("host_abort") is not False
             or controller_inhibit.get("endpoint_verdict")
             != "cx323_d9_d6_72h_hybrid_authority_not_sustained"

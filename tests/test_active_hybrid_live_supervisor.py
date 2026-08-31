@@ -336,14 +336,39 @@ def test_cx323_runtime_dispatches_its_persistent_maintenance_envelope() -> None:
     ]
 
 
-def test_cx323_runtime_rejects_a_changed_finite_policy_envelope(
+@pytest.mark.parametrize(
+    ("section", "field", "changed_value"),
+    (
+        ("maintenance_selection", "requires_tight_state", "OUTSIDE"),
+        ("maintenance_selection", "requires_legacy_phase_material", True),
+        ("maintenance_selection", "frontier_support", "[opening_closing]"),
+        (
+            "maintenance_selection",
+            "selected_frequency_estimator",
+            "different_estimator",
+        ),
+        (
+            "live_controller_inhibit",
+            "alternation_or_low_efficiency",
+            "host_abort",
+        ),
+        ("finite_timing", "qualified_clock", "wall_clock"),
+        ("finite_timing", "qualification_deadline_s", 3_600),
+        ("finite_timing", "milestone_interval_qualified_s", 3_600),
+        ("finite_timing", "wall_clock_limit_s", 24 * 3_600),
+    ),
+)
+def test_cx323_runtime_rejects_changed_exact_policy_semantics(
     tmp_path: Path,
+    section: str,
+    field: str,
+    changed_value: object,
 ) -> None:
     changed_path = tmp_path / "changed_cx323_policy.json"
     changed = json.loads(
         CX323_D9_D6_72H_PROGRAMME.policy_path.read_text(encoding="utf-8")
     )
-    changed["finite_timing"]["wall_clock_limit_s"] = 24 * 3600
+    changed[section][field] = changed_value
     changed_path.write_text(
         json.dumps(changed, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

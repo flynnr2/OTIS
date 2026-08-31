@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from hashlib import sha256
+from io import StringIO
 import json
 from pathlib import Path
 
@@ -42,6 +43,29 @@ def _binding(path: Path) -> dict[str, object]:
         "sha256": sha256(path.read_bytes()).hexdigest(),
         "size_bytes": path.stat().st_size,
     }
+
+
+def test_supervisor_startup_exit_reports_process_output_without_fifo_timeout(
+    tmp_path: Path,
+) -> None:
+    class ExitedSupervisor:
+        returncode = 17
+        stdout = StringIO("exact startup identity mismatch\n")
+
+        @staticmethod
+        def poll() -> int:
+            return 17
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "exited before host-abort FIFO: exit=17; "
+            "exact startup identity mismatch"
+        ),
+    ):
+        rehearsal._supervisor_and_abort_ready(
+            ExitedSupervisor(), tmp_path / "host_abort.fifo"  # type: ignore[arg-type]
+        )
 
 
 def test_cx323_rehearsal_and_activation_share_one_exact_coverage_contract() -> None:
@@ -219,6 +243,8 @@ def test_cx323_fixture_uses_its_own_identity_and_ahm_lifecycle() -> None:
     decisions, transactions, summary, maintenance = (
         rehearsal._cx323_maintenance_transaction_fixture(bundle)
     )
+    estimates = rehearsal._cx322_selected_estimate_fixture(decisions, bundle)
+    policy_document = json.loads(policy_path.read_text(encoding="utf-8"))
 
     assert summary["applications"] and len(summary["applications"]) == 2
     assert all(
@@ -238,6 +264,15 @@ def test_cx323_fixture_uses_its_own_identity_and_ahm_lifecycle() -> None:
     assert all(
         set(row) == set(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
         for row in maintenance
+    )
+    assert all(
+        row["estimator_version"]
+        == policy_document["maintenance_selection"][
+            "selected_frequency_estimator"
+        ]
+        and row["config_hash"]
+        == policy_document["bindings"]["frequency_estimator"]["sha256"]
+        for row in estimates
     )
 
 
