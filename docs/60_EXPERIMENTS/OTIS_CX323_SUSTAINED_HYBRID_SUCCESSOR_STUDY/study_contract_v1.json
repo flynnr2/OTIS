@@ -1,8 +1,13 @@
 {
   "schema_version": 1,
   "contract_id": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V1",
-  "contract_sha256": "fdb0d247c1f4e744a16c1df4d9ddabf1ba924d891d1023e619f2ae7422f4e359",
+  "contract_sha256": "8041ebb49269fdf5b81ca23e6e5637029d356e83af6e48428ab5cc88f8df827c",
   "status": "prospectively_frozen_before_candidate_results",
+  "pre_execution_draft_superseded": {
+    "contract_sha256": "fdb0d247c1f4e744a16c1df4d9ddabf1ba924d891d1023e619f2ae7422f4e359",
+    "reason": "independent_pre_execution_review_required_executable_transaction_fixtures_and_complete_request_ordering",
+    "candidate_execution_under_superseded_draft": false
+  },
   "question": "Can one minimal phase-preserving maintenance rule prevent the demonstrated 600-second count-quantization alternation while retaining bounded authority for persistent real drift?",
   "source": {
     "run_id": "hybrid_72h_attempt4",
@@ -65,6 +70,13 @@
     "phase_material_path": "unchanged_legacy_numerical_and_transaction_semantics",
     "outside_tight_frequency_acquisition_path": "unchanged_legacy_numerical_and_transaction_semantics"
   },
+  "architecture_binding": {
+    "path": "docs/10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md",
+    "file_sha256": "5d172340e486849404c72d956c40371f55e31b5b0f244c8acd34f7d899f60ab7",
+    "current_selected_direction": "persistent_same_sign_evidence_plus_provenance_bearing_fractional_correction_debt",
+    "no_debt_selection_gate": "selection_remains_non_effective_until_this_exact_architecture_decision_is_prospectively_amended_and_the_amendment_is_bound_by_the_successor_policy_contract",
+    "tagged_debt_selection_gate": "selection_remains_non_effective_until_the_phase_priority_maintenance_separation_is_prospectively_recorded_in_this_architecture_decision"
+  },
   "exact_maintenance_observation": {
     "unit": "1_over_21600_hz",
     "frequency_centre_units": "-36_multiplied_by_accumulated_edge_error_counts",
@@ -73,11 +85,26 @@
     "half_width_units": 18,
     "closed_interval": "combined_centre_units_plus_or_minus_18",
     "sign_rule": "positive_only_if_lower_bound_gt_0_negative_only_if_upper_bound_lt_0_otherwise_zero_containing",
+    "nearest_zero_interval_units": "lower_bound_when_strict_sign_is_positive_or_absolute_upper_bound_when_strict_sign_is_negative",
     "positive_plant_gain_maximum_hz_per_code_conservative_rational": "173340101/1000000000000",
+    "raw_fractional_demand_codes": "combined_centre_units*1000000000000/(21600*2*173340101)",
     "safe_cap_formula": "floor(nearest_zero_interval_units*1000000000000/(21600*173340101))",
     "one_count_absolute_cap_codes": 4,
     "general_cap_codes": 21,
-    "rounding": "half_away_from_zero"
+    "rounding": "half_away_from_zero",
+    "legacy_phase_material_classification": "while_phase_authorized_compare_the_legacy_combined_integer_delta_to_the_legacy_frequency_only_integer_delta_after_legacy_step_and_range_limiting_but_before_cadence_budget_direction_and_chatter_gates;nonzero_phase_and_unequal_deltas_is_phase_material",
+    "request_order": [
+      "run_unchanged_identity_health_transaction_phase_state_and_applied_code_epoch_checks",
+      "compute_legacy_frequency_phase_combined_and_frequency_only_integer_deltas",
+      "if_outside_tight_frequency_acquisition_or_legacy_phase_material_reset_maintenance_state_and_execute_the_unchanged_legacy_path",
+      "otherwise_compute_the_exact_TIGHT_INSIDE_phase_nonmaterial_interval_and_advance_or_reset_persistence",
+      "if_cadence_is_ineligible_hold_without_fractional_debt_accrual",
+      "after_persistence_and_cadence_compute_raw_fractional_demand_and_candidate_specific_committed_residual",
+      "round_half_away_then_clamp_magnitude_by_no_zero_cross_cap_21_code_step_range_headroom_and_remaining_cumulative_budget",
+      "apply_unchanged_phase_direction_coherence_application_count_cumulative_budget_and_chatter_guards",
+      "a_zero_final_request_never_accrues_debt;all_holds_preserve_prior_committed_residual_without_accrual",
+      "for_nonzero_request_leave_committed_residual_unchanged_until_exact_acceptance_application_and_first_consumer_then_back_calculate_and_bound_the_confirmed_residual"
+    ]
   },
   "persistence": {
     "required_consecutive_intervals": 2,
@@ -102,7 +129,8 @@
       "settling_or_reference_invalidity",
       "authority_loss"
     ],
-    "metadata_hold": "freeze_without_accrual_then_require_one_fresh_complete_post_requalification_interval"
+    "cadence_behavior": "eligible_intervals_may_advance_persistence_while_cadence_is_held_but_create_no_debt_or_request;the_first_cadence_eligible_same_identity_interval_may_evaluate_after_count_reaches_two",
+    "metadata_hold": "freeze_without_accrual_then_reset_persistence_and_require_two_fresh_complete_post_requalification_intervals_before_a_request"
   },
   "candidates": [
     {
@@ -123,12 +151,12 @@
       "semantics": "same_phase_priority_persistence_and_cap_plus_bounded_provenance_bearing_fractional_maintenance_debt",
       "debt": {
         "representation": "signed_picocodes_integer_1e_minus_12_code",
-        "raw_increment": "combined_centre_units*1000000000000/(21600*2*173340101)",
+        "raw_increment": "use_exact_maintenance_observation.raw_fractional_demand_codes_only_after_persistence_and_cadence",
         "maximum_absolute_committed_residual_codes": "1/2",
         "component_tags": ["FLL", "PLL"],
         "no_pre_persistence_accrual": true,
         "no_cadence_held_accrual": true,
-        "zero_request_commits_bounded_residual_without_ACT_transaction": true,
+        "zero_final_request_accrues_or_commits_new_debt": false,
         "nonzero_application_commits_residual_only_after_exact_application_and_first_consumer": true,
         "request_rejection_or_expiry_preserves_prior_committed_state": true,
         "safe_cap_range_and_step_removal_is_back_calculated_not_hidden": true,
@@ -164,9 +192,9 @@
       {"case_id": "persistent_negative_one_count", "counts": [-1, -1], "expected_delta_sign": 1, "maximum_absolute_delta_codes": 4},
       {"case_id": "zero_containing_combined_interval", "counts": [0, 0], "expected_applications": 0},
       {"case_id": "outside_tight_two_count_recovery", "counts": [2, 2], "expected_path": "unchanged_frequency_acquisition"},
-      {"case_id": "phase_material_rounding_boundary", "counts": [1, 1], "expected_path": "unchanged_phase_material"},
+      {"case_id": "phase_material_rounding_boundary", "observations": [{"accumulated_edge_error_counts": -1, "relative_phase_cycles": -5, "expected_combined_centre_units": 41, "expected_legacy_frequency_only_delta_codes": 5, "expected_legacy_combined_delta_codes": 5, "expected_path": "maintenance_phase_nonmaterial"}, {"accumulated_edge_error_counts": -1, "relative_phase_cycles": -6, "expected_combined_centre_units": 42, "expected_legacy_frequency_only_delta_codes": 5, "expected_legacy_combined_delta_codes": 6, "expected_path": "unchanged_phase_material"}]},
       {"case_id": "real_alternating_application_guard", "counts": [4, -4, 4, -4], "tight_states": ["OUTSIDE", "OUTSIDE", "OUTSIDE", "OUTSIDE"], "expected_guard": "prospective_repeated_alternation"},
-      {"case_id": "bounded_debt_residual_release", "combined_interval_centre_units": [40, 41, 41], "expected_no_debt_final_delta_codes": 5, "expected_tagged_debt_final_delta_codes": 6, "expected_final_safe_cap_codes": 6, "expected_additional_transactions": 0}
+      {"case_id": "bounded_debt_residual_release", "initial_state": {"committed_debt_picocodes": 0, "persistence_count": 0, "applied_code": 43085, "dac_epoch": 13, "cadence_eligible": true, "transaction_outstanding": false}, "observations": [{"accumulated_edge_error_counts": -1, "relative_phase_cycles": -4, "combined_interval_centre_units": 40, "expected_event": "persistence_first_interval_hold"}, {"accumulated_edge_error_counts": -1, "relative_phase_cycles": -4, "combined_interval_centre_units": 40, "expected_no_debt_delta_codes": 5, "expected_tagged_debt_delta_codes": 5, "expected_safe_cap_codes": 5}, {"event": "exact_accept_application_first_consumer_and_response", "actual_applied_code": 43090, "actual_dac_epoch": 14, "expected_tagged_debt_residual": "1599086365/4680182727_code"}, {"event": "advance_to_next_cadence_eligible_boundary"}, {"accumulated_edge_error_counts": -1, "relative_phase_cycles": -5, "combined_interval_centre_units": 41, "expected_event": "persistence_first_interval_hold"}, {"accumulated_edge_error_counts": -1, "relative_phase_cycles": -5, "combined_interval_centre_units": 41, "expected_no_debt_delta_codes": 5, "expected_tagged_debt_delta_codes": 6, "expected_safe_cap_codes": 6, "expected_candidate_total_debt_codes": "1008299495/173340101"}], "distance_metric": "absolute_exact_rational_difference_between_candidate_total_debt_codes_and_final_integer_delta_codes", "expected_no_debt_final_distance_codes": "2224086365/4680182727", "expected_tagged_debt_final_distance_codes": "31741111/173340101", "expected_transactions_per_candidate": 2}
     ],
     "gain_cases": [
       "16357422282453626/100000000000000000000",
@@ -174,19 +202,18 @@
       "173340101/1000000000000"
     ],
     "identity_and_fault_cases": [
-      "source_overlap",
-      "source_gap",
-      "capture_session_change",
-      "applied_code_change",
-      "DAC_epoch_change",
-      "phase_epoch_change",
-      "settling_hold",
-      "metadata_hold_and_causal_requalification",
-      "reference_invalidity",
-      "request_rejection",
-      "application_and_first_consumer",
-      "response_completion",
-      "unknown_application_or_epoch"
+      {"case_id": "source_overlap", "input": "opening_frontier_lte_previous_closing_frontier", "expected": "persistence_reset_no_debt_accrual_no_request"},
+      {"case_id": "source_gap", "input": "opening_frontier_ne_previous_closing_frontier_plus_one_selected_window", "expected": "persistence_reset_no_debt_accrual_no_request"},
+      {"case_id": "capture_session_change", "input": "new_capture_session", "expected": "maintenance_state_reset_then_common_session_policy_applies"},
+      {"case_id": "applied_code_or_DAC_epoch_change_without_owned_application", "input": "contradictory_code_or_epoch", "expected": "actuator_provenance_fail_static"},
+      {"case_id": "phase_epoch_change", "input": "new_valid_phase_epoch", "expected": "persistence_reset_and_PLL_debt_discarded_without_invalidating_FLL_evidence"},
+      {"case_id": "settling_hold", "input": "selected_window_intersects_900s_post_application_exclusion", "expected": "persistence_reset_no_debt_accrual_no_request"},
+      {"case_id": "metadata_hold_and_causal_requalification", "input": "metadata_hold_then_fresh_same_receiver_metadata_then_two_causally_later_complete_windows", "expected": "debt_frozen_in_hold_persistence_reset_first_window_hold_second_window_eligible"},
+      {"case_id": "reference_invalidity", "input": "D14_or_D8_authority_invalid", "expected": "maintenance_state_reset_and_existing_authoritative_fault_or_hold_semantics_unchanged"},
+      {"case_id": "request_rejection_or_expiry", "input": "unaccepted_request_rejected_or_expired", "expected": "prior_committed_debt_unchanged_pending_cleared"},
+      {"case_id": "application_and_first_consumer", "input": "exact_accept_application_code_epoch_and_first_consumer", "expected": "back_calculated_residual_committed_and_persistence_reset"},
+      {"case_id": "response_completion", "input": "fresh_exact_response_horizon", "expected": "response_pending_cleared_without_changing_committed_residual"},
+      {"case_id": "unknown_application_or_epoch", "input": "deadline_without_exact_application_or_contradictory_epoch", "expected": "actuator_provenance_fail_static"}
     ]
   },
   "selection_rule": {
@@ -198,8 +225,8 @@
       "unchanged_alternation_and_low_efficiency_guards",
       "same_frontier_no_terminal_and_nonincreasing_actuator_cost"
     ],
-    "tagged_debt_preference": "select_tagged_debt_only_if_all_common_gates_pass_and_the_frozen_bounded_debt_residual_release_case_uses_confirmed_residual_to_issue_the_strictly_closer_safe_capped_integer_request_without_an_additional_transaction_and_without_increasing_attempt4_same_frontier_applications_movement_or_reversals",
-    "otherwise": "select_no_debt_only_with_a_prospective_amendment_to_the_current_correction_debt_architecture_decision",
+    "tagged_debt_preference": "select_tagged_debt_only_if_all_common_gates_pass_and_the_frozen_bounded_debt_residual_release_case_has_strictly_smaller_distance_metric_than_no_debt_with_the_same_transaction_count_and_without_increasing_attempt4_same_frontier_applications_movement_or_reversals",
+    "otherwise": "select_no_debt_only_after_prospectively_amending_docs/10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md_at_the_bound_identity_to_remove_mandatory_correction_debt_and_binding_that_amendment_in_the_selected_policy_contract",
     "no_selection": "if_neither_candidate_passes_all_common_gates"
   },
   "successor_identifiers_if_selected": {
