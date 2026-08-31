@@ -11,12 +11,16 @@ from host.otis_tools import active_hybrid_activation as activation
 from host.otis_tools import active_hybrid_live_analyze as live_analyze
 from host.otis_tools import active_hybrid_live_rehearsal as rehearsal
 from host.otis_tools.active_hybrid_programme_contract import (
+    CX323_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_PROGRAMME,
 )
 from host.otis_tools.active_hybrid_live_analyze import (
     _response_dependent_consumer_propagation,
+)
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX323_REHEARSAL_COVERAGE,
 )
 from host.otis_tools.active_status_contract import (
     complete_active_status_snapshots,
@@ -26,6 +30,7 @@ from host.otis_tools.capture_serial import CsvRecordSplitter
 from host.otis_tools.contracts import (
     ACTIVE_HYBRID_DECISION_V1_FIELDS,
     ACTIVE_HYBRID_DECISION_V2_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
     ACTIVE_TRANSACTION_V2_FIELDS,
     CONTRACT_FIELDS,
 )
@@ -37,6 +42,18 @@ def _binding(path: Path) -> dict[str, object]:
         "sha256": sha256(path.read_bytes()).hexdigest(),
         "size_bytes": path.stat().st_size,
     }
+
+
+def test_cx323_rehearsal_and_activation_share_one_exact_coverage_contract() -> None:
+    assert rehearsal.CX323_REHEARSAL_COVERAGE is CX323_REHEARSAL_COVERAGE
+    assert activation.CX323_REHEARSAL_COVERAGE is CX323_REHEARSAL_COVERAGE
+    assert CX323_REHEARSAL_COVERAGE == (
+        "cx323_exact_AT2_AH2_AHM_atomic_capture",
+        "cx323_repeated_controller_transaction",
+        "cx323_GNSS_hold_causal_requalification",
+        "cx323_exact_72h_endpoint_clock",
+        "cx323_authoritative_capture_fault_terminal",
+    )
 
 
 def _fixture(tmp_path: Path) -> tuple[Path, dict, Path, dict]:
@@ -183,6 +200,45 @@ def test_campaign18_fixture_defers_a_zero_authority_consumer_after_requalificati
     assert _response_dependent_consumer_propagation(
         transactions, mutated
     )["exact"] is False
+
+
+def test_cx323_fixture_uses_its_own_identity_and_ahm_lifecycle() -> None:
+    policy_path = CX323_D9_D6_72H_PROGRAMME.policy_path
+    bundle = {
+        "programme_id": CX323_D9_D6_72H_PROGRAMME.programme_id,
+        "firmware": {
+            "build_identity": "a" * 64 + ":" + "b" * 64,
+            "profile_id": CX323_D9_D6_72H_PROGRAMME.profile_id,
+        },
+        "policy": {
+            "path": str(policy_path),
+            "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+        },
+    }
+
+    decisions, transactions, summary, maintenance = (
+        rehearsal._cx323_maintenance_transaction_fixture(bundle)
+    )
+
+    assert summary["applications"] and len(summary["applications"]) == 2
+    assert all(
+        row["run_identity"] == CX323_D9_D6_72H_PROGRAMME.runtime_run_identity
+        and row["profile_identity"] == CX323_D9_D6_72H_PROGRAMME.profile_id
+        for row in [*decisions, *transactions, *maintenance]
+    )
+    assert maintenance[0]["event"] == "policy_activation"
+    assert maintenance[0]["policy_id"] == CX323_D9_D6_72H_PROGRAMME.policy_id
+    assert {row["event"] for row in maintenance} >= {
+        "decision",
+        "application_first_consumer",
+        "response_complete",
+        "gnss_metadata_hold_enter",
+        "gnss_metadata_requalified",
+    }
+    assert all(
+        set(row) == set(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
+        for row in maintenance
+    )
 
 
 def test_campaign18_exact_sidecars_round_trip_through_capture_splitter(

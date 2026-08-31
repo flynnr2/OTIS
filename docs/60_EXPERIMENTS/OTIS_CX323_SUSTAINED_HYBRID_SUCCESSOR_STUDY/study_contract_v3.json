@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V3",
+  "contract_sha256": "32a7f47330404e1cf7ea724517643deff078e74d3e1aa50127c378bced5f4d53",
+  "status": "active_prospective_native_boundary_correction",
+  "base_contract": {
+    "contract_id": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V2",
+    "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v2.json",
+    "file_sha256": "fc46b30e2bd323cdcbfdefa84fc7a35943584007120f3e1b9b96bbe98ba379af",
+    "semantic_sha256": "20b729dce477349704ce09e7cacf14047525450d50230c8f114f75959289d707"
+  },
+  "discovery": {
+    "stage": "pre_integration_native_maximum_input_parity_review",
+    "anomaly": "V2 multiplied the signed_64 count magnitude by 36 but omitted the independently clamped plus_or_minus_36 phase term from the combined-centre sanitizer bound",
+    "physical_range_affected": false,
+    "selection_or_candidate_order_affected": false,
+    "native_boundary_contract_affected": true
+  },
+  "corrected_fixed_point_boundary": {
+    "input_count_domain": "signed_64_bit_accumulated_edge_error_counts",
+    "frequency_centre_units": "-36*accumulated_edge_error_counts",
+    "phase_centre_units": "clamp(-relative_phase_cycles,-36,+36)",
+    "combined_centre_units": "frequency_centre_units+phase_centre_units",
+    "maximum_positive_combined_centre_units": 332041393326771929124,
+    "minimum_negative_combined_centre_units": -332041393326771929088,
+    "maximum_absolute_combined_centre_units": 332041393326771929124,
+    "maximum_absolute_frequency_only_centre_units": 332041393326771929088,
+    "picocode_reduced_numerator": 625000000000000000000,
+    "picocode_reduced_denominator": 4680182727,
+    "maximum_q_times_reduced_numerator": 44341403516250000000000000000000,
+    "maximum_r_times_reduced_numerator": 1542141888750000000000000000000,
+    "maximum_rounded_absolute_picocode_result": 44341403516579504632341249183880,
+    "signed_128_maximum": 170141183460469231731687303715884105727,
+    "overflow_safe": true
+  },
+  "mandatory_native_parity_cases": [
+    {
+      "case_id": "maximum_positive_combined_centre",
+      "accumulated_edge_error_counts": -9223372036854775808,
+      "phase_centre_units": 36,
+      "combined_centre_units": 332041393326771929124,
+      "expected_result": "accepted_bit_exact"
+    },
+    {
+      "case_id": "maximum_negative_combined_centre",
+      "accumulated_edge_error_counts": 9223372036854775807,
+      "phase_centre_units": -36,
+      "combined_centre_units": -332041393326771929088,
+      "expected_result": "accepted_bit_exact"
+    },
+    {
+      "case_id": "beyond_complete_combined_domain",
+      "absolute_combined_centre_units": 332041393326771929125,
+      "expected_result": "rejected_before_conversion"
+    }
+  ],
+  "unchanged_v2_semantics": {
+    "selected_candidate": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+    "frontier_lifecycle_and_debt_semantics": "unchanged",
+    "fixed_point_conversion_algorithm": "unchanged",
+    "all_offline_selection_fixtures_and_results": "unchanged",
+    "comparison_report_semantic_sha256": "8096abbee3ee8295fc6cb53a6d0c6ca9af876bf529d464521e55776e105fb982",
+    "native_fixed_point_parity_remains_promotion_gate": true
+  },
+  "execution_rule": {
+    "candidate_selection_reexecution_required": false,
+    "native_boundary_and_maximum_input_parity_required": true,
+    "selected_profile_must_bind_this_v3_contract_before_live_bundle": true,
+    "physical_authority_from_this_correction": false
+  }
+}

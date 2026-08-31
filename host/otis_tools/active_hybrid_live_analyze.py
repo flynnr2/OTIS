@@ -28,7 +28,6 @@ from .active_hybrid_activation import (
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
-    CX322_D9_D6_72H_PROGRAMME,
     programme_from_mapping,
     progressive_checkpoint_contract,
 )
@@ -38,10 +37,11 @@ from .active_hybrid_live_supervisor import (
 from .active_hybrid_evidence_guard import (
     ResponseCheckpointRejected,
     _cx321_natural_replay_handoff,
+    replay_cx323_maintenance_history,
     replay_active_hybrid_history,
     replay_response_before_acknowledgement,
 )
-from .active_hybrid_policy import load_policy
+from .active_hybrid_policy import CX323Policy, load_policy
 from .active_control_supervisor import RP2040_TIMER0_TICKS_PER_SECOND
 from .active_status_contract import latest_complete_health
 from .active_transactions import (
@@ -60,7 +60,11 @@ from .campaign_finalization import (
     _contract_path,
     _host_markers,
 )
-from .contracts import CsvValidationContext, validate_csv
+from .contracts import (
+    CsvValidationContext,
+    TIGHT_DEADBAND_POLICY_SHA256,
+    validate_csv,
+)
 from .control_evidence_replay import (
     _capsules_exact,
     _measurement_replay,
@@ -147,6 +151,92 @@ def _tight_deadband_policy_sha256(policy_document: dict[str, Any]) -> str:
     return identity
 
 
+def _analysis_policy_bindings(
+    *,
+    programme: ActiveHybridProgramme,
+    policy: object,
+    policy_document: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize analyzer inputs at the programme boundary.
+
+    CX323 deliberately does not impersonate the historical policy dataclass.
+    Its identities come from its own frozen profile bindings and its response
+    checkpoint mode comes from the programme descriptor.  Historical
+    programmes retain their original object-backed values unchanged.
+    """
+
+    if programme.persistent_maintenance_policy:
+        if not isinstance(policy, CX323Policy):
+            raise ValueError("CX323 analyzer selected a non-CX323 policy")
+        bindings = policy_document.get("bindings")
+        if not isinstance(bindings, dict):
+            raise ValueError("CX323 analyzer policy bindings are unavailable")
+
+        def binding_sha256(name: str) -> str:
+            binding = bindings.get(name)
+            identity = binding.get("sha256") if isinstance(binding, dict) else None
+            if not isinstance(identity, str) or not re.fullmatch(
+                r"[0-9a-f]{64}", identity
+            ):
+                raise ValueError(f"CX323 analyzer binding differs: {name}")
+            return identity
+
+        return {
+            "frequency_estimator_sha256": binding_sha256("frequency_estimator"),
+            "phase_estimator_sha256": binding_sha256("phase_estimator"),
+            "plant_model_sha256": binding_sha256("plant_model"),
+            "response_policy_sha256": binding_sha256("response_policy"),
+            "tight_deadband_policy_sha256": TIGHT_DEADBAND_POLICY_SHA256,
+            "settling_exclusion_s": policy.settling_exclusion_s,
+            "response_checkpoint_observational": (
+                programme.response_checkpoint_observational
+            ),
+            "policy_sha256": policy.policy_sha256,
+        }
+
+    # Keep historical behavior exact: these accesses intentionally fail if an
+    # unsupported historical policy object is supplied.
+    return {
+        "frequency_estimator_sha256": policy.frequency_estimator_sha256,  # type: ignore[attr-defined]
+        "phase_estimator_sha256": policy.phase_estimator_sha256,  # type: ignore[attr-defined]
+        "plant_model_sha256": policy.plant_model_sha256,  # type: ignore[attr-defined]
+        "response_policy_sha256": policy.response_policy_sha256,  # type: ignore[attr-defined]
+        "tight_deadband_policy_sha256": _tight_deadband_policy_sha256(
+            policy_document
+        ),
+        "settling_exclusion_s": policy.settling_exclusion_s,  # type: ignore[attr-defined]
+        "response_checkpoint_observational": (
+            policy.response_checkpoint_observational  # type: ignore[attr-defined]
+        ),
+        "policy_sha256": policy.policy_sha256,  # type: ignore[attr-defined]
+    }
+
+
+def _cx323_descriptive_metric_contract() -> dict[str, Any]:
+    """Retain legacy descriptive plots without borrowing an acceptance gate."""
+
+    return {
+        "comparison_observations": 1_800,
+        "comparison_segment": (
+            "last_1800s_continuous_frequency_only_PHASE_QUALIFY_residence_"
+            "immediately_before_first_phase_material_application"
+        ),
+        "active_segment": (
+            "from_first_phase_material_application_until_terminal_or_qualified_endpoint"
+        ),
+        "primary_phase_metric": (
+            "absolute_OLS_slope_of_raw_relative_phase_cycles_per_second_"
+            "within_each_unjoined_phase_epoch"
+        ),
+        "phase_improvement_minimum_fraction": 0.1,
+        "phase_improvement_minimum_cycles_over_matched_1800s": 1.0,
+        "maximum_frequency_RMS_degradation_hz": 1.0 / 600.0,
+        "maximum_tight_occupancy_fraction_degradation": 0.1,
+        "minimum_material_phase_applications": 2,
+        "role": "descriptive_non_gating_for_CX323_integrated_long_run",
+    }
+
+
 def _sha256_file(path: Path) -> str:
     digest = sha256()
     with path.open("rb") as handle:
@@ -163,14 +253,14 @@ def _canonical_sha256(value: dict[str, Any]) -> str:
     ).hexdigest()
 
 
-def campaign18_exact_timing_sidecar_join(
+def exact_lifecycle_timing_sidecar_join(
     *,
     transactions: list[dict[str, str]],
     decisions: list[dict[str, str]],
     transaction_timings: list[dict[str, str]],
     decision_timings: list[dict[str, str]],
 ) -> dict[str, Any]:
-    """Prove the mandatory one-to-one Campaign18 V1/V2 lifecycle join."""
+    """Prove the mandatory one-to-one V1/V2 integrated lifecycle join."""
 
     mismatches: list[str] = []
 
@@ -298,15 +388,32 @@ def campaign18_exact_timing_sidecar_join(
     }
 
 
+def campaign18_exact_timing_sidecar_join(
+    *,
+    transactions: list[dict[str, str]],
+    decisions: list[dict[str, str]],
+    transaction_timings: list[dict[str, str]],
+    decision_timings: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Historical compatibility name for the shared exact lifecycle join."""
+
+    return exact_lifecycle_timing_sidecar_join(
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+    )
+
+
 def require_campaign18_exact_timing_sidecars(
     run_dir: Path, manifest: RunManifest
 ) -> dict[str, Any]:
-    """Reject Campaign18 evidence before sealing unless exact sidecars join."""
+    """Compatibility entry point for descriptor-required exact sidecars."""
 
     programme = programme_from_mapping(manifest.data)
-    if programme is not CX322_D9_D6_72H_PROGRAMME:
+    if not programme.integrated_long_run:
         return {"required": False, "exact": True}
-    result = campaign18_exact_timing_sidecar_join(
+    result = exact_lifecycle_timing_sidecar_join(
         transactions=_read_csv(_contract_path(manifest, "active_transactions_v1")),
         decisions=_read_csv(_contract_path(manifest, "active_hybrid_decisions_v1")),
         transaction_timings=_read_csv(
@@ -318,10 +425,230 @@ def require_campaign18_exact_timing_sidecars(
     )
     if not result["exact"]:
         raise ValueError(
-            "Campaign18 exact AT2/AH2 lifecycle join failed: "
+            "integrated exact AT2/AH2 lifecycle join failed: "
             + json.dumps(result, sort_keys=True)
         )
     return {"required": True, **result}
+
+
+def validate_maintenance_evidence_stream(
+    *,
+    maintenance_rows: list[dict[str, str]],
+    transactions: list[dict[str, str]],
+    decisions: list[dict[str, str]],
+    transaction_timings: list[dict[str, str]],
+    decision_timings: list[dict[str, str]],
+    programme: ActiveHybridProgramme,
+    expected_build_identity: str,
+    expected_active_policy_sha256: str,
+) -> dict[str, Any]:
+    """Validate the complete CX323 AHM stream against canonical lifecycles.
+
+    AHM is controller-state evidence, so its identity is checked against the
+    selected descriptor as well as against each AHY/AH2 and ACT/AT2 relation.
+    This prevents a coherent historical Campaign18 stream from being accepted
+    merely because its internal joins agree.
+    """
+
+    if (
+        not programme.persistent_maintenance_policy
+        or programme.maintenance_record_contract != "active_hybrid_maintenance_v1"
+        or programme.maintenance_record_type != "AHM"
+    ):
+        return {"required": False, "exact": True, "mismatches": []}
+
+    mismatches: list[str] = []
+
+    def keyed(
+        rows: list[dict[str, str]], field: str, label: str
+    ) -> dict[int, dict[str, str]]:
+        result: dict[int, dict[str, str]] = {}
+        for row_number, row in enumerate(rows, start=1):
+            try:
+                key = int(row[field])
+            except (KeyError, TypeError, ValueError):
+                mismatches.append(f"{label} row {row_number} {field} is malformed")
+                continue
+            if key <= 0 or key in result:
+                mismatches.append(f"{label} {field} is not unique and positive: {key}")
+                continue
+            result[key] = row
+        return result
+
+    ahy = keyed(decisions, "hybrid_record_sequence", "AHY")
+    ah2 = keyed(decision_timings, "hybrid_record_sequence", "AH2")
+    act = keyed(transactions, "transaction_record_sequence", "ACT")
+    at2 = keyed(transaction_timings, "transaction_record_sequence", "AT2")
+    expected_identity = {
+        "run_identity": programme.runtime_run_identity,
+        "build_identity": expected_build_identity,
+        "profile_identity": programme.profile_id,
+    }
+
+    def exact_identity(row: dict[str, str], label: str, row_number: int) -> None:
+        for field, expected in expected_identity.items():
+            if row.get(field) != expected:
+                mismatches.append(
+                    f"{label} row {row_number} {field} differs: "
+                    f"{row.get(field)!r} != {expected!r}"
+                )
+
+    for label, rows in (("AHY", decisions), ("AH2", decision_timings), ("ACT", transactions), ("AT2", transaction_timings)):
+        for row_number, row in enumerate(rows, start=1):
+            exact_identity(row, label, row_number)
+
+    previous_record = 0
+    seen_bursts: set[int] = set()
+    event_counts: dict[str, int] = {}
+    for row_number, row in enumerate(maintenance_rows, start=1):
+        exact_identity(row, "AHM", row_number)
+        if row.get("record_type") != programme.maintenance_record_type:
+            mismatches.append(f"AHM row {row_number} record_type differs")
+        if row.get("policy_id") != programme.policy_id:
+            mismatches.append(f"AHM row {row_number} policy_id differs")
+        if row.get("active_policy_sha256") != expected_active_policy_sha256:
+            mismatches.append(f"AHM row {row_number} active_policy_sha256 differs")
+        if row.get("time_domain") != "rp2040_timer0_extended":
+            mismatches.append(f"AHM row {row_number} time_domain differs")
+        try:
+            record = int(row["maintenance_record_sequence"])
+            burst = int(row["evidence_burst_sequence"])
+            ordinal = int(row["evidence_burst_record_ordinal"])
+            count = int(row["evidence_burst_record_count"])
+        except (KeyError, TypeError, ValueError):
+            mismatches.append(f"AHM row {row_number} record or burst identity is malformed")
+            continue
+        if record != previous_record + 1:
+            mismatches.append(f"AHM maintenance_record_sequence is not contiguous at {record}")
+        previous_record = record
+        if burst <= 0 or burst in seen_bursts or ordinal <= 0 or ordinal > count:
+            mismatches.append(f"AHM row {row_number} burst identity is not exact")
+        seen_bursts.add(burst)
+        event = row.get("event", "")
+        event_counts[event] = event_counts.get(event, 0) + 1
+        if event == "policy_activation":
+            if any(
+                row.get(field, "0") != "0"
+                for field in (
+                    "hybrid_record_sequence",
+                    "hybrid_timing_record_sequence",
+                    "decision_sequence",
+                    "transaction_record_sequence",
+                    "transaction_timing_record_sequence",
+                    "request_sequence",
+                )
+            ) or count != 1:
+                mismatches.append(f"AHM row {row_number} policy activation join differs")
+            continue
+
+        try:
+            hybrid_record = int(row["hybrid_record_sequence"])
+            hybrid_timing = int(row["hybrid_timing_record_sequence"])
+        except (KeyError, TypeError, ValueError):
+            mismatches.append(f"AHM row {row_number} AHY/AH2 join is malformed")
+            continue
+        empty_async_join = (
+            event in {"gnss_metadata_hold_enter", "gnss_metadata_requalified", "fail_static"}
+            and not ahy
+            and hybrid_record == hybrid_timing == 0
+            and row.get("decision_sequence", "0") == "0"
+            and row.get("source_first_sequence", "0") == "0"
+            and row.get("source_last_sequence", "0") == "0"
+        )
+        if not empty_async_join:
+            source = ahy.get(hybrid_record)
+            timing = ah2.get(hybrid_record)
+            try:
+                timing_sequence = (
+                    None
+                    if timing is None
+                    else int(timing.get("timing_record_sequence", ""))
+                )
+            except (TypeError, ValueError):
+                timing_sequence = None
+            if source is None or timing is None or timing_sequence != hybrid_timing:
+                mismatches.append(f"AHM row {row_number} AHY/AH2 join differs")
+            else:
+                for field in (
+                    "decision_sequence",
+                    "capture_session",
+                    "source_first_sequence",
+                    "source_last_sequence",
+                    "run_identity",
+                    "build_identity",
+                    "profile_identity",
+                ):
+                    if row.get(field) != source.get(field) or timing.get(field) != source.get(field):
+                        mismatches.append(f"AHM row {row_number} AHY/AH2 {field} differs")
+
+        transaction_event = row.get("transaction_event")
+        if transaction_event == "none":
+            if any(
+                row.get(field, "0") != "0"
+                for field in (
+                    "transaction_record_sequence",
+                    "transaction_timing_record_sequence",
+                    "request_sequence",
+                    "application_sequence",
+                )
+            ):
+                mismatches.append(f"AHM row {row_number} non-transaction join differs")
+            if event == "decision" and count < 3:
+                mismatches.append(f"AHM row {row_number} decision burst is incomplete")
+            continue
+
+        try:
+            transaction_record = int(row["transaction_record_sequence"])
+            transaction_timing = int(row["transaction_timing_record_sequence"])
+        except (KeyError, TypeError, ValueError):
+            mismatches.append(f"AHM row {row_number} ACT/AT2 join is malformed")
+            continue
+        transaction = act.get(transaction_record)
+        transaction_time = at2.get(transaction_record)
+        try:
+            transaction_timing_sequence = (
+                None
+                if transaction_time is None
+                else int(transaction_time.get("timing_record_sequence", ""))
+            )
+        except (TypeError, ValueError):
+            transaction_timing_sequence = None
+        if (
+            transaction is None
+            or transaction_time is None
+            or transaction.get("event") != transaction_event
+            or transaction_timing_sequence != transaction_timing
+        ):
+            mismatches.append(f"AHM row {row_number} ACT/AT2 join differs")
+        else:
+            for field in (
+                "request_sequence",
+                "decision_sequence",
+                "run_identity",
+                "build_identity",
+                "profile_identity",
+            ):
+                if row.get(field) != transaction.get(field) or transaction_time.get(field) != transaction.get(field):
+                    mismatches.append(f"AHM row {row_number} ACT/AT2 {field} differs")
+            if row.get("application_sequence", "0") != "0" and (
+                row.get("application_sequence") != transaction.get("application_sequence")
+            ):
+                mismatches.append(f"AHM row {row_number} application_sequence differs")
+        minimum_burst = 5 if event == "decision" else 3
+        if count < minimum_burst:
+            mismatches.append(f"AHM row {row_number} transaction burst is incomplete")
+
+    if not maintenance_rows:
+        mismatches.append("AHM stream is empty")
+    elif event_counts.get("policy_activation") != 1:
+        mismatches.append("AHM stream requires exactly one policy_activation")
+    return {
+        "required": True,
+        "exact": not mismatches,
+        "record_count": len(maintenance_rows),
+        "burst_count": len(seen_bursts),
+        "mismatches": mismatches,
+    }
 
 
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
@@ -881,6 +1208,7 @@ def _replay_ahy(
     maximum_applications: int | None = None,
     maximum_cumulative_movement_codes: int | None = None,
     phase_checkpoint_required: bool = True,
+    maintenance_rows: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Replay the complete policy state and both integer request paths."""
 
@@ -904,6 +1232,21 @@ def _replay_ahy(
                 "comparisons": [],
                 "natural_controller_not_reached": True,
             }
+
+    selected_policy = load_policy(policy_path)
+    if isinstance(selected_policy, CX323Policy):
+        if maintenance_rows is None:
+            raise ValueError("CX323 final replay requires retained AHM evidence")
+        return replay_cx323_maintenance_history(
+            decisions,
+            transactions,
+            maintenance_rows,
+            policy_path=policy_path,
+            expected_run_identity=expected_run_identity,
+            expected_build_identity=expected_build_identity,
+            expected_profile_identity=expected_profile_identity,
+            expected_active_policy_sha256=expected_active_policy_sha256,
+        )
 
     return replay_active_hybrid_history(
         decisions,
@@ -965,6 +1308,11 @@ def _response_attestations(
                     else None
                 ),
                 estimates_csv=(estimates_path if estimates_path.is_file() else None),
+                maintenance_csv=(
+                    run_dir / "csv/active_hybrid_maintenance_v1.csv"
+                    if programme.persistent_maintenance_policy
+                    else None
+                ),
                 maximum_applications=programme.authorized_maximum_applications,
                 maximum_cumulative_movement_codes=(
                     programme.authorized_maximum_cumulative_movement_codes
@@ -1841,8 +2189,9 @@ def _classify_decision(
     return "passed", "bounded_active_hybrid_control_passed"
 
 
-def _campaign18_outcome(
+def _integrated_long_run_outcome(
     *,
+    programme: ActiveHybridProgramme,
     integrity_exact: bool,
     operator_abort: bool,
     platform_terminal: bool,
@@ -1850,29 +2199,46 @@ def _campaign18_outcome(
     terminal: dict[str, Any],
     controller_authority_inhibited: bool,
 ) -> tuple[str, str]:
+    prefix = f"{programme.key}_"
+
+    def decision(suffix: str) -> str:
+        value = prefix + suffix
+        if value not in programme.terminal_decisions:
+            raise AssertionError(
+                f"{programme.key.upper()} lacks declared integrated terminal {value}"
+            )
+        return value
+
     if operator_abort:
-        return "bounded_nonpass", "cx322_d9_d6_72h_operator_abort"
+        return "bounded_nonpass", decision("operator_abort")
     if platform_terminal:
         reason = str(terminal.get("reason", "")).lower()
         if "d9" in reason and ("configuration" in reason or "readback" in reason):
-            decision = "cx322_d9_d6_72h_D9_configuration_or_readback_fault"
+            terminal_decision = decision("D9_configuration_or_readback_fault")
         elif any(item in reason for item in ("transaction", "acknowledg", "controller")):
-            decision = "cx322_d9_d6_72h_controller_or_transaction_fault"
+            terminal_decision = decision("controller_or_transaction_fault")
         elif any(item in reason for item in ("d14", "d8", "capture")):
-            decision = "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+            terminal_decision = decision("D14_D8_authority_or_capture_fault")
         else:
-            decision = "cx322_d9_d6_72h_identity_or_evidence_fault"
-        return "failed", decision
+            terminal_decision = decision("identity_or_evidence_fault")
+        return "failed", terminal_decision
     if not integrity_exact:
-        return "failed", "cx322_d9_d6_72h_identity_or_evidence_fault"
+        return "failed", decision("identity_or_evidence_fault")
     if not endpoint_complete:
-        return "bounded_nonpass", "cx322_d9_d6_72h_right_censored_incomplete"
+        return "bounded_nonpass", decision("right_censored_incomplete")
     if controller_authority_inhibited:
+        successor_inhibit = prefix + "hybrid_authority_not_sustained"
+        suffix = (
+            "hybrid_authority_not_sustained"
+            if programme.controller_inhibit_acquisition_continues
+            and successor_inhibit in programme.terminal_decisions
+            else "controller_or_transaction_fault"
+        )
         return (
             "bounded_nonpass",
-            "cx322_d9_d6_72h_controller_or_transaction_fault",
+            decision(suffix),
         )
-    return "passed", "cx322_d9_d6_72h_qualified_engineering_complete"
+    return "passed", decision("qualified_engineering_complete")
 
 
 def _sustained_regulation_outcome(
@@ -2445,10 +2811,21 @@ def analyze(
     policy_path = Path(str(manifest_value["policy"]["path"])).resolve()
     policy = load_policy(policy_path)
     policy_document = _read_object(policy_path)
-    tight_deadband_policy_sha256 = _tight_deadband_policy_sha256(policy_document)
-    metric_contract = _metric_contract(
-        policy_document,
-        comparison_observations=policy.phase_qualification_residence_s,
+    analysis_policy = _analysis_policy_bindings(
+        programme=programme,
+        policy=policy,
+        policy_document=policy_document,
+    )
+    tight_deadband_policy_sha256 = str(
+        analysis_policy["tight_deadband_policy_sha256"]
+    )
+    metric_contract = (
+        _cx323_descriptive_metric_contract()
+        if programme.persistent_maintenance_policy
+        else _metric_contract(
+            policy_document,
+            comparison_observations=policy.phase_qualification_residence_s,
+        )
     )
     programme_section = manifest_value[programme.manifest_section]
     control = programme_section["automatic_control"]
@@ -2466,15 +2843,15 @@ def analyze(
         maximum_step=int(control["maximum_step_codes"]),
     )
     identities = {
-        "estimator_sha256": policy.frequency_estimator_sha256,
-        "model_sha256": policy.plant_model_sha256,
+        "estimator_sha256": analysis_policy["frequency_estimator_sha256"],
+        "model_sha256": analysis_policy["plant_model_sha256"],
         "active_policy_sha256": (
             str(manifest_value["programme_policy"]["sha256"])
             if programme.identification_required
             else policy.policy_sha256
         ),
-        "response_policy_sha256": policy.response_policy_sha256,
-        "numerical_policy_sha256": policy.policy_sha256,
+        "response_policy_sha256": analysis_policy["response_policy_sha256"],
+        "numerical_policy_sha256": analysis_policy["policy_sha256"],
     }
     retained_input_failures: list[str] = []
 
@@ -2508,16 +2885,36 @@ def analyze(
     active_rows = _read_csv(run_dir / ACTIVE_CSV)
     decision_rows = _read_csv(run_dir / ACTIVE_HYBRID_CSV)
     exact_timing_sidecar_join: dict[str, Any] | None = None
-    if programme is CX322_D9_D6_72H_PROGRAMME:
-        exact_timing_sidecar_join = campaign18_exact_timing_sidecar_join(
+    transaction_timings: list[dict[str, str]] = []
+    decision_timings: list[dict[str, str]] = []
+    if programme.integrated_long_run:
+        transaction_timings = _read_csv(
+            _contract_path(manifest, "active_transactions_v2")
+        )
+        decision_timings = _read_csv(
+            _contract_path(manifest, "active_hybrid_decisions_v2")
+        )
+        exact_timing_sidecar_join = exact_lifecycle_timing_sidecar_join(
             transactions=active_rows,
             decisions=decision_rows,
-            transaction_timings=_read_csv(
-                _contract_path(manifest, "active_transactions_v2")
-            ),
-            decision_timings=_read_csv(
-                _contract_path(manifest, "active_hybrid_decisions_v2")
-            ),
+            transaction_timings=transaction_timings,
+            decision_timings=decision_timings,
+        )
+    maintenance_validation: dict[str, Any] | None = None
+    maintenance_rows: list[dict[str, str]] | None = None
+    if programme.persistent_maintenance_policy:
+        maintenance_rows = _read_csv(
+            _contract_path(manifest, programme.maintenance_record_contract or "")
+        )
+        maintenance_validation = validate_maintenance_evidence_stream(
+            maintenance_rows=maintenance_rows,
+            transactions=active_rows,
+            decisions=decision_rows,
+            transaction_timings=transaction_timings,
+            decision_timings=decision_timings,
+            programme=programme,
+            expected_build_identity=build_identity,
+            expected_active_policy_sha256=policy.policy_sha256,
         )
     rph_rows = _read_csv(run_dir / RPH_CSV)
     tdb_rows = _read_csv(run_dir / TDB_CSV)
@@ -2538,7 +2935,7 @@ def analyze(
             spec.minimum_code,
             spec.maximum_code,
             response_classification_observational=(
-                policy.response_checkpoint_observational
+                analysis_policy["response_checkpoint_observational"]
             ),
         )
     except (KeyError, TypeError, ValueError) as exc:
@@ -2590,6 +2987,7 @@ def analyze(
                     True,
                 )
             ),
+            maintenance_rows=maintenance_rows,
         )
     except (KeyError, OSError, TypeError, ValueError) as exc:
         retained_input_failures.append(f"active-hybrid replay: {exc}")
@@ -2828,7 +3226,7 @@ def analyze(
                 active_rows,
                 decision_rows,
                 horizons_s=[int(value) for value in horizons],
-                settling_exclusion_s=policy.settling_exclusion_s,
+                settling_exclusion_s=int(analysis_policy["settling_exclusion_s"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
             retained_input_failures.append(f"response horizon facts: {exc}")
@@ -3178,12 +3576,21 @@ def analyze(
         "retained_inputs_readable": not retained_input_failures,
         **(
             {
-                "campaign18_exact_AT2_AH2_lifecycle_join": bool(
+                "integrated_exact_AT2_AH2_lifecycle_join": bool(
                     exact_timing_sidecar_join
                     and exact_timing_sidecar_join["exact"]
                 )
             }
-            if programme is CX322_D9_D6_72H_PROGRAMME
+            if programme.integrated_long_run
+            else {}
+        ),
+        **(
+            {
+                "cx323_maintenance_evidence_stream_exact": bool(
+                    maintenance_validation and maintenance_validation["exact"]
+                )
+            }
+            if programme.persistent_maintenance_policy
             else {}
         ),
         "plant_sign_evidence_replay_exact": bool(
@@ -3248,8 +3655,9 @@ def analyze(
     )
     integrity_exact = finalization_gate_passed
     sustained_regulation: dict[str, Any] | None = None
-    if programme is CX322_D9_D6_72H_PROGRAMME:
-        status, primary_decision = _campaign18_outcome(
+    if programme.integrated_long_run:
+        status, primary_decision = _integrated_long_run_outcome(
+            programme=programme,
             integrity_exact=integrity_exact,
             operator_abort=operator_abort,
             platform_terminal=platform_terminal,
@@ -3353,10 +3761,9 @@ def analyze(
         "qualified_endpoint_complete": endpoint_complete,
         "terminal_static_without_outstanding_authority": static_terminal_exact,
     }
-    if programme is not CX322_D9_D6_72H_PROGRAMME:
-        # Retain the deployed key for non-Campaign18 packages. Campaign18 is
-        # deliberately duration-neutral here so its 72-hour endpoint cannot be
-        # mislabeled as an inherited 12-hour criterion.
+    if not programme.integrated_long_run:
+        # Integrated long runs are deliberately duration-neutral here so their
+        # endpoint cannot be mislabeled as an inherited 12-hour criterion.
         scientific_acceptance_checks["qualified_12h_endpoint_complete"] = (
             endpoint_complete
         )
@@ -3453,8 +3860,13 @@ def analyze(
         },
         "active_hybrid_replay": ahy_replay,
         **(
-            {"campaign18_exact_timing_sidecar_join": exact_timing_sidecar_join}
+            {"integrated_exact_timing_sidecar_join": exact_timing_sidecar_join}
             if exact_timing_sidecar_join is not None
+            else {}
+        ),
+        **(
+            {"cx323_maintenance_evidence_stream": maintenance_validation}
+            if maintenance_validation is not None
             else {}
         ),
         "application_counts_and_budgets": applications,

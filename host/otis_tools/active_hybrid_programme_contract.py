@@ -16,6 +16,14 @@ from typing import Any, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+CX323_REHEARSAL_COVERAGE = (
+    "cx323_exact_AT2_AH2_AHM_atomic_capture",
+    "cx323_repeated_controller_transaction",
+    "cx323_GNSS_hold_causal_requalification",
+    "cx323_exact_72h_endpoint_clock",
+    "cx323_authoritative_capture_fault_terminal",
+)
+
 
 @dataclass(frozen=True)
 class ActiveHybridProgramme:
@@ -77,6 +85,13 @@ class ActiveHybridProgramme:
     accelerated_rehearsal_terminal_classifications: tuple[
         tuple[str, str], ...
     ] = ()
+    integrated_long_run: bool = False
+    persistent_maintenance_policy: bool = False
+    maintenance_record_type: str | None = None
+    maintenance_record_contract: str | None = None
+    controller_inhibit_acquisition_continues: bool = False
+    gnss_metadata_hold_nonterminal: bool = False
+    qualified_endpoint_reason_override: str | None = None
 
     @property
     def campaign_name(self) -> str:
@@ -92,6 +107,8 @@ class ActiveHybridProgramme:
 
     @property
     def qualified_endpoint_reason(self) -> str:
+        if self.qualified_endpoint_reason_override is not None:
+            return self.qualified_endpoint_reason_override
         duration = (
             f"{self.qualified_duration_s // 3600}h"
             if self.qualified_duration_s % 3600 == 0
@@ -515,6 +532,134 @@ CX322_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
             "cx322_d9_d6_72h_identity_or_evidence_fault",
         ),
     ),
+    integrated_long_run=True,
+    controller_inhibit_acquisition_continues=True,
+    gnss_metadata_hold_nonterminal=True,
+)
+
+
+CX323_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
+    key="cx323_d9_d6_72h",
+    programme_id="OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_V1",
+    profile_id="cx323_d9_d6_72h_adaptive_hybrid",
+    runtime_run_identity="cx323_d9_d6_72h_adaptive_hybrid:1",
+    status_programme_id="cx323_d9_d6_72h_adaptive_hybrid",
+    operation="cx323_d9_d6_72h_adaptive_hybrid_live",
+    live_stage="OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_LIVE",
+    compatibility_floor="OTIS_CX323_D9_D6_72H_EVIDENCE_EPOCH_1",
+    manifest_section="cx323_d9_d6_72h",
+    policy_id="CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
+    policy_path=REPO_ROOT
+    / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
+    natural_policy_id="CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
+    natural_policy_path=REPO_ROOT
+    / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
+    setup_code=0xA84D,
+    maximum_applications=144,
+    maximum_physical_applications=144,
+    maximum_deliberate_challenges=0,
+    maximum_cumulative_movement_codes=3_024,
+    maximum_step_codes=21,
+    minimum_code=0xA800,
+    maximum_code=0xAB00,
+    minimum_applied_cadence_s=1_800,
+    qualified_duration_s=259_200,
+    absolute_wall_limit_s=280_800,
+    minimum_natural_phase_material_applications=0,
+    bundle_id="cx323_d9_d6_72h_adaptive_hybrid_bundle_v1",
+    activation_id="cx323_d9_d6_72h_adaptive_hybrid_activation_v1",
+    rehearsal_report_type="cx323_d9_d6_72h_live_topology_rehearsal_v1",
+    run_bundle_path=Path("cx323_d9_d6_72h_exact_bundle_v1.json"),
+    run_proposal_path=Path("cx323_d9_d6_72h_authority_proposal_v1.json"),
+    run_activation_path=Path("cx323_d9_d6_72h_live_activation_v1.json"),
+    physical_seal_path=Path(
+        "reports/cx323_d9_d6_72h_physical_seal_v1.json"
+    ),
+    terminal_decisions=frozenset(
+        {
+            "cx323_d9_d6_72h_qualified_hybrid_complete",
+            "cx323_d9_d6_72h_hybrid_authority_not_sustained",
+            "cx323_d9_d6_72h_right_censored_incomplete",
+            "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault",
+            "cx323_d9_d6_72h_D9_configuration_or_readback_fault",
+            "cx323_d9_d6_72h_controller_or_transaction_fault",
+            "cx323_d9_d6_72h_maintenance_evidence_fault",
+            "cx323_d9_d6_72h_identity_or_evidence_fault",
+            "cx323_d9_d6_72h_operator_abort",
+            "cx323_d9_d6_72h_pre_setup_no_write_abort",
+        }
+    ),
+    healthy_preliminary_decisions=frozenset(
+        {
+            "pending_offline_scientific_analysis",
+            "controller_authority_inhibited_acquisition_continues",
+            "gnss_metadata_hold",
+            "gnss_metadata_hold_requalified",
+        }
+    ),
+    hybrid_states=_COMMON_STATES
+    | {"GNSS_METADATA_HOLD", "CONTROLLER_AUTHORITY_INHIBITED"},
+    armable_hybrid_states=frozenset(
+        {
+            "FREQUENCY_ACQUIRE",
+            "PHASE_QUALIFY",
+            "HYBRID_TRACKING",
+            "PHASE_DEGRADED_FREQUENCY_ONLY",
+        }
+    ),
+    response_checkpoint_observational=True,
+    sustained_status_contract=True,
+    prospectively_changed_authority_envelope=True,
+    forwarded_output_integration=True,
+    fresh_serial_auto_detect=True,
+    natural_policy_programme_id=(
+        "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
+    ),
+    engineering_maximum_applications=144,
+    engineering_maximum_physical_applications=144,
+    engineering_maximum_cumulative_movement_codes=3_024,
+    engineering_absolute_wall_limit_s=280_800,
+    engineering_contract_path=REPO_ROOT
+    / "docs/60_EXPERIMENTS/"
+    "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/"
+    "cx323_d9_d6_72h_adaptive_hybrid_contract_v1.json",
+    firmware_campaign_macro=(
+        "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID"
+    ),
+    firmware_hybrid_maximum_automatic_applications=144,
+    firmware_hybrid_maximum_cumulative_movement_codes=3_024,
+    correction_response_reserve_s=1_500,
+    accelerated_rehearsal_terminal_classifications=(
+        (
+            "modeled_phase_transaction",
+            "cx323_d9_d6_72h_right_censored_incomplete",
+        ),
+        (
+            "clean_phase_degradation",
+            "cx323_d9_d6_72h_right_censored_incomplete",
+        ),
+        (
+            "controller_inhibit_acquisition_continues",
+            "cx323_d9_d6_72h_hybrid_authority_not_sustained",
+        ),
+        (
+            "shared_fail_static_transport_obstruction",
+            "cx323_d9_d6_72h_identity_or_evidence_fault",
+        ),
+        (
+            "abort_delivery_failure",
+            "cx323_d9_d6_72h_identity_or_evidence_fault",
+        ),
+    ),
+    integrated_long_run=True,
+    persistent_maintenance_policy=True,
+    maintenance_record_type="AHM",
+    maintenance_record_contract="active_hybrid_maintenance_v1",
+    controller_inhibit_acquisition_continues=True,
+    gnss_metadata_hold_nonterminal=True,
+    qualified_endpoint_reason_override=(
+        "cx323_d9_d6_72h_qualified_hybrid_complete"
+    ),
 )
 
 
@@ -590,6 +735,7 @@ PROGRAMMES = {
     CX322_PROGRAMME.key: CX322_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME.key: CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME.key: CX322_D9_D6_72H_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME.key: CX323_D9_D6_72H_PROGRAMME,
     SUSTAINED_HYBRID_PROGRAMME.key: SUSTAINED_HYBRID_PROGRAMME,
 }
 

@@ -353,6 +353,11 @@ The prospective CX323 successor study selected
 and comparison-report semantic SHA-256
 `8096abbee3ee8295fc6cb53a6d0c6ca9af876bf529d464521e55776e105fb982`.
 It is a counterfactual policy decision, not physical post-divergence evidence.
+The prospective V3 native-boundary correction at semantic SHA-256
+`32a7f47330404e1cf7ea724517643deff078e74d3e1aa50127c378bced5f4d53`
+is also normative for implementation. It corrects the maximum combined centre
+to `36*2^63+36` by including the independently clamped phase term; controller
+semantics and the V2 selection result are otherwise unchanged.
 
 CX323 preserves the complete CX322 numerical and transaction path whenever the
 selected frequency state is outside `TIGHT_INSIDE` or the legacy combined

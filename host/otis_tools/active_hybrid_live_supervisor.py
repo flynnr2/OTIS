@@ -26,7 +26,6 @@ from .active_hybrid_evidence_guard import (
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
-    CX322_D9_D6_72H_PROGRAMME,
     programme_from_mapping,
     progressive_checkpoint_contract,
 )
@@ -149,6 +148,28 @@ FORWARDED_MONITOR_OBSERVABILITY_KEYS = (
     ("forwarded_clock_monitor", "pio_rxstall_count"),
     ("forwarded_clock_monitor", "fault_flags"),
 )
+
+
+def _programme_terminal_decision(
+    programme: ActiveHybridProgramme,
+    suffix: str,
+    *,
+    fallback: str,
+) -> str:
+    """Resolve one exact programme terminal without inheriting labels."""
+
+    matches = sorted(
+        decision
+        for decision in programme.terminal_decisions
+        if decision.endswith(suffix)
+    )
+    if len(matches) == 1:
+        return matches[0]
+    if programme.integrated_long_run:
+        raise ValueError(
+            f"{programme.key} must declare exactly one terminal ending {suffix!r}"
+        )
+    return fallback
 
 
 def forwarded_output_integration_prewrite_evidence(
@@ -1090,7 +1111,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         )
         if (
             prospective_controller_inhibit
-            and self.programme is not CX322_D9_D6_72H_PROGRAMME
+            and not self.programme.controller_inhibit_acquisition_continues
         ):
             self.state["arm_pending"] = False
             self.state["arm_sent_at_utc"] = None
@@ -1111,7 +1132,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         platform_health = health
         if (
             prospective_controller_inhibit
-            and self.programme is CX322_D9_D6_72H_PROGRAMME
+            and self.programme.controller_inhibit_acquisition_continues
         ):
             self.state["arm_pending"] = False
             self.state["arm_sent_at_utc"] = None
@@ -1128,7 +1149,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 )
             # This firmware assertion is the intended controller-local
             # authority inhibition. Preserve all independent platform and
-            # D14/D8 checks while preventing it from terminating Campaign 18.
+            # D14/D8 checks while preventing it from terminating the finite
+            # integrated long run.
             platform_health = dict(health)
             platform_health[("cx317_active", "fail_static")] = "false"
         ControlSupervisorBase._check_fail_static_health(self, platform_health)
@@ -1205,7 +1227,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             raise ValueError(f"unexpected CX320 hybrid state: {hybrid_state!r}")
         if hybrid_state == "FAIL_STATIC" and not (
             prospective_controller_inhibit
-            and self.programme is CX322_D9_D6_72H_PROGRAMME
+            and self.programme.controller_inhibit_acquisition_continues
         ):
             raise ValueError(f"CX320 firmware entered FAIL_STATIC: {hybrid_reason}")
 
@@ -1474,7 +1496,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         qualified_origin_extended_ticks: int | None = None
         qualified_frontier_raw_ticks: int | None = None
         qualified_frontier_extended_ticks: int | None = None
-        if self.programme is CX322_D9_D6_72H_PROGRAMME:
+        if self.programme.integrated_long_run:
             if _authoritative_capture_health_faults(health):
                 return
             try:
@@ -1555,7 +1577,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state["qualified_origin_estimate_id"] = estimate["estimate_id"]
         self.state["qualified_origin_timestamp_ticks"] = origin_ticks
         self.state["qualified_origin_session_id"] = session_id
-        if self.programme is CX322_D9_D6_72H_PROGRAMME:
+        if self.programme.integrated_long_run:
             self.state["qualified_origin_extended_timestamp_ticks"] = (
                 qualified_origin_extended_ticks
             )
@@ -1587,9 +1609,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     def _abort_on_authoritative_capture_discontinuity(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
-        """Stop Campaign 18 before any post-discontinuity transaction work."""
+        """Stop an integrated long run before post-discontinuity work."""
 
-        if self.programme is not CX322_D9_D6_72H_PROGRAMME:
+        if not self.programme.integrated_long_run:
             return False
         origin_session = self.state.get("qualified_origin_session_id")
         if origin_session is None:
@@ -1669,10 +1691,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 health[
                     (
                         "pps_gate"
-                        if self.programme is CX322_D9_D6_72H_PROGRAMME
+                        if self.programme.integrated_long_run
                         else "cx317_active",
                         "snapshot_session"
-                        if self.programme is CX322_D9_D6_72H_PROGRAMME
+                        if self.programme.integrated_long_run
                         else "session_id",
                     )
                 ]
@@ -1682,7 +1704,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             raise ValueError("CX320 current qualified device clock is malformed") from exc
         if current_session != origin_session:
             raise ValueError("CX320 capture session changed after qualified origin")
-        if self.programme is CX322_D9_D6_72H_PROGRAMME:
+        if self.programme.integrated_long_run:
             try:
                 current_raw_ticks = int(
                     health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
@@ -1789,8 +1811,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             return
         state = health.get(("cx317_active", "state"), "")
         reason = health.get(("cx317_active", "reason"), "")
-        campaign18_controller_inhibit = (
-            self.programme is CX322_D9_D6_72H_PROGRAMME
+        controller_inhibit = (
+            self.programme.controller_inhibit_acquisition_continues
             and state == "FAULT"
             and reason
             in {
@@ -1799,9 +1821,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             }
             and self.state.get("controller_authority_inhibited_reason") == reason
         )
-        if campaign18_controller_inhibit:
+        if controller_inhibit:
             # _check_fail_static_health() has already converted this exact
-            # firmware policy terminal into Campaign 18's controller-local
+            # firmware policy terminal into the programme's controller-local
             # no-new-authority state.  The next run-loop consumer must not
             # reinterpret the same retained FAULT record as a platform fault.
             return
@@ -2099,7 +2121,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             * RP2040_TIMER0_TICKS_PER_SECOND
         )
         if (
-            self.programme is CX322_D9_D6_72H_PROGRAMME
+            self.programme.integrated_long_run
             and qualified_elapsed_ticks is not None
             and qualified_elapsed_ticks >= qualified_target_ticks
             and self.state.get("qualified_endpoint_extended_timestamp_ticks")
@@ -2176,7 +2198,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         super()._abort(reason)
         terminal = self.state["terminal"]
         if reason == "independent_host_abort_fifo":
-            terminal["primary_decision"] = "operator_abort"
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_operator_abort",
+                fallback="operator_abort",
+            )
         elif reason == "phase_channel_degraded_frequency_control_retained":
             terminal["primary_decision"] = (
                 "phase_channel_degraded_frequency_control_retained"
@@ -2190,17 +2216,21 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         elif reason.startswith(
             f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
         ):
-            terminal["primary_decision"] = (
-                "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_D14_D8_authority_or_capture_fault",
+                fallback="measurement_authority_or_platform_fault",
             )
         elif (
-            self.programme is CX322_D9_D6_72H_PROGRAMME
+            self.programme.integrated_long_run
             and reason.startswith(
                 f"{self.programme.key}_live_supervisor_fault:"
             )
         ):
-            terminal["primary_decision"] = (
-                "cx322_d9_d6_72h_identity_or_evidence_fault"
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_identity_or_evidence_fault",
+                fallback="measurement_authority_or_platform_fault",
             )
         elif self.programme.sustained_regulation and reason in {
             "prospective_repeated_alternation",
@@ -2225,7 +2255,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         elif "absolute_wall_endpoint" in reason or reason.startswith(
             f"{self.programme.key}_wall_endpoint"
         ):
-            terminal["primary_decision"] = "right_censored_incomplete"
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_right_censored_incomplete",
+                fallback="right_censored_incomplete",
+            )
         elif (
             self.programme.response_checkpoint_observational
             and reason

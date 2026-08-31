@@ -30,6 +30,7 @@ from host.otis_tools.active_hybrid_live_analyze import (
 from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
 )
 
 
@@ -38,7 +39,8 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         "result": "healthy_stop",
         "reason": CX322_D9_D6_72H_PROGRAMME.qualified_endpoint_reason,
     }
-    assert live_analyze._campaign18_outcome(
+    assert live_analyze._integrated_long_run_outcome(
+        programme=CX322_D9_D6_72H_PROGRAMME,
         integrity_exact=True,
         operator_abort=False,
         platform_terminal=False,
@@ -46,7 +48,8 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         terminal=terminal,
         controller_authority_inhibited=False,
     ) == ("passed", "cx322_d9_d6_72h_qualified_engineering_complete")
-    assert live_analyze._campaign18_outcome(
+    assert live_analyze._integrated_long_run_outcome(
+        programme=CX322_D9_D6_72H_PROGRAMME,
         integrity_exact=True,
         operator_abort=False,
         platform_terminal=False,
@@ -54,7 +57,8 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         terminal=terminal,
         controller_authority_inhibited=False,
     ) == ("bounded_nonpass", "cx322_d9_d6_72h_right_censored_incomplete")
-    assert live_analyze._campaign18_outcome(
+    assert live_analyze._integrated_long_run_outcome(
+        programme=CX322_D9_D6_72H_PROGRAMME,
         integrity_exact=True,
         operator_abort=False,
         platform_terminal=False,
@@ -65,6 +69,87 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         "bounded_nonpass",
         "cx322_d9_d6_72h_controller_or_transaction_fault",
     )
+
+
+def test_cx323_integrated_outcome_uses_its_declared_inhibit_terminal() -> None:
+    terminal = {
+        "result": "healthy_stop",
+        "reason": CX323_D9_D6_72H_PROGRAMME.qualified_endpoint_reason,
+    }
+    assert live_analyze._integrated_long_run_outcome(
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        integrity_exact=True,
+        operator_abort=False,
+        platform_terminal=False,
+        endpoint_complete=True,
+        terminal=terminal,
+        controller_authority_inhibited=True,
+    ) == (
+        "bounded_nonpass",
+        "cx323_d9_d6_72h_hybrid_authority_not_sustained",
+    )
+
+
+def test_cx323_final_replay_dispatches_to_its_ahm_oracle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    maintenance = [{"event": "policy_activation"}]
+    observed: dict[str, object] = {}
+
+    def replay(decisions, transactions, maintenance_rows, **kwargs):
+        observed.update(
+            {
+                "decisions": decisions,
+                "transactions": transactions,
+                "maintenance_rows": maintenance_rows,
+                **kwargs,
+            }
+        )
+        return {
+            "exact": True,
+            "replay_mode": "cx323_phase_priority_oracle_with_AHM_v1",
+            "comparisons": [],
+        }
+
+    monkeypatch.setattr(live_analyze, "replay_cx323_maintenance_history", replay)
+    result = _replay_ahy(
+        [],
+        [],
+        policy_path=programme.policy_path,
+        expected_run_identity=programme.runtime_run_identity,
+        expected_build_identity="a" * 64 + ":" + "b" * 64,
+        expected_profile_identity=programme.profile_id,
+        maintenance_rows=maintenance,
+    )
+
+    assert result["exact"] is True
+    assert result["replay_mode"] == "cx323_phase_priority_oracle_with_AHM_v1"
+    assert observed["maintenance_rows"] is maintenance
+    assert observed["policy_path"] == programme.policy_path
+
+
+def test_cx323_analyzer_normalizes_only_its_frozen_profile_bindings() -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    policy = live_analyze.load_policy(programme.policy_path)
+    document = json.loads(programme.policy_path.read_text(encoding="utf-8"))
+
+    bindings = live_analyze._analysis_policy_bindings(
+        programme=programme,
+        policy=policy,
+        policy_document=document,
+    )
+
+    assert bindings == {
+        "frequency_estimator_sha256": document["bindings"]["frequency_estimator"]["sha256"],
+        "phase_estimator_sha256": document["bindings"]["phase_estimator"]["sha256"],
+        "plant_model_sha256": document["bindings"]["plant_model"]["sha256"],
+        "response_policy_sha256": document["bindings"]["response_policy"]["sha256"],
+        "tight_deadband_policy_sha256": live_analyze.TIGHT_DEADBAND_POLICY_SHA256,
+        "settling_exclusion_s": 900,
+        "response_checkpoint_observational": True,
+        "policy_sha256": policy.policy_sha256,
+    }
 
 
 def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() -> None:
@@ -220,6 +305,207 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
     assert session_identity_mismatch["mismatches"] == [
         "AH2 join mismatch hybrid_record_sequence=2"
     ]
+
+
+def _cx323_maintenance_stream() -> tuple[
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    str,
+    str,
+]:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    build_identity = "a" * 64 + ":" + "b" * 64
+    active_policy_sha256 = "c" * 64
+    identity = {
+        "run_identity": programme.runtime_run_identity,
+        "build_identity": build_identity,
+        "profile_identity": programme.profile_id,
+    }
+    decision = {
+        "hybrid_record_sequence": "1",
+        "decision_sequence": "1",
+        "capture_session": "7",
+        "source_first_sequence": "1200",
+        "source_last_sequence": "1800",
+        "reason": "maintenance_request_ready",
+        **identity,
+    }
+    decision_timing = {
+        **decision,
+        "record_type": "AH2",
+        "schema_version": "2",
+        "timing_record_sequence": "1",
+        "decision_timestamp_ticks": "28800000000",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    transaction = {
+        "transaction_record_sequence": "1",
+        "event": "request_created",
+        "request_sequence": "1",
+        "decision_sequence": "1",
+        "source_first_sequence": "1200",
+        "source_last_sequence": "1800",
+        "application_sequence": "0",
+        **identity,
+    }
+    transaction_timing = {
+        **transaction,
+        "record_type": "AT2",
+        "schema_version": "2",
+        "timing_record_sequence": "2",
+        "event_timestamp_ticks": "28800000001",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    activation = {
+        "record_type": "AHM",
+        "maintenance_record_sequence": "1",
+        "event": "policy_activation",
+        "event_timestamp_ticks": "1",
+        "time_domain": "rp2040_timer0_extended",
+        "policy_id": programme.policy_id,
+        "active_policy_sha256": active_policy_sha256,
+        "hybrid_record_sequence": "0",
+        "hybrid_timing_record_sequence": "0",
+        "decision_sequence": "0",
+        "transaction_record_sequence": "0",
+        "transaction_timing_record_sequence": "0",
+        "request_sequence": "0",
+        "application_sequence": "0",
+        "evidence_burst_sequence": "1",
+        "evidence_burst_record_ordinal": "1",
+        "evidence_burst_record_count": "1",
+        **identity,
+    }
+    request = {
+        "record_type": "AHM",
+        "maintenance_record_sequence": "2",
+        "event": "decision",
+        "event_timestamp_ticks": "28800000002",
+        "time_domain": "rp2040_timer0_extended",
+        "policy_id": programme.policy_id,
+        "active_policy_sha256": active_policy_sha256,
+        "hybrid_record_sequence": "1",
+        "hybrid_timing_record_sequence": "1",
+        "decision_sequence": "1",
+        "capture_session": "7",
+        "source_first_sequence": "1200",
+        "source_last_sequence": "1800",
+        "transaction_record_sequence": "1",
+        "transaction_timing_record_sequence": "2",
+        "transaction_event": "request_created",
+        "request_sequence": "1",
+        "application_sequence": "0",
+        "evidence_burst_sequence": "2",
+        "evidence_burst_record_ordinal": "5",
+        "evidence_burst_record_count": "5",
+        **identity,
+    }
+    return (
+        [activation, request],
+        [transaction],
+        [decision],
+        [transaction_timing],
+        [decision_timing],
+        build_identity,
+        active_policy_sha256,
+    )
+
+
+def test_cx323_maintenance_stream_exactly_joins_lifecycle_and_bursts() -> None:
+    (
+        maintenance,
+        transactions,
+        decisions,
+        transaction_timings,
+        decision_timings,
+        build_identity,
+        active_policy_sha256,
+    ) = _cx323_maintenance_stream()
+    sidecars = live_analyze.exact_lifecycle_timing_sidecar_join(
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+    )
+    result = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+
+    assert sidecars["exact"] is True
+    assert result == {
+        "required": True,
+        "exact": True,
+        "record_count": 2,
+        "burst_count": 2,
+        "mismatches": [],
+    }
+
+
+def test_cx323_maintenance_stream_rejects_campaign18_labels_and_hashes() -> None:
+    (
+        maintenance,
+        transactions,
+        decisions,
+        transaction_timings,
+        decision_timings,
+        build_identity,
+        active_policy_sha256,
+    ) = _cx323_maintenance_stream()
+    maintenance[1]["profile_identity"] = CX322_D9_D6_72H_PROGRAMME.profile_id
+    decisions[0]["profile_identity"] = CX322_D9_D6_72H_PROGRAMME.profile_id
+    maintenance[1]["active_policy_sha256"] = "d" * 64
+    result = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+
+    assert result["exact"] is False
+    assert any("profile_identity differs" in item for item in result["mismatches"])
+    assert "AHM row 2 active_policy_sha256 differs" in result["mismatches"]
+
+
+def test_cx323_maintenance_stream_rejects_broken_at2_join_and_partial_burst() -> None:
+    (
+        maintenance,
+        transactions,
+        decisions,
+        transaction_timings,
+        decision_timings,
+        build_identity,
+        active_policy_sha256,
+    ) = _cx323_maintenance_stream()
+    maintenance[1]["transaction_timing_record_sequence"] = "99"
+    maintenance[1]["evidence_burst_record_count"] = "4"
+    result = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+
+    assert result["exact"] is False
+    assert "AHM row 2 ACT/AT2 join differs" in result["mismatches"]
+    assert "AHM row 2 transaction burst is incomplete" in result["mismatches"]
 from host.otis_tools.active_hybrid_policy import load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
     _modeled_transaction,
@@ -1162,6 +1448,124 @@ def test_partial_prewrite_terminal_is_sealed_as_platform_fault(
         for failure in seal["retained_input_failures"]
     )
     assert seal["offline_finalization_gate"]["passed"] is False
+
+
+def test_cx323_final_analyzer_enters_ahm_replay_without_legacy_policy_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    run_dir = tmp_path / "cx323-final-analysis"
+    (run_dir / "csv").mkdir(parents=True)
+    (run_dir / "run_manifest.json").write_text("{}\n", encoding="utf-8")
+    (run_dir / "COMPLETE").write_text("{}\n", encoding="utf-8")
+    for name in (
+        "active_transactions_v2.csv",
+        "active_hybrid_decisions_v2.csv",
+        "active_hybrid_maintenance_v1.csv",
+        "forwarded_monitor_snapshots_v1.csv",
+        "pps_snapshots_v1.csv",
+        "count_observations_v1.csv",
+    ):
+        (run_dir / "csv" / name).write_text("", encoding="utf-8")
+    policy_sha256 = live_analyze._sha256_file(programme.policy_path)
+    build_identity = "b" * 64 + ":" + "c" * 64
+    manifest = {
+        "schema_version": 1,
+        "stage": programme.live_stage,
+        "programme_id": programme.programme_id,
+        "run_id": "cx323-final-analysis",
+        "run_identity": programme.runtime_run_identity,
+        "profile_identity": programme.profile_id,
+        "started_at_utc": "2026-08-31T12:00:00Z",
+        "manifest_sha256": "a" * 64,
+        "channels": [],
+        "domains": [
+            {"name": "rp2040_timer0_extended", "nominal_hz": 16_000_000}
+        ],
+        "contracts": {},
+        "files": [
+            {
+                "contract": "active_transactions_v2",
+                "path": "csv/active_transactions_v2.csv",
+            },
+            {
+                "contract": "active_hybrid_decisions_v2",
+                "path": "csv/active_hybrid_decisions_v2.csv",
+            },
+            {
+                "contract": "active_hybrid_maintenance_v1",
+                "path": "csv/active_hybrid_maintenance_v1.csv",
+            },
+            {
+                "contract": "forwarded_monitor_snapshots_v1",
+                "path": "csv/forwarded_monitor_snapshots_v1.csv",
+            },
+            {
+                "contract": "pps_snapshots_v1",
+                "path": "csv/pps_snapshots_v1.csv",
+            },
+            {
+                "contract": "count_observations_v1",
+                "path": "csv/count_observations_v1.csv",
+            },
+        ],
+        "evidence_artifacts": [],
+        "policy": {
+            "path": str(programme.policy_path),
+            "sha256": policy_sha256,
+            "policy_sha256": policy_sha256,
+        },
+        "firmware": {
+            "build_identity": build_identity,
+            "uf2": {"sha256": "d" * 64},
+        },
+        "bundle": {"bundle_sha256": "e" * 64},
+        "proposal": {"proposal_sha256": "f" * 64},
+        "activation": {"activation_sha256": "1" * 64},
+        programme.manifest_section: {
+            "setup": {"code": programme.setup_code},
+            "automatic_control": {
+                "maximum_total_applications": 144,
+                "maximum_cumulative_movement_codes": 3_024,
+                "maximum_step_codes": 21,
+                "minimum_applied_cadence_s": 1_800,
+                "minimum_code": 0xA800,
+                "maximum_code": 0xAB00,
+            },
+        },
+    }
+    replay_calls: list[dict[str, object]] = []
+
+    def replay(*_args, **kwargs):
+        replay_calls.append(kwargs)
+        return {
+            "exact": True,
+            "replay_mode": "cx323_phase_priority_oracle_with_AHM_v1",
+            "decision_count": 0,
+            "phase_nonzero_decision_count": 0,
+            "phase_material_decision_count": 0,
+            "unmatched_request_decision_sequences": [],
+            "completed_response_decision_sequences": [],
+            "all_response_checkpoints_passed": True,
+            "comparisons": [],
+        }
+
+    monkeypatch.setattr(
+        live_analyze, "validate_frozen_run_manifest", lambda _path: manifest
+    )
+    monkeypatch.setattr(live_analyze, "replay_cx323_maintenance_history", replay)
+
+    output, seal = live_analyze.analyze(run_dir)
+
+    assert output.is_file()
+    assert replay_calls and replay_calls[0]["policy_path"] == programme.policy_path
+    assert seal["active_hybrid_replay"]["replay_mode"] == (
+        "cx323_phase_priority_oracle_with_AHM_v1"
+    )
+    assert not any(
+        "plant_gain_nominal_hz_per_code" in failure
+        for failure in seal["retained_input_failures"]
+    )
 
 
 def test_cx320_analyzer_binds_tdb_to_frozen_frequency_predecessor() -> None:

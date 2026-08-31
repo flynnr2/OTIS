@@ -32,6 +32,7 @@ RECORD_CONTRACTS = {
     "AT2": "active_transactions_v2",
     "AHY": "active_hybrid_decisions_v1",
     "AH2": "active_hybrid_decisions_v2",
+    "AHM": "active_hybrid_maintenance_v1",
     "RPH": "relative_phase_observations_v1",
     "PHE": "phase_estimator_outputs_v1",
     "HPR": "hybrid_preview_decisions_v1",

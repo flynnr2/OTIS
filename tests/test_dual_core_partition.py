@@ -346,9 +346,12 @@ def test_dual_core_timing_paths_keep_full_formatters_out_of_automatic_storage() 
     assert "OtisEvidenceFrameMessage evidence_frame_scratch = {};" in active
     assert "OtisEvidenceFrameMessage message = {};" not in active
     # ACT request/application evidence, the AHY decision record, the exact
-    # long-run timing sidecar and the CX321 plant-sign lifecycle share one
-    # statically allocated evidence frame.
-    assert active.count("otis_dual_core_publish_evidence(&evidence_frame_scratch)") == 5
+    # long-run timing sidecar, CX321 plant-sign lifecycle, and CX323 AHM record
+    # share one statically allocated evidence frame. The wrapper either adds
+    # that frame to CX323's preformatted atomic burst or publishes it directly
+    # for historical profiles.
+    assert active.count("publish_evidence_message(&evidence_frame_scratch)") == 6
+    assert "otis_dual_core_publish_evidence(&evidence_frame_scratch)" not in active
 
     assert "OtisEvidenceFrameMessage dual_core_association_loss_scratch = {};" in sketch
     association_start = sketch.index(

@@ -181,6 +181,24 @@ bool otis_dual_core_take_critical(OtisCriticalRecordMessage *message);
 // Core 1 producer / Core 0 consumer. Complete EST/CTL/ACT frames are
 // non-droppable; no mutable formatter buffer is shared between cores.
 bool otis_dual_core_publish_evidence(const OtisEvidenceFrameMessage *message);
+// Publish one preformatted logical evidence burst with a single commit. Every
+// member and capacity for the complete burst are checked before any frame is
+// visible to Core 0. Failure publishes no prefix and latches EvidenceExhausted.
+bool otis_dual_core_publish_evidence_burst(
+    const OtisEvidenceFrameMessage *messages, uint32_t message_count);
+// In-place atomic burst construction avoids a second full-frame staging
+// array. No appended member is visible to Core 0 until commit releases the
+// reserved tail; cancel discards the unpublished suffix.
+bool otis_dual_core_begin_evidence_burst(uint32_t message_count);
+bool otis_dual_core_append_evidence_burst(
+    const OtisEvidenceFrameMessage *message);
+bool otis_dual_core_commit_evidence_burst(void);
+void otis_dual_core_cancel_evidence_burst(void);
+// Read-only reservation predicate for two causally adjacent logical bursts.
+// Core 1 is the sole producer, while concurrent Core 0 drainage can only add
+// capacity, so a successful check remains sufficient until those bursts are
+// published back-to-back without another evidence producer call.
+bool otis_dual_core_evidence_can_publish(uint32_t message_count);
 bool otis_dual_core_take_evidence(OtisEvidenceFrameMessage *message);
 
 // Core 1 producer / Core 0 consumer. Duplicate summaries may drop, always

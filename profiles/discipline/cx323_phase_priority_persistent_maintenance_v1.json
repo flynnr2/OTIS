@@ -22,6 +22,11 @@
       "file_sha256": "fc46b30e2bd323cdcbfdefa84fc7a35943584007120f3e1b9b96bbe98ba379af",
       "semantic_sha256": "20b729dce477349704ce09e7cacf14047525450d50230c8f114f75959289d707"
     },
+    "successor_study_contract_v3": {
+      "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v3.json",
+      "file_sha256": "a9915b61f295eaa743d8803ee609dd2a3f5b3136fff41d4dc6766929e6f06949",
+      "semantic_sha256": "32a7f47330404e1cf7ea724517643deff078e74d3e1aa50127c378bced5f4d53"
+    },
     "successor_comparison": {
       "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/cx323_successor_offline_comparison_v2.json",
       "file_sha256": "1df490f02e4fc9e0033aeebaa7b5c8f77ba8141368a7ce46396e1025a8bcfcad",
@@ -29,7 +34,11 @@
     },
     "selected_architecture": {
       "path": "docs/10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md",
-      "sha256": "e33f3a3a096ee89ced89a24dfedf4d30a2773d80a70b8f1d4f351bdb97cd3f35"
+      "sha256": "324f432e4cb13bb899ec9dfc23e8d1425d9f664fa074c5a1251e7cba412a07ae"
+    },
+    "maintenance_evidence_contract": {
+      "path": "docs/50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md",
+      "sha256": "1ad8f360d1c6e5a593a1266f9f5eb665cb17e9db09cdce8462486ebb3f949be0"
     },
     "frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
@@ -113,7 +122,9 @@
     "authoritative_fixed_point_unit": "signed_integer_picocode_1e_minus_12_code",
     "picocode_reduced_numerator": 625000000000000000000,
     "picocode_reduced_denominator": 4680182727,
-    "conversion": "checked_signed_128_bit_quotient_remainder_never_form_centre_times_1e24"
+    "conversion": "checked_signed_128_bit_quotient_remainder_never_form_centre_times_1e24",
+    "maximum_absolute_combined_centre_units": 332041393326771929124,
+    "native_boundary_contract": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V3"
   },
   "correction_debt": {
     "enabled": true,

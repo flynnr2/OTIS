@@ -71,6 +71,18 @@ def test_prewrite_request_capsule_validates_before_release() -> None:
     validate_transaction_row(row, spec, identities, row["build_identity"])
 
 
+def test_cx323_transaction_identity_never_aliases_campaign18() -> None:
+    inherited, identities, _ = load_no_write_qualification_spec("A")
+    spec = replace(inherited, profile="cx323_d9_d6_72h_adaptive_hybrid")
+    row = _row()
+    # Campaign18's identity is valid for its own historical lifecycle, but is
+    # not interchangeable with the CX323 successor transaction profile.
+    row["profile_identity"] = "cx322_d9_d6_72h_sustained_engineering"
+
+    with pytest.raises(ValueError, match="profile_identity"):
+        validate_transaction_row(row, spec, identities, row["build_identity"])
+
+
 def test_cx321_phase4_waits_for_matching_psq_split_record(
     tmp_path: Path,
 ) -> None:
@@ -438,6 +450,7 @@ def test_cx320_restart_never_confuses_host_write_with_firmware_consumption(
     [
         "otis_sustained_hybrid_regulation_v1",
         "cx322_d9_d6_72h_sustained_engineering",
+        "cx323_d9_d6_72h_adaptive_hybrid",
     ],
 )
 def test_sustained_phase4_retains_replay_before_acknowledgement(
@@ -509,9 +522,15 @@ def test_sustained_phase4_retains_replay_before_acknowledgement(
 
     assert len(replay_calls) == 1
     assert replay_calls[0]["active_transactions_csv"] == active_csv
+    assert replay_calls[0]["expected_profile_identity"] == profile
     assert replay_calls[0]["maximum_applications"] == spec.correction_limit
     assert replay_calls[0]["maximum_cumulative_movement_codes"] == (
         spec.cumulative_limit
+    )
+    assert replay_calls[0]["maintenance_csv"] == (
+        run_dir / "csv/active_hybrid_maintenance_v1.csv"
+        if profile == "cx323_d9_d6_72h_adaptive_hybrid"
+        else None
     )
     assert submitted == ["ACTIVE EVIDENCE 1 4"]
     assert supervisor.state["acknowledged_record_sequences"] == [5]

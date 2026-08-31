@@ -13,6 +13,7 @@ from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
 from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
 )
 from host.otis_tools.active_control_supervisor import (
     _next_selected_interval_is_cadence_eligible,
@@ -370,11 +371,14 @@ def _health(
 
 
 def _set_campaign18_exact_clock(
-    supervisor: live.ActiveHybridLiveSupervisor, *, elapsed_ticks: int
+    supervisor: live.ActiveHybridLiveSupervisor,
+    *,
+    elapsed_ticks: int,
+    programme=CX322_D9_D6_72H_PROGRAMME,
 ) -> dict[tuple[str, str], str]:
     origin = 1_000_000
     frontier = origin + elapsed_ticks
-    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.programme = programme
     supervisor.state["qualified_origin_timestamp_ticks"] = origin
     supervisor.state["qualified_origin_extended_timestamp_ticks"] = origin
     supervisor.state["qualified_origin_session_id"] = 1
@@ -447,6 +451,69 @@ def test_campaign18_exact_259200_second_endpoint_and_descriptor_name(
     assert supervisor.state["qualified_endpoint_extended_timestamp_ticks"] == (
         1_000_000 + endpoint_ticks
     )
+
+
+def test_cx323_exact_endpoint_uses_successor_identity_not_campaign18(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    endpoint_ticks = (
+        CX323_D9_D6_72H_PROGRAMME.qualified_duration_s
+        * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    health = _set_campaign18_exact_clock(
+        supervisor,
+        elapsed_ticks=endpoint_ticks,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+    health.update(
+        {
+            ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
+            ("cx317_active", "first_phase_checkpoint_passed"): "true",
+        }
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_000.0, 0.0)
+
+    assert supervisor.state["terminal"]["reason"] == (
+        "cx323_d9_d6_72h_qualified_hybrid_complete"
+    )
+    assert "cx322" not in supervisor.state["terminal"]["reason"]
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ("prospective_repeated_alternation", "prospective_low_efficiency_path"),
+)
+def test_cx323_controller_inhibit_retains_acquisition_until_endpoint(
+    tmp_path: Path, reason: str
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    health = _health(
+        supervisor,
+        hybrid_state="FAIL_STATIC",
+        hybrid_reason=reason,
+        fail_static="true",
+    )
+    health.update(
+        {
+            ("cx317_active", "state"): "FAULT",
+            ("cx317_active", "reason"): reason,
+            ("cx317_active", "gnss_metadata_hold_active"): "false",
+            ("cx317_active", "gnss_metadata_hold_transaction_pending"): "false",
+            ("cx317_active", "gnss_metadata_hold_entry_sequence"): "0",
+            ("cx317_active", "gnss_metadata_requalification_sequence"): "0",
+            ("cx317_active", "gnss_metadata_qualification_frontier"): "0",
+            ("cx317_active", "d14_d8_observation_sequence"): "1",
+        }
+    )
+
+    supervisor._check_fail_static_health(health)
+    supervisor._maybe_start_or_arm(health)
+
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["controller_authority_inhibited_reason"] == reason
 
 
 @pytest.mark.parametrize(
@@ -1203,6 +1270,36 @@ def test_campaign18_live_supervisor_fault_uses_canonical_terminal(
         "utc": supervisor.state["terminal"]["utc"],
         "last_confirmed_code": 0xA850,
     }
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected"),
+    (
+        (
+            "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault:fixture",
+            "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault",
+        ),
+        (
+            "cx323_d9_d6_72h_live_supervisor_fault:fixture",
+            "cx323_d9_d6_72h_identity_or_evidence_fault",
+        ),
+        (
+            "cx323_d9_d6_72h_wall_endpoint_without_clear_static_terminal",
+            "cx323_d9_d6_72h_right_censored_incomplete",
+        ),
+    ),
+)
+def test_cx323_abort_uses_only_successor_terminal_identities(
+    tmp_path: Path, reason: str, expected: str
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    supervisor.state["terminal_static_code"] = 0xA84D
+
+    supervisor._abort(reason)
+
+    assert supervisor.state["terminal"]["primary_decision"] == expected
+    assert "cx322" not in supervisor.state["terminal"]["primary_decision"]
 
 
 def test_campaign18_qualification_defers_incomplete_capture_baseline_atomically(

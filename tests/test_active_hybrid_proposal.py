@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from host.otis_tools import active_hybrid_bundle as bundle_tool
 from host.otis_tools import active_hybrid_proposal as proposal_tool
 from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
 )
 
 
@@ -235,3 +239,95 @@ def test_72h_creator_declares_changed_authority_envelope_and_duration(
     assert created["progressive_envelope"] == (
         proposal_tool._progressive_envelope(CX322_D9_D6_72H_PROGRAMME)
     )
+
+
+def test_cx323_proposal_binds_replacement_controller_without_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root_bundle = "1" * 64
+    parent_path = tmp_path / "parent.json"
+    parent = _write_semantic(
+        parent_path,
+        {
+            "proposal_id": proposal_tool.PROPOSAL_ID,
+            "exact_bundle": {"bundle_sha256": root_bundle},
+        },
+        "proposal_sha256",
+    )
+    monkeypatch.setattr(
+        proposal_tool, "ROOT_PROPOSAL_SHA256", parent["proposal_sha256"]
+    )
+    monkeypatch.setattr(proposal_tool, "ROOT_BUNDLE_SHA256", root_bundle)
+    authority_path = tmp_path / "authority.json"
+    authority_path.write_text(
+        json.dumps(
+            {
+                "authority_type": "cx320_explicit_operator_authority_v1",
+                "named_bundle_sha256": root_bundle,
+                "named_proposal_sha256": parent["proposal_sha256"],
+                "stage_5_effective": True,
+                "expanded_recovery_authority": {"effective": True},
+                "frozen_scientific_boundary": {
+                    "controller_thresholds_may_change_without_new_decision": (
+                        False
+                    )
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    bundle_path = tmp_path / "bundle.json"
+    bundle_path.write_text("{}", encoding="utf-8")
+    persistent_maintenance = bundle_tool._cx323_successor_binding(
+        CX323_D9_D6_72H_PROGRAMME
+    )
+    exact_bundle = {
+        "programme_id": CX323_D9_D6_72H_PROGRAMME.programme_id,
+        "run_identity": CX323_D9_D6_72H_PROGRAMME.runtime_run_identity,
+        "bundle_sha256": "2" * 64,
+        "policy": {"policy_sha256": bundle_tool.CX323_POLICY_SHA256},
+        "persistent_maintenance": persistent_maintenance,
+        "firmware": {
+            "build_identity": "4" * 64 + ":" + "5" * 64,
+            "uf2": {"sha256": "6" * 64},
+        },
+    }
+    monkeypatch.setattr(
+        proposal_tool, "validate_bundle", lambda path, *args: exact_bundle
+    )
+    output = tmp_path / "proposal.json"
+
+    created = proposal_tool.create_successor_proposal(
+        bundle_path=bundle_path,
+        parent_proposal_path=parent_path,
+        operator_authority_path=authority_path,
+        output_path=output,
+        successor_reason="prospectively selected quantization-resistant controller",
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+    assert proposal_tool.validate_proposal(
+        output, CX323_D9_D6_72H_PROGRAMME
+    ) == created
+
+    lineage = created["lineage"]
+    assert created["persistent_maintenance"] == persistent_maintenance
+    assert lineage["controller_request_law_prospectively_replaced"] is True
+    assert lineage["persistent_maintenance_policy_and_contract_bound"] is True
+    assert lineage["inherits_physical_authority"] is False
+    assert "controller_request_law_unchanged" not in lineage
+    assert all(
+        created["authority"][name] is False
+        for name in bundle_tool.REQUIRED_FALSE_AUTHORITY
+    )
+
+    tampered = json.loads(output.read_text(encoding="utf-8"))
+    tampered.pop("proposal_sha256")
+    tampered["lineage"].pop(
+        "controller_request_law_prospectively_replaced"
+    )
+    tampered["lineage"]["controller_request_law_unchanged"] = True
+    tampered["proposal_sha256"] = proposal_tool._canonical_sha256(tampered)
+    output.chmod(0o644)
+    output.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(ValueError, match="successor proposal lineage differs"):
+        proposal_tool.validate_proposal(output, CX323_D9_D6_72H_PROGRAMME)

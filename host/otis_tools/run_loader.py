@@ -31,6 +31,12 @@ CX322_D9_D6_72H_PROFILE_ID = "cx322_d9_d6_72h_sustained_engineering"
 CX322_D9_D6_72H_PROGRAMME_ID = (
     "OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_V1"
 )
+CX323_D9_D6_72H_EVIDENCE_EPOCH = (
+    "OTIS_CX323_D9_D6_72H_EVIDENCE_EPOCH_1"
+)
+CX323_D9_D6_72H_STAGE = "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_LIVE"
+CX323_D9_D6_72H_PROFILE_ID = "cx323_d9_d6_72h_adaptive_hybrid"
+CX323_D9_D6_72H_PROGRAMME_ID = "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_V1"
 GNSS_BAUD_ENVELOPE_EVIDENCE_EPOCH = "OTIS_GNSS_BAUD_ENVELOPE_EVIDENCE_EPOCH_1"
 GNSS_BAUD_ENVELOPE_STAGE = "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_LIVE"
 GNSS_BAUD_ENVELOPE_PROFILE_ID = "otis_gnss_baud_envelope_characterization_v1"
@@ -282,6 +288,20 @@ def _require_current_epoch(data: dict) -> None:
         raise ValueError(
             "manifest does not satisfy "
             f"{CX322_D9_D6_72H_EVIDENCE_EPOCH}; "
+            f"{ARCHIVAL_CHECKOUT_GUIDANCE}"
+        )
+    if stage == CX323_D9_D6_72H_STAGE:
+        programme = data.get("cx323_d9_d6_72h")
+        if (
+            data.get("compatibility_floor") == CX323_D9_D6_72H_EVIDENCE_EPOCH
+            and data.get("programme_id") == CX323_D9_D6_72H_PROGRAMME_ID
+            and isinstance(programme, dict)
+            and programme.get("profile_id") == CX323_D9_D6_72H_PROFILE_ID
+        ):
+            return
+        raise ValueError(
+            "manifest does not satisfy "
+            f"{CX323_D9_D6_72H_EVIDENCE_EPOCH}; "
             f"{ARCHIVAL_CHECKOUT_GUIDANCE}"
         )
     if stage == D9_D6_FREQUENCY_ONLY_ENDURANCE_STAGE:

@@ -12,6 +12,7 @@ from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
     SUSTAINED_HYBRID_PROGRAMME,
 )
 
@@ -28,13 +29,24 @@ def _semantic(value: dict[str, object], field: str) -> dict[str, object]:
     return {**value, field: activation._canonical_sha256(value)}
 
 
-def test_campaign18_alone_requires_exact_active_timing_sidecars() -> None:
+def test_long_run_programmes_require_their_exact_evidence_products() -> None:
     campaign18 = {
         entry["contract"]: entry
         for entry in activation._required_files(CX322_D9_D6_72H_PROGRAMME)
     }
     assert campaign18["active_transactions_v2"].get("optional") is None
     assert campaign18["active_hybrid_decisions_v2"].get("optional") is None
+
+    cx323 = {
+        entry["contract"]: entry
+        for entry in activation._required_files(CX323_D9_D6_72H_PROGRAMME)
+    }
+    assert cx323["active_transactions_v2"].get("optional") is None
+    assert cx323["active_hybrid_decisions_v2"].get("optional") is None
+    assert cx323["active_hybrid_maintenance_v1"] == {
+        "path": "csv/active_hybrid_maintenance_v1.csv",
+        "contract": "active_hybrid_maintenance_v1",
+    }
 
     for historical in (
         CX320_PROGRAMME,
@@ -47,6 +59,7 @@ def test_campaign18_alone_requires_exact_active_timing_sidecars() -> None:
         }
         assert "active_transactions_v2" not in contracts
         assert "active_hybrid_decisions_v2" not in contracts
+        assert "active_hybrid_maintenance_v1" not in contracts
 
 
 def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(

@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "status_id": "otis_programme_status_v2",
-  "active_programme": "cx322_d9_d6_72h_sustained_engineering",
+  "active_programme": "cx323_d9_d6_72h_adaptive_hybrid",
   "programmes": {
     "platform_stabilization": {
       "state": "completed",
@@ -2718,14 +2718,11 @@
       "next_gate": "exact_build_complete_operational_rehearsal_then_fresh_auto_detect_bench_entry"
     },
     "cx322_d9_d6_72h_sustained_engineering": {
-      "state": "operator_authorized_preflight_rehearsal_and_bounded_bench",
-      "allowed_operations": [
-        "offline_preparation",
-        "cx322_d9_d6_72h_sustained_engineering_live"
-      ],
+      "state": "superseded_by_cx323_d9_d6_72h_adaptive_hybrid",
+      "allowed_operations": [],
       "effective_date": "2026-08-30",
       "authority": "operator_authorized_nonincremental_engineering_bench_work",
-      "physical_authority_effective": true,
+      "physical_authority_effective": false,
       "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
       "predecessor_evidence": {
         "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
@@ -2791,7 +2788,77 @@
         "bench_entry_pending": true,
         "authority_consumed": false
       },
-      "next_gate": "repeat_dynamic_auto_detect_owner_and_prewrite_physical_gates_then_single_finite_72h_live_entry"
+      "next_gate": "historical_analysis_only"
+    },
+    "cx323_d9_d6_72h_adaptive_hybrid": {
+      "state": "operator_authorized_preflight_rehearsal_and_bounded_bench",
+      "allowed_operations": [
+        "offline_preparation",
+        "cx323_d9_d6_72h_adaptive_hybrid_live"
+      ],
+      "effective_date": "2026-08-31",
+      "authority": "operator_authorized_unattended_corrected_controller_72h_bench_work",
+      "physical_authority_effective": true,
+      "predecessor_programme": "cx322_bounded_hybrid_fact_gathering",
+      "predecessor_evidence": {
+        "run": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z",
+        "seal_path": "runs/cx322_bounded_hybrid_fact_gathering/stage5_live_attempt7_20260822T1921Z/reports/cx322_direct_hybrid_physical_seal_v1.json",
+        "seal_file_sha256": "147d602bc9d3a7c0eb47542952330930532d051556ab1aa687395f6d8ed9bf8f",
+        "seal_size_bytes": 12675403,
+        "seal_sha256": "3ccda92c765c7d69af69fe82c86738b9497ddae6bc3667773df44b84f01036d0",
+        "terminal_primary_decision": "bounded_direct_hybrid_evidence_acquired"
+      },
+      "engineering_contract": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/cx323_d9_d6_72h_adaptive_hybrid_contract_v1.json",
+      "firmware_profile": "cx323_d9_d6_72h_adaptive_hybrid",
+      "selected_controller": {
+        "profile_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+        "path": "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
+        "file_sha256": "5943a1c33496a9354456ee1b8fec4c6f96b9e817b6d22cc8ee58385dc98ef43f"
+      },
+      "serial": {
+        "baud": 115200,
+        "device_selection": "fresh_capture_device_--auto-detect_exactly_one_/dev/cu.usbmodem*",
+        "stored_device_path_authority": false
+      },
+      "finite_envelope": {
+        "setup_code": 43085,
+        "qualified_duration_s": 259200,
+        "maximum_total_automatic_applications": 144,
+        "maximum_total_physical_control_applications": 144,
+        "maximum_total_dac_writes_including_setup": 145,
+        "maximum_combined_step_codes": 21,
+        "maximum_cumulative_absolute_movement_codes": 3024,
+        "minimum_applied_cadence_s": 1800,
+        "minimum_code": 43008,
+        "maximum_code": 43776,
+        "absolute_wall_clock_limit_s": 280800,
+        "automatic_retry": false,
+        "automatic_restoration": false,
+        "deliberate_reversal_challenge": false,
+        "extension": false
+      },
+      "authority_invariants": {
+        "D14_reference_authority": true,
+        "D8_oscillator_and_control_truth": true,
+        "D9_measurement_or_control_authority": false,
+        "D6_measurement_control_abort_or_terminal_authority": false,
+        "D10_authority_changed": false,
+        "waveform_qualified": false,
+        "recoverable_GNSS_metadata_anomaly_is_bounded_hold": true,
+        "authority_ceilings_are_activity_targets": false
+      },
+      "verification": {
+        "controller_selection_and_portable_native_parity_passed": true,
+        "exact_profile_build_passed_before_final_freeze": true,
+        "campaign_release_current_tests_passed": 1561,
+        "campaign_release_historical_tests_deselected": 63,
+        "campaign_release_firmware_profiles_verified": 28,
+        "campaign_release_gate_passed": true,
+        "complete_operational_rehearsal_pending": true,
+        "bench_entry_pending": true,
+        "authority_consumed": false
+      },
+      "next_gate": "release_gate_exact_freeze_complete_rehearsal_then_dynamic_auto_detect_bench_entry"
     }
   }
 }

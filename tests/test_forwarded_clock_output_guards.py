@@ -152,6 +152,32 @@ def test_d9_d6_72h_profile_changes_only_sustained_authority_envelope() -> None:
     assert 'kExpectedProfile[] = "cx322_d9_d6_72h_sustained_engineering"' in live
 
 
+def test_cx323_profile_has_distinct_selector_setup_and_wire_identity() -> None:
+    matrix = json.loads(
+        (ROOT / "firmware" / "arduino" / "firmware_matrix.json").read_text()
+    )
+    profiles = {item["id"]: item["defines"] for item in matrix["profiles"]}
+    candidate = profiles["cx323_d9_d6_72h_adaptive_hybrid"]
+
+    assert candidate["OTIS_CX317_ACTIVE_CAMPAIGN"] == (
+        "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID"
+    )
+    assert candidate["OTIS_CX317_ACTIVE_START_CODE"] == "0xA84Du"
+    assert candidate["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "144u"
+    assert candidate["OTIS_ENABLE_FORWARDED_D9_OUTPUT"] == "1"
+    assert candidate["OTIS_ENABLE_FORWARDED_D6_MONITOR"] == "1"
+
+    config = (SKETCH / "otis_config.h").read_text()
+    live = (SKETCH / "otis_cx317_active_live.cpp").read_text()
+    assert (
+        "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID 19"
+        in config
+    )
+    assert "OTIS_CX317_ACTIVE_START_CODE != 0xA84Du" in config
+    assert 'kRunIdentity[] = "cx323_d9_d6_72h_adaptive_hybrid:1"' in live
+    assert 'kExpectedProfile[] = "cx323_d9_d6_72h_adaptive_hybrid"' in live
+
+
 def test_d6_monitor_is_initialized_and_serviced_after_authoritative_d8_pair() -> None:
     sketch = (SKETCH / "otis_nano_rp2040_connect.ino").read_text()
     setup1 = sketch.split("void setup1()", 1)[1].split("void loop1()", 1)[0]

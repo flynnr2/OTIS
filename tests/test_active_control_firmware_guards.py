@@ -614,6 +614,10 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
     assert '"0x%04X"' in visitor
     assert "OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT" in visitor
     assert "OTIS_CX317_ACTIVE_CAMPAIGN_D9_D6_72H_SUSTAINED_HYBRID" in visitor
+    assert (
+        "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID"
+        in visitor
+    )
     assert "OTIS_CX317_ACTIVE_STATUS_SNAPSHOT_CONTRACT_V3" in visitor
     assert '"unavailable"' in visitor
 
@@ -714,6 +718,9 @@ def test_only_supported_bounded_control_profiles_compile_active_in() -> None:
         "cx322_d9_d6_integration_engineering",
         # Exact 72-hour authority envelope around the unchanged CX322 law.
         "cx322_d9_d6_72h_sustained_engineering",
+        # Corrected phase-priority successor with the same full-cadence
+        # physical envelope and its own exact firmware identity.
+        "cx323_d9_d6_72h_adaptive_hybrid",
     }
     for profile in matrix["profiles"]:
         if profile["expect"] != "pass":
@@ -768,3 +775,57 @@ def test_integrated_cx322_has_distinct_firmware_runtime_identity() -> None:
     assert "OTIS_ENABLE_FORWARDED_D9_OUTPUT &&" in source
     assert "OTIS_ENABLE_FORWARDED_D6_MONITOR &&" in source
     assert "!OTIS_ENABLE_D9_D6_READINESS_PROFILE" in source
+
+
+def test_cx323_live_bridge_uses_exact_native_controller_and_atomic_lifecycles() -> None:
+    source = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    decision = source[
+        source.index("static void cx323_active_live_on_decision_impl") :
+        source.index("void otis_cx317_active_live_on_decision")
+    ]
+
+    assert "otis_cx323_engine_decide" in decision
+    assert "otis_active_hybrid_decide" not in decision
+    assert "otis_dual_core_evidence_can_publish(total_capacity)" in decision
+    assert "begin_cx323_evidence_burst(decision_burst_count)" in decision
+    assert "queue_cx323_maintenance_record" in decision
+    assert "commit_cx323_evidence_burst" in decision
+    assert "pending_cx323_observation = observation" in decision
+    assert "pending_cx323_decision = native_decision" in decision
+    assert "pending_cx323_origin_valid = true" in decision
+
+    partition = (FIRMWARE / "otis_dual_core_partition.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "bool otis_dual_core_begin_evidence_burst" in partition
+    assert "bool otis_dual_core_commit_evidence_burst" in partition
+    assert "void otis_dual_core_cancel_evidence_burst" in partition
+
+
+def test_cx323_gnss_hold_preserves_reference_and_requires_two_later_windows() -> None:
+    source = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    unhealthy = source[
+        source.index("bool enter_gnss_metadata_hold") :
+        source.index("bool maybe_complete_gnss_metadata_requalification")
+    ]
+    fresh = source[
+        source.index("bool maybe_complete_gnss_metadata_requalification") :
+        source.index("void update_active_reference_and_integrity")
+    ]
+    decision = source[
+        source.index("static void cx323_active_live_on_decision_impl") :
+        source.index("void otis_cx317_active_live_on_decision")
+    ]
+
+    assert "otis_cx323_engine_enter_metadata_hold" in unhealthy
+    assert '"gnss_metadata_unqualified_hold"' in unhealthy
+    assert "transaction.last_confirmed_applied_code" not in unhealthy
+    assert "otis_cx323_engine_requalify_metadata" in fresh
+    assert "OtisCx323MaintenanceEvent::GnssMetadataRequalified" in fresh
+    assert "engine_before.requalification_window_count != 1u" in decision
+    assert "engine_after.requalification_window_count != 2u" in decision
+    assert "gnss_metadata_hold_active = false" in decision

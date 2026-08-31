@@ -237,6 +237,14 @@ def create_successor_proposal(
                 }
                 if programme.sustained_regulation
                 else {
+                    "controller_request_law_prospectively_replaced": True,
+                    "persistent_maintenance_policy_and_contract_bound": True,
+                    "authority_ceilings_and_qualified_duration_changed_by_current_prospectively_frozen_programme": True,
+                    "successor_qualification_criterion_prospectively_frozen": True,
+                    "inherits_physical_authority": False,
+                }
+                if programme.persistent_maintenance_policy
+                else {
                     "controller_request_law_unchanged": True,
                     "authority_ceilings_and_qualified_duration_changed_by_current_prospectively_frozen_programme": True,
                     "successor_qualification_criterion_prospectively_frozen": True,
@@ -257,6 +265,10 @@ def create_successor_proposal(
         unsigned["profile_identity"] = programme.profile_id
         unsigned["programme_policy_sha256"] = bundle["programme_policy"][
             "sha256"
+        ]
+    if programme.persistent_maintenance_policy:
+        unsigned["persistent_maintenance"] = bundle[
+            "persistent_maintenance"
         ]
     proposal = {
         **unsigned,
@@ -326,9 +338,20 @@ def validate_proposal(
         "programme_policy_sha256"
     ) != bundle.get("programme_policy", {}).get("sha256"):
         raise ValueError("CX321 proposal programme-policy identity differs")
+    if programme.persistent_maintenance_policy and proposal.get(
+        "persistent_maintenance"
+    ) != bundle.get("persistent_maintenance"):
+        raise ValueError(
+            "CX323 proposal persistent-maintenance policy or contract differs"
+        )
     lineage = proposal.get("lineage")
-    if programme.identification_required and not isinstance(lineage, dict):
-        raise ValueError("CX321 proposal requires exact operator authority lineage")
+    if (
+        programme.identification_required
+        or programme.persistent_maintenance_policy
+    ) and not isinstance(lineage, dict):
+        raise ValueError(
+            f"{programme.key.upper()} proposal requires exact operator authority lineage"
+        )
     if lineage is not None:
         if not isinstance(lineage, dict):
             raise ValueError("CX320 proposal lineage is malformed")
@@ -386,6 +409,32 @@ def validate_proposal(
             )
             or (
                 programme.prospectively_changed_authority_envelope
+                and programme.persistent_maintenance_policy
+                and (
+                    lineage.get(
+                        "controller_request_law_prospectively_replaced"
+                    )
+                    is not True
+                    or lineage.get(
+                        "persistent_maintenance_policy_and_contract_bound"
+                    )
+                    is not True
+                    or lineage.get(
+                        "authority_ceilings_and_qualified_duration_changed_by_current_prospectively_frozen_programme"
+                    )
+                    is not True
+                    or lineage.get(
+                        "successor_qualification_criterion_prospectively_frozen"
+                    )
+                    is not True
+                    or lineage.get("inherits_physical_authority") is not False
+                    or "controller_request_law_unchanged" in lineage
+                    or "scientific_limits_and_duration_unchanged" in lineage
+                )
+            )
+            or (
+                programme.prospectively_changed_authority_envelope
+                and not programme.persistent_maintenance_policy
                 and (
                     lineage.get("controller_request_law_unchanged") is not True
                     or lineage.get(

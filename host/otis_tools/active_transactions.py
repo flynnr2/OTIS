@@ -21,7 +21,11 @@ import time
 
 from .contracts import CsvValidationContext, validate_csv
 from .abort_transport import AbortFifo
-from .run_loader import CAPTURE_IN_PROGRESS_FLAG, SUSTAINED_HYBRID_PROFILE_ID
+from .run_loader import (
+    CAPTURE_IN_PROGRESS_FLAG,
+    CX323_D9_D6_72H_PROFILE_ID,
+    SUSTAINED_HYBRID_PROFILE_ID,
+)
 from .serial_commands import send_command_to_fifo
 
 
@@ -38,6 +42,21 @@ PLANT_SIGN_SPLIT_POLL_S = 0.02
 # actuator deadline. Core 0 records the exact post-write capture tick; ACT
 # records the later Core 1 acknowledgement-consumption second.
 CROSS_CORE_ACTUATOR_ACK_MAXIMUM_AGE_S = 30
+
+# These profiles use the complete four-phase hybrid transaction protocol.  The
+# successor is deliberately listed under its own frozen identity: it must not
+# borrow Campaign18's transaction/replay authority by an alias.
+HYBRID_TRANSACTION_PROFILE_IDS = frozenset(
+    {
+        "cx320_active_hybrid",
+        "cx321_active_hybrid",
+        "cx322_direct_hybrid",
+        "cx322_d9_d6_integration_engineering",
+        "cx322_d9_d6_72h_sustained_engineering",
+        SUSTAINED_HYBRID_PROFILE_ID,
+        CX323_D9_D6_72H_PROFILE_ID,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -568,14 +587,7 @@ class ActiveTransactionSupervisor:
         active_csv = self.run_dir / ACTIVE_CSV
         _fsync_path(active_csv)
         _fsync_path(capsule)
-        hybrid_profile = self.spec.profile in {
-            "cx320_active_hybrid",
-            "cx321_active_hybrid",
-            "cx322_direct_hybrid",
-            "cx322_d9_d6_integration_engineering",
-            "cx322_d9_d6_72h_sustained_engineering",
-            SUSTAINED_HYBRID_PROFILE_ID,
-        }
+        hybrid_profile = self.spec.profile in HYBRID_TRANSACTION_PROFILE_IDS
         acknowledgement_command = f"ACTIVE EVIDENCE {request_sequence} {phase}"
         plant_sign_response = False
         identification_phase4 = (
@@ -706,6 +718,11 @@ class ActiveTransactionSupervisor:
                     else None
                 ),
                 estimates_csv=self.run_dir / "csv/estimates_v2.csv",
+                maintenance_csv=(
+                    self.run_dir / "csv/active_hybrid_maintenance_v1.csv"
+                    if self.spec.profile == CX323_D9_D6_72H_PROFILE_ID
+                    else None
+                ),
                 maximum_applications=self.spec.correction_limit,
                 maximum_cumulative_movement_codes=self.spec.cumulative_limit,
             )

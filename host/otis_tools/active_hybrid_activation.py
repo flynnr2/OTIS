@@ -21,6 +21,7 @@ from typing import Any
 
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
+    CX323_REHEARSAL_COVERAGE,
     CX320_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     integrated_setup_provenance_contract,
@@ -36,6 +37,7 @@ from .active_hybrid_bundle import (
 from .active_hybrid_proposal import validate_proposal
 from .evidence_index import package_identity
 from .run_paths import (
+    cx323_active_timing_csv_files,
     cx321_csv_files,
     default_csv_files,
     exact_active_timing_csv_files,
@@ -317,7 +319,9 @@ def validate_operational_rehearsal(
         expected_coverage.add("integrated_unarmed_concurrency_observation_boundary")
     if programme.forwarded_output_integration:
         expected_coverage.add("integrated_setup_provenance_boundary")
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.persistent_maintenance_policy:
+        expected_coverage.update(CX323_REHEARSAL_COVERAGE)
+    elif programme.integrated_long_run:
         expected_coverage.update(CAMPAIGN18_REHEARSAL_COVERAGE)
     if (
         report.get("schema_version") != 1
@@ -415,21 +419,28 @@ def validate_operational_rehearsal(
                 "CX321 rehearsal lacks the exact real-process plant-sign "
                 "transaction path"
             )
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         topology = report.get("real_process_topology", {})
         transaction = (
-            topology.get("cx322_real_transaction_path", {})
+            topology.get("integrated_long_run_real_transaction_path", {})
+            or topology.get("cx322_real_transaction_path", {})
             if isinstance(topology, dict)
             else {}
         )
         clock = report.get("accelerated_qualified_device_clock", {})
         manifest_path = path.parent / "process_topology/run/run_manifest.json"
-        manifest = _read_object(manifest_path, "Campaign 18 rehearsal manifest")
+        manifest = _read_object(
+            manifest_path, "integrated long-run rehearsal manifest"
+        )
         files = manifest.get("files", [])
         required_exact = {
             "active_transactions_v2": "csv/active_transactions_v2.csv",
             "active_hybrid_decisions_v2": "csv/active_hybrid_decisions_v2.csv",
         }
+        if programme.persistent_maintenance_policy:
+            required_exact["active_hybrid_maintenance_v1"] = (
+                "csv/active_hybrid_maintenance_v1.csv"
+            )
         exact_files = {
             item.get("contract"): item
             for item in files
@@ -594,8 +605,11 @@ def _attempt_descriptor(
                 "qualified_12h_endpoint_complete"
             )
         operator_abort_decisions = {"operator_abort"}
-        if programme is CX322_D9_D6_72H_PROGRAMME:
-            operator_abort_decisions.add("cx322_d9_d6_72h_operator_abort")
+        operator_abort_decisions.update(
+            decision
+            for decision in programme.terminal_decisions
+            if decision.endswith("_operator_abort")
+        )
         campaign18_legacy_live_health_handoff = (
             isinstance(supervisor_terminal, dict)
             and isinstance(supervisor_terminal.get("reason"), str)
@@ -1042,7 +1056,16 @@ def _required_files(
         "hybrid_preview_decisions_v1",
         "tight_deadband_decisions_v1",
     }
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.persistent_maintenance_policy:
+        source = cx323_active_timing_csv_files()
+        required.update(
+            {
+                "active_transactions_v2",
+                "active_hybrid_decisions_v2",
+                programme.maintenance_record_contract,
+            }
+        )
+    elif programme.integrated_long_run:
         source = exact_active_timing_csv_files()
         required.update(
             {"active_transactions_v2", "active_hybrid_decisions_v2"}
@@ -1319,7 +1342,7 @@ def create_run_manifest(
     }
     if (
         programme.identification_required
-        or programme is CX322_D9_D6_72H_PROGRAMME
+        or programme.integrated_long_run
     ):
         manifest["domains"].append(
             {

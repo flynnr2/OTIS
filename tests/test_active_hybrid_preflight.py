@@ -8,6 +8,7 @@ from host.otis_tools import active_hybrid_preflight as preflight_tool
 from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
     SUSTAINED_HYBRID_PROGRAMME,
     integrated_setup_provenance_contract,
 )
@@ -149,7 +150,7 @@ def test_cx321_structural_preflight_exercises_extended_phase4_envelope(
 def test_integrated_preflight_requires_bound_unknown_to_known_setup_semantics(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    programme = CX322_D9_D6_INTEGRATION_PROGRAMME
+    programme = CX323_D9_D6_72H_PROGRAMME
     bundle_path = tmp_path / "bundle.json"
     proposal_path = tmp_path / "proposal.json"
     bundle_path.write_text(
@@ -209,3 +210,5 @@ def test_integrated_preflight_requires_bound_unknown_to_known_setup_semantics(
     assert result["checks"]["integrated_engineering_contract_bound"] is True
     assert result["checks"]["unknown_boot_DAC_state_not_inferred"] is True
     assert result["checks"]["setup_is_frozen_stimulus_not_restoration"] is True
+    assert "0xA84D" in result["normalized_command_rehearsal"][4]
+    assert "0xA83C" not in result["normalized_command_rehearsal"][4]

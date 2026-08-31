@@ -51,7 +51,7 @@
     },
     {
       "id": "evidence",
-      "implementation": "OtisSpscQueue<OtisEvidenceFrameMessage, OTIS_EVIDENCE_QUEUE_DEPTH>",
+      "implementation": "OtisEvidenceBurstQueue evidence_to_service",
       "capacity_symbol": "OTIS_EVIDENCE_QUEUE_DEPTH",
       "capacity": 8,
       "producer": "core1_timing",

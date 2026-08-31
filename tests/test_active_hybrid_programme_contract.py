@@ -14,6 +14,7 @@ from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
     get_active_hybrid_programme,
     programme_from_mapping,
 )
@@ -128,6 +129,36 @@ def test_campaign18_uses_72h_authority_at_every_runtime_projection() -> None:
     # engineering overrides.
     assert programme.maximum_applications == 4
     assert programme.maximum_cumulative_movement_codes == 84
+
+
+def test_cx323_72h_descriptor_is_distinct_and_exact() -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+
+    assert get_active_hybrid_programme(programme.programme_id) is programme
+    assert get_active_hybrid_programme(programme.runtime_run_identity) is programme
+    assert programme.key == "cx323_d9_d6_72h"
+    assert programme.profile_id == "cx323_d9_d6_72h_adaptive_hybrid"
+    assert programme.runtime_run_identity == "cx323_d9_d6_72h_adaptive_hybrid:1"
+    assert programme.setup_code == 0xA84D
+    assert programme.qualified_duration_s == 72 * 3600
+    assert programme.authorized_absolute_wall_limit_s == 78 * 3600
+    assert programme.authorized_maximum_applications == 144
+    assert programme.authorized_maximum_physical_applications == 144
+    assert programme.authorized_maximum_cumulative_movement_codes == 3_024
+    assert programme.maximum_step_codes == 21
+    assert programme.maximum_deliberate_challenges == 0
+    assert programme.integrated_long_run is True
+    assert programme.persistent_maintenance_policy is True
+    assert programme.maintenance_record_type == "AHM"
+    assert programme.maintenance_record_contract == "active_hybrid_maintenance_v1"
+    assert programme.controller_inhibit_acquisition_continues is True
+    assert programme.gnss_metadata_hold_nonterminal is True
+    assert (
+        programme.qualified_endpoint_reason
+        == "cx323_d9_d6_72h_qualified_hybrid_complete"
+    )
+    assert "cx323_d9_d6_72h_hybrid_authority_not_sustained" in programme.terminal_decisions
+    assert "cx322_d9_d6_72h_qualified_engineering_complete" not in programme.terminal_decisions
 
 
 def test_cx321_exact_build_binding_accepts_its_distinct_campaign_macro(

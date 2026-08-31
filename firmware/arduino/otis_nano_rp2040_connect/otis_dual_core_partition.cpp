@@ -12,8 +12,148 @@ OtisSpscQueue<OtisObservationMessage, OTIS_OBSERVATION_QUEUE_DEPTH>
     observation_to_service;
 OtisSpscQueue<OtisCriticalRecordMessage, OTIS_CRITICAL_QUEUE_DEPTH>
     critical_to_service;
-OtisSpscQueue<OtisEvidenceFrameMessage, OTIS_EVIDENCE_QUEUE_DEPTH>
-    evidence_to_service;
+
+// Evidence decisions can comprise several independently formatted records.
+// This ring differs from the other SPSC queues only in allowing the sole
+// producer to fill several slots and release the new tail once, so Core 0 can
+// observe either none or all of a logical burst. Core 0 is the sole consumer;
+// concurrent draining can only advance head and increase available capacity.
+class OtisEvidenceBurstQueue {
+ public:
+  OtisEvidenceBurstQueue()
+      : head_(0u), tail_(0u), high_water_(0u), staged_tail_(0u),
+        staged_expected_(0u), staged_count_(0u), staged_active_(false) {}
+
+  void reset() {
+    __atomic_store_n(&head_, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&tail_, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&high_water_, 0u, __ATOMIC_RELAXED);
+    staged_tail_ = 0u;
+    staged_expected_ = 0u;
+    staged_count_ = 0u;
+    staged_active_ = false;
+  }
+
+  bool try_push_burst(const OtisEvidenceFrameMessage *messages,
+                      uint32_t message_count) {
+    if (staged_active_ || messages == nullptr || message_count == 0u ||
+        message_count > OTIS_EVIDENCE_QUEUE_DEPTH)
+      return false;
+
+    const uint32_t tail = __atomic_load_n(&tail_, __ATOMIC_RELAXED);
+    const uint32_t head = __atomic_load_n(&head_, __ATOMIC_ACQUIRE);
+    const uint32_t depth = tail - head;
+    if (depth > OTIS_EVIDENCE_QUEUE_DEPTH ||
+        message_count > OTIS_EVIDENCE_QUEUE_DEPTH - depth)
+      return false;
+
+    for (uint32_t index = 0u; index < message_count; ++index) {
+      slots_[(tail + index) % OTIS_EVIDENCE_QUEUE_DEPTH] = messages[index];
+    }
+    __atomic_store_n(&tail_, tail + message_count, __ATOMIC_RELEASE);
+    update_high_water(depth + message_count);
+    return true;
+  }
+
+  bool begin_staged(uint32_t message_count) {
+    if (staged_active_ || message_count == 0u ||
+        message_count > OTIS_EVIDENCE_QUEUE_DEPTH)
+      return false;
+    const uint32_t tail = __atomic_load_n(&tail_, __ATOMIC_RELAXED);
+    const uint32_t head = __atomic_load_n(&head_, __ATOMIC_ACQUIRE);
+    const uint32_t current_depth = tail - head;
+    if (current_depth > OTIS_EVIDENCE_QUEUE_DEPTH ||
+        message_count > OTIS_EVIDENCE_QUEUE_DEPTH - current_depth)
+      return false;
+    staged_tail_ = tail;
+    staged_expected_ = message_count;
+    staged_count_ = 0u;
+    staged_active_ = true;
+    return true;
+  }
+
+  bool append_staged(const OtisEvidenceFrameMessage &message) {
+    if (!staged_active_ || staged_count_ >= staged_expected_) return false;
+    slots_[(staged_tail_ + staged_count_) % OTIS_EVIDENCE_QUEUE_DEPTH] =
+        message;
+    ++staged_count_;
+    return true;
+  }
+
+  bool commit_staged() {
+    if (!staged_active_ || staged_count_ != staged_expected_) return false;
+    const uint32_t released_tail = staged_tail_ + staged_expected_;
+    const uint32_t head = __atomic_load_n(&head_, __ATOMIC_ACQUIRE);
+    const uint32_t released_depth = released_tail - head;
+    __atomic_store_n(&tail_, released_tail, __ATOMIC_RELEASE);
+    update_high_water(released_depth);
+    staged_active_ = false;
+    staged_tail_ = 0u;
+    staged_expected_ = 0u;
+    staged_count_ = 0u;
+    return true;
+  }
+
+  void cancel_staged() {
+    staged_active_ = false;
+    staged_tail_ = 0u;
+    staged_expected_ = 0u;
+    staged_count_ = 0u;
+  }
+
+  bool can_push(uint32_t message_count) const {
+    if (staged_active_ || message_count == 0u ||
+        message_count > OTIS_EVIDENCE_QUEUE_DEPTH)
+      return false;
+    const uint32_t tail = __atomic_load_n(&tail_, __ATOMIC_RELAXED);
+    const uint32_t head = __atomic_load_n(&head_, __ATOMIC_ACQUIRE);
+    const uint32_t current_depth = tail - head;
+    return current_depth <= OTIS_EVIDENCE_QUEUE_DEPTH &&
+           message_count <= OTIS_EVIDENCE_QUEUE_DEPTH - current_depth;
+  }
+
+  bool try_pop(OtisEvidenceFrameMessage *message) {
+    if (message == nullptr) return false;
+    const uint32_t head = __atomic_load_n(&head_, __ATOMIC_RELAXED);
+    const uint32_t tail = __atomic_load_n(&tail_, __ATOMIC_ACQUIRE);
+    if (head == tail) return false;
+
+    *message = slots_[head % OTIS_EVIDENCE_QUEUE_DEPTH];
+    __atomic_store_n(&head_, head + 1u, __ATOMIC_RELEASE);
+    return true;
+  }
+
+  uint32_t depth() const {
+    const uint32_t tail = __atomic_load_n(&tail_, __ATOMIC_ACQUIRE);
+    const uint32_t head = __atomic_load_n(&head_, __ATOMIC_ACQUIRE);
+    return tail - head;
+  }
+
+  uint32_t high_water() const {
+    return __atomic_load_n(&high_water_, __ATOMIC_ACQUIRE);
+  }
+
+ private:
+  void update_high_water(uint32_t candidate) {
+    uint32_t observed = __atomic_load_n(&high_water_, __ATOMIC_RELAXED);
+    while (candidate > observed &&
+           !__atomic_compare_exchange_n(&high_water_, &observed, candidate,
+                                        false, __ATOMIC_RELAXED,
+                                        __ATOMIC_RELAXED)) {
+    }
+  }
+
+  OtisEvidenceFrameMessage slots_[OTIS_EVIDENCE_QUEUE_DEPTH];
+  alignas(4) uint32_t head_;
+  alignas(4) uint32_t tail_;
+  alignas(4) uint32_t high_water_;
+  uint32_t staged_tail_;
+  uint32_t staged_expected_;
+  uint32_t staged_count_;
+  bool staged_active_;
+};
+
+OtisEvidenceBurstQueue evidence_to_service;
 OtisSpscQueue<OtisTelemetryMessage, OTIS_TELEMETRY_QUEUE_DEPTH>
     telemetry_to_service;
 OtisSpscQueue<OtisPhasePreviewRecordMessage, OTIS_PHASE_PREVIEW_QUEUE_DEPTH>
@@ -378,12 +518,55 @@ bool otis_dual_core_take_critical(OtisCriticalRecordMessage *message) {
 
 bool otis_dual_core_publish_evidence(
     const OtisEvidenceFrameMessage *message) {
-  if (message != nullptr && message->length > 0u &&
-      message->length < OTIS_EVIDENCE_FRAME_CAPACITY &&
-      evidence_to_service.try_push(*message))
+  return otis_dual_core_publish_evidence_burst(message, 1u);
+}
+
+bool otis_dual_core_publish_evidence_burst(
+    const OtisEvidenceFrameMessage *messages, uint32_t message_count) {
+  bool valid = messages != nullptr && message_count > 0u &&
+               message_count <= OTIS_EVIDENCE_QUEUE_DEPTH;
+  if (valid) {
+    for (uint32_t index = 0u; index < message_count; ++index) {
+      if (messages[index].length == 0u ||
+          messages[index].length >= OTIS_EVIDENCE_FRAME_CAPACITY) {
+        valid = false;
+      }
+    }
+  }
+  if (valid && evidence_to_service.try_push_burst(messages, message_count))
     return true;
   otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
   return false;
+}
+
+bool otis_dual_core_evidence_can_publish(uint32_t message_count) {
+  return evidence_to_service.can_push(message_count);
+}
+
+bool otis_dual_core_begin_evidence_burst(uint32_t message_count) {
+  if (evidence_to_service.begin_staged(message_count)) return true;
+  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+  return false;
+}
+
+bool otis_dual_core_append_evidence_burst(
+    const OtisEvidenceFrameMessage *message) {
+  if (message != nullptr && message->length > 0u &&
+      message->length < OTIS_EVIDENCE_FRAME_CAPACITY &&
+      evidence_to_service.append_staged(*message))
+    return true;
+  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+  return false;
+}
+
+bool otis_dual_core_commit_evidence_burst(void) {
+  if (evidence_to_service.commit_staged()) return true;
+  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+  return false;
+}
+
+void otis_dual_core_cancel_evidence_burst(void) {
+  evidence_to_service.cancel_staged();
 }
 
 bool otis_dual_core_take_evidence(OtisEvidenceFrameMessage *message) {

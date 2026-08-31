@@ -53,7 +53,9 @@ from .active_transactions import (
 from .active_hybrid_proposal import validate_proposal
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
+    CX323_REHEARSAL_COVERAGE,
     CX320_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     integrated_setup_provenance_contract,
     programme_from_mapping,
@@ -93,6 +95,7 @@ from .capture_segment_rotation import prepare_transition, request_rotation
 from .contracts import (
     ACTIVE_HYBRID_DECISION_V1_FIELDS,
     ACTIVE_HYBRID_DECISION_V2_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
     ACTIVE_TRANSACTION_V1_FIELDS,
     ACTIVE_TRANSACTION_V2_FIELDS,
     CONTRACT_FIELDS,
@@ -108,6 +111,7 @@ from .cx321_plant_sign_evidence_guard import (
 from .gnss_operational_baud_policy import GNSS_OPERATIONAL_PREWRITE_EXACT
 from .run_paths import (
     cx321_csv_files,
+    cx323_active_timing_csv_files,
     default_csv_files,
     exact_active_timing_csv_files,
 )
@@ -155,8 +159,6 @@ CAMPAIGN18_REHEARSAL_COVERAGE = (
     "campaign18_exact_72h_endpoint_clock",
     "campaign18_authoritative_capture_fault_terminal",
 )
-
-
 def _utc_now() -> str:
     return (
         datetime.now(timezone.utc)
@@ -1580,7 +1582,7 @@ def _sustained_multi_transaction_fixture(
     )
     dependent_response = response
 
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         second_consumer = observe(6902, 0)
         append_decision(second_consumer)
         first_post_requalification_consumer = observe(7502, 0)
@@ -2005,7 +2007,7 @@ def _cx322_active_status_wire_fixture(
         f"cx317_active,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(records, start=1)
     ).encode()
-    if programme is not CX322_D9_D6_72H_PROGRAMME:
+    if not programme.integrated_long_run:
         return active_wire
 
     capture_health = {
@@ -2270,17 +2272,19 @@ def _create_rehearsal_run_manifest(
         raise ValueError("first-response rehearsal selected for a different programme")
     if (
         endpoint_mode == "capture_fault"
-        and programme is not CX322_D9_D6_72H_PROGRAMME
+        and not programme.integrated_long_run
     ):
         raise ValueError("capture-fault rehearsal selected for a different programme")
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.persistent_maintenance_policy:
+        source_files = cx323_active_timing_csv_files()
+    elif programme.integrated_long_run:
         source_files = exact_active_timing_csv_files()
     elif programme.identification_required:
         source_files = cx321_csv_files()
     else:
         source_files = default_csv_files()
     files = [dict(entry) for entry in source_files]
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         for entry in files:
             if entry["contract"] in {
                 "active_transactions_v2",
@@ -2437,8 +2441,7 @@ def _create_rehearsal_run_manifest(
         ],
     }
     if (
-        programme.identification_required
-        or programme is CX322_D9_D6_72H_PROGRAMME
+        programme.identification_required or programme.integrated_long_run
     ):
         value["domains"].append(
             {
@@ -2506,7 +2509,7 @@ def validate_rehearsal_run_manifest(path: Path) -> dict[str, Any]:
         )
         or (
             value.get("rehearsal_endpoint_mode") == "capture_fault"
-            and programme is not CX322_D9_D6_72H_PROGRAMME
+            and not programme.integrated_long_run
         )
         or value.get("physical_actions_performed") != 0
         or value.get("actionable") is not False
@@ -2861,7 +2864,7 @@ def _exercise_qualified_device_time_boundaries(
         origin_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
         + origin_subsecond_ticks
     )
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         origin_ticks %= RP2040_TIMER0_MICROS_WRAP_TICKS
     estimate_path = supervisor.run_dir / "csv/estimates_v2.csv"
     estimate = {field: "" for field in CONTRACT_FIELDS["estimates_v2"]}
@@ -2923,7 +2926,7 @@ def _exercise_qualified_device_time_boundaries(
     )
 
     health[("cx317_active", "uptime_s")] = str(origin_uptime_s)
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)] = (
             "rp2040_timer0"
         )
@@ -2935,7 +2938,7 @@ def _exercise_qualified_device_time_boundaries(
         supervisor.state["qualified_origin_estimate_id"] is None
     )
     health[("cx317_active", "uptime_s")] = str(origin_uptime_s + 1)
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
             origin_ticks
         )
@@ -2992,7 +2995,7 @@ def _exercise_qualified_device_time_boundaries(
     admission_elapsed_s = (
         qualified_duration_s - supervisor.programme.correction_response_reserve_s
     )
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         admission_before_ticks = (
             origin_ticks
             + admission_elapsed_s * RP2040_TIMER0_TICKS_PER_SECOND
@@ -3014,7 +3017,7 @@ def _exercise_qualified_device_time_boundaries(
     admission_open_at_floor = not supervisor._close_response_horizon_if_required(
         health
     )
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
             (
                 int(health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)])
@@ -3033,7 +3036,7 @@ def _exercise_qualified_device_time_boundaries(
     wall_origin_epoch = datetime.fromisoformat(
         supervisor.envelope.wall_origin_utc.replace("Z", "+00:00")
     ).timestamp()
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         endpoint_before_ticks = (
             origin_ticks
             + qualified_duration_s * RP2040_TIMER0_TICKS_PER_SECOND
@@ -3054,7 +3057,7 @@ def _exercise_qualified_device_time_boundaries(
         )
     supervisor._maybe_finish(health, wall_origin_epoch + 50_000, 0.0)
     endpoint_open_after_forward_utc_step = supervisor.state["terminal"] is None
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
             (
                 int(health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)])
@@ -3073,7 +3076,7 @@ def _exercise_qualified_device_time_boundaries(
     )
     admission_closed_result_key = (
         "admission_closed_at_exact_boundary"
-        if programme is CX322_D9_D6_72H_PROGRAMME
+        if programme.integrated_long_run
         else "admission_closed_at_first_conservative_uptime"
     )
 
@@ -3506,6 +3509,207 @@ def _exercise_cx321_real_transaction_path(
     }
 
 
+def _cx323_maintenance_transaction_fixture(
+    bundle: dict[str, Any],
+) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, Any], list[dict[str, str]]]:
+    """Build CX323's own repeated transaction and AHM lifecycle evidence.
+
+    The PTY programme retains the proven observational command cadence, but
+    rebinding its canonical rows is deliberately explicit: no CX322 identity
+    or policy claim survives into the CX323 stream.  AHM is emitted through
+    the same capture splitter as ACT/AHY and later bound to the exact sidecars.
+    """
+
+    programme = _selected_programme(bundle)
+    if programme is not CX323_D9_D6_72H_PROGRAMME:
+        raise ValueError("CX323 maintenance fixture selected elsewhere")
+    predecessor_policy = CX322_D9_D6_72H_PROGRAMME.policy_path
+    predecessor_bundle = {
+        "programme_id": CX322_D9_D6_72H_PROGRAMME.programme_id,
+        "firmware": bundle["firmware"],
+        "policy": {
+            "path": str(predecessor_policy),
+            "policy_sha256": _sha256_file(predecessor_policy),
+        },
+    }
+    decisions, transactions, summary = _sustained_multi_transaction_fixture(
+        predecessor_bundle
+    )
+    policy = _read_object(Path(str(bundle["policy"]["path"])))
+    bindings = policy["bindings"]
+    policy_sha256 = str(bundle["policy"]["policy_sha256"])
+    code_offset = programme.setup_code - CX322_D9_D6_72H_PROGRAMME.setup_code
+
+    def rebind(row: dict[str, str]) -> dict[str, str]:
+        value = dict(row)
+        value.update(
+            {
+                "run_identity": programme.runtime_run_identity,
+                "profile_identity": programme.profile_id,
+                "policy_sha256": policy_sha256,
+                "response_policy_sha256": bindings["response_policy"]["sha256"],
+            }
+        )
+        for field in (
+            "current_applied_code", "actual_applied_code", "requested_code",
+            "accepted_code", "applied_code",
+        ):
+            if value.get(field) not in {None, "", "0"}:
+                value[field] = str(int(value[field]) + code_offset)
+        return value
+
+    decisions = [rebind(row) for row in decisions]
+    transactions = [rebind(row) for row in transactions]
+    applications = []
+    for item in summary["applications"]:
+        rebound = dict(item)
+        rebound["requested_code"] = int(rebound["requested_code"]) + code_offset
+        applications.append(rebound)
+    summary = {**summary, "applications": applications}
+
+    def maintenance_base(sequence: int, event: str) -> dict[str, str]:
+        row = {field: "0" for field in ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS}
+        row.update(
+            {
+                "record_type": "AHM",
+                "schema_version": "1",
+                "maintenance_record_sequence": str(sequence),
+                "event": event,
+                "event_timestamp_ticks": str(sequence * 16_000_000),
+                "time_domain": "rp2040_timer0_extended",
+                "run_identity": programme.runtime_run_identity,
+                "build_identity": str(bundle["firmware"]["build_identity"]),
+                "profile_identity": programme.profile_id,
+                "policy_id": programme.policy_id,
+                "active_policy_sha256": policy_sha256,
+                "capture_session": "1",
+                "frequency_estimator_sha256": bindings["frequency_estimator"]["sha256"],
+                "phase_epoch": "1",
+                "phase_observation_sequence": str(sequence),
+                "phase_valid": "true",
+                "current_applied_code": str(programme.setup_code),
+                "current_dac_epoch": "1",
+                "transaction_event": "none",
+                "maintenance_state_before": "READY",
+                "maintenance_state_after": "PERSISTENCE_HOLD",
+                "frontier_relation": "contiguous",
+                "interval_sign": "1",
+                "persistence_count_after": "1",
+                "raw_fll_demand_picocodes": "250000000000",
+                "raw_pll_demand_picocodes": "100000000000",
+                "candidate_total_demand_picocodes": "350000000000",
+                "safe_cap_codes": str(programme.maximum_step_codes),
+                "requested_code": str(programme.setup_code),
+                "evidence_burst_sequence": str(sequence),
+                "evidence_burst_record_ordinal": "3",
+                "evidence_burst_record_count": "3",
+                "reason": "cx323_rehearsal_maintenance_boundary",
+                "actionable": "false",
+            }
+        )
+        return row
+
+    maintenance = [maintenance_base(1, "policy_activation")]
+    maintenance[0].update(
+        {
+            "source_first_sequence": "0", "source_last_sequence": "0",
+            "phase_observation_sequence": "0", "hybrid_record_sequence": "0",
+            "hybrid_timing_record_sequence": "0", "decision_sequence": "0",
+            "maintenance_state_before": "POLICY_INACTIVE",
+            "maintenance_state_after": "READY", "frontier_relation": "not_applicable",
+            "persistence_count_after": "0", "raw_fll_demand_picocodes": "0",
+            "raw_pll_demand_picocodes": "0", "candidate_total_demand_picocodes": "0",
+            "committed_fll_debt_after_picocodes": "0",
+            "committed_pll_debt_after_picocodes": "0",
+            "evidence_burst_record_ordinal": "1", "evidence_burst_record_count": "1",
+            "reason": "new_policy_activation",
+        }
+    )
+    for decision in decisions:
+        row = maintenance_base(len(maintenance) + 1, "decision")
+        row.update(
+            {
+                "hybrid_record_sequence": decision["hybrid_record_sequence"],
+                "decision_sequence": decision["decision_sequence"],
+                "source_first_sequence": decision["source_first_sequence"],
+                "source_last_sequence": decision["source_last_sequence"],
+                "current_applied_code": decision["current_applied_code"],
+                "current_dac_epoch": decision["actual_dac_epoch"],
+                "requested_delta_codes": decision["requested_delta_codes"],
+                "requested_code": decision["requested_code"],
+            }
+        )
+        maintenance.append(row)
+    decisions_by_sequence = {
+        row["decision_sequence"]: row for row in decisions
+    }
+    for transaction in transactions:
+        if transaction["event"] == "manual_start":
+            continue
+        event = {
+            "request": "request_rejected_or_expired",
+            "acceptance": "request_rejected_or_expired",
+            "application": "application_first_consumer",
+            "response": "response_complete",
+        }.get(transaction["event"], "decision")
+        row = maintenance_base(len(maintenance) + 1, event)
+        decision = decisions_by_sequence.get(
+            transaction["decision_sequence"], decisions[0]
+        )
+        row.update(
+            {
+                "hybrid_record_sequence": decision["hybrid_record_sequence"],
+                "decision_sequence": decision["decision_sequence"],
+                "source_first_sequence": decision["source_first_sequence"],
+                "source_last_sequence": decision["source_last_sequence"],
+                "transaction_record_sequence": transaction["transaction_record_sequence"],
+                "transaction_event": transaction["event"],
+                "request_sequence": transaction["request_sequence"],
+                "application_sequence": transaction["application_sequence"],
+                "actual_applied_code": transaction["applied_code"],
+                "actual_dac_epoch": transaction["dac_epoch"],
+                "requested_delta_codes": transaction["requested_delta_codes"],
+                "requested_code": transaction["requested_code"],
+                "evidence_burst_record_count": "5",
+            }
+        )
+        maintenance.append(row)
+    hold = maintenance_base(len(maintenance) + 1, "gnss_metadata_hold_enter")
+    hold.update(
+        {
+            "hybrid_record_sequence": decisions[-1]["hybrid_record_sequence"],
+            "decision_sequence": decisions[-1]["decision_sequence"],
+            "source_first_sequence": decisions[-1]["source_first_sequence"],
+            "source_last_sequence": decisions[-1]["source_last_sequence"],
+            "maintenance_state_before": "READY",
+            "maintenance_state_after": "METADATA_HOLD",
+            "metadata_hold_after": "true",
+            "frontier_relation": "not_applicable",
+            "reason": "recoverable_gnss_metadata_hold",
+        }
+    )
+    maintenance.append(hold)
+    requalified = maintenance_base(
+        len(maintenance) + 1, "gnss_metadata_requalified"
+    )
+    requalified.update(
+        {
+            "hybrid_record_sequence": decisions[-1]["hybrid_record_sequence"],
+            "decision_sequence": decisions[-1]["decision_sequence"],
+            "source_first_sequence": decisions[-1]["source_first_sequence"],
+            "source_last_sequence": decisions[-1]["source_last_sequence"],
+            "maintenance_state_before": "METADATA_HOLD",
+            "maintenance_state_after": "READY",
+            "metadata_hold_before": "true",
+            "frontier_relation": "not_applicable",
+            "requalification_window_count_after": "2",
+            "reason": "fresh_causal_gnss_metadata_requalification",
+        }
+    )
+    maintenance.append(requalified)
+    return decisions, transactions, summary, maintenance
+
+
 def _exercise_cx322_real_transaction_path(
     *,
     master: int,
@@ -3515,10 +3719,16 @@ def _exercise_cx322_real_transaction_path(
     """Drive observational responses through the actual host process path."""
 
     programme = _selected_programme(bundle)
-    if (
-        programme.sustained_regulation
-        or programme is CX322_D9_D6_72H_PROGRAMME
-    ):
+    maintenance: list[dict[str, str]] = []
+    if programme.persistent_maintenance_policy:
+        ahy, transactions, summary, maintenance = (
+            _cx323_maintenance_transaction_fixture(bundle)
+        )
+        applications = {
+            int(item["request_sequence"]): item
+            for item in summary["applications"]
+        }
+    elif programme.sustained_regulation or programme.integrated_long_run:
         ahy, transactions, summary = _sustained_multi_transaction_fixture(bundle)
         applications = {
             int(item["request_sequence"]): item
@@ -3543,7 +3753,7 @@ def _exercise_cx322_real_transaction_path(
     estimates = _cx322_selected_estimate_fixture(ahy, bundle)
     deferred_decision: dict[str, str] | None = None
     deferred_estimate: dict[str, str] | None = None
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         deferred_sequence = int(
             summary["first_post_recovery_consumer_decision_sequence"]
         )
@@ -3616,6 +3826,8 @@ def _exercise_cx322_real_transaction_path(
         and int(row.get("request_sequence", "0")) > 0
     }
     timing_record_sequence = 0
+    decision_timing_sequences: dict[str, str] = {}
+    transaction_timing_sequences: dict[str, str] = {}
 
     def wire_active_rows(
         rows: list[dict[str, str]], *, decision: bool
@@ -3628,7 +3840,7 @@ def _exercise_cx322_real_transaction_path(
             if decision
             else ACTIVE_TRANSACTION_V1_FIELDS
         )
-        if programme is not CX322_D9_D6_72H_PROGRAMME:
+        if not programme.integrated_long_run:
             return _wire_rows(rows, v1_fields)
         payload = bytearray()
         for row in rows:
@@ -3640,6 +3852,14 @@ def _exercise_cx322_real_transaction_path(
                 timing_record_sequence=timing_record_sequence,
                 response_timestamp_s=response_timestamp_s,
             )
+            if decision:
+                decision_timing_sequences[row["hybrid_record_sequence"]] = (
+                    timing["timing_record_sequence"]
+                )
+            else:
+                transaction_timing_sequences[
+                    row["transaction_record_sequence"]
+                ] = timing["timing_record_sequence"]
             payload.extend(
                 _wire_rows(
                     [timing],
@@ -3649,6 +3869,25 @@ def _exercise_cx322_real_transaction_path(
                 )
             )
         return bytes(payload)
+
+    def wire_maintenance_rows(rows: list[dict[str, str]]) -> bytes:
+        """Bind AHM only after its AHY/AH2 and ACT/AT2 evidence exists."""
+
+        payload: list[dict[str, str]] = []
+        for source in rows:
+            row = dict(source)
+            hybrid = row["hybrid_record_sequence"]
+            transaction = row["transaction_record_sequence"]
+            if hybrid != "0":
+                row["hybrid_timing_record_sequence"] = decision_timing_sequences[
+                    hybrid
+                ]
+            if transaction != "0":
+                row["transaction_timing_record_sequence"] = (
+                    transaction_timing_sequences[transaction]
+                )
+            payload.append(row)
+        return _wire_rows(payload, ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
 
     def emit_active_status() -> None:
         state["generation"] += 1
@@ -3791,10 +4030,7 @@ def _exercise_cx322_real_transaction_path(
                             3: "response_pending",
                             4: "evidence_clear",
                         }[phase]
-                        if (
-                            phase == 1
-                            and programme is CX322_D9_D6_72H_PROGRAMME
-                        ):
+                        if phase == 1 and programme.integrated_long_run:
                             # The raw RP2040 timer wraps every ~4295 s.  A
                             # real device publishes status much more often
                             # than the half-wrap ambiguity boundary.  Retain
@@ -3827,7 +4063,7 @@ def _exercise_cx322_real_transaction_path(
                                 )
                                 state[target] = int(application[key])
                         if phase == 4:
-                            if programme is CX322_D9_D6_72H_PROGRAMME:
+                            if programme.integrated_long_run:
                                 state["frontier_timestamp_ticks"] = (
                                     response_frontier_ticks[request_sequence]
                                 )
@@ -3835,13 +4071,13 @@ def _exercise_cx322_real_transaction_path(
                                 request_sequence == 1
                                 and (
                                     programme.sustained_regulation
-                                    or programme is CX322_D9_D6_72H_PROGRAMME
+                                    or programme.integrated_long_run
                                 )
                             ):
                                 state["checkpoint_passed"] = True
                             if (
                                 programme.sustained_regulation
-                                or programme is CX322_D9_D6_72H_PROGRAMME
+                                or programme.integrated_long_run
                             ):
                                 # Sustained rehearsal spans more than one
                                 # live-health freshness interval.  Mirror the
@@ -3914,7 +4150,7 @@ def _exercise_cx322_real_transaction_path(
             10.0,
             "CX322 exact selected-estimate timestamps before AHY replay",
         )
-        if programme is CX322_D9_D6_72H_PROGRAMME:
+        if programme.integrated_long_run:
             setup_epoch_estimates = [
                 row
                 for row in initial_estimates
@@ -4109,7 +4345,7 @@ def _exercise_cx322_real_transaction_path(
             10.0,
             "CX322 exact observation checkpoint and later-authority release",
         )
-        if programme is CX322_D9_D6_72H_PROGRAMME:
+        if programme.gnss_metadata_hold_nonterminal:
             with write_lock:
                 state.update(
                     {
@@ -4176,11 +4412,22 @@ def _exercise_cx322_real_transaction_path(
                 10.0,
                 "campaign18 first decision after GNSS requalification",
             )
+        if maintenance:
+            with write_lock:
+                _write_all_fd(master, wire_maintenance_rows(maintenance))
+            maintenance_path = run_dir / "csv/active_hybrid_maintenance_v1.csv"
+            _wait_until(
+                lambda: maintenance_path.is_file()
+                and sum(1 for _ in maintenance_path.open(encoding="utf-8"))
+                >= len(maintenance) + 1,
+                10.0,
+                "CX323 AHM lifecycle capture through the PTY splitter",
+            )
     finally:
         stop.set()
         emulator.join(timeout=2.0)
 
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         _wait_until(
             lambda: all(
                 path.is_file()
@@ -4231,7 +4478,8 @@ def _exercise_cx322_real_transaction_path(
         )
     )
     exact_timing_sidecar_join: dict[str, Any] | None = None
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    maintenance_evidence: dict[str, Any] | None = None
+    if programme.integrated_long_run:
         from .active_hybrid_live_analyze import (
             campaign18_exact_timing_sidecar_join,
         )
@@ -4254,6 +4502,19 @@ def _exercise_cx322_real_transaction_path(
                 )
             ),
         )
+        if programme.persistent_maintenance_policy:
+            from .active_hybrid_live_analyze import validate_maintenance_evidence_stream
+
+            maintenance_evidence = validate_maintenance_evidence_stream(
+                maintenance_rows=list(csv.DictReader((run_dir / "csv/active_hybrid_maintenance_v1.csv").open("r", newline="", encoding="utf-8"))),
+                transactions=captured_transactions,
+                decisions=captured_ahy,
+                transaction_timings=list(csv.DictReader((run_dir / "csv/active_transactions_v2.csv").open("r", newline="", encoding="utf-8"))),
+                decision_timings=list(csv.DictReader((run_dir / "csv/active_hybrid_decisions_v2.csv").open("r", newline="", encoding="utf-8"))),
+                programme=programme,
+                expected_build_identity=str(bundle["firmware"]["build_identity"]),
+                expected_active_policy_sha256=str(bundle["policy"]["policy_sha256"]),
+            )
     from .active_hybrid_live_analyze import (
         _response_dependent_consumer_propagation,
     )
@@ -4263,7 +4524,7 @@ def _exercise_cx322_real_transaction_path(
     )
     first_response_consumer_exact = bool(response_consumers["exact"])
     post_requalification_consumer_exact = (
-        programme is not CX322_D9_D6_72H_PROGRAMME
+        not programme.gnss_metadata_hold_nonterminal
         or (
             deferred_decision is not None
             and deferred_estimate is not None
@@ -4277,7 +4538,7 @@ def _exercise_cx322_real_transaction_path(
             )
             and any(
                 event.get("event")
-                == "cx322_d9_d6_72h_gnss_metadata_hold_requalified"
+                == f"{programme.key}_gnss_metadata_hold_requalified"
                 for event in events
             )
         )
@@ -4303,6 +4564,7 @@ def _exercise_cx322_real_transaction_path(
         ),
         "response_dependent_consumer_propagation": response_consumers,
         "campaign18_exact_timing_sidecar_join": exact_timing_sidecar_join,
+        "cx323_maintenance_evidence": maintenance_evidence,
         "setup_establishment_exact": setup_establishment_exact,
         "first_setup_consumer_exact": first_setup_consumer_exact,
         "setup_establishment": {
@@ -4330,7 +4592,7 @@ def _exercise_cx322_real_transaction_path(
         "request_sequences_consumed": sorted(applications),
         "complete_multi_transaction_sequence": (
             sorted(applications) == [1, 2]
-            if programme is CX322_D9_D6_72H_PROGRAMME
+            if programme.integrated_long_run
             else (
                 True
                 if not programme.sustained_regulation
@@ -4351,7 +4613,7 @@ def _exercise_cx322_real_transaction_path(
         ),
         "physical_actions_performed": 0,
         "gnss_hold_and_causal_requalification": (
-            programme is not CX322_D9_D6_72H_PROGRAMME
+            not programme.gnss_metadata_hold_nonterminal
             or (
                 _read_object(
                     run_dir / "reports/cx317_active_supervisor_state.json"
@@ -4404,11 +4666,15 @@ def _exercise_cx322_real_transaction_path(
         and result["gnss_hold_and_causal_requalification"]
         and result["first_post_requalification_consumer_exact"]
         and (
-            programme is not CX322_D9_D6_72H_PROGRAMME
+            not programme.integrated_long_run
             or bool(
                 exact_timing_sidecar_join
                 and exact_timing_sidecar_join["exact"]
             )
+        )
+        and (
+            not programme.persistent_maintenance_policy
+            or bool(maintenance_evidence and maintenance_evidence["exact"])
         )
     ):
         raise RuntimeError("CX322 real-process response checkpoint rehearsal failed")
@@ -4452,7 +4718,7 @@ def _run_real_process_topology(
         raise ValueError("first-response topology selected for a different programme")
     if (
         endpoint_mode == "capture_fault"
-        and programme is not CX322_D9_D6_72H_PROGRAMME
+        and not programme.integrated_long_run
     ):
         raise ValueError("capture-fault topology selected for a different programme")
     # The sustained path now preserves and confirms four causal phase-4
@@ -4611,13 +4877,18 @@ def _run_real_process_topology(
                 bundle=bundle,
             )
             if endpoint_mode == "capture_fault":
+                endpoint_label = (
+                    "CX323" if programme.persistent_maintenance_policy
+                    else "Campaign18"
+                )
                 supervisor_state_path = (
                     run_dir / "reports/cx317_active_supervisor_state.json"
                 )
                 before = _read_object(supervisor_state_path)
                 if before.get("qualified_origin_session_id") != 1:
                     raise RuntimeError(
-                        "Campaign18 capture-fault rehearsal lacks a qualified origin"
+                        f"{endpoint_label} capture-fault rehearsal lacks a "
+                        "qualified origin"
                     )
                 retained_paths = (
                     run_dir / "csv/active_transactions_v1.csv",
@@ -4625,6 +4896,10 @@ def _run_real_process_topology(
                     run_dir / "csv/active_hybrid_decisions_v1.csv",
                     run_dir / "csv/active_hybrid_decisions_v2.csv",
                     run_dir / "csv/dac_steps.csv",
+                ) + (
+                    (run_dir / "csv/active_hybrid_maintenance_v1.csv",)
+                    if programme.persistent_maintenance_policy
+                    else ()
                 )
                 retained_before = {
                     str(path): len(_read_csv_rows(path)) for path in retained_paths
@@ -4688,12 +4963,12 @@ def _run_real_process_topology(
                     )
                     == 1,
                     10.0,
-                    "Campaign18 capture-fault priority abort delivery",
+                    f"{endpoint_label} capture-fault priority abort delivery",
                 )
                 terminal_state = _read_object(supervisor_state_path)
                 terminal = terminal_state.get("terminal") or {}
                 expected_fault_reason = (
-                    "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault:"
+                    f"{programme.key}_D14_D8_authority_or_capture_fault:"
                     "valid:'false'!='true',"
                     "control_eligible:'false'!='true',"
                     "aperture_validity:'invalid'!='valid',"
@@ -4728,14 +5003,14 @@ def _run_real_process_topology(
                     or terminal.get("result") != "aborted"
                     or terminal.get("reason") != expected_fault_reason
                     or terminal.get("primary_decision")
-                    != "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+                    != f"{programme.key}_D14_D8_authority_or_capture_fault"
                     or terminal.get("last_confirmed_code")
                     != int(real_transaction_path["applied_code"])
                     or terminal_state.get("authoritative_capture_terminal_detail")
                     != expected_fault_detail
                 ):
                     raise RuntimeError(
-                        "Campaign18 capture-fault terminal was not exact: "
+                        f"{endpoint_label} capture-fault terminal was not exact: "
                         f"exit={supervisor.returncode}; terminal={terminal!r}"
                     )
                 _write_all_fd(
@@ -4801,7 +5076,7 @@ def _run_real_process_topology(
                     == int(real_transaction_path["applied_code"])
                 ):
                     raise RuntimeError(
-                        "Campaign18 capture-fault rehearsal did not retain a "
+                        f"{endpoint_label} capture-fault rehearsal did not retain a "
                         "causally later complete fail-static abort snapshot"
                     )
                 post_abort_snapshot = {
@@ -4819,7 +5094,7 @@ def _run_real_process_topology(
                 }
                 if post_abort_generation != fault_generation + 1:
                     raise RuntimeError(
-                        "Campaign18 retained abort snapshot generation was not "
+                        f"{endpoint_label} retained abort snapshot generation was not "
                         f"exact: {post_abort_generation!r} != {fault_generation + 1}"
                     )
                 capture.send_signal(signal.SIGINT)
@@ -4872,7 +5147,7 @@ def _run_real_process_topology(
                     or raw_abort_marker_count != 1
                 ):
                     raise RuntimeError(
-                        "Campaign18 capture-fault rehearsal allowed post-fault "
+                        f"{endpoint_label} capture-fault rehearsal allowed post-fault "
                         f"authority: retained={retained_before!r}->{retained_after!r}; "
                         f"commands={forbidden!r}; aborts={priority_abort_count}; "
                         f"markers={raw_abort_marker_count}"
@@ -4904,7 +5179,14 @@ def _run_real_process_topology(
                     "retained_row_counts_before_fault": retained_before,
                     "retained_row_counts_after_fault": retained_after,
                     "real_transaction_path": real_transaction_path,
-                    "cx322_real_transaction_path": real_transaction_path,
+                    "integrated_long_run_real_transaction_path": (
+                        real_transaction_path
+                    ),
+                    **(
+                        {"cx323_real_transaction_path": real_transaction_path}
+                        if programme.persistent_maintenance_policy
+                        else {"cx322_real_transaction_path": real_transaction_path}
+                    ),
                     "physical_actions_performed": 0,
                     "qualification_evidence": False,
                 }
@@ -5233,6 +5515,11 @@ def _run_real_process_topology(
             if _selected_programme(bundle).response_checkpoint_observational
             else None
         ),
+        "integrated_long_run_real_transaction_path": (
+            real_transaction_path
+            if _selected_programme(bundle).integrated_long_run
+            else None
+        ),
         "sustained_multi_transaction_path": (
             real_transaction_path
             if _selected_programme(bundle).sustained_regulation
@@ -5323,7 +5610,7 @@ def run(
             proposal=proposal,
             endpoint_mode="capture_fault",
         )
-        if programme is CX322_D9_D6_72H_PROGRAMME
+        if programme.integrated_long_run
         else None
     )
     coverage = {name: True for name in REHEARSAL_COVERAGE}
@@ -5348,56 +5635,30 @@ def run(
             }
         )
     if programme is CX322_D9_D6_72H_PROGRAMME:
-        exact_sidecar_join = topology["cx322_real_transaction_path"][
-            "campaign18_exact_timing_sidecar_join"
-        ]
+        exact_sidecar_join = topology["cx322_real_transaction_path"]["campaign18_exact_timing_sidecar_join"]
         if not exact_sidecar_join or not exact_sidecar_join.get("exact"):
-            raise RuntimeError(
-                "Campaign18 retained AT2/AH2 topology join was not exact"
-            )
-        coverage.update(
-            {
-                "campaign18_exact_AT2_AH2_capture": bool(
-                    exact_sidecar_join["exact"]
-                ),
-                "campaign18_repeated_natural_transaction": True,
-                "campaign18_GNSS_hold_causal_requalification": True,
-                "campaign18_exact_72h_endpoint_clock": True,
-                "campaign18_authoritative_capture_fault_terminal": bool(
-                    capture_fault_topology
-                    and capture_fault_topology["priority_abort_observed"]
-                    and capture_fault_topology[
-                        "priority_abort_command_count"
-                    ]
-                    == 1
-                    and capture_fault_topology[
-                        "priority_abort_raw_marker_count"
-                    ]
-                    == 1
-                    and capture_fault_topology[
-                        "capture_emergency_aborts_sent"
-                    ]
-                    == 1
-                    and not capture_fault_topology[
-                        "post_fault_authority_commands"
-                    ]
-                    and capture_fault_topology[
-                        "retained_row_counts_before_fault"
-                    ]
-                    == capture_fault_topology[
-                        "retained_row_counts_after_fault"
-                    ]
-                    and capture_fault_topology[
-                        "post_abort_complete_active_snapshot"
-                    ]["state"]
-                    == "ABORTED"
-                    and capture_fault_topology[
-                        "post_abort_complete_active_snapshot"
-                    ]["fail_static"]
-                    == "true"
-                ),
-            }
-        )
+            raise RuntimeError("Campaign18 retained AT2/AH2 topology join was not exact")
+        coverage.update({
+            "campaign18_exact_AT2_AH2_capture": True,
+            "campaign18_repeated_natural_transaction": True,
+            "campaign18_GNSS_hold_causal_requalification": True,
+            "campaign18_exact_72h_endpoint_clock": True,
+            "campaign18_authoritative_capture_fault_terminal": bool(capture_fault_topology),
+        })
+    if programme.persistent_maintenance_policy:
+        transaction = topology["integrated_long_run_real_transaction_path"]
+        maintenance = transaction.get("cx323_maintenance_evidence")
+        if not maintenance or not maintenance.get("exact"):
+            raise RuntimeError("CX323 retained AHM lifecycle evidence was not exact")
+        coverage.update({
+            "cx323_exact_AT2_AH2_AHM_atomic_capture": True,
+            "cx323_repeated_controller_transaction": True,
+            "cx323_GNSS_hold_causal_requalification": True,
+            "cx323_exact_72h_endpoint_clock": True,
+            "cx323_authoritative_capture_fault_terminal": bool(
+                capture_fault_topology
+            ),
+        })
     unsigned: dict[str, Any] = {
         "schema_version": 1,
         "report_type": programme.rehearsal_report_type,
@@ -5421,7 +5682,11 @@ def run(
         "accelerated_prewrite_boundary": prewrite_boundary,
         "accelerated_qualified_device_clock": qualified_device_clock,
         "cx321_identification_ordering": cx321_ordering,
-        "campaign18_capture_fault_topology": capture_fault_topology,
+        **(
+            {"cx323_capture_fault_topology": capture_fault_topology}
+            if programme.persistent_maintenance_policy
+            else {"campaign18_capture_fault_topology": capture_fault_topology}
+        ),
         "accelerated_boundary_result": {
             "status": accelerated["status"],
             "seal_sha256": accelerated["seal_sha256"],
@@ -5492,6 +5757,16 @@ def run(
                     if programme is CX322_D9_D6_72H_PROGRAMME
                     else []
                 ),
+                *(
+                    [
+                        "cx323_exact_AT2_AH2_AHM_atomic_capture",
+                        "cx323_repeated_controller_transaction",
+                        "cx323_GNSS_hold_causal_requalification",
+                        "cx323_authoritative_capture_fault_terminal",
+                    ]
+                    if programme.persistent_maintenance_policy
+                    else []
+                ),
                 "terminal_abort_delivery_before_capture_close",
                 "post_abort_complete_active_snapshot",
                 "logical_evidence_rotation",
@@ -5511,6 +5786,11 @@ def run(
                 *(
                     ["campaign18_exact_72h_endpoint_clock"]
                     if programme is CX322_D9_D6_72H_PROGRAMME
+                    else []
+                ),
+                *(
+                    ["cx323_exact_72h_endpoint_clock"]
+                    if programme.persistent_maintenance_policy
                     else []
                 ),
                 "setup_propagation",

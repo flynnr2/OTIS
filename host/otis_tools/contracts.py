@@ -471,6 +471,73 @@ ACTIVE_HYBRID_DECISION_V2_FIELDS = [
     "reason",
 ]
 
+# CX323 AHM is decision-bearing controller-state evidence. It is separate from
+# AHY controller content and the AH2 exact-timing sidecar so persistence and
+# provenance-tagged correction debt remain reconstructable across request,
+# application, response, GNSS-hold, and fail-static transitions.
+ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS = [
+    "record_type",
+    "schema_version",
+    "maintenance_record_sequence",
+    "event",
+    "event_timestamp_ticks",
+    "time_domain",
+    "run_identity",
+    "build_identity",
+    "profile_identity",
+    "policy_id",
+    "active_policy_sha256",
+    "capture_session",
+    "source_first_sequence",
+    "source_last_sequence",
+    "frequency_estimator_sha256",
+    "phase_epoch",
+    "phase_observation_sequence",
+    "phase_valid",
+    "current_applied_code",
+    "current_dac_epoch",
+    "hybrid_record_sequence",
+    "hybrid_timing_record_sequence",
+    "decision_sequence",
+    "transaction_record_sequence",
+    "transaction_timing_record_sequence",
+    "transaction_event",
+    "request_sequence",
+    "application_sequence",
+    "actual_applied_code",
+    "actual_dac_epoch",
+    "downstream_epoch_exact",
+    "maintenance_state_before",
+    "maintenance_state_after",
+    "frontier_relation",
+    "interval_sign",
+    "persistence_count_before",
+    "persistence_count_after",
+    "raw_fll_demand_picocodes",
+    "raw_pll_demand_picocodes",
+    "candidate_total_demand_picocodes",
+    "safe_cap_codes",
+    "requested_delta_codes",
+    "requested_code",
+    "committed_fll_debt_before_picocodes",
+    "committed_pll_debt_before_picocodes",
+    "committed_fll_debt_after_picocodes",
+    "committed_pll_debt_after_picocodes",
+    "request_pending_before",
+    "request_pending_after",
+    "response_pending_before",
+    "response_pending_after",
+    "metadata_hold_before",
+    "metadata_hold_after",
+    "requalification_window_count_before",
+    "requalification_window_count_after",
+    "evidence_burst_sequence",
+    "evidence_burst_record_ordinal",
+    "evidence_burst_record_count",
+    "reason",
+    "actionable",
+]
+
 # CX318 Stage 4 telemetry is deliberately separate from the accepted frequency
 # control products.  RPH is the immutable raw relative-phase boundary; HPR is
 # a candidate-specific, counterfactual hybrid-preview boundary.  Neither
@@ -615,6 +682,7 @@ CONTRACT_FIELDS = {
     "active_transactions_v2": ACTIVE_TRANSACTION_V2_FIELDS,
     "active_hybrid_decisions_v1": ACTIVE_HYBRID_DECISION_V1_FIELDS,
     "active_hybrid_decisions_v2": ACTIVE_HYBRID_DECISION_V2_FIELDS,
+    "active_hybrid_maintenance_v1": ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
     "relative_phase_observations_v1": RELATIVE_PHASE_OBSERVATION_V1_FIELDS,
     "phase_estimator_outputs_v1": PHASE_ESTIMATOR_OUTPUT_V1_FIELDS,
     "hybrid_preview_decisions_v1": HYBRID_PREVIEW_DECISION_V1_FIELDS,
@@ -642,6 +710,7 @@ CONTRACT_RECORD_TYPES = {
     "active_transactions_v2": {"AT2"},
     "active_hybrid_decisions_v1": {"AHY"},
     "active_hybrid_decisions_v2": {"AH2"},
+    "active_hybrid_maintenance_v1": {"AHM"},
     "relative_phase_observations_v1": {"RPH"},
     "phase_estimator_outputs_v1": {"PHE"},
     "hybrid_preview_decisions_v1": {"HPR"},
@@ -667,6 +736,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "active_transactions_v2": 2,
     "active_hybrid_decisions_v1": 1,
     "active_hybrid_decisions_v2": 2,
+    "active_hybrid_maintenance_v1": 1,
     "relative_phase_observations_v1": 1,
     "phase_estimator_outputs_v1": 1,
     "hybrid_preview_decisions_v1": 1,
@@ -692,6 +762,7 @@ SEQUENCE_FIELDS = {
     "active_transactions_v2": "timing_record_sequence",
     "active_hybrid_decisions_v1": "hybrid_record_sequence",
     "active_hybrid_decisions_v2": "timing_record_sequence",
+    "active_hybrid_maintenance_v1": "maintenance_record_sequence",
     "relative_phase_observations_v1": "observation_sequence",
     "phase_estimator_outputs_v1": "observation_sequence",
     "hybrid_preview_decisions_v1": "preview_sequence",
@@ -717,6 +788,7 @@ TIMESTAMP_FIELDS = {
     "active_transactions_v2": ("event_timestamp_ticks",),
     "active_hybrid_decisions_v1": (),
     "active_hybrid_decisions_v2": ("decision_timestamp_ticks",),
+    "active_hybrid_maintenance_v1": ("event_timestamp_ticks",),
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("decision_timestamp_ticks",),
@@ -748,6 +820,7 @@ DOMAIN_FIELDS = {
     "active_transactions_v2": ("time_domain",),
     "active_hybrid_decisions_v1": (),
     "active_hybrid_decisions_v2": ("time_domain",),
+    "active_hybrid_maintenance_v1": ("time_domain",),
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
     "hybrid_preview_decisions_v1": ("time_domain",),
@@ -770,6 +843,7 @@ SESSION_FIELDS = {
     "active_hybrid_decisions_v1": "capture_session",
     "active_transactions_v2": "session_id",
     "active_hybrid_decisions_v2": "capture_session",
+    "active_hybrid_maintenance_v1": "capture_session",
     "plant_sign_qualification_v1": "capture_session",
 }
 
@@ -952,6 +1026,43 @@ VALID_ACTIVE_HYBRID_STATES = {
     "HYBRID_TRACKING",
     "PHASE_DEGRADED_FREQUENCY_ONLY",
     "FAIL_STATIC",
+}
+
+CX323_MAINTENANCE_POLICY_ID = "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
+MAX_CX323_COMMITTED_DEBT_PICOCODES = 500_000_000_000
+VALID_ACTIVE_HYBRID_MAINTENANCE_EVENTS = {
+    "policy_activation",
+    "decision",
+    "request_rejected_or_expired",
+    "application_first_consumer",
+    "response_complete",
+    "gnss_metadata_hold_enter",
+    "gnss_metadata_requalified",
+    "fail_static",
+}
+VALID_ACTIVE_HYBRID_MAINTENANCE_STATES = {
+    "POLICY_INACTIVE",
+    "READY",
+    "PERSISTENCE_HOLD",
+    "REQUEST_PENDING",
+    "RESPONSE_PENDING",
+    "METADATA_HOLD",
+    "FAIL_STATIC",
+}
+VALID_ACTIVE_HYBRID_MAINTENANCE_FRONTIERS = {
+    "not_applicable",
+    "first",
+    "contiguous",
+    "overlap",
+    "gap",
+}
+VALID_ACTIVE_HYBRID_MAINTENANCE_TRANSACTION_EVENTS = {
+    "none",
+    "request_created",
+    "request_withdrawn",
+    "application",
+    "application_fault",
+    "response",
 }
 
 
@@ -2233,6 +2344,547 @@ def _check_active_hybrid_decision_v1(
         errors.append(f"row {row_number}: limited active decision retained a non-zero delta")
 
 
+def _check_active_hybrid_maintenance_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    """Validate one CX323 maintenance lifecycle record.
+
+    Cross-file one-to-one joins are verified by the campaign analyzer.  This
+    row contract makes every required AHY/AH2 and ACT/AT2 key explicit and
+    rejects partial identities before analysis.
+    """
+
+    _check_required_text(
+        row,
+        row_number,
+        errors,
+        (
+            "event",
+            "time_domain",
+            "run_identity",
+            "build_identity",
+            "profile_identity",
+            "policy_id",
+            "active_policy_sha256",
+            "frequency_estimator_sha256",
+            "maintenance_state_before",
+            "maintenance_state_after",
+            "frontier_relation",
+            "transaction_event",
+            "reason",
+        ),
+    )
+    event = row.get("event", "")
+    if event not in VALID_ACTIVE_HYBRID_MAINTENANCE_EVENTS:
+        errors.append(
+            f"row {row_number}: event must be one of "
+            f"{sorted(VALID_ACTIVE_HYBRID_MAINTENANCE_EVENTS)}"
+        )
+    if row.get("time_domain") != "rp2040_timer0_extended":
+        errors.append(
+            f"row {row_number}: AHM event timing requires "
+            "rp2040_timer0_extended"
+        )
+    if row.get("policy_id") != CX323_MAINTENANCE_POLICY_ID:
+        errors.append(
+            f"row {row_number}: policy_id must equal "
+            f"{CX323_MAINTENANCE_POLICY_ID}"
+        )
+    for field_name in ("active_policy_sha256", "frequency_estimator_sha256"):
+        _check_sha256(row, field_name, row_number, errors)
+    for field_name in (
+        "phase_valid",
+        "downstream_epoch_exact",
+        "request_pending_before",
+        "request_pending_after",
+        "response_pending_before",
+        "response_pending_after",
+        "metadata_hold_before",
+        "metadata_hold_after",
+        "actionable",
+    ):
+        _check_boolean_text(row, field_name, row_number, errors)
+    if row.get("actionable") != "false":
+        errors.append(
+            f"row {row_number}: serialized AHM evidence must never be actionable"
+        )
+    for field_name in ("maintenance_state_before", "maintenance_state_after"):
+        if row.get(field_name) not in VALID_ACTIVE_HYBRID_MAINTENANCE_STATES:
+            errors.append(
+                f"row {row_number}: {field_name} must be one of "
+                f"{sorted(VALID_ACTIVE_HYBRID_MAINTENANCE_STATES)}"
+            )
+    if row.get("frontier_relation") not in VALID_ACTIVE_HYBRID_MAINTENANCE_FRONTIERS:
+        errors.append(
+            f"row {row_number}: frontier_relation must be one of "
+            f"{sorted(VALID_ACTIVE_HYBRID_MAINTENANCE_FRONTIERS)}"
+        )
+    if row.get("transaction_event") not in VALID_ACTIVE_HYBRID_MAINTENANCE_TRANSACTION_EVENTS:
+        errors.append(
+            f"row {row_number}: transaction_event must be one of "
+            f"{sorted(VALID_ACTIVE_HYBRID_MAINTENANCE_TRANSACTION_EVENTS)}"
+        )
+
+    unsigned_fields = (
+        "maintenance_record_sequence",
+        "event_timestamp_ticks",
+        "capture_session",
+        "source_first_sequence",
+        "source_last_sequence",
+        "phase_epoch",
+        "phase_observation_sequence",
+        "current_applied_code",
+        "current_dac_epoch",
+        "hybrid_record_sequence",
+        "hybrid_timing_record_sequence",
+        "decision_sequence",
+        "transaction_record_sequence",
+        "transaction_timing_record_sequence",
+        "request_sequence",
+        "application_sequence",
+        "actual_applied_code",
+        "actual_dac_epoch",
+        "persistence_count_before",
+        "persistence_count_after",
+        "safe_cap_codes",
+        "requested_code",
+        "requalification_window_count_before",
+        "requalification_window_count_after",
+        "evidence_burst_sequence",
+        "evidence_burst_record_ordinal",
+        "evidence_burst_record_count",
+    )
+    parsed_unsigned = {
+        field_name: _parse_non_negative_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        for field_name in unsigned_fields
+    }
+    signed_fields = (
+        "interval_sign",
+        "raw_fll_demand_picocodes",
+        "raw_pll_demand_picocodes",
+        "candidate_total_demand_picocodes",
+        "requested_delta_codes",
+        "committed_fll_debt_before_picocodes",
+        "committed_pll_debt_before_picocodes",
+        "committed_fll_debt_after_picocodes",
+        "committed_pll_debt_after_picocodes",
+    )
+    parsed_signed = {
+        field_name: _parse_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        for field_name in signed_fields
+    }
+    if parsed_unsigned["maintenance_record_sequence"] == 0:
+        errors.append(
+            f"row {row_number}: maintenance_record_sequence must be non-zero"
+        )
+    if parsed_signed["interval_sign"] not in {-1, 0, 1, None}:
+        errors.append(f"row {row_number}: interval_sign must be -1, 0, or 1")
+    for field_name in ("persistence_count_before", "persistence_count_after"):
+        value = parsed_unsigned[field_name]
+        if value is not None and value > 2:
+            errors.append(f"row {row_number}: {field_name} must be in 0..2")
+    for field_name in (
+        "requalification_window_count_before",
+        "requalification_window_count_after",
+    ):
+        value = parsed_unsigned[field_name]
+        if value is not None and value > 2:
+            errors.append(f"row {row_number}: {field_name} must be in 0..2")
+    safe_cap = parsed_unsigned["safe_cap_codes"]
+    if safe_cap is not None and safe_cap > 21:
+        errors.append(f"row {row_number}: safe_cap_codes must be in 0..21")
+    requested_delta = parsed_signed["requested_delta_codes"]
+    if requested_delta is not None and abs(requested_delta) > 21:
+        errors.append(
+            f"row {row_number}: requested_delta_codes must be in -21..21"
+        )
+    for field_name in (
+        "current_applied_code",
+        "requested_code",
+        "actual_applied_code",
+    ):
+        value = parsed_unsigned[field_name]
+        if value not in {None, 0} and not 0xA800 <= value <= 0xAB00:
+            errors.append(
+                f"row {row_number}: {field_name} is outside A800..AB00"
+            )
+    source_first = parsed_unsigned["source_first_sequence"]
+    source_last = parsed_unsigned["source_last_sequence"]
+    if (
+        source_first not in {None, 0}
+        and source_last not in {None, 0}
+        and source_last <= source_first
+    ):
+        errors.append(
+            f"row {row_number}: source_last_sequence must be greater than "
+            "source_first_sequence for (opening, closing] support"
+        )
+    current_code = parsed_unsigned["current_applied_code"]
+    requested_code = parsed_unsigned["requested_code"]
+    if (
+        current_code not in {None, 0}
+        and requested_delta is not None
+        and requested_code is not None
+        and requested_code != current_code + requested_delta
+    ):
+        errors.append(
+            f"row {row_number}: requested_code must equal current_applied_code "
+            "plus requested_delta_codes"
+        )
+
+    debt_before = None
+    debt_after = None
+    if all(
+        parsed_signed[field_name] is not None
+        for field_name in (
+            "committed_fll_debt_before_picocodes",
+            "committed_pll_debt_before_picocodes",
+            "committed_fll_debt_after_picocodes",
+            "committed_pll_debt_after_picocodes",
+        )
+    ):
+        debt_before = (
+            parsed_signed["committed_fll_debt_before_picocodes"]
+            + parsed_signed["committed_pll_debt_before_picocodes"]
+        )
+        debt_after = (
+            parsed_signed["committed_fll_debt_after_picocodes"]
+            + parsed_signed["committed_pll_debt_after_picocodes"]
+        )
+        for label, value in (("before", debt_before), ("after", debt_after)):
+            if abs(value) > MAX_CX323_COMMITTED_DEBT_PICOCODES:
+                errors.append(
+                    f"row {row_number}: committed {label} debt exceeds the "
+                    "500000000000 picocode bound"
+                )
+        for field_name in (
+            "committed_fll_debt_before_picocodes",
+            "committed_pll_debt_before_picocodes",
+            "committed_fll_debt_after_picocodes",
+            "committed_pll_debt_after_picocodes",
+        ):
+            value = parsed_signed[field_name]
+            if value is not None and abs(value) > MAX_CX323_COMMITTED_DEBT_PICOCODES:
+                errors.append(
+                    f"row {row_number}: {field_name} exceeds the bounded "
+                    "picocode tag range"
+                )
+
+    burst_sequence = parsed_unsigned["evidence_burst_sequence"]
+    burst_ordinal = parsed_unsigned["evidence_burst_record_ordinal"]
+    burst_count = parsed_unsigned["evidence_burst_record_count"]
+    if burst_sequence == 0 or burst_ordinal == 0 or burst_count == 0:
+        errors.append(
+            f"row {row_number}: evidence burst identity and cardinality must be non-zero"
+        )
+    if (
+        burst_ordinal is not None
+        and burst_count is not None
+        and burst_ordinal > burst_count
+    ):
+        errors.append(
+            f"row {row_number}: evidence_burst_record_ordinal exceeds record count"
+        )
+
+    hybrid_join_fields = (
+        "hybrid_record_sequence",
+        "hybrid_timing_record_sequence",
+        "decision_sequence",
+        "source_first_sequence",
+        "source_last_sequence",
+    )
+    transaction_join_fields = (
+        "transaction_record_sequence",
+        "transaction_timing_record_sequence",
+        "request_sequence",
+    )
+
+    def _require_non_zero(field_names: tuple[str, ...], label: str) -> None:
+        missing = [
+            field_name
+            for field_name in field_names
+            if parsed_unsigned[field_name] in {None, 0}
+        ]
+        if missing:
+            errors.append(
+                f"row {row_number}: {label} requires non-zero "
+                + ", ".join(missing)
+            )
+
+    def _require_zero(field_names: tuple[str, ...], label: str) -> None:
+        present = [
+            field_name
+            for field_name in field_names
+            if parsed_unsigned[field_name] not in {None, 0}
+        ]
+        if present:
+            errors.append(
+                f"row {row_number}: {label} requires zero " + ", ".join(present)
+            )
+
+    transaction_events = {
+        "request_rejected_or_expired": "request_withdrawn",
+        "application_first_consumer": "application",
+        "response_complete": "response",
+    }
+    if event == "policy_activation":
+        _require_zero((*hybrid_join_fields, *transaction_join_fields), event)
+        if row.get("transaction_event") != "none":
+            errors.append(
+                f"row {row_number}: policy_activation transaction_event must be none"
+            )
+        if (
+            row.get("maintenance_state_before") != "POLICY_INACTIVE"
+            or row.get("maintenance_state_after") != "READY"
+        ):
+            errors.append(
+                f"row {row_number}: policy_activation must transition "
+                "POLICY_INACTIVE to READY"
+            )
+        if debt_after not in {None, 0}:
+            errors.append(
+                f"row {row_number}: policy_activation must reset both debt tags"
+            )
+        if any(
+            parsed_signed[field_name] not in {None, 0}
+            for field_name in (
+                "committed_fll_debt_after_picocodes",
+                "committed_pll_debt_after_picocodes",
+            )
+        ):
+            errors.append(
+                f"row {row_number}: policy_activation must reset each debt tag to zero"
+            )
+    elif event == "decision":
+        _require_non_zero(hybrid_join_fields, event)
+        if burst_count is not None and burst_count < 3:
+            errors.append(
+                f"row {row_number}: decision burst must contain at least AHY, AH2, and AHM"
+            )
+        request_created = (
+            row.get("request_pending_before") == "false"
+            and row.get("request_pending_after") == "true"
+        )
+        if request_created:
+            _require_non_zero(transaction_join_fields, "decision request creation")
+            if row.get("transaction_event") != "request_created":
+                errors.append(
+                    f"row {row_number}: a newly pending request must join ACT/AT2 "
+                    "request_created"
+                )
+            if burst_count is not None and burst_count < 5:
+                errors.append(
+                    f"row {row_number}: request decision burst must contain "
+                    "AHY, AH2, ACT, AT2, and AHM"
+                )
+        else:
+            _require_zero(transaction_join_fields, "decision without request creation")
+            if row.get("transaction_event") != "none":
+                errors.append(
+                    f"row {row_number}: decision without request creation must use "
+                    "transaction_event=none"
+                )
+    elif event in transaction_events:
+        _require_non_zero(hybrid_join_fields, event)
+        _require_non_zero(transaction_join_fields, event)
+        if row.get("transaction_event") != transaction_events[event]:
+            errors.append(
+                f"row {row_number}: {event} must join transaction_event="
+                f"{transaction_events[event]}"
+            )
+        if burst_count is not None and burst_count < 3:
+            errors.append(
+                f"row {row_number}: {event} burst must contain ACT, AT2, and AHM"
+            )
+    elif event == "fail_static" and row.get("transaction_event") == "application_fault":
+        _require_non_zero(hybrid_join_fields, event)
+        _require_non_zero(transaction_join_fields, event)
+        if burst_count is not None and burst_count < 3:
+            errors.append(
+                f"row {row_number}: fail_static application-fault burst must "
+                "contain ACT, AT2, and AHM"
+            )
+    else:
+        _require_zero(transaction_join_fields, event or "non-transaction event")
+        if row.get("transaction_event") not in {"none", "application_fault"}:
+            errors.append(
+                f"row {row_number}: {event} must not claim a transaction lifecycle join"
+            )
+        hybrid_values = [parsed_unsigned[field_name] for field_name in hybrid_join_fields]
+        if any(value not in {None, 0} for value in hybrid_values) and any(
+            value in {None, 0} for value in hybrid_values
+        ):
+            errors.append(
+                f"row {row_number}: last-completed AHY/AH2 identity must be all zero "
+                "or complete"
+            )
+
+    preserve_debt_events = {
+        "request_rejected_or_expired",
+        "response_complete",
+        "gnss_metadata_hold_enter",
+        "gnss_metadata_requalified",
+        "fail_static",
+    }
+    if event in preserve_debt_events and None not in {debt_before, debt_after}:
+        if any(
+            parsed_signed[before] != parsed_signed[after]
+            for before, after in (
+                (
+                    "committed_fll_debt_before_picocodes",
+                    "committed_fll_debt_after_picocodes",
+                ),
+                (
+                    "committed_pll_debt_before_picocodes",
+                    "committed_pll_debt_after_picocodes",
+                ),
+            )
+        ):
+            errors.append(
+                f"row {row_number}: {event} must preserve both committed debt tags"
+            )
+    if event == "request_rejected_or_expired":
+        if not (
+            row.get("request_pending_before") == "true"
+            and row.get("request_pending_after") == "false"
+            and row.get("response_pending_before") == "false"
+            and row.get("response_pending_after") == "false"
+        ):
+            errors.append(
+                f"row {row_number}: request rejection/expiry must clear only a "
+                "pending unaccepted request"
+            )
+    if event == "application_first_consumer":
+        if not (
+            row.get("request_pending_before") == "true"
+            and row.get("request_pending_after") == "false"
+            and row.get("response_pending_before") == "false"
+            and row.get("response_pending_after") == "true"
+            and row.get("downstream_epoch_exact") == "true"
+        ):
+            errors.append(
+                f"row {row_number}: application_first_consumer requires the exact "
+                "request-to-response-pending propagation transition"
+            )
+        _require_non_zero(
+            ("application_sequence", "actual_applied_code", "actual_dac_epoch"),
+            event,
+        )
+        actual_applied_code = parsed_unsigned["actual_applied_code"]
+        actual_dac_epoch = parsed_unsigned["actual_dac_epoch"]
+        current_dac_epoch = parsed_unsigned["current_dac_epoch"]
+        if (
+            actual_applied_code is not None
+            and requested_code is not None
+            and actual_applied_code != requested_code
+        ):
+            errors.append(
+                f"row {row_number}: exact application code must equal requested_code"
+            )
+        if (
+            actual_dac_epoch is not None
+            and current_dac_epoch is not None
+            and actual_dac_epoch != current_dac_epoch + 1
+        ):
+            errors.append(
+                f"row {row_number}: exact application DAC epoch must advance by one"
+            )
+        if row.get("maintenance_state_after") != "RESPONSE_PENDING":
+            errors.append(
+                f"row {row_number}: application_first_consumer must enter RESPONSE_PENDING"
+            )
+    if event == "response_complete" and not (
+        row.get("response_pending_before") == "true"
+        and row.get("response_pending_after") == "false"
+    ):
+        errors.append(
+            f"row {row_number}: response_complete must clear response_pending"
+        )
+    if event == "gnss_metadata_hold_enter":
+        if not (
+            row.get("metadata_hold_before") == "false"
+            and row.get("metadata_hold_after") == "true"
+            and row.get("maintenance_state_after") == "METADATA_HOLD"
+        ):
+            errors.append(
+                f"row {row_number}: gnss_metadata_hold_enter must enter METADATA_HOLD"
+            )
+        if parsed_unsigned["persistence_count_after"] not in {None, 0}:
+            errors.append(
+                f"row {row_number}: GNSS metadata hold must clear persistence"
+            )
+    if event == "gnss_metadata_requalified":
+        if not (
+            row.get("metadata_hold_before") == "true"
+            and row.get("metadata_hold_after") == "true"
+            and parsed_unsigned["requalification_window_count_after"] == 0
+        ):
+            errors.append(
+                f"row {row_number}: GNSS metadata requalification must retain the "
+                "hold at a zero post-requalification window count"
+            )
+    if event == "decision" and row.get("metadata_hold_before") == "true":
+        requalification_before = parsed_unsigned[
+            "requalification_window_count_before"
+        ]
+        requalification_after = parsed_unsigned[
+            "requalification_window_count_after"
+        ]
+        if row.get("metadata_hold_after") == "true":
+            valid_frozen_or_first_window = (
+                requalification_before is not None
+                and requalification_after is not None
+                and (
+                    requalification_after == requalification_before == 0
+                    or (
+                        requalification_before == 0
+                        and requalification_after == 1
+                    )
+                )
+            )
+            if not valid_frozen_or_first_window:
+                errors.append(
+                    f"row {row_number}: metadata hold may remain frozen at zero "
+                    "or advance only the first post-requalification window"
+                )
+            if row.get("request_pending_after") != "false":
+                errors.append(
+                    f"row {row_number}: metadata hold forbids a new request"
+                )
+        elif not (
+            requalification_before == 1 and requalification_after == 2
+        ):
+            errors.append(
+                f"row {row_number}: metadata hold may clear only on the second "
+                "complete post-requalification maintenance window"
+            )
+    if event == "fail_static" and row.get("maintenance_state_after") != "FAIL_STATIC":
+        errors.append(f"row {row_number}: fail_static must enter FAIL_STATIC")
+
+    if row.get("maintenance_state_after") == "REQUEST_PENDING" and row.get(
+        "request_pending_after"
+    ) != "true":
+        errors.append(
+            f"row {row_number}: REQUEST_PENDING state requires request_pending_after=true"
+        )
+    if row.get("maintenance_state_after") == "RESPONSE_PENDING" and row.get(
+        "response_pending_after"
+    ) != "true":
+        errors.append(
+            f"row {row_number}: RESPONSE_PENDING state requires response_pending_after=true"
+        )
+    if row.get("maintenance_state_after") == "METADATA_HOLD" and row.get(
+        "metadata_hold_after"
+    ) != "true":
+        errors.append(
+            f"row {row_number}: METADATA_HOLD state requires metadata_hold_after=true"
+        )
+
+
 def _check_plant_sign_qualification_v1(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
@@ -2832,6 +3484,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_active_hybrid_decision_v1(row, row_count, errors)
             if context.contract == "active_hybrid_decisions_v2":
                 _check_active_hybrid_decision_v2(row, row_count, errors)
+            if context.contract == "active_hybrid_maintenance_v1":
+                _check_active_hybrid_maintenance_v1(row, row_count, errors)
             if context.contract == "plant_sign_qualification_v1":
                 _check_plant_sign_qualification_v1(
                     row, row_count, errors
