@@ -18,7 +18,11 @@ from host.otis_tools.active_hybrid_evidence_guard import (
     replay_active_hybrid_history,
     replay_response_before_acknowledgement,
 )
-from host.otis_tools.active_hybrid_policy import ActiveHybridController, load_policy
+from host.otis_tools.active_hybrid_policy import (
+    ActiveHybridController,
+    load_cx323_policy,
+    load_policy,
+)
 from host.otis_tools.active_hybrid_rehearsal import (
     _ahy_row,
     _modeled_transaction,
@@ -34,6 +38,7 @@ from host.otis_tools import active_hybrid_rehearsal as rehearsal_tool
 from host.otis_tools import active_hybrid_evidence_guard as evidence_guard_tool
 from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_PROGRAMME,
@@ -159,6 +164,118 @@ def test_accelerated_path_exercises_material_checkpoint_and_shared_budget(
     assert attestation["phase_materially_influenced"] is True
     assert attestation["response_class"] == "inside_deadband"
     assert attestation["predicted_sign_observed"] is True
+
+
+def test_cx323_accelerated_dispatch_exercises_exact_setup_and_repeated_lifecycle(
+    tmp_path: Path,
+) -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    policy = load_cx323_policy(programme.policy_path)
+    bundle = {
+        "run_identity": programme.runtime_run_identity,
+        "bundle_sha256": "b" * 64,
+        "policy": {
+            "path": str(programme.policy_path),
+            "policy_sha256": policy.policy_sha256,
+        },
+        "firmware": {"build_identity": "a" * 64 + ":" + "c" * 64},
+        "setup": {
+            "consumer_epoch_propagation_required": [
+                "frequency_estimator",
+                "phase_estimator",
+                "controller",
+                "preview_replay",
+                "recorder",
+                "response_classifier",
+            ]
+        },
+        "offline_replay": {"report_sha256": "d" * 64},
+    }
+
+    primary, ahy_rows, transaction_rows = _modeled_transaction(
+        bundle, programme
+    )
+
+    assert primary["terminal_code"] == programme.setup_code + 2
+    assert primary["dac_epoch"] == 3
+    assert primary["correction_count"] == 2
+    assert primary["cumulative_movement_codes"] == 10
+    assert primary["frequency_only_application_count"] == 1
+    assert primary["phase_material_application_count"] == 1
+    assert primary["later_authority_released"] is True
+    assert primary["request_outstanding"] is False
+    assert primary["response_outstanding"] is False
+    assert primary["response_attestations"] == [
+        {
+            "attestation_type": "cx323_frozen_progressive_oracle_replay_v1",
+            "report_sha256": "d" * 64,
+        }
+    ]
+    setup = next(
+        event for event in primary["events"]
+        if event["event"] == "setup_propagated"
+    )
+    assert setup["requested_code"] == programme.setup_code
+    assert setup["applied_code"] == programme.setup_code
+    assert [row["reason"] for row in ahy_rows] == [
+        "phase_material_legacy_request_ready",
+        "response_pending_hold",
+        "persistence_first_interval_hold",
+        "maintenance_request_ready",
+        "response_pending_hold",
+    ]
+    first_response = ahy_rows[1]
+    first_post_response = ahy_rows[2]
+    second_persistence = ahy_rows[3]
+    second_response = ahy_rows[4]
+    assert int(first_post_response["source_first_sequence"]) >= int(
+        first_response["source_last_sequence"]
+    )
+    assert int(second_persistence["source_first_sequence"]) == int(
+        first_post_response["source_last_sequence"]
+    )
+    assert {
+        (
+            row["current_applied_code"],
+            row["dac_epoch"],
+        )
+        for row in (first_post_response, second_persistence)
+    } == {(str(programme.setup_code + 6), "2")}
+    assert (
+        second_response["current_applied_code"],
+        second_response["dac_epoch"],
+    ) == (str(programme.setup_code + 2), "3")
+    assert [row["event"] for row in transaction_rows] == [
+        "request_created",
+        "core0_accepted",
+        "application",
+        "response",
+    ] * 2
+    assert {
+        (row["run_identity"], row["profile_identity"])
+        for row in [*ahy_rows, *transaction_rows]
+    } == {(programme.runtime_run_identity, programme.profile_id)}
+
+    ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
+    act_path = tmp_path / "active_transactions_v1.csv"
+    _write_csv(ahy_path, ACTIVE_HYBRID_DECISION_V1_FIELDS, ahy_rows)
+    _write_csv(
+        act_path,
+        CONTRACT_FIELDS["active_transactions_v1"],
+        transaction_rows,
+    )
+    assert validate_csv(
+        ahy_path,
+        CsvValidationContext(
+            "active_hybrid_decisions_v1", frozenset(), frozenset()
+        ),
+    ).ok
+    assert validate_csv(
+        act_path,
+        CsvValidationContext(
+            "active_transactions_v1", frozenset(), frozenset()
+        ),
+    ).ok
 
 
 def test_cx321_accelerated_path_asserts_the_frozen_natural_timing_bridge() -> None:

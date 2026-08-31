@@ -17,8 +17,12 @@ from .active_hybrid_evidence_guard import replay_response_before_acknowledgement
 from .active_hybrid_finalize import finalize, validate_seal
 from .active_hybrid_policy import (
     ActiveHybridController,
+    CX323Decision,
+    CX323Observation,
+    CX323PhasePriorityController,
     HybridDecision,
     HybridObservation,
+    load_cx323_policy,
     load_policy,
 )
 from .active_hybrid_proposal import validate_proposal
@@ -362,9 +366,9 @@ def _prepared_supervisor(
         profile_identity=programme.profile_id,
     )
     supervisor.confirm_setup_propagation(
-        requested_code=0xA83C,
-        accepted_code=0xA83C,
-        applied_code=0xA83C,
+        requested_code=programme.setup_code,
+        accepted_code=programme.setup_code,
+        applied_code=programme.setup_code,
         dac_epoch=1,
         consumer_epochs={name: 1 for name in bundle["setup"]["consumer_epoch_propagation_required"]},
     )
@@ -372,10 +376,293 @@ def _prepared_supervisor(
     return supervisor
 
 
+def _cx323_hybrid_decision_projection(
+    *,
+    decision: CX323Decision,
+    observation: CX323Observation,
+    controller: CX323PhasePriorityController,
+    bindings: dict[str, Any],
+) -> HybridDecision:
+    frequency_delta = decision.counterfactual_frequency_only_delta_codes
+    frequency_term_hz = frequency_delta * 0.00017008467693813145
+    # AHY v1 is a predecessor compatibility projection.  Preserve its phase
+    # materiality invariant without relabelling a CX323 tagged-debt difference
+    # from the frequency-only counterfactual as a phase contribution.
+    phase_term_hz = (
+        (decision.requested_delta_codes - frequency_delta)
+        * 0.00017008467693813145
+        if decision.phase_materially_influenced
+        else 0.0
+    )
+    combined_hz = frequency_term_hz + phase_term_hz
+    return HybridDecision(
+        decision_sequence=decision.decision_sequence,
+        state_before="HYBRID_TRACKING",
+        state_after=(
+            "FIRST_PHASE_TRANSACTION"
+            if decision.phase_materially_influenced
+            and decision.requested_delta_codes != 0
+            else "HYBRID_TRACKING"
+        ),
+        reason=decision.reason,
+        timestamp_s=observation.timestamp_s,
+        capture_session=observation.capture_session,
+        source_first_sequence=observation.source_first_sequence,
+        source_last_sequence=observation.source_last_sequence,
+        frequency_estimator_id=observation.frequency_estimator_id,
+        frequency_estimator_sha256=str(bindings["frequency_estimator"]["sha256"]),
+        frequency_error_hz=(
+            -observation.accumulated_edge_error_counts / 600.0
+        ),
+        accumulated_edge_error_counts=(
+            observation.accumulated_edge_error_counts
+        ),
+        tight_state=observation.tight_state,
+        phase_estimator_id="cx318_selected_relative_phase_v1",
+        phase_estimator_sha256=str(bindings["phase_estimator"]["sha256"]),
+        phase_epoch=observation.phase_epoch,
+        phase_observation_sequence=observation.source_last_sequence,
+        relative_phase_cycles=observation.relative_phase_cycles,
+        dac_epoch=observation.dac_epoch,
+        current_applied_code=observation.applied_code,
+        frequency_term_hz=frequency_term_hz,
+        phase_term_hz=phase_term_hz,
+        combined_demand_hz=combined_hz,
+        raw_combined_delta_codes=(
+            decision.raw_combined_picocodes / 1_000_000_000_000
+            if decision.raw_combined_picocodes
+            else float(decision.requested_delta_codes)
+        ),
+        requested_delta_codes=decision.requested_delta_codes,
+        requested_code=decision.requested_code,
+        counterfactual_frequency_only_delta_codes=frequency_delta,
+        phase_materially_influenced=decision.phase_materially_influenced,
+        step_limited=decision.step_limited,
+        range_clamped=decision.range_clamped,
+        cadence_limited=decision.cadence_limited,
+        count_limited=decision.count_limited,
+        cumulative_budget_limited=decision.cumulative_budget_limited,
+        correction_count_before=controller.application_count,
+        cumulative_movement_before_codes=controller.cumulative_movement_codes,
+        global_last_application_s=controller.last_application_s,
+        natural_chatter_origin_code=controller.chatter_origin_code,
+        natural_cumulative_movement_codes=controller.cumulative_movement_codes,
+        natural_direction_count=len(controller.direction_history),
+        plant_sign_attestation_id=None,
+        plant_sign_handoff_first_consumer=False,
+        actionable=False,
+    )
+
+
+def _modeled_cx323_transaction(
+    bundle: dict[str, Any], programme: ActiveHybridProgramme
+) -> tuple[dict[str, Any], list[dict[str, str]], list[dict[str, str]]]:
+    policy_path = Path(str(bundle["policy"]["path"]))
+    policy_document = json.loads(policy_path.read_text(encoding="utf-8"))
+    bindings = policy_document["bindings"]
+    policy = load_cx323_policy(policy_path)
+    controller = CX323PhasePriorityController(
+        policy,
+        setup_applied_code=programme.setup_code,
+        setup_dac_epoch=1,
+    )
+    supervisor = _prepared_supervisor(
+        bundle, owner="capture_owner_3231", programme=programme
+    )
+    ahy_rows: list[dict[str, str]] = []
+    transaction_rows: list[dict[str, str]] = []
+    transaction_record_sequence = 1
+    request_sequence = 0
+    hybrid_record_sequence = 0
+
+    def observation(
+        timestamp_s: int,
+        source_first_sequence: int,
+        source_last_sequence: int,
+        counts: int,
+        phase: int,
+    ) -> CX323Observation:
+        return CX323Observation(
+            timestamp_s=timestamp_s,
+            capture_session=1,
+            source_first_sequence=source_first_sequence,
+            source_last_sequence=source_last_sequence,
+            dac_epoch=controller.dac_epoch,
+            applied_code=controller.applied_code,
+            accumulated_edge_error_counts=counts,
+            tight_state="TIGHT_INSIDE",
+            phase_epoch=1,
+            relative_phase_cycles=phase,
+        )
+
+    observation_parameters = (
+        (1800, 1200, 1800, -1, -6),
+        # The response to the first application consumes (1800, 2400].
+        # Resume controller decisions only with causally later support.
+        (3600, 2400, 3000, 1, 0),
+        (4200, 3000, 3600, 1, 0),
+    )
+    for parameters in observation_parameters:
+        # Construct each observation at its causal frontier.  Earlier exact
+        # applications change the confirmed code and DAC epoch consumed by
+        # every later controller decision.
+        observed = observation(*parameters)
+        decision = controller.decide(observed)
+        projected = _cx323_hybrid_decision_projection(
+            decision=decision,
+            observation=observed,
+            controller=controller,
+            bindings=bindings,
+        )
+        hybrid_record_sequence += 1
+        ahy_rows.append(
+            _ahy_row(
+                projected,
+                record_sequence=hybrid_record_sequence,
+                run_identity=bundle["run_identity"],
+                build_identity=bundle["firmware"]["build_identity"],
+                policy_sha256=policy.policy_sha256,
+                response_policy_sha256=str(
+                    bindings["response_policy"]["sha256"]
+                ),
+                profile_identity=programme.profile_id,
+            )
+        )
+        if decision.requested_delta_codes == 0:
+            continue
+        request_sequence += 1
+        supervisor.request_created(
+            decision_sequence=decision.decision_sequence,
+            request_sequence=request_sequence,
+            requested_code=decision.requested_code,
+            phase_material=decision.phase_materially_influenced,
+        )
+        controller.confirm_application(
+            decision,
+            applied_code=decision.requested_code,
+            dac_epoch=controller.dac_epoch + 1,
+            first_consumer_exact=True,
+        )
+        supervisor.application_propagated(
+            request_sequence=request_sequence,
+            acceptance_sequence=request_sequence,
+            application_sequence=controller.application_count,
+            applied_code=controller.applied_code,
+            dac_epoch=controller.dac_epoch,
+            consumer_epochs={
+                name: controller.dac_epoch
+                for name in bundle["setup"][
+                    "consumer_epoch_propagation_required"
+                ]
+            },
+        )
+        new_rows = _transaction_rows(
+            projected,
+            record_sequence=transaction_record_sequence,
+            request_sequence=request_sequence,
+            application_sequence=controller.application_count,
+            dac_epoch=controller.dac_epoch,
+            cumulative_movement=controller.cumulative_movement_codes,
+            run_identity=bundle["run_identity"],
+            build_identity=bundle["firmware"]["build_identity"],
+            policy_sha256=policy.policy_sha256,
+            estimator_sha256=str(bindings["frequency_estimator"]["sha256"]),
+            model_sha256=str(bindings["plant_model"]["sha256"]),
+            response_policy_sha256=str(
+                bindings["response_policy"]["sha256"]
+            ),
+            numerical_policy_sha256=policy.policy_sha256,
+            profile_identity=programme.profile_id,
+        )
+        transaction_rows.extend(new_rows)
+        transaction_record_sequence += 4
+        response_hold_observation = observation(
+            observed.timestamp_s + policy.settling_exclusion_s + 600,
+            observed.source_last_sequence,
+            observed.source_last_sequence + 600,
+            observed.accumulated_edge_error_counts,
+            observed.relative_phase_cycles,
+        )
+        response_hold = controller.decide(response_hold_observation)
+        projected_response = _cx323_hybrid_decision_projection(
+            decision=response_hold,
+            observation=response_hold_observation,
+            controller=controller,
+            bindings=bindings,
+        )
+        hybrid_record_sequence += 1
+        response_ahy = _ahy_row(
+            projected_response,
+            record_sequence=hybrid_record_sequence,
+            run_identity=bundle["run_identity"],
+            build_identity=bundle["firmware"]["build_identity"],
+            policy_sha256=policy.policy_sha256,
+            response_policy_sha256=str(
+                bindings["response_policy"]["sha256"]
+            ),
+            profile_identity=programme.profile_id,
+        )
+        response_ahy.update(
+            {
+                "authority_state": "AWAITING_RESPONSE",
+                "request_sequence": str(request_sequence),
+                "acceptance_sequence": str(request_sequence),
+                "application_sequence": str(controller.application_count),
+            }
+        )
+        ahy_rows.append(response_ahy)
+        controller.complete_response(fresh_exact=True)
+        supervisor.response_replayed_and_acknowledged(
+            request_sequence=request_sequence,
+            response_class=new_rows[-1]["response_class"],
+            support_fresh=True,
+            sign_healthy=True,
+            replay_exact=True,
+            tight_reacquired=True,
+            durable_decision_record=True,
+            durable_transaction_record=True,
+        )
+
+    supervisor.terminal_clear(reason="accelerated_modeled_path_complete")
+    supervisor.close_capture(owner="capture_owner_3231", logical_rotation=True)
+    snapshot = supervisor.snapshot()
+    snapshot.update(
+        {
+            "policy_id": policy.policy_id,
+            "policy_sha256": policy.policy_sha256,
+            "terminal_code": controller.applied_code,
+            "applied_code": controller.applied_code,
+            "dac_epoch": controller.dac_epoch,
+            "correction_count": controller.application_count,
+            "automatic_application_count": controller.application_count,
+            "cumulative_movement_codes": controller.cumulative_movement_codes,
+            "frequency_only_application_count": 1,
+            "phase_nonzero_application_count": 1,
+            "phase_material_application_count": 1,
+            "request_outstanding": controller.request_pending,
+            "response_outstanding": controller.response_pending,
+            "tagged_debt_picocodes": controller.debt.total_picocodes,
+            "cx323_progressive_replay_sha256": bundle["offline_replay"][
+                "report_sha256"
+            ],
+        }
+    )
+    snapshot["events"] = supervisor.events
+    snapshot["response_attestations"] = [
+        {
+            "attestation_type": "cx323_frozen_progressive_oracle_replay_v1",
+            "report_sha256": bundle["offline_replay"]["report_sha256"],
+        }
+    ]
+    return snapshot, ahy_rows, transaction_rows
+
+
 def _modeled_transaction(
     bundle: dict[str, Any],
     programme: ActiveHybridProgramme = CX320_PROGRAMME,
 ) -> tuple[dict[str, Any], list[dict[str, str]], list[dict[str, str]]]:
+    if programme.persistent_maintenance_policy:
+        return _modeled_cx323_transaction(bundle, programme)
     policy = load_policy(
         Path(str(bundle["policy"].get("path", programme.natural_policy_path)))
     )
@@ -678,14 +965,14 @@ def _scenario_observational_response_classes(
         supervisor.request_created(
             decision_sequence=ordinal,
             request_sequence=ordinal,
-            requested_code=0xA83C + ordinal,
+            requested_code=programme.setup_code + ordinal,
             phase_material=True,
         )
         supervisor.application_propagated(
             request_sequence=ordinal,
             acceptance_sequence=ordinal,
             application_sequence=1,
-            applied_code=0xA83C + ordinal,
+            applied_code=programme.setup_code + ordinal,
             dac_epoch=2,
             consumer_epochs={
                 name: 2
@@ -715,14 +1002,14 @@ def _scenario_observational_response_classes(
     invalid.request_created(
         decision_sequence=99,
         request_sequence=99,
-        requested_code=0xA83D,
+        requested_code=programme.setup_code + 1,
         phase_material=True,
     )
     invalid.application_propagated(
         request_sequence=99,
         acceptance_sequence=99,
         application_sequence=1,
-        applied_code=0xA83D,
+        applied_code=programme.setup_code + 1,
         dac_epoch=2,
         consumer_epochs={
             name: 2
@@ -809,25 +1096,39 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
         transaction_rows,
     )
 
-    # Exercise the exact durable-response guard over the first material request.
-    first_material = next(
-        row for row in ahy_rows if row["phase_materially_influenced"] == "true"
-    )
-    first_material_response = next(
-        row
-        for row in transaction_rows
-        if row["event"] == "response"
-        and row["decision_sequence"] == first_material["decision_sequence"]
-    )
-    attestation = replay_response_before_acknowledgement(
-        active_hybrid_csv=evidence_dir / "csv/active_hybrid_decisions_v1.csv",
-        active_transactions_csv=evidence_dir / "csv/active_transactions_v1.csv",
-        response_row=first_material_response,
-        policy_path=Path(str(bundle["policy"]["path"])),
-        expected_profile_identity=programme.profile_id,
-        expected_active_policy_sha256=active_policy_sha256,
-    )
-    primary["response_attestations"] = [attestation]
+    if programme.persistent_maintenance_policy:
+        # CX323's exact response consumer is AHM, which the complete PTY/live
+        # topology exercises below the accelerated no-I/O layer.  Bind this
+        # modeled path to the already-frozen progressive oracle instead of
+        # passing CX323 through the predecessor's AHY-v1 response guard.
+        if primary["response_attestations"] != [
+            {
+                "attestation_type": "cx323_frozen_progressive_oracle_replay_v1",
+                "report_sha256": bundle["offline_replay"]["report_sha256"],
+            }
+        ]:
+            raise ValueError("CX323 progressive replay attestation differs")
+    else:
+        # Exercise the predecessor's exact durable-response guard over its
+        # first material request.
+        first_material = next(
+            row for row in ahy_rows if row["phase_materially_influenced"] == "true"
+        )
+        first_material_response = next(
+            row
+            for row in transaction_rows
+            if row["event"] == "response"
+            and row["decision_sequence"] == first_material["decision_sequence"]
+        )
+        attestation = replay_response_before_acknowledgement(
+            active_hybrid_csv=evidence_dir / "csv/active_hybrid_decisions_v1.csv",
+            active_transactions_csv=evidence_dir / "csv/active_transactions_v1.csv",
+            response_row=first_material_response,
+            policy_path=Path(str(bundle["policy"]["path"])),
+            expected_profile_identity=programme.profile_id,
+            expected_active_policy_sha256=active_policy_sha256,
+        )
+        primary["response_attestations"] = [attestation]
     trace = {
         "schema_version": 1,
         "trace_type": f"{programme.key}_active_hybrid_operational_trace_v1",
@@ -858,7 +1159,11 @@ def run(*, bundle_path: Path, proposal_path: Path, output_dir: Path) -> dict[str
         "real_components_exercised": [
             "host_reference_controller",
             "AHY_contract_validator",
-            "response_replay_before_ACKE_guard",
+            (
+                "cx323_frozen_progressive_oracle_replay"
+                if programme.persistent_maintenance_policy
+                else "response_replay_before_ACKE_guard"
+            ),
             "progressive_supervisor_state_contract",
             "analyzer",
             "finalizer_and_sealer",
