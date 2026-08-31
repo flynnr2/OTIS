@@ -3565,10 +3565,21 @@ def _cx323_maintenance_transaction_fixture(
             {
                 "run_identity": programme.runtime_run_identity,
                 "profile_identity": programme.profile_id,
-                "policy_sha256": policy_sha256,
-                "response_policy_sha256": bindings["response_policy"]["sha256"],
             }
         )
+        exact_identities = {
+            "active_policy_sha256": policy_sha256,
+            "numerical_policy_sha256": policy_sha256,
+            "frequency_estimator_sha256": bindings["frequency_estimator"][
+                "sha256"
+            ],
+            "estimator_sha256": bindings["frequency_estimator"]["sha256"],
+            "model_sha256": bindings["plant_model"]["sha256"],
+            "response_policy_sha256": bindings["response_policy"]["sha256"],
+        }
+        for field, identity in exact_identities.items():
+            if field in value:
+                value[field] = identity
         for field in (
             "current_applied_code", "actual_applied_code", "requested_code",
             "accepted_code", "applied_code",

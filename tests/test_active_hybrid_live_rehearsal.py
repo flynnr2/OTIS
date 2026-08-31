@@ -252,6 +252,27 @@ def test_cx323_fixture_uses_its_own_identity_and_ahm_lifecycle() -> None:
         and row["profile_identity"] == CX323_D9_D6_72H_PROGRAMME.profile_id
         for row in [*decisions, *transactions, *maintenance]
     )
+    assert all(
+        row["active_policy_sha256"] == bundle["policy"]["policy_sha256"]
+        for row in [*decisions, *transactions, *maintenance]
+    )
+    assert all(
+        row["numerical_policy_sha256"]
+        == bundle["policy"]["policy_sha256"]
+        for row in transactions
+    )
+    assert all(
+        row["frequency_estimator_sha256"]
+        == policy_document["bindings"]["frequency_estimator"]["sha256"]
+        for row in decisions
+    )
+    assert all(
+        row["estimator_sha256"]
+        == policy_document["bindings"]["frequency_estimator"]["sha256"]
+        and row["model_sha256"]
+        == policy_document["bindings"]["plant_model"]["sha256"]
+        for row in transactions
+    )
     assert maintenance[0]["event"] == "policy_activation"
     assert maintenance[0]["policy_id"] == CX323_D9_D6_72H_PROGRAMME.policy_id
     assert {row["event"] for row in maintenance} >= {
