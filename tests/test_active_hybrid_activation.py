@@ -847,6 +847,59 @@ def test_campaign18_legacy_capture_terminal_requires_exact_misclassification(
         )
 
 
+def test_cx323_later_activation_accepts_exact_firmware_fail_static_terminal(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "cx323-attempt-1"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "cx323-attempt-1",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "static_code": 43085,
+            "static_terminal_exact": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": (
+                    "cx323_d9_d6_72h_identity_or_evidence_fault"
+                ),
+                "reason": (
+                    "cx323_d9_d6_72h_live_supervisor_fault:"
+                    "live active_fail_static asserted"
+                ),
+                "last_confirmed_code": 43085,
+            },
+        },
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=2,
+        reason="rerun after exact firmware cadence correction",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 2
+    assert observed["automatic_retry"] is False
+    assert observed["predecessor_physical_terminal"]["primary_decision"] == (
+        "cx323_d9_d6_72h_identity_or_evidence_fault"
+    )
+
+
 def test_later_activation_accepts_exact_pre_setup_provenance_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

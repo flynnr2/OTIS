@@ -22,6 +22,7 @@ from typing import Any
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX323_REHEARSAL_COVERAGE,
+    CX323_D9_D6_72H_PROGRAMME,
     CX320_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     integrated_setup_provenance_contract,
@@ -676,6 +677,36 @@ def _attempt_descriptor(
                 )
             )
         )
+        cx323_firmware_fail_static_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and acquisition_gate.get("passed") is False
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is False
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and supervisor_terminal.get("reason")
+            == (
+                "cx323_d9_d6_72h_live_supervisor_fault:"
+                "live active_fail_static asserted"
+            )
+            and isinstance(terminal.get("static_code"), int)
+            and programme.minimum_code
+            <= terminal["static_code"]
+            <= programme.maximum_code
+            and supervisor_terminal.get("last_confirmed_code")
+            == terminal["static_code"]
+        )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
             and seal.get("primary_decision") in operator_abort_decisions
@@ -709,6 +740,7 @@ def _attempt_descriptor(
                 failed_physical_gate
                 or failed_post_acquisition_gate
                 or campaign18_capture_terminal
+                or cx323_firmware_fail_static_terminal
                 or bounded_operator_abort
                 or bounded_pre_setup_provenance
             )
