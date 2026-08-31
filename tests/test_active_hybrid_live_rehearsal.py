@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from hashlib import sha256
 from io import StringIO
+import inspect
 import json
 from pathlib import Path
 
@@ -1008,3 +1009,12 @@ def test_accelerated_qualified_boundaries_use_device_time(
         "backward_host_utc_step_did_not_delay_endpoint": True,
         "physical_actions_performed": 0,
     }
+
+
+def test_qualified_device_clock_binds_confirmed_code_to_selected_programme() -> None:
+    source = inspect.getsource(
+        rehearsal._exercise_qualified_device_time_boundaries
+    )
+
+    assert "programme.setup_code" in source
+    assert '"43068"' not in source

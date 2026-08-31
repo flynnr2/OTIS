@@ -2937,7 +2937,9 @@ def _exercise_qualified_device_time_boundaries(
             ("cx317_active", "evidence_request_sequence"): "0",
             ("cx317_active", "manual_start_confirmed"): "true",
             ("cx317_active", "confirmed_applied_code_known"): "true",
-            ("cx317_active", "confirmed_applied_code"): "43068",
+            ("cx317_active", "confirmed_applied_code"): str(
+                programme.setup_code
+            ),
             ("cx317_active", "dac_epoch"): "1",
             ("cx317_active", "session_id"): "1",
             ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
