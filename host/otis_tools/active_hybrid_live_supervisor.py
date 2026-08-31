@@ -1053,42 +1053,70 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                         f"{row.get(field)!r} != {value!r}"
                     )
 
+    def _enter_host_verification_hold(self, error: Exception) -> None:
+        """Inhibit host authority without terminating firmware acquisition."""
+        if self.state.get("host_verification_hold") is not None:
+            return
+        try:
+            rows = _read_csv(self.run_dir / ACTIVE_CSV)
+        except (OSError, UnicodeError, ValueError):
+            rows = []
+        physical = next(
+            (
+                row
+                for row in reversed(rows)
+                if row.get("event")
+                in {"response", "application", "manual_start"}
+            ),
+            {},
+        )
+
+        def integer(field: str, fallback: int = 0) -> int:
+            try:
+                return int(physical.get(field, fallback))
+            except (TypeError, ValueError):
+                return fallback
+
+        retained_code = self.state.get("terminal_static_code")
+        fallback_code = retained_code if isinstance(retained_code, int) else 0
+
+        hold = {
+            "entered_utc": _utc_now(),
+            "error": str(error),
+            "record_sequence": integer("transaction_record_sequence"),
+            "request_sequence": integer("request_sequence"),
+            "response_class": physical.get("response_class", "unavailable"),
+            "applied_code": integer("applied_code", fallback_code),
+            "dac_epoch": integer("dac_epoch"),
+            "correction_count": integer("correction_count"),
+            "cumulative_movement_codes": integer(
+                "cumulative_movement_codes"
+            ),
+        }
+        self.state["host_verification_hold"] = hold
+        self.state["arm_pending"] = False
+        self.state["arm_sent_at_utc"] = None
+        self._save()
+        self._programme_event("host_verification_hold_entered", **hold)
+
+    def _validate_hybrid_decisions_or_hold(self) -> bool:
+        try:
+            self._validate_hybrid_decisions()
+        except (OSError, UnicodeError, ValueError) as exc:
+            self._enter_host_verification_hold(exc)
+            return False
+        return True
+
     def _process_transactions(self) -> None:
         if self.state.get("host_verification_hold") is not None:
-            self._validate_hybrid_decisions()
+            return
+        if not self._validate_hybrid_decisions_or_hold():
             return
         prior_terminal = self.state.get("terminal")
         try:
             super()._process_transactions()
         except IndependentReplayMismatch as exc:
-            rows = _read_csv(self.run_dir / ACTIVE_CSV)
-            response = next(
-                (row for row in reversed(rows) if row.get("event") == "response"),
-                {},
-            )
-            hold = {
-                "entered_utc": _utc_now(),
-                "error": str(exc),
-                "record_sequence": int(
-                    response.get("transaction_record_sequence", "0")
-                ),
-                "request_sequence": int(response.get("request_sequence", "0")),
-                "response_class": response.get(
-                    "response_class", "unavailable"
-                ),
-                "applied_code": int(response.get("applied_code", "0")),
-                "dac_epoch": int(response.get("dac_epoch", "0")),
-                "correction_count": int(response.get("correction_count", "0")),
-                "cumulative_movement_codes": int(
-                    response.get("cumulative_movement_codes", "0")
-                ),
-            }
-            self.state["host_verification_hold"] = hold
-            self.state["arm_pending"] = False
-            self.state["arm_sent_at_utc"] = None
-            self._save()
-            self._programme_event("host_verification_hold_entered", **hold)
-            self._validate_hybrid_decisions()
+            self._enter_host_verification_hold(exc)
             return
         except ResponseCheckpointRejected as exc:
             rows = _read_csv(self.run_dir / ACTIVE_CSV)
@@ -1160,7 +1188,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                         phase_epoch=int(phase_epochs[0]),
                     )
                     self._abort("phase_or_frequency_regulation_not_sustained")
-        self._validate_hybrid_decisions()
+        self._validate_hybrid_decisions_or_hold()
 
     def _runtime_health_integrity(
         self, health: dict[tuple[str, str], str]

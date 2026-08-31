@@ -925,6 +925,68 @@ def test_host_replay_disagreement_holds_authority_without_aborting(
     assert events[0][0] == "cx320_host_verification_hold_entered"
 
 
+def test_ahy_identity_failure_holds_host_and_later_loops_are_passive(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    reasons: list[str] = []
+    commands: list[str] = []
+    events: list[tuple[str, dict[str, object]]] = []
+    base_calls: list[str] = []
+    validation_calls: list[str] = []
+    manual_start = {
+        "event": "manual_start",
+        "transaction_record_sequence": "1",
+        "request_sequence": "0",
+        "response_class": "unavailable",
+        "applied_code": "43085",
+        "dac_epoch": "1",
+        "correction_count": "0",
+        "cumulative_movement_codes": "0",
+    }
+
+    def process(_self: object) -> None:
+        base_calls.append("processed")
+
+    def reject_ahy() -> None:
+        validation_calls.append("validated")
+        raise ValueError(
+            "AHY identity mismatch for build_identity: 'stale' != 'frozen'"
+        )
+
+    monkeypatch.setattr(
+        live.FrequencyControlSupervisor, "_process_transactions", process
+    )
+    monkeypatch.setattr(supervisor, "_abort", reasons.append)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    monkeypatch.setattr(
+        supervisor,
+        "_event",
+        lambda name, **values: events.append((name, values)),
+    )
+    monkeypatch.setattr(supervisor, "_validate_hybrid_decisions", reject_ahy)
+    monkeypatch.setattr(live, "_read_csv", lambda _path: [manual_start])
+
+    supervisor._process_transactions()
+    supervisor._maybe_start_or_arm(_health(supervisor))
+    supervisor._process_transactions()
+
+    assert reasons == []
+    assert commands == []
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["host_verification_hold"]["error"] == (
+        "AHY identity mismatch for build_identity: 'stale' != 'frozen'"
+    )
+    assert supervisor.state["host_verification_hold"]["applied_code"] == 43085
+    assert supervisor.state["host_verification_hold"]["dac_epoch"] == 1
+    assert supervisor.state["arm_pending"] is False
+    assert base_calls == []
+    assert validation_calls == ["validated"]
+    assert [name for name, _values in events] == [
+        "cx320_host_verification_hold_entered"
+    ]
+
+
 def test_cx320_uses_observed_raw_pps_qualification_deadline(
     tmp_path: Path,
 ) -> None:
