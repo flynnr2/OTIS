@@ -244,6 +244,55 @@ def _integrated_manifest() -> dict:
     return manifest
 
 
+def _cx323_manifest(*, policy_path: Path | None = None) -> dict:
+    manifest = _manifest()
+    programme = CX323_D9_D6_72H_PROGRAMME
+    policy_path = policy_path or programme.policy_path
+    policy_sha256 = sha256(policy_path.read_bytes()).hexdigest()
+    manifest.update(
+        {
+            "programme_id": programme.programme_id,
+            "stage": programme.live_stage,
+            "run_identity": programme.runtime_run_identity,
+            "profile_identity": programme.profile_id,
+            "policy": {
+                "path": str(policy_path),
+                "sha256": policy_sha256,
+                "size_bytes": policy_path.stat().st_size,
+                "policy_sha256": policy_sha256,
+            },
+        }
+    )
+    section = manifest.pop("cx320")
+    section["run_identity"] = programme.runtime_run_identity
+    section["profile_id"] = programme.profile_id
+    section["setup"]["code"] = programme.setup_code
+    section["automatic_control"].update(
+        {
+            "maximum_total_applications": (
+                programme.authorized_maximum_physical_applications
+            ),
+            "maximum_total_automatic_applications": (
+                programme.authorized_maximum_applications
+            ),
+            "maximum_deliberate_challenges": 0,
+            "maximum_cumulative_movement_codes": (
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
+        }
+    )
+    section["qualification"].update(
+        {
+            "qualified_duration_s": programme.qualified_duration_s,
+            "absolute_wall_clock_limit_s": (
+                programme.authorized_absolute_wall_limit_s
+            ),
+        }
+    )
+    manifest[programme.manifest_section] = section
+    return manifest
+
+
 def test_cx321_runtime_binds_active_and_numerical_policy_domains() -> None:
     manifest = _cx321_manifest()
     _, identities = live.load_active_hybrid_spec(manifest)
@@ -270,6 +319,40 @@ def test_integrated_runtime_accepts_explicit_historical_policy_identity() -> Non
     assert identities["active_policy_sha256"] == manifest["policy"][
         "policy_sha256"
     ]
+
+
+def test_cx323_runtime_dispatches_its_persistent_maintenance_envelope() -> None:
+    manifest = _cx323_manifest()
+
+    spec, identities = live.load_active_hybrid_spec(manifest)
+
+    assert spec.profile == CX323_D9_D6_72H_PROGRAMME.profile_id
+    assert spec.run_identity == CX323_D9_D6_72H_PROGRAMME.runtime_run_identity
+    assert spec.start_code == CX323_D9_D6_72H_PROGRAMME.setup_code
+    assert spec.correction_limit == 144
+    assert spec.cumulative_limit == 3_024
+    assert identities["active_policy_sha256"] == manifest["policy"][
+        "policy_sha256"
+    ]
+
+
+def test_cx323_runtime_rejects_a_changed_finite_policy_envelope(
+    tmp_path: Path,
+) -> None:
+    changed_path = tmp_path / "changed_cx323_policy.json"
+    changed = json.loads(
+        CX323_D9_D6_72H_PROGRAMME.policy_path.read_text(encoding="utf-8")
+    )
+    changed["finite_timing"]["wall_clock_limit_s"] = 24 * 3600
+    changed_path.write_text(
+        json.dumps(changed, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError, match="CX323 policy does not carry the exact live envelope"
+    ):
+        live.load_active_hybrid_spec(_cx323_manifest(policy_path=changed_path))
 
 
 def _supervisor(

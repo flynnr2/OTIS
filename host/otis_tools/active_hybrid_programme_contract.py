@@ -613,7 +613,7 @@ CX323_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
     forwarded_output_integration=True,
     fresh_serial_auto_detect=True,
     natural_policy_programme_id=(
-        "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
+        "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_V1"
     ),
     engineering_maximum_applications=144,
     engineering_maximum_physical_applications=144,

@@ -4831,12 +4831,18 @@ def _run_real_process_topology(
             stderr=subprocess.STDOUT,
             text=True,
         )
+
+        def supervisor_and_abort_ready() -> bool:
+            if supervisor.poll() is not None:
+                output = supervisor.stdout.read() if supervisor.stdout else ""
+                raise RuntimeError(
+                    "real live supervisor exited before host-abort FIFO: "
+                    f"exit={supervisor.returncode}; {output[-2000:]}"
+                )
+            return host_abort.is_fifo()
+
         _wait_until(
-            lambda: (
-                supervisor.poll() is None
-                and host_abort.exists()
-                and stat.S_ISFIFO(host_abort.stat().st_mode)
-            ),
+            supervisor_and_abort_ready,
             15.0,
             "real live supervisor and host-abort FIFO",
         )

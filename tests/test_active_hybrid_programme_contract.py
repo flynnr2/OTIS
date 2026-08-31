@@ -149,6 +149,7 @@ def test_cx323_72h_descriptor_is_distinct_and_exact() -> None:
     assert programme.maximum_deliberate_challenges == 0
     assert programme.integrated_long_run is True
     assert programme.persistent_maintenance_policy is True
+    assert programme.natural_policy_programme_id == programme.programme_id
     assert programme.maintenance_record_type == "AHM"
     assert programme.maintenance_record_contract == "active_hybrid_maintenance_v1"
     assert programme.controller_inhibit_acquisition_continues is True

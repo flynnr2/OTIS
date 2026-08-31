@@ -376,29 +376,73 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             else CX320_PROGRAMME.programme_id
         )
     )
-    numerical = natural_policy.get("numerical_policy", {})
     authority = natural_policy.get("global_authority_limits", {})
-    if (
-        natural_policy.get("programme_id")
-        != expected_natural_policy_programme_id
-        or natural_policy.get("policy_id") != programme.natural_policy_id
-        or natural_policy.get("setup", {}).get("exact_start_code")
-        != programme.setup_code
-        or authority.get("maximum_total_automatic_applications")
-        != programme.maximum_applications
-        or authority.get("maximum_cumulative_absolute_movement_codes")
-        != programme.maximum_cumulative_movement_codes
-        or authority.get("maximum_combined_step_codes")
-        != programme.maximum_step_codes
-        or authority.get("minimum_applied_cadence_s")
-        != programme.minimum_applied_cadence_s
-        or authority.get("minimum_code") != programme.minimum_code
-        or authority.get("maximum_code") != programme.maximum_code
-        or numerical.get("settling_exclusion_s") != 900
-        or numerical.get("fresh_support_after_settling_s") != 600
-        or numerical.get("response_support_total_s") != 1500
-    ):
-        raise ValueError("current CX320 policy does not carry the exact live envelope")
+    if programme.persistent_maintenance_policy:
+        selection = natural_policy.get("maintenance_selection", {})
+        finite_timing = natural_policy.get("finite_timing", {})
+        controller_inhibit = natural_policy.get("live_controller_inhibit", {})
+        if (
+            natural_policy.get("programme_id")
+            != expected_natural_policy_programme_id
+            or natural_policy.get("policy_id") != programme.natural_policy_id
+            or authority.get("maximum_automatic_applications")
+            != programme.maximum_applications
+            or authority.get("maximum_cumulative_absolute_movement_codes")
+            != programme.maximum_cumulative_movement_codes
+            or authority.get("maximum_combined_step_codes")
+            != programme.maximum_step_codes
+            or authority.get("minimum_applied_cadence_s")
+            != programme.minimum_applied_cadence_s
+            or authority.get("minimum_code") != programme.minimum_code
+            or authority.get("maximum_code") != programme.maximum_code
+            or authority.get("maximum_outstanding_requests") != 1
+            or authority.get("deliberate_challenges")
+            != programme.maximum_deliberate_challenges
+            or authority.get("automatic_retry") is not False
+            or authority.get("automatic_restoration") is not False
+            or selection.get("window_s") != 600
+            or selection.get("required_consecutive_same_sign_windows") != 2
+            or finite_timing.get("qualified_duration_s")
+            != programme.qualified_duration_s
+            or finite_timing.get("wall_clock_limit_s")
+            != programme.authorized_absolute_wall_limit_s
+            or finite_timing.get("minimum_final_response_reserve_s") != 1500
+            or finite_timing.get("extension") != "forbidden"
+            or finite_timing.get("inherited_24h_or_12h_duration") is not False
+            or controller_inhibit.get("host_abort") is not False
+            or controller_inhibit.get("endpoint_verdict")
+            != "cx323_d9_d6_72h_hybrid_authority_not_sustained"
+            or set(natural_policy.get("terminal_decisions", ()))
+            != set(programme.terminal_decisions)
+        ):
+            raise ValueError(
+                "current CX323 policy does not carry the exact live envelope"
+            )
+    else:
+        numerical = natural_policy.get("numerical_policy", {})
+        if (
+            natural_policy.get("programme_id")
+            != expected_natural_policy_programme_id
+            or natural_policy.get("policy_id") != programme.natural_policy_id
+            or natural_policy.get("setup", {}).get("exact_start_code")
+            != programme.setup_code
+            or authority.get("maximum_total_automatic_applications")
+            != programme.maximum_applications
+            or authority.get("maximum_cumulative_absolute_movement_codes")
+            != programme.maximum_cumulative_movement_codes
+            or authority.get("maximum_combined_step_codes")
+            != programme.maximum_step_codes
+            or authority.get("minimum_applied_cadence_s")
+            != programme.minimum_applied_cadence_s
+            or authority.get("minimum_code") != programme.minimum_code
+            or authority.get("maximum_code") != programme.maximum_code
+            or numerical.get("settling_exclusion_s") != 900
+            or numerical.get("fresh_support_after_settling_s") != 600
+            or numerical.get("response_support_total_s") != 1500
+        ):
+            raise ValueError(
+                "current CX320 policy does not carry the exact live envelope"
+            )
 
     if programme.identification_required:
         active_authority = policy.get("global_authority_limits", {})
@@ -417,7 +461,11 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             or active_authority.get("maximum_code") != programme.maximum_code
         ):
             raise ValueError("current CX321 programme policy envelope differs")
-    if programme.response_checkpoint_observational and not programme.sustained_regulation:
+    if (
+        programme.response_checkpoint_observational
+        and not programme.sustained_regulation
+        and not programme.persistent_maintenance_policy
+    ):
         terminal_semantics = policy.get("terminal_semantics", {})
         if terminal_semantics.get(
             "bounded_direct_hybrid_early_safety_stop_reasons"
