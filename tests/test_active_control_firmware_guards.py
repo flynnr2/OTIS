@@ -792,6 +792,21 @@ def test_cx323_live_bridge_uses_exact_native_controller_and_atomic_lifecycles() 
     assert "begin_cx323_evidence_burst(decision_burst_count)" in decision
     assert "queue_cx323_maintenance_record" in decision
     assert "commit_cx323_evidence_burst" in decision
+    assert (
+        "request_producing_decision =\n"
+        "      native_decision.requested_delta_codes != 0"
+    ) in decision
+    assert (
+        "request_producing_decision !=\n"
+        "      (!engine_before.request_pending && engine_after.request_pending)"
+    ) in decision
+    assert "native_decision.maintenance_request" not in decision
+    assert "request_producing_decision ? 5u : 3u" in decision
+    assert (
+        "projected_source.control_eligible =\n"
+        "      request_producing_decision"
+    ) in decision
+    assert decision.count("if (request_producing_decision)") == 2
     assert "pending_cx323_observation = observation" in decision
     assert "pending_cx323_decision = native_decision" in decision
     assert "pending_cx323_origin_valid = true" in decision
@@ -816,6 +831,10 @@ def test_cx323_gnss_hold_preserves_reference_and_requires_two_later_windows() ->
         source.index("bool maybe_complete_gnss_metadata_requalification") :
         source.index("void update_active_reference_and_integrity")
     ]
+    producer = source[
+        source.index("bool queue_cx323_maintenance_record") :
+        source.index("double cx323_picocodes_to_codes")
+    ]
     decision = source[
         source.index("static void cx323_active_live_on_decision_impl") :
         source.index("void otis_cx317_active_live_on_decision")
@@ -826,6 +845,10 @@ def test_cx323_gnss_hold_preserves_reference_and_requires_two_later_windows() ->
     assert "transaction.last_confirmed_applied_code" not in unhealthy
     assert "otis_cx323_engine_requalify_metadata" in fresh
     assert "OtisCx323MaintenanceEvent::GnssMetadataRequalified" in fresh
+    assert (
+        "record.requalification_d14_d8_observation_sequence !=\n"
+        "           engine_after.requalification_frontier"
+    ) in producer
     assert "engine_before.requalification_window_count != 1u" in decision
     assert "engine_after.requalification_window_count != 2u" in decision
     assert "gnss_metadata_hold_active = false" in decision

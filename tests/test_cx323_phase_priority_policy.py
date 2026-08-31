@@ -64,7 +64,7 @@ def test_loads_exact_selected_profile_without_changing_legacy_loaders() -> None:
 
     assert policy.policy_id == "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
     assert policy.policy_sha256 == (
-        "5943a1c33496a9354456ee1b8fec4c6f96b9e817b6d22cc8ee58385dc98ef43f"
+        "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
     )
     assert load_policy().policy_id == "CX320_BOUNDED_ACTIVE_HYBRID_TIGHT_V1"
     assert isinstance(ActiveHybridController(load_policy()), ActiveHybridController)
@@ -104,6 +104,9 @@ def test_frozen_maintenance_sequences_and_legacy_path_classification() -> None:
     assert material.decide(
         _observation(material, 0, 0, 600, counts=-1, phase=-6)
     ).reason == "phase_material_legacy_request_ready"
+    assert material._pending_decision is not None
+    assert material._pending_decision.raw_fll_picocodes == 0
+    assert material._pending_decision.raw_pll_picocodes == 6
 
 
 def test_shared_endpoint_persistence_overlap_gap_and_hold_debt_lifecycle() -> None:

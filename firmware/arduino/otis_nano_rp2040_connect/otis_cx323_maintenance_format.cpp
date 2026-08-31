@@ -34,6 +34,7 @@ constexpr char kHeader[] =
     "request_pending_after,response_pending_before,response_pending_after,"
     "metadata_hold_before,metadata_hold_after,"
     "requalification_window_count_before,requalification_window_count_after,"
+    "requalification_d14_d8_observation_sequence,"
     "evidence_burst_sequence,evidence_burst_record_ordinal,"
     "evidence_burst_record_count,reason,actionable\r\n";
 
@@ -306,6 +307,9 @@ bool validate_record(const OtisCx323MaintenanceRecord &record) {
       record.evidence_burst_record_count == 0u ||
       record.evidence_burst_record_ordinal > record.evidence_burst_record_count)
     return false;
+  if (record.event != OtisCx323MaintenanceEvent::GnssMetadataRequalified &&
+      record.requalification_d14_d8_observation_sequence != 0u)
+    return false;
 
   if (record.maintenance_state_after ==
           OtisCx323MaintenanceState::RequestPending &&
@@ -421,7 +425,8 @@ bool validate_record(const OtisCx323MaintenanceRecord &record) {
              (zero_hybrid_join(record) || nonzero_hybrid_join(record)) &&
              debt_preserved(record) && record.metadata_hold_before &&
              record.metadata_hold_after &&
-             record.requalification_window_count_after == 0u;
+             record.requalification_window_count_after == 0u &&
+             record.requalification_d14_d8_observation_sequence != 0u;
 
     case OtisCx323MaintenanceEvent::FailStatic: {
       if (!debt_preserved(record) ||
@@ -542,6 +547,8 @@ int otis_format_cx323_maintenance_v1(
       OTIS_AHM_FIELD_BOOL(record->metadata_hold_after) &&
       OTIS_AHM_FIELD_U64(record->requalification_window_count_before) &&
       OTIS_AHM_FIELD_U64(record->requalification_window_count_after) &&
+      OTIS_AHM_FIELD_U64(
+          record->requalification_d14_d8_observation_sequence) &&
       OTIS_AHM_FIELD_U64(record->evidence_burst_sequence) &&
       OTIS_AHM_FIELD_U64(record->evidence_burst_record_ordinal) &&
       OTIS_AHM_FIELD_U64(record->evidence_burst_record_count) &&

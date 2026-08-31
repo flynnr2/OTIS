@@ -42,9 +42,9 @@ constexpr char kActivePolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
 #elif OTIS_ENABLE_CX323_PHASE_PRIORITY_MAINTENANCE
 constexpr char kNumericalPolicyHash[] =
-    "5943a1c33496a9354456ee1b8fec4c6f96b9e817b6d22cc8ee58385dc98ef43f";
+    "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24";
 constexpr char kActivePolicyHash[] =
-    "5943a1c33496a9354456ee1b8fec4c6f96b9e817b6d22cc8ee58385dc98ef43f";
+    "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24";
 #elif OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION
 constexpr char kNumericalPolicyHash[] =
     "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c";
@@ -440,6 +440,11 @@ bool queue_cx323_maintenance_record(
   OtisCx323MaintenanceRecord record = {};
   evidence_frame_scratch = {};
   if (!otis_cx323_build_maintenance_record(&input, &record)) return false;
+  if (event == OtisCx323MaintenanceEvent::GnssMetadataRequalified &&
+      (record.requalification_d14_d8_observation_sequence == 0u ||
+       record.requalification_d14_d8_observation_sequence !=
+           engine_after.requalification_frontier))
+    return false;
   const int used = otis_format_cx323_maintenance_v1(
       evidence_frame_scratch.data, sizeof(evidence_frame_scratch.data),
       &record);
@@ -2572,8 +2577,18 @@ static void cx323_active_live_on_decision_impl(
   const bool native_fail_transition =
       engine_before.fail_static_reason == nullptr &&
       engine_after.fail_static_reason != nullptr;
+  const bool request_producing_decision =
+      native_decision.requested_delta_codes != 0;
+  if (request_producing_decision !=
+      (!engine_before.request_pending && engine_after.request_pending)) {
+    otis_cx317_active_fault(&transaction,
+                            "cx323_request_transition_invariant_fault");
+    outcome->faulted = true;
+    outcome->reason = transaction.reason;
+    return;
+  }
   const uint8_t decision_burst_count =
-      native_decision.maintenance_request ? 5u : 3u;
+      request_producing_decision ? 5u : 3u;
   const uint8_t total_capacity = static_cast<uint8_t>(
       decision_burst_count + (completing_response ? 3u : 0u) +
       (native_fail_transition ? 1u : 0u));
@@ -2597,7 +2612,7 @@ static void cx323_active_live_on_decision_impl(
   projected_source.requested_code =
       static_cast<uint16_t>(native_decision.requested_code);
   projected_source.control_eligible =
-      native_decision.maintenance_request;
+      request_producing_decision;
   projected_source.preview_available = true;
   const OtisActiveHybridDecision projected_decision =
       cx323_project_hybrid_decision(
@@ -2632,7 +2647,7 @@ static void cx323_active_live_on_decision_impl(
       projected_source.requested_code,
       projected_source.frequency_error_hz,
   };
-  if (native_decision.maintenance_request) {
+  if (request_producing_decision) {
     OtisCx317ActionableRequest request = {};
     if (transaction.state != OtisCx317ActiveState::Armed ||
         !otis_cx317_active_make_request(
@@ -2717,7 +2732,7 @@ static void cx323_active_live_on_decision_impl(
     gnss_metadata_hold_active = false;
     gnss_metadata_hold_transaction_pending = false;
   }
-  if (native_decision.maintenance_request) {
+  if (request_producing_decision) {
     pending_cx323_decision = native_decision;
     pending_cx323_decision_valid = true;
     pending_cx323_observation = observation;

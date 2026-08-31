@@ -923,7 +923,11 @@ def replay_cx323_maintenance_history(
                         maintenance, controller, suffix="after"
                     )
                 elif event == "gnss_metadata_requalified":
-                    frontier = int(maintenance["source_last_sequence"])
+                    frontier = int(
+                        maintenance[
+                            "requalification_d14_d8_observation_sequence"
+                        ]
+                    )
                     if frontier <= 0:
                         raise ValueError(
                             "CX323 GNSS requalification lacks its causal D14/D8 frontier"

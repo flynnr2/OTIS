@@ -232,6 +232,7 @@ def test_complete_ahm_lifecycle_validates_and_preserves_exact_joins(
             "frontier_relation": "not_applicable",
             "metadata_hold_before": "true",
             "metadata_hold_after": "true",
+            "requalification_d14_d8_observation_sequence": "2400",
             "evidence_burst_record_ordinal": "1",
             "evidence_burst_record_count": "1",
             "reason": "fresh_same_receiver_metadata",
@@ -300,6 +301,41 @@ def test_complete_ahm_lifecycle_validates_and_preserves_exact_joins(
     result = validate_csv(path, _context())
     assert result.row_count == 11
     assert result.errors == ()
+
+
+def test_ahm_requalification_frontier_is_explicit_and_event_local(
+    tmp_path: Path,
+) -> None:
+    requalified = _row(1, "gnss_metadata_requalified")
+    requalified.update(
+        {
+            "source_first_sequence": "1200",
+            "source_last_sequence": "1800",
+            "maintenance_state_before": "METADATA_HOLD",
+            "maintenance_state_after": "METADATA_HOLD",
+            "metadata_hold_before": "true",
+            "metadata_hold_after": "true",
+            "requalification_d14_d8_observation_sequence": "2407",
+            "evidence_burst_record_ordinal": "1",
+            "evidence_burst_record_count": "1",
+        }
+    )
+    path = tmp_path / "requalified.csv"
+    _write(path, [requalified])
+    assert validate_csv(path, _context()).errors == ()
+
+    requalified["requalification_d14_d8_observation_sequence"] = "0"
+    _write(path, [requalified])
+    assert "non-zero D14/D8 observation frontier" in " ".join(
+        validate_csv(path, _context()).errors
+    )
+
+    decision = _row(1)
+    decision["requalification_d14_d8_observation_sequence"] = "2407"
+    _write(path, [decision])
+    assert "only gnss_metadata_requalified" in " ".join(
+        validate_csv(path, _context()).errors
+    )
 
 
 def test_ahm_rejects_partial_join_early_debt_commit_and_partial_burst(

@@ -587,6 +587,10 @@ bool otis_cx323_build_maintenance_record(
       before.requalification_window_count;
   record->requalification_window_count_after =
       after.requalification_window_count;
+  record->requalification_d14_d8_observation_sequence =
+      input->event == OtisCx323MaintenanceEvent::GnssMetadataRequalified
+          ? after.requalification_frontier
+          : 0u;
   record->evidence_burst_sequence = input->evidence_burst_sequence;
   record->evidence_burst_record_ordinal =
       input->evidence_burst_record_ordinal;

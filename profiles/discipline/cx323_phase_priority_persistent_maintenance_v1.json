@@ -38,7 +38,7 @@
     },
     "maintenance_evidence_contract": {
       "path": "docs/50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md",
-      "sha256": "1ad8f360d1c6e5a593a1266f9f5eb665cb17e9db09cdce8462486ebb3f949be0"
+      "sha256": "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
     },
     "frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",

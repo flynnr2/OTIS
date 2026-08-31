@@ -16,7 +16,7 @@
     "selected_policy": {
       "policy_id": "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
       "path": "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
-      "sha256": "5943a1c33496a9354456ee1b8fec4c6f96b9e817b6d22cc8ee58385dc98ef43f"
+      "sha256": "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
     },
     "selection_and_native_boundary": {
       "v2_selection": {
@@ -34,14 +34,14 @@
       "record_type": "AHM",
       "record_contract": "active_hybrid_maintenance_v1",
       "normative_contract_path": "docs/50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md",
-      "normative_contract_sha256": "1ad8f360d1c6e5a593a1266f9f5eb665cb17e9db09cdce8462486ebb3f949be0"
+      "normative_contract_sha256": "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
     }
   },
   "firmware": {
     "profile_id": "cx323_d9_d6_72h_adaptive_hybrid",
     "campaign_macro": "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID",
     "selected_policy_id": "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
-    "selected_policy_file_sha256": "5943a1c33496a9354456ee1b8fec4c6f96b9e817b6d22cc8ee58385dc98ef43f",
+    "selected_policy_file_sha256": "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24",
     "native_fixed_point_boundary_semantic_sha256": "32a7f47330404e1cf7ea724517643deff078e74d3e1aa50127c378bced5f4d53",
     "profile_matrix_status": "exact_compile_and_release_gate_required_before_activation",
     "deliberate_reversal_challenge_enabled": false
@@ -266,5 +266,5 @@
     "oscilloscope_required_for_this_run": false,
     "oscilloscope_waveform_qualification_deferred": true
   },
-  "contract_semantic_sha256": "d816ddd4e5e131763587b4e2f36f409a0c3f78e211d8ce93b87e1559c7acc6c3"
+  "contract_semantic_sha256": "b989e480f963d06dab5c228b001ceb0f83fe574e376f1b94447fb7c1d89a1f1e"
 }

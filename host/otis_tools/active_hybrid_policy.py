@@ -32,7 +32,7 @@ CX323_POLICY_ID = "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
 CX323_POLICY_PATH = (
     REPO_ROOT / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json"
 )
-CX323_POLICY_SHA256 = "5943a1c33496a9354456ee1b8fec4c6f96b9e817b6d22cc8ee58385dc98ef43f"
+CX323_POLICY_SHA256 = "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
 TOOL_ID = "cx320_active_hybrid_policy_reference_v1"
 
 
@@ -1609,6 +1609,7 @@ class CX323PhasePriorityController:
             delta=delta,
             reason=reason,
             cap=self.policy.maximum_step_codes,
+            pll=phase_term,
             phase_term=phase_term,
             enforce_phase_direction=enforce_phase_direction,
             counterfactual_frequency_only_delta_codes=(

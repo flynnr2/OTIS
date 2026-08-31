@@ -222,7 +222,7 @@ bool run_lifecycle() {
   if (!build_and_emit(metadata_hold)) return false;
 
   before = engine;
-  if (!otis_cx323_engine_requalify_metadata(&engine, 1201u)) return false;
+  if (!otis_cx323_engine_requalify_metadata(&engine, 1501u)) return false;
   OtisCx323MaintenanceBuildInput requalified = build_input(
       7u, OtisCx323MaintenanceEvent::GnssMetadataRequalified, &before,
       &engine, &request_observation, &request_decision, &request_hybrid,
@@ -230,7 +230,7 @@ bool run_lifecycle() {
   if (!build_and_emit(requalified)) return false;
 
   OtisCx323Observation requalification_first_observation =
-      observation(1800u, 1201u, 1801u, engine);
+      observation(1800u, 1501u, 2101u, engine);
   OtisCx323Decision requalification_first_decision = {};
   before = engine;
   if (!otis_cx323_engine_decide(&engine, &requalification_first_observation,
@@ -246,7 +246,7 @@ bool run_lifecycle() {
   if (!build_and_emit(first_window)) return false;
 
   OtisCx323Observation requalification_second_observation =
-      observation(2400u, 1801u, 2401u, engine);
+      observation(2400u, 2101u, 2701u, engine);
   OtisCx323Decision requalification_second_decision = {};
   before = engine;
   if (!otis_cx323_engine_decide(&engine, &requalification_second_observation,

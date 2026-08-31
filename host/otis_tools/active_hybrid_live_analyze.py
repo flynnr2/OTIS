@@ -526,6 +526,26 @@ def validate_maintenance_evidence_stream(
         seen_bursts.add(burst)
         event = row.get("event", "")
         event_counts[event] = event_counts.get(event, 0) + 1
+        try:
+            requalification_frontier = int(
+                row["requalification_d14_d8_observation_sequence"]
+            )
+        except (KeyError, TypeError, ValueError):
+            mismatches.append(
+                f"AHM row {row_number} D14/D8 requalification frontier is malformed"
+            )
+            requalification_frontier = -1
+        if event == "gnss_metadata_requalified":
+            if requalification_frontier <= 0:
+                mismatches.append(
+                    f"AHM row {row_number} GNSS requalification lacks its exact "
+                    "D14/D8 observation frontier"
+                )
+        elif requalification_frontier != 0:
+            mismatches.append(
+                f"AHM row {row_number} non-requalification event carries a "
+                "D14/D8 requalification frontier"
+            )
         if event == "policy_activation":
             if any(
                 row.get(field, "0") != "0"

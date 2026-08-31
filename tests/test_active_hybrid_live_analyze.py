@@ -374,6 +374,7 @@ def _cx323_maintenance_stream() -> tuple[
         "transaction_timing_record_sequence": "0",
         "request_sequence": "0",
         "application_sequence": "0",
+        "requalification_d14_d8_observation_sequence": "0",
         "evidence_burst_sequence": "1",
         "evidence_burst_record_ordinal": "1",
         "evidence_burst_record_count": "1",
@@ -398,6 +399,7 @@ def _cx323_maintenance_stream() -> tuple[
         "transaction_event": "request_created",
         "request_sequence": "1",
         "application_sequence": "0",
+        "requalification_d14_d8_observation_sequence": "0",
         "evidence_burst_sequence": "2",
         "evidence_burst_record_ordinal": "5",
         "evidence_burst_record_count": "5",
@@ -506,6 +508,63 @@ def test_cx323_maintenance_stream_rejects_broken_at2_join_and_partial_burst() ->
     assert result["exact"] is False
     assert "AHM row 2 ACT/AT2 join differs" in result["mismatches"]
     assert "AHM row 2 transaction burst is incomplete" in result["mismatches"]
+
+
+def test_cx323_maintenance_stream_requires_explicit_requalification_frontier() -> None:
+    (
+        maintenance,
+        transactions,
+        decisions,
+        transaction_timings,
+        decision_timings,
+        build_identity,
+        active_policy_sha256,
+    ) = _cx323_maintenance_stream()
+    requalified = dict(maintenance[1])
+    requalified.update(
+        {
+            "maintenance_record_sequence": "3",
+            "event": "gnss_metadata_requalified",
+            "transaction_record_sequence": "0",
+            "transaction_timing_record_sequence": "0",
+            "transaction_event": "none",
+            "request_sequence": "0",
+            "evidence_burst_sequence": "3",
+            "evidence_burst_record_ordinal": "1",
+            "evidence_burst_record_count": "1",
+            "requalification_d14_d8_observation_sequence": "2407",
+        }
+    )
+    maintenance.append(requalified)
+    exact = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+    assert exact["exact"] is True
+
+    requalified["requalification_d14_d8_observation_sequence"] = "0"
+    invalid = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+    assert invalid["exact"] is False
+    assert any(
+        "GNSS requalification lacks its exact D14/D8 observation frontier"
+        in item
+        for item in invalid["mismatches"]
+    )
 from host.otis_tools.active_hybrid_policy import load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
     _modeled_transaction,

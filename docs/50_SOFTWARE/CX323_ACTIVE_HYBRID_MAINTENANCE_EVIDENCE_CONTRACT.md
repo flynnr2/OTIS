@@ -32,7 +32,7 @@ Capture routes `AHM` to this contract through
 ## Exact ordered CSV schema
 
 ```text
-record_type,schema_version,maintenance_record_sequence,event,event_timestamp_ticks,time_domain,run_identity,build_identity,profile_identity,policy_id,active_policy_sha256,capture_session,source_first_sequence,source_last_sequence,frequency_estimator_sha256,phase_epoch,phase_observation_sequence,phase_valid,current_applied_code,current_dac_epoch,hybrid_record_sequence,hybrid_timing_record_sequence,decision_sequence,transaction_record_sequence,transaction_timing_record_sequence,transaction_event,request_sequence,application_sequence,actual_applied_code,actual_dac_epoch,downstream_epoch_exact,maintenance_state_before,maintenance_state_after,frontier_relation,interval_sign,persistence_count_before,persistence_count_after,raw_fll_demand_picocodes,raw_pll_demand_picocodes,candidate_total_demand_picocodes,safe_cap_codes,requested_delta_codes,requested_code,committed_fll_debt_before_picocodes,committed_pll_debt_before_picocodes,committed_fll_debt_after_picocodes,committed_pll_debt_after_picocodes,request_pending_before,request_pending_after,response_pending_before,response_pending_after,metadata_hold_before,metadata_hold_after,requalification_window_count_before,requalification_window_count_after,evidence_burst_sequence,evidence_burst_record_ordinal,evidence_burst_record_count,reason,actionable
+record_type,schema_version,maintenance_record_sequence,event,event_timestamp_ticks,time_domain,run_identity,build_identity,profile_identity,policy_id,active_policy_sha256,capture_session,source_first_sequence,source_last_sequence,frequency_estimator_sha256,phase_epoch,phase_observation_sequence,phase_valid,current_applied_code,current_dac_epoch,hybrid_record_sequence,hybrid_timing_record_sequence,decision_sequence,transaction_record_sequence,transaction_timing_record_sequence,transaction_event,request_sequence,application_sequence,actual_applied_code,actual_dac_epoch,downstream_epoch_exact,maintenance_state_before,maintenance_state_after,frontier_relation,interval_sign,persistence_count_before,persistence_count_after,raw_fll_demand_picocodes,raw_pll_demand_picocodes,candidate_total_demand_picocodes,safe_cap_codes,requested_delta_codes,requested_code,committed_fll_debt_before_picocodes,committed_pll_debt_before_picocodes,committed_fll_debt_after_picocodes,committed_pll_debt_after_picocodes,request_pending_before,request_pending_after,response_pending_before,response_pending_after,metadata_hold_before,metadata_hold_after,requalification_window_count_before,requalification_window_count_after,requalification_d14_d8_observation_sequence,evidence_burst_sequence,evidence_burst_record_ordinal,evidence_burst_record_count,reason,actionable
 ```
 
 `record_type` is `AHM`, `schema_version` is `1`, `policy_id` is
@@ -74,6 +74,15 @@ completed AHY/AH2 identity, or all-zero decision/source/join ordinals only when
 no decision yet exists in that activation. A partial last-completed identity
 is forbidden.
 
+`requalification_d14_d8_observation_sequence` is separate from the retained
+AHY/AH2 source frontier. It is non-zero only on
+`gnss_metadata_requalified`, where it names the exact latest D14/D8 health
+observation frontier passed to the controller's requalification transition.
+It may and normally will differ from the older
+`source_last_sequence` of the retained last-completed AHY decision. Every
+other event records zero in this field. Replay must use this explicit D14/D8
+frontier and must never substitute the retained AHY source frontier.
+
 ## Events and exact cardinality
 
 | Event | Cardinality and required transition |
@@ -84,7 +93,7 @@ is forbidden.
 | `application_first_consumer` | Exactly one only after accepted code, actual application code/sequence/DAC epoch, and the first dependent consumer are all exact. It joins the originating AHY/AH2 and `ACT/AT2 application`, clears request pending, sets response pending, resets persistence, and is the only event that may replace debt with bounded back-calculated FLL/PLL tags. |
 | `response_complete` | Exactly one for each fresh exact response completion. It joins the originating AHY/AH2 and `ACT/AT2 response`, clears response pending, and preserves committed debt bit-for-bit. |
 | `gnss_metadata_hold_enter` | Exactly one on each false-to-true recoverable metadata-hold transition. It preserves the last confirmed code and both debt tags, clears maintenance persistence, permits continuing D14/D8 capture, and issues no request. |
-| `gnss_metadata_requalified` | Exactly one after fresh same-receiver metadata causally requalifies the receiver. Metadata hold remains asserted and the post-requalification maintenance-window count is zero. Subsequent `decision` rows prove window counts `0 -> 1` and `1 -> 2`; only the second complete causally later window may clear the hold and restore request eligibility. |
+| `gnss_metadata_requalified` | Exactly one after fresh same-receiver metadata causally requalifies the receiver. It records the exact non-zero `requalification_d14_d8_observation_sequence` used by the controller, independently of any older retained AHY/AH2 join. Metadata hold remains asserted and the post-requalification maintenance-window count is zero. Subsequent `decision` rows prove window counts `0 -> 1` and `1 -> 2`; only the second complete causally later window may clear the hold and restore request eligibility. |
 | `fail_static` | Exactly one on each transition into latched `FAIL_STATIC`. Unknown, partial, or contradictory application/code/epoch/first-consumer evidence freezes debt and last confirmed code. Repeated snapshots are not substitute events; a later policy activation is the only new activation boundary. |
 
 Missing required events, multiple events for one causal transition, impossible

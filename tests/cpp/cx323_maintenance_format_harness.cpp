@@ -202,6 +202,7 @@ bool emit_lifecycle() {
   requalified.frontier_relation = OtisCx323FrontierRelation::NotApplicable;
   requalified.metadata_hold_before = true;
   requalified.metadata_hold_after = true;
+  requalified.requalification_d14_d8_observation_sequence = 2400u;
   requalified.evidence_burst_record_ordinal = 1u;
   requalified.evidence_burst_record_count = 1u;
   requalified.reason = "fresh_same_receiver_metadata";

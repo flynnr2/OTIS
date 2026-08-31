@@ -20,6 +20,9 @@ from host.otis_tools.active_hybrid_programme_contract import (
 from host.otis_tools.active_hybrid_live_analyze import (
     _response_dependent_consumer_propagation,
 )
+from host.otis_tools.active_hybrid_evidence_guard import (
+    replay_cx323_maintenance_history,
+)
 from host.otis_tools.active_hybrid_programme_contract import (
     CX323_REHEARSAL_COVERAGE,
 )
@@ -295,6 +298,126 @@ def test_cx323_fixture_uses_its_own_identity_and_ahm_lifecycle() -> None:
         == policy_document["bindings"]["frequency_estimator"]["sha256"]
         for row in estimates
     )
+    assert [row["event"] for row in maintenance] == [
+        "policy_activation",
+        "decision",
+        "application_first_consumer",
+        "decision",
+        "response_complete",
+        "decision",
+        "decision",
+        "application_first_consumer",
+        "decision",
+        "response_complete",
+        "gnss_metadata_hold_enter",
+        "gnss_metadata_requalified",
+        "decision",
+        "decision",
+    ]
+    assert [int(row["evidence_burst_sequence"]) for row in maintenance] == list(
+        range(1, 15)
+    )
+    assert [
+        (row["decision_sequence"], row["transaction_event"])
+        for row in maintenance
+        if row["transaction_event"] != "none"
+    ] == [
+        ("1", "request_created"),
+        ("1", "application"),
+        ("1", "response"),
+        ("4", "request_created"),
+        ("4", "application"),
+        ("4", "response"),
+    ]
+    replay = replay_cx323_maintenance_history(
+        decisions,
+        transactions,
+        maintenance,
+        policy_path=policy_path,
+        expected_run_identity=CX323_D9_D6_72H_PROGRAMME.runtime_run_identity,
+        expected_build_identity=bundle["firmware"]["build_identity"],
+        expected_profile_identity=CX323_D9_D6_72H_PROGRAMME.profile_id,
+        expected_active_policy_sha256=bundle["policy"]["policy_sha256"],
+    )
+    assert replay["exact"] is True
+    assert replay["completed_response_decision_sequences"] == [1, 4]
+    response_consumers = rehearsal._cx323_response_maintenance_consumers(
+        transactions, maintenance
+    )
+    assert response_consumers["exact"] is True
+    assert (
+        response_consumers["controller_state_authority"]
+        == "active_hybrid_maintenance_v1"
+    )
+    assert summary["native_conformance"] == {
+        "exact": True,
+        "oracle": "firmware_builder_and_formatter_field_semantics_v1",
+        "checked_ahm_rows": 14,
+        "checked_ahy_rows": 7,
+        "checked_act_rows": 9,
+    }
+    assert all(
+        row["request_sequence"] == "0"
+        and row["acceptance_sequence"] == "0"
+        and row["application_sequence"] == "0"
+        for row in (decisions[0], decisions[3])
+    )
+    assert all(
+        row["authority_state"] == "REFERENCE_HOLD"
+        and row["request_sequence"] == "0"
+        and row["acceptance_sequence"] == "0"
+        and row["application_sequence"] == "0"
+        and row["response_class"] == "unavailable"
+        for row in decisions[-2:]
+    )
+    assert decisions[0]["state_before"] == "PHASE_QUALIFY"
+    assert decisions[0]["state_after"] == "FIRST_PHASE_TRANSACTION"
+    assert decisions[2]["state_before"] == "HYBRID_TRACKING"
+    assert decisions[2]["state_after"] == "HYBRID_TRACKING"
+    assert maintenance[0]["capture_session"] == "0"
+    assert maintenance[0]["phase_epoch"] == "0"
+    assert maintenance[0]["phase_valid"] == "false"
+    assert maintenance[0]["hybrid_record_sequence"] == "0"
+    assert maintenance[0]["decision_sequence"] == "0"
+    assert [row["reason"] for row in maintenance if row["event"] == "response_complete"] == [
+        "response_completed",
+        "response_completed",
+    ]
+    assert [
+        row["reason"]
+        for row in maintenance
+        if row["event"] == "application_first_consumer"
+    ] == [
+        "application_and_first_consumer_committed",
+        "application_and_first_consumer_committed",
+    ]
+    assert [int(row["interval_sign"]) for row in maintenance[1:12]] == [
+        1,
+        1,
+        1,
+        1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+    ]
+    assert maintenance[1]["frontier_relation"] == "first"
+    assert maintenance[6]["frontier_relation"] == "contiguous"
+    assert maintenance[11][
+        "requalification_d14_d8_observation_sequence"
+    ] == "4200"
+    assert all(
+        row["raw_fll_demand_picocodes"] == "0"
+        and row["raw_pll_demand_picocodes"] == "0"
+        and row["candidate_total_demand_picocodes"] == "0"
+        and row["safe_cap_codes"] == "0"
+        and row["requested_delta_codes"] == "0"
+        for row in maintenance[10:12]
+    )
+    assert summary["post_requalification_decision_sequences"] == [6, 7]
 
 
 def test_campaign18_exact_sidecars_round_trip_through_capture_splitter(

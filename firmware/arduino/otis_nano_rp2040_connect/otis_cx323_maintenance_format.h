@@ -100,6 +100,7 @@ struct OtisCx323MaintenanceRecord {
   bool metadata_hold_after;
   uint8_t requalification_window_count_before;
   uint8_t requalification_window_count_after;
+  uint64_t requalification_d14_d8_observation_sequence;
   uint64_t evidence_burst_sequence;
   uint32_t evidence_burst_record_ordinal;
   uint32_t evidence_burst_record_count;

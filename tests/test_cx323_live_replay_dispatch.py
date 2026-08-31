@@ -101,6 +101,7 @@ def _exact_cx323_lifecycle() -> tuple[
             "raw_fll_demand_picocodes": "0",
             "raw_pll_demand_picocodes": "0",
             "candidate_total_demand_picocodes": "0",
+            "requalification_d14_d8_observation_sequence": "0",
             "reason": event,
             **identity,
             **before,
@@ -355,14 +356,20 @@ def _exact_cx323_lifecycle() -> tuple[
     maintenance.append(hold)
 
     before = _snapshot(controller, "before")
-    controller.requalify_metadata(1201)
+    controller.requalify_metadata(1501)
     requalified = base(
         "gnss_metadata_requalified", before, _snapshot(controller, "after")
     )
-    requalified.update({"source_last_sequence": "1201", "reason": "fresh_gnss_metadata"})
+    requalified.update(
+        {
+            "source_last_sequence": "1201",
+            "requalification_d14_d8_observation_sequence": "1501",
+            "reason": "fresh_gnss_metadata",
+        }
+    )
     maintenance.append(requalified)
 
-    for timestamp, opening, closing in ((2400, 1201, 1801), (3000, 1801, 2401)):
+    for timestamp, opening, closing in ((2400, 1501, 2101), (3000, 2101, 2701)):
         _observation, _decision, row = decide(
             timestamp=timestamp,
             opening=opening,
@@ -410,6 +417,29 @@ def test_cx323_ahm_oracle_replays_rejection_and_two_window_gnss_requalification(
     assert maintenance[-2]["requalification_window_count_after"] == "1"
     assert maintenance[-1]["metadata_hold_after"] == "false"
     assert maintenance[-1]["requalification_window_count_after"] == "2"
+    assert maintenance[-3]["source_last_sequence"] == "1201"
+    assert maintenance[-3]["requalification_d14_d8_observation_sequence"] == "1501"
+
+
+def test_cx323_ahm_oracle_uses_explicit_requalification_frontier() -> None:
+    decisions, transactions, maintenance = _exact_cx323_lifecycle()
+    programme = CX323_D9_D6_72H_PROGRAMME
+    requalified = next(
+        row for row in maintenance if row["event"] == "gnss_metadata_requalified"
+    )
+    requalified["requalification_d14_d8_observation_sequence"] = "1700"
+
+    replay = replay_cx323_maintenance_history(
+        decisions,
+        transactions,
+        maintenance,
+        policy_path=programme.policy_path,
+        expected_run_identity=programme.runtime_run_identity,
+        expected_build_identity="a" * 64 + ":" + "b" * 64,
+        expected_profile_identity=programme.profile_id,
+    )
+
+    assert replay["exact"] is False
 
 
 def _write_rows(path: Path, rows: list[dict[str, str]]) -> None:

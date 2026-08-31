@@ -531,6 +531,7 @@ ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS = [
     "metadata_hold_after",
     "requalification_window_count_before",
     "requalification_window_count_after",
+    "requalification_d14_d8_observation_sequence",
     "evidence_burst_sequence",
     "evidence_burst_record_ordinal",
     "evidence_burst_record_count",
@@ -2326,12 +2327,37 @@ def _check_active_hybrid_decision_v1(
     deliberate_challenge = (
         row.get("reason") == "deliberate_reversal_challenge_request_ready"
     )
-    expected_material = (
-        not deliberate_challenge
-        and phase_term != 0.0
-        and delta != counterfactual
-    )
-    if (row.get("phase_materially_influenced") == "true") != expected_material:
+    expected_material: bool | None
+    if row.get("profile_identity") == "cx323_d9_d6_72h_adaptive_hybrid":
+        # CX323 classifies the unchanged legacy path in the integer DAC-code
+        # domain before cadence/budget guards.  Its exact PLL component is
+        # retained in AHM picocodes and can be smaller than AHY's 12-decimal
+        # Hz projection (for example, 6 picocodes serializes as 0 Hz).  Check
+        # the path-local cases that AHY represents exactly and leave lossy
+        # zero-demand hold rows to the mandatory AHM/native replay join.
+        reason = row.get("reason")
+        raw_combined = float(row["raw_combined_delta_codes"])
+        if reason == "phase_material_legacy_request_ready":
+            expected_material = True
+        elif reason == "outside_tight_legacy_request_ready":
+            expected_material = delta != counterfactual
+        elif reason == "phase_degraded_frequency_only_request_ready":
+            expected_material = False
+        elif raw_combined != 0.0:
+            expected_material = False
+        else:
+            expected_material = None
+    else:
+        expected_material = (
+            not deliberate_challenge
+            and phase_term != 0.0
+            and delta != counterfactual
+        )
+    if (
+        expected_material is not None
+        and (row.get("phase_materially_influenced") == "true")
+        != expected_material
+    ):
         errors.append(f"row {row_number}: phase materiality counterfactual differs")
     if row.get("phase_recorder_published") != "true":
         errors.append(f"row {row_number}: active decision lacks prior phase publication")
@@ -2450,6 +2476,7 @@ def _check_active_hybrid_maintenance_v1(
         "requested_code",
         "requalification_window_count_before",
         "requalification_window_count_after",
+        "requalification_d14_d8_observation_sequence",
         "evidence_burst_sequence",
         "evidence_burst_record_ordinal",
         "evidence_burst_record_count",
@@ -2822,11 +2849,23 @@ def _check_active_hybrid_maintenance_v1(
             row.get("metadata_hold_before") == "true"
             and row.get("metadata_hold_after") == "true"
             and parsed_unsigned["requalification_window_count_after"] == 0
+            and parsed_unsigned[
+                "requalification_d14_d8_observation_sequence"
+            ] not in {None, 0}
         ):
             errors.append(
                 f"row {row_number}: GNSS metadata requalification must retain the "
-                "hold at a zero post-requalification window count"
+                "hold at a zero post-requalification window count and bind a "
+                "non-zero D14/D8 observation frontier"
             )
+    elif parsed_unsigned["requalification_d14_d8_observation_sequence"] not in {
+        None,
+        0,
+    }:
+        errors.append(
+            f"row {row_number}: only gnss_metadata_requalified may bind "
+            "requalification_d14_d8_observation_sequence"
+        )
     if event == "decision" and row.get("metadata_hold_before") == "true":
         requalification_before = parsed_unsigned[
             "requalification_window_count_before"

@@ -70,7 +70,7 @@ def test_native_builder_emits_host_valid_exact_lifecycle(
     assert completed.stdout.endswith(b"\r\n")
     rows = list(csv.reader(io.StringIO(completed.stdout.decode("ascii"))))
     assert rows[0] == ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS
-    assert all(len(row) == 60 for row in rows[1:])
+    assert all(len(row) == 61 for row in rows[1:])
     records = [
         dict(zip(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS, row, strict=True))
         for row in rows[1:]
@@ -117,6 +117,13 @@ def test_native_builder_emits_host_valid_exact_lifecycle(
     assert records[6]["metadata_hold_before"] == "true"
     assert records[6]["metadata_hold_after"] == "true"
     assert records[6]["requalification_window_count_after"] == "0"
+    assert records[6]["source_last_sequence"] == "1201"
+    assert records[6]["requalification_d14_d8_observation_sequence"] == "1501"
+    assert all(
+        record["requalification_d14_d8_observation_sequence"] == "0"
+        for index, record in enumerate(records)
+        if index != 6
+    )
     assert records[7]["requalification_window_count_before"] == "0"
     assert records[7]["requalification_window_count_after"] == "1"
     assert records[7]["metadata_hold_after"] == "true"

@@ -376,33 +376,47 @@ def _prepared_supervisor(
     return supervisor
 
 
+def _cx323_project_hybrid_state(
+    controller: CX323PhasePriorityController, *, phase_valid: bool
+) -> str:
+    """Match ``cx323_project_hybrid_state`` in the live firmware."""
+
+    if controller.fail_static_reason is not None:
+        return "FAIL_STATIC"
+    if not phase_valid:
+        return "PHASE_DEGRADED_FREQUENCY_ONLY"
+    if controller.request_pending or controller.response_pending:
+        return "FIRST_PHASE_TRANSACTION"
+    if controller.application_count == 0:
+        return "PHASE_QUALIFY"
+    return "HYBRID_TRACKING"
+
+
 def _cx323_hybrid_decision_projection(
     *,
     decision: CX323Decision,
     observation: CX323Observation,
     controller: CX323PhasePriorityController,
     bindings: dict[str, Any],
+    state_before: str,
+    application_count_before: int,
+    cumulative_movement_before_codes: int,
 ) -> HybridDecision:
-    frequency_delta = decision.counterfactual_frequency_only_delta_codes
-    frequency_term_hz = frequency_delta * 0.00017008467693813145
-    # AHY v1 is a predecessor compatibility projection.  Preserve its phase
-    # materiality invariant without relabelling a CX323 tagged-debt difference
-    # from the frequency-only counterfactual as a phase contribution.
+    conservative_plant_gain_hz_per_code = 0.000173340101
+    frequency_term_hz = (
+        decision.raw_fll_picocodes / 1_000_000_000_000
+    ) * conservative_plant_gain_hz_per_code
     phase_term_hz = (
-        (decision.requested_delta_codes - frequency_delta)
-        * 0.00017008467693813145
-        if decision.phase_materially_influenced
-        else 0.0
-    )
-    combined_hz = frequency_term_hz + phase_term_hz
+        decision.raw_pll_picocodes / 1_000_000_000_000
+    ) * conservative_plant_gain_hz_per_code
+    combined_hz = (
+        decision.raw_combined_picocodes / 1_000_000_000_000
+    ) * conservative_plant_gain_hz_per_code
     return HybridDecision(
         decision_sequence=decision.decision_sequence,
-        state_before="HYBRID_TRACKING",
-        state_after=(
-            "FIRST_PHASE_TRANSACTION"
-            if decision.phase_materially_influenced
-            and decision.requested_delta_codes != 0
-            else "HYBRID_TRACKING"
+        state_before=state_before,
+        state_after=_cx323_project_hybrid_state(
+            controller, phase_valid=observation.phase_valid
         ),
         reason=decision.reason,
         timestamp_s=observation.timestamp_s,
@@ -430,20 +444,20 @@ def _cx323_hybrid_decision_projection(
         combined_demand_hz=combined_hz,
         raw_combined_delta_codes=(
             decision.raw_combined_picocodes / 1_000_000_000_000
-            if decision.raw_combined_picocodes
-            else float(decision.requested_delta_codes)
         ),
         requested_delta_codes=decision.requested_delta_codes,
         requested_code=decision.requested_code,
-        counterfactual_frequency_only_delta_codes=frequency_delta,
+        counterfactual_frequency_only_delta_codes=(
+            decision.counterfactual_frequency_only_delta_codes
+        ),
         phase_materially_influenced=decision.phase_materially_influenced,
         step_limited=decision.step_limited,
         range_clamped=decision.range_clamped,
         cadence_limited=decision.cadence_limited,
         count_limited=decision.count_limited,
         cumulative_budget_limited=decision.cumulative_budget_limited,
-        correction_count_before=controller.application_count,
-        cumulative_movement_before_codes=controller.cumulative_movement_codes,
+        correction_count_before=application_count_before,
+        cumulative_movement_before_codes=cumulative_movement_before_codes,
         global_last_application_s=controller.last_application_s,
         natural_chatter_origin_code=controller.chatter_origin_code,
         natural_cumulative_movement_codes=controller.cumulative_movement_codes,
@@ -507,12 +521,24 @@ def _modeled_cx323_transaction(
         # applications change the confirmed code and DAC epoch consumed by
         # every later controller decision.
         observed = observation(*parameters)
+        state_before = _cx323_project_hybrid_state(
+            controller, phase_valid=observed.phase_valid
+        )
+        application_count_before = controller.application_count
+        cumulative_movement_before_codes = (
+            controller.cumulative_movement_codes
+        )
         decision = controller.decide(observed)
         projected = _cx323_hybrid_decision_projection(
             decision=decision,
             observation=observed,
             controller=controller,
             bindings=bindings,
+            state_before=state_before,
+            application_count_before=application_count_before,
+            cumulative_movement_before_codes=(
+                cumulative_movement_before_codes
+            ),
         )
         hybrid_record_sequence += 1
         ahy_rows.append(
@@ -583,12 +609,24 @@ def _modeled_cx323_transaction(
             observed.accumulated_edge_error_counts,
             observed.relative_phase_cycles,
         )
+        response_state_before = _cx323_project_hybrid_state(
+            controller, phase_valid=response_hold_observation.phase_valid
+        )
+        response_application_count_before = controller.application_count
+        response_cumulative_movement_before_codes = (
+            controller.cumulative_movement_codes
+        )
         response_hold = controller.decide(response_hold_observation)
         projected_response = _cx323_hybrid_decision_projection(
             decision=response_hold,
             observation=response_hold_observation,
             controller=controller,
             bindings=bindings,
+            state_before=response_state_before,
+            application_count_before=response_application_count_before,
+            cumulative_movement_before_codes=(
+                response_cumulative_movement_before_codes
+            ),
         )
         hybrid_record_sequence += 1
         response_ahy = _ahy_row(

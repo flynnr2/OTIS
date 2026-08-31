@@ -41,7 +41,7 @@ SELECTED_PROFILE = (
     / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json"
 )
 SELECTED_PROFILE_FILE_SHA256 = (
-    "5943a1c33496a9354456ee1b8fec4c6f96b9e817b6d22cc8ee58385dc98ef43f"
+    "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
 )
 
 
@@ -666,6 +666,8 @@ def test_legacy_boundary_limits_chatter_and_fail_static_are_parity_checked(
         assert int(actual["requested_delta_codes"]) == expected_decision.requested_delta_codes
         assert int(actual["safe_cap_codes"]) == expected_decision.safe_cap_codes
         assert int(actual["raw_combined_picocodes"]) == expected_decision.raw_combined_picocodes
+        assert int(actual["raw_fll_picocodes"]) == expected_decision.raw_fll_picocodes
+        assert int(actual["raw_pll_picocodes"]) == expected_decision.raw_pll_picocodes
     assert expected[0].reason == "persistence_first_interval_hold"
     assert expected[1].reason == "phase_material_legacy_request_ready"
     assert expected[2].reason == "outside_tight_legacy_request_ready"

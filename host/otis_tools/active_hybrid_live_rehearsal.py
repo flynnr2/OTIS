@@ -60,9 +60,18 @@ from .active_hybrid_programme_contract import (
     integrated_setup_provenance_contract,
     programme_from_mapping,
 )
-from .active_hybrid_policy import ActiveHybridController, load_policy
+from .active_hybrid_policy import (
+    ActiveHybridController,
+    CX323Decision,
+    CX323Observation,
+    CX323PhasePriorityController,
+    load_cx323_policy,
+    load_policy,
+)
 from .active_hybrid_rehearsal import (
     _ahy_row,
+    _cx323_hybrid_decision_projection,
+    _cx323_project_hybrid_state,
     _observation,
     _transaction_rows,
     run as run_accelerated_rehearsal,
@@ -3531,213 +3540,962 @@ def _exercise_cx321_real_transaction_path(
 def _cx323_maintenance_transaction_fixture(
     bundle: dict[str, Any],
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, Any], list[dict[str, str]]]:
-    """Build CX323's own repeated transaction and AHM lifecycle evidence.
-
-    The PTY programme retains the proven observational command cadence, but
-    rebinding its canonical rows is deliberately explicit: no CX322 identity
-    or policy claim survives into the CX323 stream.  AHM is emitted through
-    the same capture splitter as ACT/AHY and later bound to the exact sidecars.
-    """
+    """Build one oracle-native CX323 lifecycle in firmware burst order."""
 
     programme = _selected_programme(bundle)
     if programme is not CX323_D9_D6_72H_PROGRAMME:
         raise ValueError("CX323 maintenance fixture selected elsewhere")
-    predecessor_policy = CX322_D9_D6_72H_PROGRAMME.policy_path
-    predecessor_bundle = {
-        "programme_id": CX322_D9_D6_72H_PROGRAMME.programme_id,
-        "firmware": bundle["firmware"],
-        "policy": {
-            "path": str(predecessor_policy),
-            "policy_sha256": _sha256_file(predecessor_policy),
-        },
-    }
-    decisions, transactions, summary = _sustained_multi_transaction_fixture(
-        predecessor_bundle
-    )
-    policy = _read_object(Path(str(bundle["policy"]["path"])))
-    bindings = policy["bindings"]
+    policy_path = Path(str(bundle["policy"]["path"]))
+    policy_document = _read_object(policy_path)
+    bindings = policy_document["bindings"]
+    policy = load_cx323_policy(policy_path)
     policy_sha256 = str(bundle["policy"]["policy_sha256"])
-    code_offset = programme.setup_code - CX322_D9_D6_72H_PROGRAMME.setup_code
+    if policy.policy_sha256 != policy_sha256:
+        raise ValueError("CX323 fixture policy identity differs")
+    controller = CX323PhasePriorityController(
+        policy,
+        setup_applied_code=programme.setup_code,
+        setup_dac_epoch=1,
+    )
+    decisions: list[dict[str, str]] = []
+    transactions: list[dict[str, str]] = []
+    maintenance: list[dict[str, str]] = []
+    applications: list[dict[str, Any]] = []
+    next_transaction_record = 2
+    next_burst_sequence = 1
+    last_origin: tuple[
+        CX323Observation, CX323Decision, dict[str, str]
+    ] | None = None
 
-    def rebind(row: dict[str, str]) -> dict[str, str]:
-        value = dict(row)
-        value.update(
-            {
-                "run_identity": programme.runtime_run_identity,
-                "profile_identity": programme.profile_id,
-            }
-        )
-        exact_identities = {
-            "active_policy_sha256": policy_sha256,
-            "numerical_policy_sha256": policy_sha256,
-            "frequency_estimator_sha256": bindings["frequency_estimator"][
-                "sha256"
-            ],
-            "estimator_sha256": bindings["frequency_estimator"]["sha256"],
-            "model_sha256": bindings["plant_model"]["sha256"],
-            "response_policy_sha256": bindings["response_policy"]["sha256"],
+    def controller_state() -> str:
+        if controller.fail_static_reason is not None:
+            return "FAIL_STATIC"
+        if controller.metadata_hold:
+            return "METADATA_HOLD"
+        if controller.response_pending:
+            return "RESPONSE_PENDING"
+        if controller.request_pending:
+            return "REQUEST_PENDING"
+        if controller.persistence_count:
+            return "PERSISTENCE_HOLD"
+        return "READY"
+
+    def snapshot(suffix: str) -> dict[str, str]:
+        return {
+            f"maintenance_state_{suffix}": controller_state(),
+            f"committed_fll_debt_{suffix}_picocodes": str(
+                controller.debt.fll_picocodes
+            ),
+            f"committed_pll_debt_{suffix}_picocodes": str(
+                controller.debt.pll_picocodes
+            ),
+            f"request_pending_{suffix}": str(controller.request_pending).lower(),
+            f"response_pending_{suffix}": str(
+                controller.response_pending
+            ).lower(),
+            f"metadata_hold_{suffix}": str(controller.metadata_hold).lower(),
+            f"persistence_count_{suffix}": str(controller.persistence_count),
+            f"requalification_window_count_{suffix}": str(
+                controller.requalification_window_count
+            ),
         }
-        for field, identity in exact_identities.items():
-            if field in value:
-                value[field] = identity
-        for field in (
-            "current_applied_code", "actual_applied_code", "requested_code",
-            "accepted_code", "applied_code",
-        ):
-            if value.get(field) not in {None, "", "0"}:
-                value[field] = str(int(value[field]) + code_offset)
-        return value
 
-    decisions = [rebind(row) for row in decisions]
-    transactions = [rebind(row) for row in transactions]
-    applications = []
-    for item in summary["applications"]:
-        rebound = dict(item)
-        rebound["requested_code"] = int(rebound["requested_code"]) + code_offset
-        applications.append(rebound)
-    summary = {**summary, "applications": applications}
+    def observation_frontier_relation(observed: CX323Observation) -> str:
+        closing = (
+            controller._requalification_last_closing_frontier
+            if controller.metadata_requalified
+            else controller.last_closing_frontier
+        )
+        if closing is None:
+            return "first"
+        if observed.source_first_sequence < closing:
+            return "overlap"
+        if observed.source_first_sequence == closing:
+            return "contiguous"
+        return "gap"
 
-    def maintenance_base(sequence: int, event: str) -> dict[str, str]:
+    def observation_interval_sign(observed: CX323Observation) -> int:
+        if not observed.phase_valid:
+            return 0
+        _centre, lower, upper = controller._centre(observed)
+        return controller._sign(lower, upper)
+
+    def append_maintenance(
+        event: str,
+        *,
+        before: dict[str, str],
+        after: dict[str, str],
+        timestamp_s: int,
+        reason: str,
+        observation: CX323Observation | None = None,
+        decision: CX323Decision | None = None,
+        hybrid: dict[str, str] | None = None,
+        transaction: dict[str, str] | None = None,
+        burst_ordinal: int = 1,
+        burst_count: int = 1,
+        current_code: int | None = None,
+        current_epoch: int | None = None,
+    ) -> dict[str, str]:
+        nonlocal next_burst_sequence
         row = {field: "0" for field in ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS}
         row.update(
             {
                 "record_type": "AHM",
                 "schema_version": "1",
-                "maintenance_record_sequence": str(sequence),
+                "maintenance_record_sequence": str(len(maintenance) + 1),
                 "event": event,
-                "event_timestamp_ticks": str(sequence * 16_000_000),
+                "event_timestamp_ticks": str(
+                    max(1, timestamp_s * RP2040_TIMER0_TICKS_PER_SECOND)
+                ),
                 "time_domain": "rp2040_timer0_extended",
                 "run_identity": programme.runtime_run_identity,
                 "build_identity": str(bundle["firmware"]["build_identity"]),
                 "profile_identity": programme.profile_id,
                 "policy_id": programme.policy_id,
                 "active_policy_sha256": policy_sha256,
-                "capture_session": "1",
-                "frequency_estimator_sha256": bindings["frequency_estimator"]["sha256"],
-                "phase_epoch": "1",
-                "phase_observation_sequence": str(sequence),
-                "phase_valid": "true",
-                "current_applied_code": str(programme.setup_code),
-                "current_dac_epoch": "1",
+                "capture_session": "0",
+                "frequency_estimator_sha256": str(
+                    bindings["frequency_estimator"]["sha256"]
+                ),
+                "phase_epoch": "0",
+                "phase_valid": "false",
+                "current_applied_code": str(
+                    controller.applied_code if current_code is None else current_code
+                ),
+                "current_dac_epoch": str(
+                    controller.dac_epoch if current_epoch is None else current_epoch
+                ),
                 "transaction_event": "none",
-                "maintenance_state_before": "READY",
-                "maintenance_state_after": "PERSISTENCE_HOLD",
-                "frontier_relation": "contiguous",
-                "interval_sign": "1",
-                "persistence_count_after": "1",
-                "raw_fll_demand_picocodes": "250000000000",
-                "raw_pll_demand_picocodes": "100000000000",
-                "candidate_total_demand_picocodes": "350000000000",
-                "safe_cap_codes": str(programme.maximum_step_codes),
-                "requested_code": str(programme.setup_code),
-                "evidence_burst_sequence": str(sequence),
-                "evidence_burst_record_ordinal": "3",
-                "evidence_burst_record_count": "3",
-                "reason": "cx323_rehearsal_maintenance_boundary",
+                "maintenance_state_before": before["maintenance_state_before"],
+                "maintenance_state_after": after["maintenance_state_after"],
+                "frontier_relation": (
+                    before["frontier_relation_before"]
+                    if event == "decision"
+                    else "not_applicable"
+                ),
+                "interval_sign": str(
+                    observation_interval_sign(observation)
+                    if observation is not None
+                    else 0
+                ),
+                "committed_fll_debt_before_picocodes": before[
+                    "committed_fll_debt_before_picocodes"
+                ],
+                "committed_pll_debt_before_picocodes": before[
+                    "committed_pll_debt_before_picocodes"
+                ],
+                "committed_fll_debt_after_picocodes": after[
+                    "committed_fll_debt_after_picocodes"
+                ],
+                "committed_pll_debt_after_picocodes": after[
+                    "committed_pll_debt_after_picocodes"
+                ],
+                "request_pending_before": before["request_pending_before"],
+                "request_pending_after": after["request_pending_after"],
+                "response_pending_before": before["response_pending_before"],
+                "response_pending_after": after["response_pending_after"],
+                "metadata_hold_before": before["metadata_hold_before"],
+                "metadata_hold_after": after["metadata_hold_after"],
+                "persistence_count_before": before["persistence_count_before"],
+                "persistence_count_after": after["persistence_count_after"],
+                "requalification_window_count_before": before[
+                    "requalification_window_count_before"
+                ],
+                "requalification_window_count_after": after[
+                    "requalification_window_count_after"
+                ],
+                "requalification_d14_d8_observation_sequence": (
+                    str(controller.requalification_frontier)
+                    if event == "gnss_metadata_requalified"
+                    and controller.requalification_frontier is not None
+                    else "0"
+                ),
+                "evidence_burst_sequence": str(next_burst_sequence),
+                "evidence_burst_record_ordinal": str(burst_ordinal),
+                "evidence_burst_record_count": str(burst_count),
+                "reason": reason,
                 "actionable": "false",
+                "downstream_epoch_exact": "false",
+                "requested_code": str(
+                    controller.applied_code if current_code is None else current_code
+                ),
             }
         )
+        next_burst_sequence += 1
+        if observation is not None:
+            row.update(
+                {
+                    "capture_session": str(observation.capture_session),
+                    "source_first_sequence": str(observation.source_first_sequence),
+                    "source_last_sequence": str(observation.source_last_sequence),
+                    "phase_epoch": str(observation.phase_epoch),
+                    "phase_valid": str(observation.phase_valid).lower(),
+                }
+            )
+        if hybrid is not None:
+            row.update(
+                {
+                    "phase_observation_sequence": hybrid[
+                        "phase_observation_sequence"
+                    ],
+                    "hybrid_record_sequence": hybrid[
+                        "hybrid_record_sequence"
+                    ],
+                }
+            )
+        if decision is not None:
+            row["decision_sequence"] = str(decision.decision_sequence)
+        if decision is not None and (
+            event == "decision" or transaction is not None
+        ):
+            row.update(
+                {
+                    "raw_fll_demand_picocodes": str(
+                        decision.raw_fll_picocodes
+                    ),
+                    "raw_pll_demand_picocodes": str(
+                        decision.raw_pll_picocodes
+                    ),
+                    "candidate_total_demand_picocodes": str(
+                        decision.raw_combined_picocodes
+                        + int(before["committed_fll_debt_before_picocodes"])
+                        + int(before["committed_pll_debt_before_picocodes"])
+                    ),
+                    "safe_cap_codes": str(decision.safe_cap_codes),
+                    "requested_delta_codes": str(
+                        decision.requested_delta_codes
+                    ),
+                    "requested_code": str(decision.requested_code),
+                }
+            )
+        if transaction is not None:
+            row.update(
+                {
+                    "transaction_record_sequence": transaction[
+                        "transaction_record_sequence"
+                    ],
+                    "transaction_event": transaction["event"],
+                    "request_sequence": transaction["request_sequence"],
+                    "application_sequence": transaction[
+                        "application_sequence"
+                    ],
+                }
+            )
+            if transaction["event"] in {"application", "response"}:
+                row.update(
+                    {
+                        "actual_applied_code": transaction["applied_code"],
+                        "actual_dac_epoch": transaction["dac_epoch"],
+                        "downstream_epoch_exact": "true",
+                }
+            )
+        if event == "gnss_metadata_requalified":
+            if controller.requalification_frontier is None:
+                raise RuntimeError(
+                    "CX323 requalification AHM lacks its D14/D8 frontier"
+                )
+            row["requalification_d14_d8_observation_sequence"] = str(
+                controller.requalification_frontier
+            )
+        maintenance.append(row)
         return row
 
-    maintenance = [maintenance_base(1, "policy_activation")]
-    maintenance[0].update(
-        {
-            "source_first_sequence": "0", "source_last_sequence": "0",
-            "phase_observation_sequence": "0", "hybrid_record_sequence": "0",
-            "hybrid_timing_record_sequence": "0", "decision_sequence": "0",
-            "maintenance_state_before": "POLICY_INACTIVE",
-            "maintenance_state_after": "READY", "frontier_relation": "not_applicable",
-            "persistence_count_after": "0", "raw_fll_demand_picocodes": "0",
-            "raw_pll_demand_picocodes": "0", "candidate_total_demand_picocodes": "0",
-            "committed_fll_debt_after_picocodes": "0",
-            "committed_pll_debt_after_picocodes": "0",
-            "evidence_burst_record_ordinal": "1", "evidence_burst_record_count": "1",
-            "reason": "new_policy_activation",
-        }
-    )
-    for decision in decisions:
-        row = maintenance_base(len(maintenance) + 1, "decision")
-        row.update(
-            {
-                "hybrid_record_sequence": decision["hybrid_record_sequence"],
-                "decision_sequence": decision["decision_sequence"],
-                "source_first_sequence": decision["source_first_sequence"],
-                "source_last_sequence": decision["source_last_sequence"],
-                "current_applied_code": decision["current_applied_code"],
-                "current_dac_epoch": decision["actual_dac_epoch"],
-                "requested_delta_codes": decision["requested_delta_codes"],
-                "requested_code": decision["requested_code"],
-            }
-        )
-        maintenance.append(row)
-    decisions_by_sequence = {
-        row["decision_sequence"]: row for row in decisions
+    inactive = {
+        **snapshot("before"),
+        "maintenance_state_before": "POLICY_INACTIVE",
     }
-    for transaction in transactions:
-        if transaction["event"] == "manual_start":
-            continue
-        event = {
-            "request": "request_rejected_or_expired",
-            "acceptance": "request_rejected_or_expired",
-            "application": "application_first_consumer",
-            "response": "response_complete",
-        }.get(transaction["event"], "decision")
-        row = maintenance_base(len(maintenance) + 1, event)
-        decision = decisions_by_sequence.get(
-            transaction["decision_sequence"], decisions[0]
+    controller.new_policy_activation()
+    append_maintenance(
+        "policy_activation",
+        before=inactive,
+        after=snapshot("after"),
+        timestamp_s=1,
+        reason="new_policy_activation",
+    )
+
+    def observation(
+        timestamp_s: int,
+        source_first: int,
+        source_last: int,
+        counts: int,
+        phase: int,
+    ) -> CX323Observation:
+        return CX323Observation(
+            timestamp_s=timestamp_s,
+            capture_session=1,
+            source_first_sequence=source_first,
+            source_last_sequence=source_last,
+            dac_epoch=controller.dac_epoch,
+            applied_code=controller.applied_code,
+            accumulated_edge_error_counts=counts,
+            tight_state="TIGHT_INSIDE",
+            phase_epoch=1,
+            relative_phase_cycles=phase,
         )
-        row.update(
+
+    def append_decision(
+        observed: CX323Observation,
+        *,
+        authority_state: str = "ARMED",
+    ) -> tuple[
+        CX323Decision, Any, dict[str, str], dict[str, str]
+    ]:
+        nonlocal last_origin
+        before = {
+            **snapshot("before"),
+            "frontier_relation_before": observation_frontier_relation(observed),
+            "interval_sign_before": str(observation_interval_sign(observed)),
+        }
+        hybrid_state_before = _cx323_project_hybrid_state(
+            controller, phase_valid=observed.phase_valid
+        )
+        application_count_before = controller.application_count
+        cumulative_movement_before_codes = (
+            controller.cumulative_movement_codes
+        )
+        current_code = controller.applied_code
+        current_epoch = controller.dac_epoch
+        decided = controller.decide(observed)
+        projected = _cx323_hybrid_decision_projection(
+            decision=decided,
+            observation=observed,
+            controller=controller,
+            bindings=bindings,
+            state_before=hybrid_state_before,
+            application_count_before=application_count_before,
+            cumulative_movement_before_codes=(
+                cumulative_movement_before_codes
+            ),
+        )
+        hybrid = _ahy_row(
+            projected,
+            record_sequence=len(decisions) + 1,
+            run_identity=programme.runtime_run_identity,
+            build_identity=str(bundle["firmware"]["build_identity"]),
+            policy_sha256=policy_sha256,
+            response_policy_sha256=str(bindings["response_policy"]["sha256"]),
+            profile_identity=programme.profile_id,
+        )
+        hybrid["authority_state"] = authority_state
+        decisions.append(hybrid)
+        last_origin = (observed, decided, hybrid)
+        return decided, projected, hybrid, {
+            **before,
+            "current_code": str(current_code),
+            "current_epoch": str(current_epoch),
+        }
+
+    def transact(
+        observed: CX323Observation,
+        *,
+        request_sequence: int,
+        response_timestamp_s: int,
+        response_source_last: int,
+    ) -> dict[str, str]:
+        nonlocal next_transaction_record
+        decided, projected, hybrid, decision_before = append_decision(observed)
+        if decided.requested_delta_codes == 0:
+            raise RuntimeError("CX323 rehearsal transaction did not request control")
+        rows = _transaction_rows(
+            projected,
+            record_sequence=next_transaction_record,
+            request_sequence=request_sequence,
+            application_sequence=controller.application_count + 1,
+            dac_epoch=controller.dac_epoch + 1,
+            cumulative_movement=(
+                controller.cumulative_movement_codes
+                + abs(decided.requested_delta_codes)
+            ),
+            run_identity=programme.runtime_run_identity,
+            build_identity=str(bundle["firmware"]["build_identity"]),
+            policy_sha256=policy_sha256,
+            estimator_sha256=str(bindings["frequency_estimator"]["sha256"]),
+            model_sha256=str(bindings["plant_model"]["sha256"]),
+            response_policy_sha256=str(bindings["response_policy"]["sha256"]),
+            numerical_policy_sha256=policy_sha256,
+            profile_identity=programme.profile_id,
+        )
+        next_transaction_record += 4
+        transactions.extend(rows)
+        append_maintenance(
+            "decision",
+            before=decision_before,
+            after=snapshot("after"),
+            timestamp_s=observed.timestamp_s,
+            reason=decided.reason,
+            observation=observed,
+            decision=decided,
+            hybrid=hybrid,
+            transaction=rows[0],
+            burst_ordinal=5,
+            burst_count=5,
+            current_code=int(decision_before["current_code"]),
+            current_epoch=int(decision_before["current_epoch"]),
+        )
+
+        before_application = snapshot("before")
+        current_code = controller.applied_code
+        current_epoch = controller.dac_epoch
+        controller.confirm_application(
+            decided,
+            applied_code=decided.requested_code,
+            dac_epoch=controller.dac_epoch + 1,
+            first_consumer_exact=True,
+        )
+        append_maintenance(
+            "application_first_consumer",
+            before=before_application,
+            after=snapshot("after"),
+            timestamp_s=int(rows[2]["application_timestamp_s"]),
+            reason="application_and_first_consumer_committed",
+            observation=observed,
+            decision=decided,
+            hybrid=hybrid,
+            transaction=rows[2],
+            burst_ordinal=3,
+            burst_count=3,
+            current_code=current_code,
+            current_epoch=current_epoch,
+        )
+        applications.append(
             {
-                "hybrid_record_sequence": decision["hybrid_record_sequence"],
-                "decision_sequence": decision["decision_sequence"],
-                "source_first_sequence": decision["source_first_sequence"],
-                "source_last_sequence": decision["source_last_sequence"],
-                "transaction_record_sequence": transaction["transaction_record_sequence"],
-                "transaction_event": transaction["event"],
-                "request_sequence": transaction["request_sequence"],
-                "application_sequence": transaction["application_sequence"],
-                "actual_applied_code": transaction["applied_code"],
-                "actual_dac_epoch": transaction["dac_epoch"],
-                "requested_delta_codes": transaction["requested_delta_codes"],
-                "requested_code": transaction["requested_code"],
-                "evidence_burst_record_count": "5",
+                "request_sequence": request_sequence,
+                "decision_sequence": decided.decision_sequence,
+                "reason": decided.reason,
+                "requested_delta_codes": decided.requested_delta_codes,
+                "requested_code": decided.requested_code,
+                "dac_epoch": controller.dac_epoch,
+                "correction_count": controller.application_count,
+                "automatic_application_count": controller.application_count,
+                "cumulative_movement_codes": controller.cumulative_movement_codes,
+                "application_timestamp_s": int(
+                    rows[2]["application_timestamp_s"]
+                ),
             }
         )
-        maintenance.append(row)
-    hold = maintenance_base(len(maintenance) + 1, "gnss_metadata_hold_enter")
-    hold.update(
+
+        response_observation = observation(
+            response_timestamp_s,
+            observed.source_last_sequence,
+            response_source_last,
+            observed.accumulated_edge_error_counts,
+            observed.relative_phase_cycles,
+        )
+        (
+            response_decision,
+            _response_projected,
+            response_hybrid,
+            response_before,
+        ) = append_decision(response_observation)
+        if response_decision.reason != "response_pending_hold":
+            raise RuntimeError("CX323 rehearsal response hold differs")
+        response_hybrid.update(
+            {
+                "authority_state": "AWAITING_RESPONSE",
+                "request_sequence": str(request_sequence),
+                "acceptance_sequence": str(request_sequence),
+                "application_sequence": str(controller.application_count),
+            }
+        )
+        append_maintenance(
+            "decision",
+            before=response_before,
+            after=snapshot("after"),
+            timestamp_s=response_observation.timestamp_s,
+            reason=response_decision.reason,
+            observation=response_observation,
+            decision=response_decision,
+            hybrid=response_hybrid,
+            burst_ordinal=3,
+            burst_count=3,
+            current_code=int(response_before["current_code"]),
+            current_epoch=int(response_before["current_epoch"]),
+        )
+
+        before_response = snapshot("before")
+        controller.complete_response(fresh_exact=True)
+        append_maintenance(
+            "response_complete",
+            before=before_response,
+            after=snapshot("after"),
+            timestamp_s=response_timestamp_s,
+            reason="response_completed",
+            observation=observed,
+            decision=decided,
+            hybrid=hybrid,
+            transaction=rows[3],
+            burst_ordinal=3,
+            burst_count=3,
+            current_code=observed.applied_code,
+            current_epoch=observed.dac_epoch,
+        )
+        return rows[3]
+
+    transact(
+        observation(1800, 1200, 1800, -1, -6),
+        request_sequence=1,
+        response_timestamp_s=3300,
+        response_source_last=2400,
+    )
+    first_hold_observation = observation(3600, 2400, 3000, 1, 0)
+    first_hold, _first_hold_projected, first_hold_hybrid, first_hold_before = (
+        append_decision(first_hold_observation)
+    )
+    if first_hold.reason != "persistence_first_interval_hold":
+        raise RuntimeError("CX323 rehearsal first persistence window differs")
+    append_maintenance(
+        "decision",
+        before=first_hold_before,
+        after=snapshot("after"),
+        timestamp_s=3600,
+        reason=first_hold.reason,
+        observation=first_hold_observation,
+        decision=first_hold,
+        hybrid=first_hold_hybrid,
+        burst_ordinal=3,
+        burst_count=3,
+        current_code=int(first_hold_before["current_code"]),
+        current_epoch=int(first_hold_before["current_epoch"]),
+    )
+    transact(
+        observation(4200, 3000, 3600, 1, 0),
+        request_sequence=2,
+        response_timestamp_s=5700,
+        response_source_last=4200,
+    )
+
+    before_hold = snapshot("before")
+    if last_origin is None:
+        raise RuntimeError("CX323 rehearsal lacks a GNSS-hold origin")
+    (
+        last_response_observation,
+        last_response_decision,
+        last_response_hybrid,
+    ) = last_origin
+    controller.enter_metadata_hold()
+    append_maintenance(
+        "gnss_metadata_hold_enter",
+        before=before_hold,
+        after=snapshot("after"),
+        timestamp_s=5701,
+        reason="metadata_hold",
+        observation=last_response_observation,
+        decision=last_response_decision,
+        hybrid=last_response_hybrid,
+    )
+    before_requalification = snapshot("before")
+    controller.requalify_metadata(4200)
+    append_maintenance(
+        "gnss_metadata_requalified",
+        before=before_requalification,
+        after=snapshot("after"),
+        timestamp_s=5702,
+        reason="metadata_requalified",
+        observation=last_response_observation,
+        decision=last_response_decision,
+        hybrid=last_response_hybrid,
+    )
+    first_requalified_observation = observation(6300, 4200, 4800, 0, 0)
+    (
+        first_requalified,
+        _first_requalified_projected,
+        first_requalified_hybrid,
+        first_requalified_before,
+    ) = (
+        append_decision(
+            first_requalified_observation,
+            authority_state="REFERENCE_HOLD",
+        )
+    )
+    if not (
+        first_requalified.reason == "zero_containing_interval"
+        and controller.metadata_hold
+        and controller.requalification_window_count == 1
+    ):
+        raise RuntimeError("CX323 rehearsal first requalification window differs")
+    append_maintenance(
+        "decision",
+        before=first_requalified_before,
+        after=snapshot("after"),
+        timestamp_s=6300,
+        reason=first_requalified.reason,
+        observation=first_requalified_observation,
+        decision=first_requalified,
+        hybrid=first_requalified_hybrid,
+        burst_ordinal=3,
+        burst_count=3,
+        current_code=int(first_requalified_before["current_code"]),
+        current_epoch=int(first_requalified_before["current_epoch"]),
+    )
+    final_observation = observation(6900, 4800, 5400, 0, 0)
+    final_decision, _final_projected, final_hybrid, final_before = (
+        append_decision(
+            final_observation,
+            authority_state="REFERENCE_HOLD",
+        )
+    )
+    append_maintenance(
+        "decision",
+        before=final_before,
+        after=snapshot("after"),
+        timestamp_s=6900,
+        reason=final_decision.reason,
+        observation=final_observation,
+        decision=final_decision,
+        hybrid=final_hybrid,
+        burst_ordinal=3,
+        burst_count=3,
+        current_code=int(final_before["current_code"]),
+        current_epoch=int(final_before["current_epoch"]),
+    )
+    if controller.metadata_hold or final_decision.requested_delta_codes != 0:
+        raise RuntimeError("CX323 rehearsal did not complete causal requalification")
+
+    first = transactions[0]
+    manual = dict(first)
+    manual.update(
         {
-            "hybrid_record_sequence": decisions[-1]["hybrid_record_sequence"],
-            "decision_sequence": decisions[-1]["decision_sequence"],
-            "source_first_sequence": decisions[-1]["source_first_sequence"],
-            "source_last_sequence": decisions[-1]["source_last_sequence"],
-            "maintenance_state_before": "READY",
-            "maintenance_state_after": "METADATA_HOLD",
-            "metadata_hold_after": "true",
-            "frontier_relation": "not_applicable",
-            "reason": "recoverable_gnss_metadata_hold",
+            "transaction_record_sequence": "1",
+            "event": "manual_start",
+            "authorization_sequence": "0",
+            "nonce": "0",
+            "request_sequence": "0",
+            "decision_sequence": "0",
+            "source_first_sequence": "0",
+            "source_last_sequence": "0",
+            "decision_timestamp_s": "1",
+            "current_applied_code": str(programme.setup_code),
+            "requested_delta_codes": "0",
+            "requested_code": str(programme.setup_code),
+            "correction_ordinal": "0",
+            "cumulative_after_codes": "0",
+            "pre_error_hz": "0.000000000000",
+            "accepted_code": str(programme.setup_code),
+            "accepted_timestamp_s": "1",
+            "applied_code": str(programme.setup_code),
+            "application_sequence": "0",
+            "application_timestamp_s": "1",
+            "i2c_ok": "true",
+            "clamped": "false",
+            "ambiguous": "false",
+            "dac_epoch": "1",
+            "estimator_history_reset": "false",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "post_error_hz": "0.000000000000",
+            "observed_response_hz": "0.000000000000",
+            "cumulative_response_hz": "0.000000000000",
+            "consecutive_indeterminate": "0",
+            "active_state": "DISARMED",
+            "response_class": "unavailable",
+            "reason": "manual_start_established",
+            "evidence_state": "evidence_clear",
         }
     )
-    maintenance.append(hold)
-    requalified = maintenance_base(
-        len(maintenance) + 1, "gnss_metadata_requalified"
+    transaction_rows = [manual, *transactions]
+    summary = {
+        "applications": applications,
+        "first_response_consumer_reason": "response_completed",
+        "first_post_recovery_consumer_decision_sequence": (
+            final_decision.decision_sequence
+        ),
+        "post_requalification_decision_sequences": [
+            first_requalified.decision_sequence,
+            final_decision.decision_sequence,
+        ],
+        "final_snapshot": {
+            "correction_count": controller.application_count,
+            "automatic_application_count": controller.application_count,
+            "cumulative_movement_codes": controller.cumulative_movement_codes,
+            "transaction_outstanding": (
+                controller.request_pending or controller.response_pending
+            ),
+        },
+    }
+    summary["native_conformance"] = _cx323_fixture_native_conformance(
+        decisions=decisions,
+        transactions=transaction_rows,
+        maintenance=maintenance,
     )
-    requalified.update(
-        {
-            "hybrid_record_sequence": decisions[-1]["hybrid_record_sequence"],
-            "decision_sequence": decisions[-1]["decision_sequence"],
-            "source_first_sequence": decisions[-1]["source_first_sequence"],
-            "source_last_sequence": decisions[-1]["source_last_sequence"],
-            "maintenance_state_before": "METADATA_HOLD",
-            "maintenance_state_after": "READY",
-            "metadata_hold_before": "true",
-            "frontier_relation": "not_applicable",
-            "requalification_window_count_after": "2",
-            "reason": "fresh_causal_gnss_metadata_requalification",
-        }
+    return decisions, transaction_rows, summary, maintenance
+
+
+def _cx323_fixture_native_conformance(
+    *,
+    decisions: list[dict[str, str]],
+    transactions: list[dict[str, str]],
+    maintenance: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Check fixture fields against the native builder/formatter semantics."""
+
+    mismatches: list[str] = []
+
+    def require(condition: bool, label: str) -> None:
+        if not condition:
+            mismatches.append(label)
+
+    require(
+        all(set(row) == set(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS) for row in maintenance),
+        "AHM field set differs from the native formatter",
     )
-    maintenance.append(requalified)
-    return decisions, transactions, summary, maintenance
+    require(
+        [int(row["maintenance_record_sequence"]) for row in maintenance]
+        == list(range(1, len(maintenance) + 1)),
+        "AHM record sequence is not contiguous",
+    )
+    require(
+        [int(row["evidence_burst_sequence"]) for row in maintenance]
+        == list(range(1, len(maintenance) + 1)),
+        "AHM evidence burst sequence differs from begin/commit calls",
+    )
+    activation = maintenance[0]
+    null_origin_fields = (
+        "capture_session",
+        "source_first_sequence",
+        "source_last_sequence",
+        "phase_epoch",
+        "phase_observation_sequence",
+        "hybrid_record_sequence",
+        "hybrid_timing_record_sequence",
+        "decision_sequence",
+        "transaction_record_sequence",
+        "transaction_timing_record_sequence",
+        "request_sequence",
+        "application_sequence",
+        "actual_applied_code",
+        "actual_dac_epoch",
+    )
+    require(
+        activation["event"] == "policy_activation"
+        and activation["phase_valid"] == "false"
+        and activation["downstream_epoch_exact"] == "false"
+        and all(activation[field] == "0" for field in null_origin_fields),
+        "policy activation does not have a native null origin",
+    )
+    require(
+        [row["reason"] for row in maintenance]
+        == [
+            "new_policy_activation",
+            "phase_material_legacy_request_ready",
+            "application_and_first_consumer_committed",
+            "response_pending_hold",
+            "response_completed",
+            "persistence_first_interval_hold",
+            "maintenance_request_ready",
+            "application_and_first_consumer_committed",
+            "response_pending_hold",
+            "response_completed",
+            "metadata_hold",
+            "metadata_requalified",
+            "zero_containing_interval",
+            "zero_containing_interval",
+        ],
+        "AHM transition reasons differ from native engine last_reason",
+    )
+    require(
+        [row["frontier_relation"] for row in maintenance]
+        == [
+            "not_applicable",
+            "first",
+            "not_applicable",
+            "first",
+            "not_applicable",
+            "first",
+            "contiguous",
+            "not_applicable",
+            "first",
+            "not_applicable",
+            "not_applicable",
+            "not_applicable",
+            "first",
+            "contiguous",
+        ],
+        "AHM frontier relations differ from native pre-decision state",
+    )
+    require(
+        [int(row["interval_sign"]) for row in maintenance]
+        == [0, 1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1, 0, 0],
+        "AHM interval signs do not derive from each originating observation",
+    )
+    decision_ahm = {
+        int(row["decision_sequence"]): row
+        for row in maintenance
+        if row["event"] == "decision"
+    }
+    for decision in decisions:
+        sequence = int(decision["decision_sequence"])
+        row = decision_ahm.get(sequence)
+        require(
+            row is not None
+            and row["hybrid_record_sequence"]
+            == decision["hybrid_record_sequence"]
+            and row["capture_session"] == decision["capture_session"]
+            and row["source_first_sequence"]
+            == decision["source_first_sequence"]
+            and row["source_last_sequence"]
+            == decision["source_last_sequence"]
+            and row["reason"] == decision["reason"],
+            f"AHM decision {sequence} lacks its exact native AHY join",
+        )
+        if row is not None:
+            raw_fll = int(row["raw_fll_demand_picocodes"]) / 1_000_000_000_000
+            raw_pll = int(row["raw_pll_demand_picocodes"]) / 1_000_000_000_000
+            require(
+                decision["frequency_term_hz"]
+                == f"{raw_fll * 0.000173340101:.12f}"
+                and decision["phase_term_hz"]
+                == f"{raw_pll * 0.000173340101:.12f}",
+                f"AHY decision {sequence} projection differs from firmware gain",
+            )
+    request_decisions = [
+        row for row in decisions if int(row["requested_delta_codes"]) != 0
+    ]
+    require(
+        all(
+            row["authority_state"] == "ARMED"
+            and row["request_sequence"] == "0"
+            and row["acceptance_sequence"] == "0"
+            and row["application_sequence"] == "0"
+            for row in request_decisions
+        ),
+        "request AHY carries transaction identity created after it was queued",
+    )
+    response_holds = [
+        row for row in decisions if row["reason"] == "response_pending_hold"
+    ]
+    require(
+        all(
+            row["authority_state"] == "AWAITING_RESPONSE"
+            and int(row["request_sequence"]) > 0
+            and row["request_sequence"] == row["acceptance_sequence"]
+            and int(row["application_sequence"]) > 0
+            and row["response_class"] == "unavailable"
+            for row in response_holds
+        ),
+        "response-hold AHY does not reflect the pre-response transaction",
+    )
+    post_requalification = decisions[-2:]
+    require(
+        all(
+            row["authority_state"] == "REFERENCE_HOLD"
+            and row["request_sequence"] == "0"
+            and row["acceptance_sequence"] == "0"
+            and row["application_sequence"] == "0"
+            and row["response_class"] == "unavailable"
+            for row in post_requalification
+        ),
+        "post-GNSS AHY does not retain reference hold without response identity",
+    )
+    for event, transaction_event, reason in (
+        ("application_first_consumer", "application", "application_and_first_consumer_committed"),
+        ("response_complete", "response", "response_completed"),
+    ):
+        for row in (item for item in maintenance if item["event"] == event):
+            transaction = next(
+                (
+                    item
+                    for item in transactions
+                    if item["transaction_record_sequence"]
+                    == row["transaction_record_sequence"]
+                ),
+                None,
+            )
+            require(
+                transaction is not None
+                and row["transaction_event"] == transaction_event
+                and row["request_sequence"] == transaction["request_sequence"]
+                and row["application_sequence"]
+                == transaction["application_sequence"]
+                and row["actual_applied_code"] == transaction["applied_code"]
+                and row["actual_dac_epoch"] == transaction["dac_epoch"]
+                and row["downstream_epoch_exact"] == "true"
+                and row["reason"] == reason,
+                f"{event} lacks its exact native ACT/AT2 state join",
+            )
+    requalified = next(
+        row for row in maintenance if row["event"] == "gnss_metadata_requalified"
+    )
+    require(
+        int(requalified["requalification_d14_d8_observation_sequence"]) > 0
+        and all(
+            row["requalification_d14_d8_observation_sequence"] == "0"
+            for row in maintenance
+            if row is not requalified
+        ),
+        "GNSS requalification frontier is not event-local and explicit",
+    )
+    if mismatches:
+        raise RuntimeError("CX323 fixture native conformance failed: " + "; ".join(mismatches))
+    return {
+        "exact": True,
+        "oracle": "firmware_builder_and_formatter_field_semantics_v1",
+        "checked_ahm_rows": len(maintenance),
+        "checked_ahy_rows": len(decisions),
+        "checked_act_rows": len(transactions),
+    }
+
+
+def _cx323_response_maintenance_consumers(
+    transactions: list[dict[str, str]],
+    maintenance_rows: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Verify the CX323 response transition at its AHM state authority."""
+
+    responses = {
+        int(row["request_sequence"]): row
+        for row in transactions
+        if row.get("event") == "response"
+    }
+    maintenance = {
+        int(row["request_sequence"]): row
+        for row in maintenance_rows
+        if row.get("event") == "response_complete"
+    }
+    comparisons: list[dict[str, Any]] = []
+    exact = bool(responses) and responses.keys() == maintenance.keys()
+    for request_sequence, response in sorted(responses.items()):
+        row = maintenance.get(request_sequence)
+        row_exact = bool(
+            row is not None
+            and row.get("transaction_event") == "response"
+            and row.get("transaction_record_sequence")
+            == response.get("transaction_record_sequence")
+            and row.get("decision_sequence") == response.get("decision_sequence")
+            and row.get("application_sequence")
+            == response.get("application_sequence")
+            and row.get("actual_applied_code") == response.get("applied_code")
+            and row.get("actual_dac_epoch") == response.get("dac_epoch")
+            and row.get("downstream_epoch_exact") == "true"
+            and row.get("maintenance_state_before") == "RESPONSE_PENDING"
+            and row.get("response_pending_before") == "true"
+            and row.get("response_pending_after") == "false"
+            and row.get("reason") == "response_completed"
+        )
+        exact &= row_exact
+        comparisons.append(
+            {
+                "request_sequence": request_sequence,
+                "response_record_sequence": int(
+                    response["transaction_record_sequence"]
+                ),
+                "maintenance_record_sequence": (
+                    None
+                    if row is None
+                    else int(row["maintenance_record_sequence"])
+                ),
+                "consumer_contract": "active_hybrid_maintenance_v1",
+                "consumer_event": (
+                    None if row is None else row.get("event")
+                ),
+                "exact": row_exact,
+            }
+        )
+    return {
+        "exact": exact,
+        "controller_state_authority": "active_hybrid_maintenance_v1",
+        "consumer_event": "response_complete",
+        "comparisons": comparisons,
+    }
 
 
 def _exercise_cx322_real_transaction_path(
@@ -3781,25 +4539,31 @@ def _exercise_cx322_real_transaction_path(
             }
         }
     estimates = _cx322_selected_estimate_fixture(ahy, bundle)
-    deferred_decision: dict[str, str] | None = None
-    deferred_estimate: dict[str, str] | None = None
+    deferred_decisions: list[dict[str, str]] = []
+    deferred_estimates: list[dict[str, str]] = []
     if programme.integrated_long_run:
-        deferred_sequence = int(
-            summary["first_post_recovery_consumer_decision_sequence"]
-        )
-        deferred_index = next(
+        deferred_sequences = {
+            int(value)
+            for value in summary.get(
+                "post_requalification_decision_sequences",
+                [summary["first_post_recovery_consumer_decision_sequence"]],
+            )
+        }
+        deferred_indices = [
             index
             for index, row in enumerate(ahy)
-            if int(row["decision_sequence"]) == deferred_sequence
-        )
-        deferred_decision = ahy[deferred_index]
-        deferred_estimate = estimates[deferred_index]
+            if int(row["decision_sequence"]) in deferred_sequences
+        ]
+        if len(deferred_indices) != len(deferred_sequences):
+            raise RuntimeError("post-requalification decision fixture differs")
+        deferred_decisions = [ahy[index] for index in deferred_indices]
+        deferred_estimates = [estimates[index] for index in deferred_indices]
+    deferred_decision = deferred_decisions[-1] if deferred_decisions else None
+    deferred_estimate = deferred_estimates[-1] if deferred_estimates else None
     initial_estimates = [
-        row for row in estimates if row is not deferred_estimate
+        row for row in estimates if row not in deferred_estimates
     ]
-    pre_requalification_decision_count = len(ahy) - int(
-        deferred_decision is not None
-    )
+    pre_requalification_decision_count = len(ahy) - len(deferred_decisions)
     stop = threading.Event()
     phase4_observed = threading.Event()
     write_lock = threading.Lock()
@@ -3858,6 +4622,7 @@ def _exercise_cx322_real_transaction_path(
     timing_record_sequence = 0
     decision_timing_sequences: dict[str, str] = {}
     transaction_timing_sequences: dict[str, str] = {}
+    causal_phase_release: Any = None
 
     def wire_active_rows(
         rows: list[dict[str, str]], *, decision: bool
@@ -3994,24 +4759,6 @@ def _exercise_cx322_real_transaction_path(
         with write_lock:
             _write_all_fd(master, payload)
 
-    def wait_for_supervisor_frontier(frontier_ticks: int) -> None:
-        """Keep accelerated timer advances below the live half-wrap boundary."""
-
-        _wait_until(
-            lambda: bool(errors)
-            or _read_object(
-                run_dir / "reports/cx317_active_supervisor_state.json"
-            ).get("qualified_frontier_raw_ticks")
-            == frontier_ticks,
-            10.0,
-            "Campaign18 intermediate producer frontier consumption",
-        )
-        if errors:
-            raise RuntimeError(
-                "CX322 firmware emulator failed while retaining producer "
-                f"frontier: {errors[0]}"
-            )
-
     def emulate_firmware() -> None:
         buffered = b""
         try:
@@ -4054,6 +4801,28 @@ def _exercise_cx322_real_transaction_path(
                                 f"CX322 phase {phase} released from "
                                 f"{state['evidence_phase']}"
                             )
+                        if phase == 2 and programme.integrated_long_run:
+                            # Phase 2 can be submitted only after the phase-1
+                            # snapshot has been causally consumed.  Assert the
+                            # retained raw frontier here, after continuing to
+                            # service the PTY command loop needed to produce
+                            # that snapshot; a synchronous phase-1 wait would
+                            # deadlock the emulator against its own query.
+                            retained_frontier = _read_object(
+                                run_dir
+                                / "reports/cx317_active_supervisor_state.json"
+                            ).get("qualified_frontier_raw_ticks")
+                            expected_frontier = request_frontier_ticks[
+                                request_sequence
+                            ]
+                            if retained_frontier != expected_frontier:
+                                raise RuntimeError(
+                                    "Campaign18 request frontier was not "
+                                    "consumed before phase 2: "
+                                    f"request={request_sequence}, "
+                                    f"retained={retained_frontier}, "
+                                    f"expected={expected_frontier}"
+                                )
                         state["evidence_phase"] = {
                             1: "acceptance_pending",
                             2: "application_pending",
@@ -4070,14 +4839,6 @@ def _exercise_cx322_real_transaction_path(
                                 request_frontier_ticks[request_sequence]
                             )
                             emit_active_status()
-                            # The accelerated fixture must preserve the real
-                            # device's sub-half-wrap status cadence.  Do not
-                            # let a later complete generation overwrite this
-                            # causal frontier before the live supervisor has
-                            # extended and retained it.
-                            wait_for_supervisor_frontier(
-                                request_frontier_ticks[request_sequence]
-                            )
                         if phase >= 2:
                             state["applied"] = True
                             application = applications[request_sequence]
@@ -4117,6 +4878,12 @@ def _exercise_cx322_real_transaction_path(
                                 emit_active_status()
                             if request_sequence == len(applications):
                                 phase4_observed.set()
+                        if programme.persistent_maintenance_policy:
+                            if causal_phase_release is None:
+                                raise RuntimeError(
+                                    "CX323 causal phase producer is unavailable"
+                                )
+                            causal_phase_release(request_sequence, phase)
                     if command.startswith("ACTIVE SNAPSHOT "):
                         state["query_nonce"] = command.split()[2]
                         emit_active_status()
@@ -4238,6 +5005,130 @@ def _exercise_cx322_real_transaction_path(
         # every request here would replace the exact causal boundary that this
         # rehearsal is intended to exercise.
         automatic = [row for row in transactions if row["event"] != "manual_start"]
+        automatic_by_request_event = {
+            (int(row["request_sequence"]), row["event"]): row
+            for row in automatic
+        }
+        maintenance_by_decision = {
+            int(row["decision_sequence"]): row
+            for row in maintenance
+            if row["event"] == "decision"
+        }
+        maintenance_by_request_event = {
+            (int(row["request_sequence"]), row["transaction_event"]): row
+            for row in maintenance
+            if row["transaction_event"] != "none"
+        }
+
+        def wire_cx323_decision_rows(rows: list[dict[str, str]]) -> bytes:
+            """Emit only the firmware burst produced by each decision call."""
+
+            payload = bytearray()
+            for decision_row in rows:
+                maintenance_row = maintenance_by_decision[
+                    int(decision_row["decision_sequence"])
+                ]
+                payload.extend(wire_active_rows([decision_row], decision=True))
+                request_sequence = int(
+                    maintenance_row.get("request_sequence", "0")
+                )
+                if maintenance_row["transaction_event"] == "request_created":
+                    request = automatic_by_request_event[
+                        (request_sequence, "request_created")
+                    ]
+                    payload.extend(wire_active_rows([request], decision=False))
+                payload.extend(wire_maintenance_rows([maintenance_row]))
+            return bytes(payload)
+
+        response_decisions = {
+            int(row["request_sequence"]): row
+            for row in ahy
+            if row.get("authority_state") == "AWAITING_RESPONSE"
+            and int(row.get("request_sequence", "0")) > 0
+        }
+        released_phases: set[tuple[int, int]] = set()
+
+        def release_cx323_phase(
+            request_sequence: int, phase: int
+        ) -> None:
+            """Publish each later producer only after its predecessor ACK."""
+
+            identity = (request_sequence, phase)
+            if identity in released_phases:
+                raise RuntimeError(
+                    "CX323 producer phase was released more than once: "
+                    f"request={request_sequence}, phase={phase}"
+                )
+            released_phases.add(identity)
+            payload = bytearray()
+            if phase == 1:
+                payload.extend(
+                    wire_active_rows(
+                        [
+                            automatic_by_request_event[
+                                (request_sequence, "core0_accepted")
+                            ]
+                        ],
+                        decision=False,
+                    )
+                )
+            elif phase == 2:
+                payload.extend(
+                    wire_active_rows(
+                        [
+                            automatic_by_request_event[
+                                (request_sequence, "application")
+                            ]
+                        ],
+                        decision=False,
+                    )
+                )
+                payload.extend(
+                    wire_maintenance_rows(
+                        [
+                            maintenance_by_request_event[
+                                (request_sequence, "application")
+                            ]
+                        ]
+                    )
+                )
+            elif phase == 3:
+                payload.extend(
+                    wire_cx323_decision_rows(
+                        [response_decisions[request_sequence]]
+                    )
+                )
+                payload.extend(
+                    wire_active_rows(
+                        [
+                            automatic_by_request_event[
+                                (request_sequence, "response")
+                            ]
+                        ],
+                        decision=False,
+                    )
+                )
+                payload.extend(
+                    wire_maintenance_rows(
+                        [
+                            maintenance_by_request_event[
+                                (request_sequence, "response")
+                            ]
+                        ]
+                    )
+                )
+            if payload:
+                with write_lock:
+                    _write_all_fd(master, bytes(payload))
+
+        causal_phase_release = release_cx323_phase
+
+        if maintenance:
+            activation = next(
+                row for row in maintenance if row["event"] == "policy_activation"
+            )
+            with write_lock:
+                _write_all_fd(master, wire_maintenance_rows([activation]))
         decision_cursor = 0
         for request_sequence in sorted(applications):
             group = [
@@ -4251,19 +5142,28 @@ def _exercise_cx322_real_transaction_path(
                 if row.get("authority_state") == "AWAITING_RESPONSE"
                 and int(row.get("request_sequence", "0")) == request_sequence
             )
+            request_decision_index = next(
+                index
+                for index, row in enumerate(ahy)
+                if int(row["decision_sequence"])
+                == int(applications[request_sequence]["decision_sequence"])
+            )
             with write_lock:
                 state["evidence_request_sequence"] = request_sequence
                 state["evidence_phase"] = "request_pending"
+                request_decisions = ahy[
+                    decision_cursor : request_decision_index + 1
+                ]
                 _write_all_fd(
                     master,
-                    wire_active_rows(
-                        ahy[decision_cursor : response_decision_index + 1],
-                        decision=True,
+                    wire_cx323_decision_rows(request_decisions)
+                    if maintenance
+                    else b"".join(
+                        (
+                            wire_active_rows(request_decisions, decision=True),
+                            wire_active_rows(group, decision=False),
+                        )
                     ),
-                )
-                _write_all_fd(
-                    master,
-                    wire_active_rows(group, decision=False),
                 )
             response_record_sequence = int(group[-1]["transaction_record_sequence"])
             _wait_until(
@@ -4282,18 +5182,23 @@ def _exercise_cx322_real_transaction_path(
             remaining_decisions = [
                 row
                 for row in ahy[decision_cursor:]
-                if row is not deferred_decision
+                if row not in deferred_decisions
             ]
             with write_lock:
                 _write_all_fd(
                     master,
-                    wire_active_rows(remaining_decisions, decision=True),
+                    wire_cx323_decision_rows(remaining_decisions)
+                    if maintenance
+                    else wire_active_rows(remaining_decisions, decision=True),
                 )
         first_response_consumer_exact = True
         first_response_consumer_reason = summary.get(
             "first_response_consumer_reason"
         )
-        if not programme.sustained_regulation:
+        if (
+            not programme.sustained_regulation
+            and not programme.persistent_maintenance_policy
+        ):
             ahy_path = run_dir / "csv/active_hybrid_decisions_v1.csv"
             _wait_until(
                 lambda: ahy_path.is_file()
@@ -4376,14 +5281,33 @@ def _exercise_cx322_real_transaction_path(
             "CX322 exact observation checkpoint and later-authority release",
         )
         if programme.gnss_metadata_hold_nonterminal:
+            hold_ahm = (
+                next(
+                    row
+                    for row in maintenance
+                    if row["event"] == "gnss_metadata_hold_enter"
+                )
+                if maintenance
+                else None
+            )
+            hold_frontier = (
+                int(hold_ahm["source_last_sequence"])
+                if hold_ahm is not None
+                else 500
+            )
             with write_lock:
                 state.update(
                     {
                         "gnss_metadata_hold_active": True,
                         "gnss_metadata_hold_entry_sequence": 50,
-                        "d14_d8_observation_sequence": 500,
+                        "d14_d8_observation_sequence": hold_frontier,
                     }
                 )
+                if hold_ahm is not None:
+                    _write_all_fd(
+                        master,
+                        wire_maintenance_rows([hold_ahm]),
+                    )
             emit_active_status()
             _wait_until(
                 lambda: _read_object(
@@ -4394,57 +5318,193 @@ def _exercise_cx322_real_transaction_path(
                 "campaign18 GNSS control-only hold entry",
             )
             with write_lock:
+                requalification_ahm = next(
+                    row
+                    for row in maintenance
+                    if row["event"] == "gnss_metadata_requalified"
+                )
+                requalification_frontier = int(
+                    requalification_ahm[
+                        "requalification_d14_d8_observation_sequence"
+                    ]
+                )
                 state.update(
                     {
-                        "gnss_metadata_hold_active": False,
+                        "gnss_metadata_hold_active": bool(maintenance),
                         "gnss_metadata_requalification_sequence": 51,
-                        "gnss_metadata_qualification_frontier": 500,
-                        "d14_d8_observation_sequence": 501,
+                        "gnss_metadata_qualification_frontier": (
+                            requalification_frontier
+                        ),
+                        "d14_d8_observation_sequence": (
+                            requalification_frontier
+                            if maintenance
+                            else requalification_frontier + 1
+                        ),
                     }
                 )
+                if maintenance:
+                    _write_all_fd(
+                        master,
+                        wire_maintenance_rows(
+                            [requalification_ahm]
+                        ),
+                    )
             emit_active_status()
-            _wait_until(
-                lambda: _read_object(
-                    run_dir / "reports/cx317_active_supervisor_state.json"
-                ).get("gnss_metadata_hold")
-                is None,
-                10.0,
-                "campaign18 GNSS causal requalification",
-            )
-            if deferred_decision is None or deferred_estimate is None:
+            if maintenance:
+                _wait_until(
+                    lambda: isinstance(
+                        _read_object(
+                            run_dir / "reports/cx317_active_supervisor_state.json"
+                        ).get("gnss_metadata_hold"),
+                        dict,
+                    ),
+                    10.0,
+                    "CX323 metadata-qualified controller hold retention",
+                )
+            else:
+                _wait_until(
+                    lambda: _read_object(
+                        run_dir / "reports/cx317_active_supervisor_state.json"
+                    ).get("gnss_metadata_hold")
+                    is None,
+                    10.0,
+                    "campaign18 GNSS causal requalification",
+                )
+            if maintenance:
+                maintenance_path = (
+                    run_dir / "csv/active_hybrid_maintenance_v1.csv"
+                )
+                _wait_until(
+                    lambda: any(
+                        row.get("event") == "gnss_metadata_requalified"
+                        and int(
+                            row[
+                                "requalification_d14_d8_observation_sequence"
+                            ]
+                        )
+                        == int(state["gnss_metadata_qualification_frontier"])
+                        for row in _read_csv_rows(maintenance_path)
+                    ),
+                    10.0,
+                    "CX323 AHM/status D14/D8 requalification frontier equality",
+                )
+            if not deferred_decisions or not deferred_estimates:
                 raise RuntimeError(
                     "Campaign18 rehearsal lacks its deferred post-requalification consumer"
                 )
-            with write_lock:
-                _write_all_fd(
-                    master,
-                    _wire_rows(
-                        [deferred_estimate], CONTRACT_FIELDS["estimates_v2"]
-                    ),
-                )
-            _wait_until(
-                lambda: estimate_path.is_file()
-                and sum(1 for _ in estimate_path.open(encoding="utf-8"))
-                >= len(estimates) + 1,
-                10.0,
-                "campaign18 fresh estimate after GNSS requalification",
-            )
-            with write_lock:
-                _write_all_fd(
-                    master,
-                    wire_active_rows([deferred_decision], decision=True),
-                )
             ahy_path = run_dir / "csv/active_hybrid_decisions_v1.csv"
-            _wait_until(
-                lambda: ahy_path.is_file()
-                and sum(1 for _ in ahy_path.open(encoding="utf-8"))
-                >= len(ahy) + 1,
-                10.0,
-                "campaign18 first decision after GNSS requalification",
-            )
+            if maintenance:
+                for index, (estimate, decision) in enumerate(
+                    zip(
+                        deferred_estimates,
+                        deferred_decisions,
+                        strict=True,
+                    ),
+                    start=1,
+                ):
+                    with write_lock:
+                        _write_all_fd(
+                            master,
+                            _wire_rows(
+                                [estimate], CONTRACT_FIELDS["estimates_v2"]
+                            ),
+                        )
+                    _wait_until(
+                        lambda expected=len(initial_estimates) + index + 1: (
+                            estimate_path.is_file()
+                            and sum(
+                                1
+                                for _ in estimate_path.open(encoding="utf-8")
+                            )
+                            >= expected
+                        ),
+                        10.0,
+                        f"CX323 post-requalification estimate window {index}",
+                    )
+                    with write_lock:
+                        _write_all_fd(
+                            master,
+                            wire_cx323_decision_rows([decision]),
+                        )
+                    _wait_until(
+                        lambda expected=(
+                            len(ahy) - len(deferred_decisions) + index + 1
+                        ): (
+                            ahy_path.is_file()
+                            and sum(1 for _ in ahy_path.open(encoding="utf-8"))
+                            >= expected
+                        ),
+                        10.0,
+                        f"CX323 post-requalification D14/D8 window {index}",
+                    )
+                    final_window = index == len(deferred_decisions)
+                    with write_lock:
+                        state.update(
+                            {
+                                "gnss_metadata_hold_active": not final_window,
+                                "d14_d8_observation_sequence": int(
+                                    decision["source_last_sequence"]
+                                ),
+                                "frontier_timestamp_ticks": (
+                                    decision_frontier_ticks[
+                                        int(decision["decision_sequence"])
+                                    ]
+                                ),
+                            }
+                        )
+                    emit_active_status()
+                    _wait_until(
+                        lambda final=final_window: (
+                            _read_object(
+                                run_dir
+                                / "reports/cx317_active_supervisor_state.json"
+                            ).get("gnss_metadata_hold")
+                            is None
+                        )
+                        if final
+                        else isinstance(
+                            _read_object(
+                                run_dir
+                                / "reports/cx317_active_supervisor_state.json"
+                            ).get("gnss_metadata_hold"),
+                            dict,
+                        ),
+                        10.0,
+                        (
+                            "CX323 causal requalification release"
+                            if final_window
+                            else "CX323 first-window hold retention"
+                        ),
+                    )
+            else:
+                with write_lock:
+                    _write_all_fd(
+                        master,
+                        _wire_rows(
+                            deferred_estimates,
+                            CONTRACT_FIELDS["estimates_v2"],
+                        ),
+                    )
+                _wait_until(
+                    lambda: estimate_path.is_file()
+                    and sum(1 for _ in estimate_path.open(encoding="utf-8"))
+                    >= len(estimates) + 1,
+                    10.0,
+                    "campaign18 fresh estimate after GNSS requalification",
+                )
+                with write_lock:
+                    _write_all_fd(
+                        master,
+                        wire_active_rows(deferred_decisions, decision=True),
+                    )
+                _wait_until(
+                    lambda: ahy_path.is_file()
+                    and sum(1 for _ in ahy_path.open(encoding="utf-8"))
+                    >= len(ahy) + 1,
+                    10.0,
+                    "campaign18 first decision after GNSS requalification",
+                )
         if maintenance:
-            with write_lock:
-                _write_all_fd(master, wire_maintenance_rows(maintenance))
             maintenance_path = run_dir / "csv/active_hybrid_maintenance_v1.csv"
             _wait_until(
                 lambda: maintenance_path.is_file()
@@ -4545,14 +5605,31 @@ def _exercise_cx322_real_transaction_path(
                 expected_build_identity=str(bundle["firmware"]["build_identity"]),
                 expected_active_policy_sha256=str(bundle["policy"]["policy_sha256"]),
             )
-    from .active_hybrid_live_analyze import (
-        _response_dependent_consumer_propagation,
-    )
+    if programme.persistent_maintenance_policy:
+        captured_maintenance = list(
+            csv.DictReader(
+                (run_dir / "csv/active_hybrid_maintenance_v1.csv").open(
+                    "r", newline="", encoding="utf-8"
+                )
+            )
+        )
+        response_consumers = _cx323_response_maintenance_consumers(
+            captured_transactions, captured_maintenance
+        )
+        first_response_consumer_exact = bool(
+            response_consumers["exact"]
+            and maintenance_evidence
+            and maintenance_evidence["exact"]
+        )
+    else:
+        from .active_hybrid_live_analyze import (
+            _response_dependent_consumer_propagation,
+        )
 
-    response_consumers = _response_dependent_consumer_propagation(
-        captured_transactions, captured_ahy
-    )
-    first_response_consumer_exact = bool(response_consumers["exact"])
+        response_consumers = _response_dependent_consumer_propagation(
+            captured_transactions, captured_ahy
+        )
+        first_response_consumer_exact = bool(response_consumers["exact"])
     post_requalification_consumer_exact = (
         not programme.gnss_metadata_hold_nonterminal
         or (
@@ -4755,8 +5832,19 @@ def _run_real_process_topology(
     # transactions instead of exposing one pre-batched CSV frontier.  Keep
     # both processes bounded, but give that real acknowledgement sequence its
     # complete wall-time envelope before the deliberate obstruction begins.
-    capture_duration_s = 240 if programme.sustained_regulation else 120
-    supervisor_duration_s = 180 if programme.sustained_regulation else 60
+    if programme.sustained_regulation:
+        capture_duration_s = 240
+        supervisor_duration_s = 180
+    elif programme.persistent_maintenance_policy:
+        # Two exact four-phase transactions plus the GNSS hold/requalification
+        # lifecycle now run causally through the real supervisor.  The former
+        # 60 s bound expired immediately after the second phase-4 ACK, before
+        # the remaining evidence could be consumed.
+        capture_duration_s = 180
+        supervisor_duration_s = 120
+    else:
+        capture_duration_s = 120
+        supervisor_duration_s = 60
     run_dir = output_dir / "process_topology" / "run"
     transition_dir = output_dir / "process_topology" / "transition"
     carrier_dir = output_dir / "process_topology" / "carrier"
