@@ -5321,8 +5321,43 @@ def _exercise_cx322_real_transaction_path(
                     )
                 )
             if payload:
-                with write_lock:
-                    _write_all_fd(master, bytes(payload))
+                def publish_payload() -> None:
+                    with write_lock:
+                        _write_all_fd(master, bytes(payload))
+
+                if phase == 1 and programme.integrated_long_run:
+                    # ACTIVE EVIDENCE phase 1 causes the fixture to publish
+                    # the request's exact raw frontier.  Do not release the
+                    # core0-accepted producer until the live supervisor has
+                    # retained that frontier: otherwise it may immediately
+                    # submit phase 2 while its durable state still names the
+                    # preceding request.  Wait on a separate thread so the
+                    # emulator can continue answering ACTIVE SNAPSHOT queries.
+                    expected_frontier = request_frontier_ticks[request_sequence]
+
+                    def publish_after_retained_frontier() -> None:
+                        try:
+                            _wait_until(
+                                lambda: _read_object(
+                                    run_dir
+                                    / "reports/cx317_active_supervisor_state.json"
+                                ).get("qualified_frontier_raw_ticks")
+                                == expected_frontier,
+                                10.0,
+                                "CX323 retained request frontier before "
+                                f"request {request_sequence} core0 acceptance",
+                            )
+                            publish_payload()
+                        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                            errors.append(str(exc))
+                            phase4_observed.set()
+
+                    threading.Thread(
+                        target=publish_after_retained_frontier,
+                        daemon=True,
+                    ).start()
+                else:
+                    publish_payload()
 
         causal_phase_release = release_cx323_phase
 
