@@ -189,7 +189,7 @@ def test_cx323_pty_status_fixture_publishes_complete_capture_baseline() -> None:
         for row in csv.reader(payload.decode("ascii").splitlines())
     ]
     observed = {
-        row["status_key"]
+        row["status_key"]: row["status_value"]
         for row in rows
         if row["component"] == "pps_gate"
     }
@@ -198,7 +198,9 @@ def test_cx323_pty_status_fixture_publishes_complete_capture_baseline() -> None:
         rehearsal._authoritative_capture_counters(
             CX323_D9_D6_72H_PROGRAMME
         )
-    ) <= observed
+    ) <= set(observed)
+    assert observed["accepted_window_count"] == "3"
+    assert observed["boundary_reference_sequence"] == "3"
 
 
 def test_campaign18_multi_transaction_reporting_uses_observed_cardinality() -> None:

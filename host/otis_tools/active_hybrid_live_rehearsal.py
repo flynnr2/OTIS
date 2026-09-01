@@ -642,6 +642,8 @@ def _forwarded_integration_health_fixture(
             ("pps_gate", "fifo_continuity"): "continuous",
             ("pps_gate", "association_state"): "clean",
             ("pps_gate", "snapshot_session"): "1",
+            ("pps_gate", "accepted_window_count"): "3",
+            ("pps_gate", "boundary_reference_sequence"): "3",
             ("pps_gate", "rejected_window_count"): "0",
             ("pps_gate", "physical_aperture_incomplete_count"): "1",
             ("pps_gate", "association_loss_count"): "0",
