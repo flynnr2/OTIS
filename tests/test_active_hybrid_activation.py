@@ -1022,6 +1022,105 @@ def test_cx323_legacy_ack_observation_terminal_requires_retained_health_hash(
         )
 
 
+def test_cx323_later_activation_accepts_exact_status_serialization_terminal(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "cx323-attempt-8"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    source_hashes = {
+        path: str(index) * 64
+        for index, path in enumerate(
+            (
+                "COMPLETE",
+                "csv/active_hybrid_maintenance_v1.csv",
+                "csv/active_transactions_v2.csv",
+                "csv/health.csv",
+                "raw/serial.log",
+                "reports/cx317_active_supervisor_events.jsonl",
+                "reports/cx317_active_supervisor_state.json",
+            ),
+            start=1,
+        )
+    }
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "cx323-attempt-8",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": True},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": True
+        },
+        "evidence_snapshot_validation": {"failures": [], "warnings": []},
+        "source_artifacts_sha256": source_hashes,
+        "active_hybrid_replay": {"all_response_checkpoints_passed": True},
+        "integrated_exact_timing_sidecar_join": {
+            "exact": True,
+            "mismatches": [],
+        },
+        "application_counts_and_budgets": {
+            "exact": True,
+            "automatic_application_count": 1,
+            "physical_control_application_count": 1,
+            "phase_material_application_count": 1,
+            "first_phase_checkpoint_passed": True,
+            "first_phase_observation_checkpoint_exact": True,
+            "all_response_checkpoints_passed": True,
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "latest_hybrid_state": "HYBRID_TRACKING",
+            "static_code": 43086,
+            "static_terminal_exact": True,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": (
+                    "cx323_d9_d6_72h_identity_or_evidence_fault"
+                ),
+                "reason": (
+                    "cx323_d9_d6_72h_live_supervisor_fault:"
+                    "CX320 HYBRID_TRACKING lacks the first checkpoint"
+                ),
+                "last_confirmed_code": 43086,
+            },
+        },
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=9,
+        reason="rerun after exact CX323 status serialization correction",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 9
+    assert observed["automatic_retry"] is False
+    assert observed["predecessor_physical_terminal"]["run_id"] == (
+        "cx323-attempt-8"
+    )
+
+    application_counts = predecessor_unsigned[
+        "application_counts_and_budgets"
+    ]
+    assert isinstance(application_counts, dict)
+    application_counts["first_phase_checkpoint_passed"] = False
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+    with pytest.raises(ValueError, match="incomplete physical gate"):
+        activation._attempt_descriptor(
+            ordinal=9,
+            reason="rerun after exact CX323 status serialization correction",
+            predecessor_terminal_path=predecessor_path,
+            programme=CX323_D9_D6_72H_PROGRAMME,
+        )
+
+
 def test_later_activation_accepts_exact_pre_setup_provenance_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

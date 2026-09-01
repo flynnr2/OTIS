@@ -33,6 +33,15 @@ correction was accepted or applied. The complete causal verdict and bounded
 Attempt 8 correction are recorded in
 [`09_HYBRID_72H_ATTEMPT7_EVIDENCE_QUEUE_TERMINAL.md`](09_HYBRID_72H_ATTEMPT7_EVIDENCE_QUEUE_TERMINAL.md).
 
+Attempt 8 then completed the first CX323 +1-code physical transaction and its
+exact 1,500-second response checkpoint, but stopped after 8,707.306673
+qualified seconds when the firmware status getter overwrote correct CX323
+checkpoint and application fields with zero-valued legacy-engine state. The
+host correctly rejected that impossible snapshot. The retained scientific
+evidence, causal verdict, correction, and explicit no-restart boundary are
+recorded in
+[`10_HYBRID_72H_ATTEMPT8_STATUS_SERIALIZATION_TERMINAL.md`](10_HYBRID_72H_ATTEMPT8_STATUS_SERIALIZATION_TERMINAL.md).
+
 This authority supersedes the original Gate B waveform dependency and the
 Prompt 04 stop boundary only for these explicitly identified engineering
 acquisitions. It does not change the Prompt 02 waveform terminal, qualify the

@@ -4083,6 +4083,10 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
   status->deliberate_challenge_cancelled = false;
   status->deliberate_challenge_unexercised = true;
   status->deliberate_challenge_recovery_applied = false;
+  status->deliberate_challenge_direction = 0;
+  status->deliberate_challenge_code = 0u;
+  status->deliberate_challenge_dac_epoch = 0u;
+  status->deliberate_challenge_application_ticks = 0u;
 #elif OTIS_ENABLE_CX321_ACTIVE_HYBRID
   status->hybrid_state =
       hybrid_engine_ready
@@ -4103,6 +4107,7 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
   status->hybrid_reason =
       hybrid_engine_ready ? hybrid_engine.reason : "setup_consumers_pending";
 #endif
+#if !OTIS_ENABLE_CX323_PHASE_PRIORITY_MAINTENANCE
   status->phase_nonzero_application_count =
       hybrid_engine.phase_nonzero_application_count;
   status->phase_material_application_count =
@@ -4131,6 +4136,7 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
       hybrid_engine.deliberate_challenge_dac_epoch;
   status->deliberate_challenge_application_ticks =
       hybrid_engine.deliberate_challenge_application_ticks;
+#endif
 #else
   status->hybrid_state = "DISABLED";
   status->hybrid_reason = "active_hybrid_compiled_out";

@@ -763,6 +763,83 @@ def _attempt_descriptor(
                 )
             )
         )
+        # Campaign19 Attempt 8 completed its first exact application and
+        # response, but the CX323 status getter subsequently overwrote the
+        # correct CX323 counters/checkpoint with zero-valued legacy-engine
+        # fields.  The live supervisor correctly rejected the resulting
+        # impossible ``HYBRID_TRACKING`` snapshot.  Accept only the sealed
+        # shape whose independent transaction and maintenance replay proves
+        # that exact response checkpoint; this admits a new identified
+        # attempt without reclassifying the interrupted acquisition.
+        application_counts = seal.get("application_counts_and_budgets", {})
+        timing_join = seal.get("integrated_exact_timing_sidecar_join", {})
+        active_replay = seal.get("active_hybrid_replay", {})
+        cx323_status_serialization_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and acquisition_gate.get("passed") is True
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is True
+            and seal.get("evidence_snapshot_validation")
+            == {"failures": [], "warnings": []}
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("latest_hybrid_state") == "HYBRID_TRACKING"
+            and terminal.get("static_terminal_exact") is True
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(terminal.get("static_code"), int)
+            and programme.minimum_code
+            <= terminal["static_code"]
+            <= programme.maximum_code
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and supervisor_terminal.get("reason")
+            == (
+                "cx323_d9_d6_72h_live_supervisor_fault:"
+                "CX320 HYBRID_TRACKING lacks the first checkpoint"
+            )
+            and supervisor_terminal.get("last_confirmed_code")
+            == terminal["static_code"]
+            and isinstance(application_counts, dict)
+            and application_counts.get("exact") is True
+            and application_counts.get("automatic_application_count") == 1
+            and application_counts.get("physical_control_application_count")
+            == 1
+            and application_counts.get("phase_material_application_count") == 1
+            and application_counts.get("first_phase_checkpoint_passed") is True
+            and application_counts.get(
+                "first_phase_observation_checkpoint_exact"
+            )
+            is True
+            and application_counts.get("all_response_checkpoints_passed")
+            is True
+            and isinstance(timing_join, dict)
+            and timing_join.get("exact") is True
+            and timing_join.get("mismatches") == []
+            and isinstance(active_replay, dict)
+            and active_replay.get("all_response_checkpoints_passed") is True
+            and isinstance(seal.get("source_artifacts_sha256"), dict)
+            and all(
+                isinstance(seal["source_artifacts_sha256"].get(path), str)
+                and len(seal["source_artifacts_sha256"][path]) == 64
+                for path in (
+                    "COMPLETE",
+                    "csv/active_hybrid_maintenance_v1.csv",
+                    "csv/active_transactions_v2.csv",
+                    "csv/health.csv",
+                    "raw/serial.log",
+                    "reports/cx317_active_supervisor_events.jsonl",
+                    "reports/cx317_active_supervisor_state.json",
+                )
+            )
+        )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
             and seal.get("primary_decision") in operator_abort_decisions
@@ -798,6 +875,7 @@ def _attempt_descriptor(
                 or campaign18_capture_terminal
                 or cx323_firmware_fail_static_terminal
                 or cx323_legacy_ack_observation_terminal
+                or cx323_status_serialization_terminal
                 or bounded_operator_abort
                 or bounded_pre_setup_provenance
             )

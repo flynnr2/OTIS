@@ -1925,6 +1925,31 @@ def test_checkpoint_release_is_observed_only_from_firmware_state(
     )
 
 
+def test_tracking_snapshot_rejects_missing_firmware_checkpoint(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["manual_start_sent"] = True
+    impossible = _health(
+        supervisor,
+        hybrid_state="HYBRID_TRACKING",
+        hybrid_reason="response_completed",
+        first_phase_checkpoint_passed="false",
+        correction_count="1",
+        automatic_application_count="0",
+        phase_nonzero_application_count="0",
+        phase_material_application_count="0",
+        frequency_only_application_count="0",
+        cumulative_movement_codes="1",
+        dac_epoch="2",
+    )
+
+    with pytest.raises(
+        ValueError, match="CX320 HYBRID_TRACKING lacks the first checkpoint"
+    ):
+        supervisor._check_fail_static_health(impossible)
+
+
 def test_nonmaterial_combined_application_allows_overlapping_phase_count(
     tmp_path: Path,
 ) -> None:

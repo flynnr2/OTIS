@@ -622,6 +622,50 @@ def test_direct_and_dual_active_status_share_one_complete_visitor() -> None:
     assert '"unavailable"' in visitor
 
 
+def test_cx323_status_counters_are_not_overwritten_by_legacy_engine() -> None:
+    active = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    status_getter = active[
+        active.index("void otis_cx317_active_live_get_status") : active.index(
+            "const char *otis_cx317_active_live_run_identity"
+        )
+    ]
+    cx323_start = status_getter.index(
+        "#if OTIS_ENABLE_CX323_PHASE_PRIORITY_MAINTENANCE"
+    )
+    legacy_guard = status_getter.index(
+        "#if !OTIS_ENABLE_CX323_PHASE_PRIORITY_MAINTENANCE", cx323_start
+    )
+    legacy_guard_end = status_getter.index("#endif", legacy_guard)
+    cx323_end = status_getter.index(
+        "#elif OTIS_ENABLE_CX321_ACTIVE_HYBRID", cx323_start
+    )
+    cx323_status = status_getter[cx323_start:cx323_end]
+    legacy_status = status_getter[legacy_guard:legacy_guard_end]
+
+    assert "cx323_engine.application_count > 0u" in cx323_status
+    assert "!cx323_engine.response_pending" in cx323_status
+    assert (
+        "static_cast<uint16_t>(cx323_engine.application_count)"
+        in cx323_status
+    )
+    assert "cx323_phase_nonzero_application_count" in cx323_status
+    assert "cx323_phase_material_application_count" in cx323_status
+    assert "cx323_frequency_only_application_count" in cx323_status
+    assert "hybrid_engine." not in cx323_status
+
+    for field in (
+        "phase_nonzero_application_count",
+        "phase_material_application_count",
+        "frequency_only_application_count",
+        "first_phase_checkpoint_passed",
+        "automatic_application_count",
+    ):
+        assert f"status->{field}" in legacy_status
+    assert "hybrid_engine." in legacy_status
+
+
 def test_dual_core_active_snapshot_bursts_are_admitted_before_first_record() -> None:
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
