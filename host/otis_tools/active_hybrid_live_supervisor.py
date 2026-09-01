@@ -651,6 +651,22 @@ _AUTHORITATIVE_CAPTURE_COUNTERS = (
     "physical_aperture_incomplete_count",
     "association_loss_count",
 )
+_CX323_AUTHORITATIVE_CAPTURE_COUNTERS = _AUTHORITATIVE_CAPTURE_COUNTERS + (
+    "boundary_ring_dropped_count",
+    "missing_pps_count",
+    "pps_interval_anomaly_count",
+    "count_saturated_count",
+    "boundary_sequence_gap_count",
+    "boundary_sequence_duplicate_count",
+    "boundary_overflow_count",
+    "counter_snapshot_invalid_count",
+    "snapshot_overwrite_count",
+    "snapshot_continuity_loss_count",
+    "snapshot_pio_rxstall_count",
+    "snapshot_dma_error_count",
+    "snapshot_dma_stopped_count",
+    "physical_pps_missing_count",
+)
 _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH = {
     "valid": "true",
     "control_eligible": "true",
@@ -662,6 +678,20 @@ _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH = {
     "fifo_continuity": "continuous",
     "association_state": "clean",
 }
+
+
+def _authoritative_capture_counters(
+    programme: ActiveHybridProgramme,
+) -> tuple[str, ...]:
+    # CX323's aperture-count endpoint requires every irreversible D14/D8
+    # discontinuity emitted by the installed snapshot backend to remain at its
+    # qualified-origin value.  The instantaneous validity fields can recover;
+    # these monotonic counters preserve the otherwise-hidden gap.  Retain the
+    # V1/CX322 baseline so historical manifests and status fixtures keep their
+    # frozen contract.
+    if programme.qualified_d14_aperture_count is not None:
+        return _CX323_AUTHORITATIVE_CAPTURE_COUNTERS
+    return _AUTHORITATIVE_CAPTURE_COUNTERS
 
 
 def _authoritative_capture_health_faults(
@@ -1676,7 +1706,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             else:
                 raise ValueError("CX320 qualified origin device clock is incoherent")
             authoritative_capture_baseline = {}
-            for key in _AUTHORITATIVE_CAPTURE_COUNTERS:
+            for key in _authoritative_capture_counters(self.programme):
                 try:
                     value = int(health[("pps_gate", key)])
                 except (KeyError, TypeError, ValueError):
@@ -1794,7 +1824,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             baseline = {}
             faults.append("qualified_authoritative_capture_baseline_unavailable")
         observed_counters: dict[str, int | str | None] = {}
-        for key in _AUTHORITATIVE_CAPTURE_COUNTERS:
+        for key in _authoritative_capture_counters(self.programme):
             try:
                 expected = int(baseline[key])
                 observed = int(health[("pps_gate", key)])
@@ -1941,9 +1971,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     def _close_response_horizon_if_required(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
-        elapsed_ticks = self._qualified_elapsed_ticks(health)
-        aperture_progress = self._qualified_d14_apertures(health)
         if self.programme.qualified_d14_aperture_count is not None:
+            aperture_progress = self._qualified_d14_apertures(health)
             reserve = self.programme.correction_response_reserve_d14_apertures
             if aperture_progress is None or reserve is None:
                 return False
@@ -1959,6 +1988,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     endpoint_contract="qualified_D14_D8_aperture_count_v2",
                 )
             return True
+        elapsed_ticks = self._qualified_elapsed_ticks(health)
         if elapsed_ticks is None:
             return False
         admission_ticks = (
@@ -2336,21 +2366,26 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
             return
 
-        qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
-        qualified_d14_apertures = self._qualified_d14_apertures(health)
-        qualified_target_ticks = (
-            self.programme.qualified_duration_s
-            * RP2040_TIMER0_TICKS_PER_SECOND
-        )
-        endpoint_reached = (
-            qualified_d14_apertures >= self.programme.qualified_d14_aperture_count
-            if self.programme.qualified_d14_aperture_count is not None
-            and qualified_d14_apertures is not None
-            else qualified_elapsed_ticks is not None
-            and qualified_elapsed_ticks >= qualified_target_ticks
-        )
+        if self.programme.qualified_d14_aperture_count is not None:
+            qualified_d14_apertures = self._qualified_d14_apertures(health)
+            endpoint_reached = (
+                qualified_d14_apertures is not None
+                and qualified_d14_apertures
+                >= self.programme.qualified_d14_aperture_count
+            )
+        else:
+            qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
+            qualified_target_ticks = (
+                self.programme.qualified_duration_s
+                * RP2040_TIMER0_TICKS_PER_SECOND
+            )
+            endpoint_reached = (
+                qualified_elapsed_ticks is not None
+                and qualified_elapsed_ticks >= qualified_target_ticks
+            )
         if (
             self.programme.integrated_long_run
+            and self.programme.qualified_d14_aperture_count is None
             and endpoint_reached
             and self.state.get("qualified_endpoint_extended_timestamp_ticks")
             is None

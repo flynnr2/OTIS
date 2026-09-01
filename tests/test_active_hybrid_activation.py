@@ -179,6 +179,167 @@ def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(
         )
 
 
+def test_cx323_activation_requires_exact_v2_d14_aperture_boundaries(
+    tmp_path: Path,
+) -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    bundle = {
+        "programme_id": programme.programme_id,
+        "bundle_sha256": "b" * 64,
+        "host_tools": {},
+    }
+    proposal = {"proposal_sha256": "c" * 64}
+    accepted_origin = 0xFFFFFF00
+    reference_origin = 0xFFFFFE00
+
+    def observation(
+        progress: int, *, response_closed: bool, terminal_reached: bool
+    ) -> dict[str, object]:
+        return {
+            "qualified_d14_d8_apertures": progress,
+            "accepted_window_count": (accepted_origin + progress) & 0xFFFFFFFF,
+            "boundary_reference_sequence": (
+                reference_origin + progress
+            )
+            & 0xFFFFFFFF,
+            "rp2040_timer0_ticks": 4_000_013_602_864,
+            "response_horizon_closed": response_closed,
+            "terminal_reached": terminal_reached,
+        }
+
+    clock = {
+        "time_domain": "qualified_D14_D8_aperture_count_v2",
+        "supporting_local_ordering_domain": "rp2040_timer0",
+        "accepted_window_count_origin": accepted_origin,
+        "boundary_reference_sequence_origin": reference_origin,
+        "qualified_endpoint_d14_d8_apertures": 259_200,
+        "correction_response_reserve_d14_apertures": 1_511,
+        "correction_admission_close_d14_d8_apertures": 257_689,
+        "boundary_observations": {
+            "admission_open": observation(
+                257_688,
+                response_closed=False,
+                terminal_reached=False,
+            ),
+            "admission_closed": observation(
+                257_689,
+                response_closed=True,
+                terminal_reached=False,
+            ),
+            "endpoint_open": observation(
+                259_199,
+                response_closed=True,
+                terminal_reached=False,
+            ),
+            "endpoint_closed": observation(
+                259_200,
+                response_closed=True,
+                terminal_reached=True,
+            ),
+        },
+        "admission_open_before_exact_aperture_boundary": True,
+        "admission_closed_at_exact_aperture_boundary": True,
+        "endpoint_open_before_exact_aperture_boundary": True,
+        "endpoint_closed_at_exact_aperture_boundary": True,
+        "rp2040_timer0_held_constant_across_aperture_boundaries": True,
+        "forward_host_utc_step_did_not_close_early": True,
+        "backward_host_utc_step_did_not_delay_endpoint": True,
+    }
+    expected_coverage = {
+        *activation.REHEARSAL_COVERAGE,
+        *activation.CX323_REHEARSAL_COVERAGE,
+        "integrated_setup_provenance_boundary",
+        "mandatory_sustained_status_snapshot_identity",
+    }
+    transaction = {
+        "complete_multi_transaction_sequence": True,
+        "request_sequences_consumed": [1, 2],
+        "gnss_hold_and_causal_requalification": True,
+        "gnss_bootstrap_in_progress_observed_by_supervisor": True,
+        "first_post_requalification_consumer_exact": True,
+        "first_post_recovery_consumer_decision_sequence": 12,
+    }
+    unsigned = {
+        "schema_version": 1,
+        "report_type": programme.rehearsal_report_type,
+        "status": "passed",
+        "bundle_sha256": bundle["bundle_sha256"],
+        "proposal_sha256": proposal["proposal_sha256"],
+        "physical_actions_performed": 0,
+        "qualification_evidence": False,
+        "coverage": {name: True for name in expected_coverage},
+        "tool_bindings": {},
+        "setup_provenance_contract": (
+            activation.integrated_setup_provenance_contract(programme)
+        ),
+        "real_process_topology": {
+            "integrated_long_run_real_transaction_path": transaction,
+        },
+        "accelerated_qualified_device_clock": clock,
+    }
+    receipt_path = tmp_path / f"{programme.rehearsal_report_type}.json"
+    _write(receipt_path, _semantic(unsigned, "rehearsal_sha256"))
+    _write(
+        tmp_path / "process_topology/run/run_manifest.json",
+        {
+            "programme_id": programme.programme_id,
+            "profile_identity": programme.profile_id,
+            "contracts": {
+                "active_transactions_v2": 2,
+                "active_hybrid_decisions_v2": 2,
+                "active_hybrid_maintenance_v1": 1,
+            },
+            "files": [
+                {
+                    "path": "csv/active_transactions_v2.csv",
+                    "contract": "active_transactions_v2",
+                },
+                {
+                    "path": "csv/active_hybrid_decisions_v2.csv",
+                    "contract": "active_hybrid_decisions_v2",
+                },
+                {
+                    "path": "csv/active_hybrid_maintenance_v1.csv",
+                    "contract": "active_hybrid_maintenance_v1",
+                },
+            ],
+            "domains": [
+                {
+                    "name": "rp2040_timer0_extended",
+                    "nominal_hz": 16_000_000,
+                }
+            ],
+        },
+    )
+
+    observed = activation.validate_operational_rehearsal(
+        receipt_path,
+        bundle=bundle,
+        proposal=proposal,
+        require_current_tools=False,
+        programme=programme,
+    )
+    assert observed["rehearsal_sha256"]
+
+    changed = json.loads(receipt_path.read_text(encoding="utf-8"))
+    changed["accelerated_qualified_device_clock"]["boundary_observations"][
+        "admission_closed"
+    ]["accepted_window_count"] += 1
+    changed_unsigned = {
+        key: value for key, value in changed.items() if key != "rehearsal_sha256"
+    }
+    changed["rehearsal_sha256"] = activation._canonical_sha256(changed_unsigned)
+    _write(receipt_path, changed)
+    with pytest.raises(ValueError, match="Campaign 18 rehearsal lacks"):
+        activation.validate_operational_rehearsal(
+            receipt_path,
+            bundle=bundle,
+            proposal=proposal,
+            require_current_tools=False,
+            programme=programme,
+        )
+
+
 def _cx321_rehearsal_receipt(tmp_path: Path) -> tuple[Path, dict, dict]:
     digest = "a" * 64
     extended = f"ACTIVE EVIDENCE 1 4 5 -5 1 2 6302 {digest}"

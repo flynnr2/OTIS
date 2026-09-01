@@ -2808,12 +2808,12 @@
         "seal_sha256": "3ccda92c765c7d69af69fe82c86738b9497ddae6bc3667773df44b84f01036d0",
         "terminal_primary_decision": "bounded_direct_hybrid_evidence_acquired"
       },
-      "engineering_contract": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/cx323_d9_d6_72h_adaptive_hybrid_contract_v1.json",
+      "engineering_contract": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/cx323_d9_d6_72h_adaptive_hybrid_contract_v2.json",
       "firmware_profile": "cx323_d9_d6_72h_adaptive_hybrid",
       "selected_controller": {
         "profile_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
-        "path": "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
-        "file_sha256": "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
+        "path": "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json",
+        "file_sha256": "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
       },
       "serial": {
         "baud": 115200,
@@ -2823,6 +2823,9 @@
       "finite_envelope": {
         "setup_code": 43085,
         "qualified_duration_s": 259200,
+        "qualified_endpoint_contract": "qualified_D14_D8_aperture_count_v2",
+        "qualified_d14_aperture_count": 259200,
+        "correction_response_reserve_d14_apertures": 1511,
         "maximum_total_automatic_applications": 144,
         "maximum_total_physical_control_applications": 144,
         "maximum_total_dac_writes_including_setup": 145,
@@ -2849,16 +2852,15 @@
       },
       "verification": {
         "controller_selection_and_portable_native_parity_passed": true,
-        "exact_profile_build_passed_before_final_freeze": true,
-        "campaign_release_current_tests_passed": 1561,
-        "campaign_release_historical_tests_deselected": 63,
-        "campaign_release_firmware_profiles_verified": 28,
-        "campaign_release_gate_passed": true,
-        "complete_operational_rehearsal_pending": true,
-        "bench_entry_pending": true,
+        "attempt8_status_serialization_affected_tests_passed": 205,
+        "attempt9_terminal_evidence_preserved": true,
+        "attempt10_exact_profile_build_pending": true,
+        "attempt10_campaign_release_gate_pending": true,
+        "attempt10_complete_operational_rehearsal_pending": true,
+        "attempt10_bench_entry_pending": true,
         "authority_consumed": false
       },
-      "next_gate": "release_gate_exact_freeze_complete_rehearsal_then_dynamic_auto_detect_bench_entry"
+      "next_gate": "attempt10_release_gate_exact_freeze_complete_rehearsal_then_dynamic_auto_detect_bench_entry"
     }
   }
 }

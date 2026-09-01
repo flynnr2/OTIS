@@ -166,6 +166,41 @@ def test_campaign18_status_fixture_publishes_exact_producer_frontier() -> None:
     assert updates[-1]["frontier_status_domain"] == "rp2040_timer0"
 
 
+def test_cx323_pty_status_fixture_publishes_complete_capture_baseline() -> None:
+    policy_path = CX323_D9_D6_72H_PROGRAMME.policy_path
+    payload = rehearsal._cx322_active_status_wire_fixture(
+        generation=3,
+        query_nonce="77",
+        evidence_phase="evidence_clear",
+        bundle={
+            "programme_id": CX323_D9_D6_72H_PROGRAMME.programme_id,
+            "firmware": {"build_identity": "a" * 64 + ":" + "b" * 64},
+            "policy": {
+                "path": str(policy_path),
+                "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+            },
+        },
+        applied=False,
+        checkpoint_passed=False,
+        frontier_timestamp_ticks=(2400 * 16_000_000) % (1 << 32),
+    )
+    rows = [
+        dict(zip(CONTRACT_FIELDS["health_v1"], row, strict=True))
+        for row in csv.reader(payload.decode("ascii").splitlines())
+    ]
+    observed = {
+        row["status_key"]
+        for row in rows
+        if row["component"] == "pps_gate"
+    }
+
+    assert set(
+        rehearsal._authoritative_capture_counters(
+            CX323_D9_D6_72H_PROGRAMME
+        )
+    ) <= observed
+
+
 def test_campaign18_multi_transaction_reporting_uses_observed_cardinality() -> None:
     labels = rehearsal._observational_transaction_result_labels(
         applications={1: {}, 2: {}},
@@ -1070,6 +1105,79 @@ def test_accelerated_qualified_boundaries_use_device_time(
         "backward_host_utc_step_did_not_delay_endpoint": True,
         "physical_actions_performed": 0,
     }
+
+
+def test_cx323_accelerated_boundaries_use_exact_d14_d8_apertures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    policy_path = CX323_D9_D6_72H_PROGRAMME.policy_path
+    bundle.update(
+        {
+            "programme_id": CX323_D9_D6_72H_PROGRAMME.programme_id,
+            "policy": {
+                **_binding(policy_path),
+                "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+            },
+        }
+    )
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    monkeypatch.setattr(
+        rehearsal, "validate_bundle", lambda path, programme: bundle
+    )
+    monkeypatch.setattr(
+        rehearsal, "validate_proposal", lambda path, programme: proposal
+    )
+
+    result = rehearsal._exercise_qualified_device_time_boundaries(
+        output_dir=tmp_path / "qualified_d14_apertures",
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+    )
+
+    assert result["time_domain"] == "qualified_D14_D8_aperture_count_v2"
+    assert result["qualified_endpoint_d14_d8_apertures"] == 259_200
+    assert result["correction_response_reserve_d14_apertures"] == 1_511
+    assert result["correction_admission_close_d14_d8_apertures"] == 257_689
+    assert result["admission_open_before_exact_aperture_boundary"] is True
+    assert result["admission_closed_at_exact_aperture_boundary"] is True
+    assert result["endpoint_open_before_exact_aperture_boundary"] is True
+    assert result["endpoint_closed_at_exact_aperture_boundary"] is True
+    assert result[
+        "rp2040_timer0_held_constant_across_aperture_boundaries"
+    ] is True
+    observations = result["boundary_observations"]
+    assert {
+        name: (
+            item["qualified_d14_d8_apertures"],
+            item["response_horizon_closed"],
+            item["terminal_reached"],
+        )
+        for name, item in observations.items()
+    } == {
+        "admission_open": (257_688, False, False),
+        "admission_closed": (257_689, True, False),
+        "endpoint_open": (259_199, True, False),
+        "endpoint_closed": (259_200, True, True),
+    }
+    timer0_ticks = {
+        item["rp2040_timer0_ticks"] for item in observations.values()
+    }
+    assert len(timer0_ticks) == 1
+    accepted_origin = result["accepted_window_count_origin"]
+    reference_origin = result["boundary_reference_sequence_origin"]
+    assert all(
+        (item["accepted_window_count"] - accepted_origin) & 0xFFFFFFFF
+        == item["qualified_d14_d8_apertures"]
+        and (
+            item["boundary_reference_sequence"] - reference_origin
+        )
+        & 0xFFFFFFFF
+        == item["qualified_d14_d8_apertures"]
+        for item in observations.values()
+    )
 
 
 def test_qualified_device_clock_binds_confirmed_code_to_selected_programme() -> None:

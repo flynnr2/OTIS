@@ -41,6 +41,23 @@ def _utc(epoch: float) -> str:
 
 ROOT = Path(__file__).resolve().parents[1]
 
+CX323_ADDITIONAL_AUTHORITATIVE_CAPTURE_COUNTERS = (
+    "boundary_ring_dropped_count",
+    "missing_pps_count",
+    "pps_interval_anomaly_count",
+    "count_saturated_count",
+    "boundary_sequence_gap_count",
+    "boundary_sequence_duplicate_count",
+    "boundary_overflow_count",
+    "counter_snapshot_invalid_count",
+    "snapshot_overwrite_count",
+    "snapshot_continuity_loss_count",
+    "snapshot_pio_rxstall_count",
+    "snapshot_dma_error_count",
+    "snapshot_dma_stopped_count",
+    "physical_pps_missing_count",
+)
+
 
 def test_gnss_metadata_hold_is_static_and_requires_causal_requalification() -> None:
     supervisor = object.__new__(live.ActiveHybridLiveSupervisor)
@@ -469,6 +486,20 @@ def _health(
             ("pps_gate", "boundary_reference_sequence"): "0",
             ("pps_gate", "physical_aperture_incomplete_count"): "1",
             ("pps_gate", "association_loss_count"): "0",
+            ("pps_gate", "boundary_ring_dropped_count"): "0",
+            ("pps_gate", "missing_pps_count"): "0",
+            ("pps_gate", "pps_interval_anomaly_count"): "0",
+            ("pps_gate", "count_saturated_count"): "0",
+            ("pps_gate", "boundary_sequence_gap_count"): "0",
+            ("pps_gate", "boundary_sequence_duplicate_count"): "0",
+            ("pps_gate", "boundary_overflow_count"): "0",
+            ("pps_gate", "counter_snapshot_invalid_count"): "0",
+            ("pps_gate", "snapshot_overwrite_count"): "0",
+            ("pps_gate", "snapshot_continuity_loss_count"): "0",
+            ("pps_gate", "snapshot_pio_rxstall_count"): "0",
+            ("pps_gate", "snapshot_dma_error_count"): "0",
+            ("pps_gate", "snapshot_dma_stopped_count"): "0",
+            ("pps_gate", "physical_pps_missing_count"): "0",
             ("pps_gate", "snapshot_session"): "1",
             ("pps_gate", "valid"): "true",
             ("pps_gate", "control_eligible"): "true",
@@ -597,6 +628,106 @@ def test_cx323_exact_endpoint_uses_successor_identity_not_campaign18(
         "cx323_d9_d6_72h_qualified_hybrid_complete"
     )
     assert "cx322" not in supervisor.state["terminal"]["reason"]
+
+
+def test_cx323_exact_aperture_admission_boundary_is_257689(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    target = CX323_D9_D6_72H_PROGRAMME.qualified_d14_aperture_count
+    reserve = (
+        CX323_D9_D6_72H_PROGRAMME.correction_response_reserve_d14_apertures
+    )
+    assert target is not None and reserve is not None
+    assert target - reserve == 257_689
+    health = _set_campaign18_exact_clock(
+        supervisor,
+        elapsed_ticks=1,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)] = (
+        "not_a_timer_counter"
+    )
+    supervisor.state["qualified_d14_accepted_window_origin"] = 100
+    supervisor.state["qualified_d14_reference_sequence_origin"] = 200
+    health[("pps_gate", "accepted_window_count")] = str(100 + 257_688)
+    health[("pps_gate", "boundary_reference_sequence")] = str(200 + 257_688)
+
+    assert not supervisor._close_response_horizon_if_required(health)
+    assert supervisor.state["response_horizon_closed_utc"] is None
+
+    health[("pps_gate", "accepted_window_count")] = str(100 + 257_689)
+    health[("pps_gate", "boundary_reference_sequence")] = str(200 + 257_689)
+    assert supervisor._close_response_horizon_if_required(health)
+    assert supervisor.state["response_horizon_closed_utc"] is not None
+
+
+def test_cx323_exact_aperture_endpoint_ignores_timer0_and_utc(
+    tmp_path: Path,
+) -> None:
+    wall_origin = 1_800_000_000.0
+    before = _supervisor(tmp_path / "before", wall_origin_epoch=wall_origin)
+    before_health = _set_campaign18_exact_clock(
+        before,
+        elapsed_ticks=(259_200 + 10_000)
+        * live.RP2040_TIMER0_TICKS_PER_SECOND,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+    before_health[(
+        live.LIVE_FRONTIER_COMPONENT,
+        live.LIVE_FRONTIER_TICKS_KEY,
+    )] = "not_a_timer_counter"
+    before.state["qualified_d14_accepted_window_origin"] = 100
+    before.state["qualified_d14_reference_sequence_origin"] = 200
+    before_health[("pps_gate", "accepted_window_count")] = str(100 + 259_199)
+    before_health[("pps_gate", "boundary_reference_sequence")] = str(
+        200 + 259_199
+    )
+    before_health.update(
+        {
+            ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
+            ("cx317_active", "first_phase_checkpoint_passed"): "true",
+        }
+    )
+
+    # Even an unusable projected TIMER0 frontier and forward-stepped UTC cannot
+    # close the run while the authoritative D14/D8 aperture count is one short.
+    before._maybe_finish(before_health, wall_origin + 50_000, 0.0)
+    assert before.state["terminal"] is None
+
+    at_endpoint = _supervisor(
+        tmp_path / "at_endpoint", wall_origin_epoch=wall_origin
+    )
+    endpoint_health = _set_campaign18_exact_clock(
+        at_endpoint,
+        elapsed_ticks=1,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+    endpoint_health[(
+        live.LIVE_FRONTIER_COMPONENT,
+        live.LIVE_FRONTIER_TICKS_KEY,
+    )] = "not_a_timer_counter"
+    at_endpoint.state["qualified_d14_accepted_window_origin"] = 100
+    at_endpoint.state["qualified_d14_reference_sequence_origin"] = 200
+    endpoint_health[("pps_gate", "accepted_window_count")] = str(
+        100 + 259_200
+    )
+    endpoint_health[("pps_gate", "boundary_reference_sequence")] = str(
+        200 + 259_200
+    )
+    endpoint_health.update(
+        {
+            ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
+            ("cx317_active", "first_phase_checkpoint_passed"): "true",
+        }
+    )
+
+    # Neither an unusable projected TIMER0 frontier nor backward UTC prevents
+    # the exact 259,200-aperture endpoint.
+    at_endpoint._maybe_finish(endpoint_health, wall_origin - 50_000, 0.0)
+    assert at_endpoint.state["terminal"]["reason"] == (
+        "cx323_d9_d6_72h_qualified_hybrid_complete"
+    )
 
 
 def test_cx323_setup_confirmed_qualification_deadline_submits_exact_abort(
@@ -1328,6 +1459,82 @@ def test_campaign18_qualified_origin_consumes_exact_retained_frontier(
         "physical_aperture_incomplete_count": 1,
         "association_loss_count": 0,
     }
+
+
+def test_cx323_qualified_origin_baselines_every_irreversible_capture_counter(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    origin = (2400 * live.RP2040_TIMER0_TICKS_PER_SECOND) % (1 << 32)
+    _append_selected_estimate(
+        supervisor,
+        estimate_seq=4,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=origin,
+    )
+    health = _health(
+        supervisor,
+        dac_epoch="1",
+        confirmed_applied_code=str(CX323_D9_D6_72H_PROGRAMME.setup_code),
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)] = str(
+        origin
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
+        "rp2040_timer0"
+    )
+
+    supervisor._maybe_qualify(health)
+
+    expected = {
+        key: int(health[("pps_gate", key)])
+        for key in (
+            "rejected_window_count",
+            "physical_aperture_incomplete_count",
+            "association_loss_count",
+            *CX323_ADDITIONAL_AUTHORITATIVE_CAPTURE_COUNTERS,
+        )
+    }
+    assert supervisor.state["qualified_authoritative_capture_baseline"] == expected
+    assert supervisor.state["qualified_d14_accepted_window_origin"] == 0
+    assert supervisor.state["qualified_d14_reference_sequence_origin"] == 0
+
+
+@pytest.mark.parametrize("counter", CX323_ADDITIONAL_AUTHORITATIVE_CAPTURE_COUNTERS)
+def test_cx323_recovered_capture_gap_remains_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, counter: str
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    health = _health(supervisor)
+    baseline = {
+        key: int(health[("pps_gate", key)])
+        for key in live._authoritative_capture_counters(supervisor.programme)
+    }
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_origin_timestamp_ticks": 1_000_000,
+            "qualified_authoritative_capture_baseline": baseline,
+            "terminal_static_code": 0xA852,
+        }
+    )
+    health[("pps_gate", counter)] = str(baseline[counter] + 1)
+    monkeypatch.setattr(
+        "host.otis_tools.active_transactions.send_command_to_fifo",
+        lambda _path, _command: None,
+    )
+
+    assert supervisor._abort_on_authoritative_capture_discontinuity(health)
+    assert f"{counter}_changed:{baseline[counter]}->{baseline[counter] + 1}" in (
+        supervisor.state["terminal"]["reason"]
+    )
+    assert supervisor.state["terminal"]["primary_decision"] == (
+        "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault"
+    )
 
 
 @pytest.mark.parametrize(

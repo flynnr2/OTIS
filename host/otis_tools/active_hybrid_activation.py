@@ -298,6 +298,79 @@ def _validate_frozen_inputs(
     return bundle, proposal
 
 
+def _cx323_aperture_rehearsal_exact(
+    clock: object, programme: ActiveHybridProgramme
+) -> bool:
+    """Validate the accelerated V2 D14/D8 aperture boundary evidence."""
+
+    if not isinstance(clock, dict):
+        return False
+    target = programme.qualified_d14_aperture_count
+    reserve = programme.correction_response_reserve_d14_apertures
+    if target is None or reserve is None:
+        return False
+    admission_close = target - reserve
+    accepted_origin = clock.get("accepted_window_count_origin")
+    reference_origin = clock.get("boundary_reference_sequence_origin")
+    observations = clock.get("boundary_observations")
+    if (
+        type(accepted_origin) is not int
+        or type(reference_origin) is not int
+        or not 0 <= accepted_origin < 1 << 32
+        or not 0 <= reference_origin < 1 << 32
+        or not isinstance(observations, dict)
+        or clock.get("time_domain")
+        != "qualified_D14_D8_aperture_count_v2"
+        or clock.get("supporting_local_ordering_domain") != "rp2040_timer0"
+        or clock.get("qualified_endpoint_d14_d8_apertures") != target
+        or clock.get("correction_response_reserve_d14_apertures") != reserve
+        or clock.get("correction_admission_close_d14_d8_apertures")
+        != admission_close
+        or clock.get("admission_open_before_exact_aperture_boundary") is not True
+        or clock.get("admission_closed_at_exact_aperture_boundary") is not True
+        or clock.get("endpoint_open_before_exact_aperture_boundary") is not True
+        or clock.get("endpoint_closed_at_exact_aperture_boundary") is not True
+        or clock.get(
+            "rp2040_timer0_held_constant_across_aperture_boundaries"
+        )
+        is not True
+        or clock.get("forward_host_utc_step_did_not_close_early") is not True
+        or clock.get("backward_host_utc_step_did_not_delay_endpoint") is not True
+    ):
+        return False
+
+    expected = {
+        "admission_open": (admission_close - 1, False, False),
+        "admission_closed": (admission_close, True, False),
+        "endpoint_open": (target - 1, True, False),
+        "endpoint_closed": (target, True, True),
+    }
+    timer0_ticks: int | None = None
+    for name, (progress, response_closed, terminal_reached) in expected.items():
+        item = observations.get(name)
+        if not isinstance(item, dict):
+            return False
+        accepted_now = item.get("accepted_window_count")
+        reference_now = item.get("boundary_reference_sequence")
+        observed_timer0_ticks = item.get("rp2040_timer0_ticks")
+        if (
+            type(accepted_now) is not int
+            or type(reference_now) is not int
+            or type(observed_timer0_ticks) is not int
+            or item.get("qualified_d14_d8_apertures") != progress
+            or ((accepted_now - accepted_origin) & 0xFFFFFFFF) != progress
+            or ((reference_now - reference_origin) & 0xFFFFFFFF) != progress
+            or item.get("response_horizon_closed") is not response_closed
+            or item.get("terminal_reached") is not terminal_reached
+        ):
+            return False
+        if timer0_ticks is None:
+            timer0_ticks = observed_timer0_ticks
+        elif observed_timer0_ticks != timer0_ticks:
+            return False
+    return True
+
+
 def validate_operational_rehearsal(
     path: Path,
     *,
@@ -460,6 +533,21 @@ def validate_operational_rehearsal(
                 and programme.key == CX323_D9_D6_72H_PROGRAMME.key
             ),
         )
+        qualified_boundary_exact = (
+            _cx323_aperture_rehearsal_exact(clock, programme)
+            if programme.qualified_d14_aperture_count is not None
+            else (
+                isinstance(clock, dict)
+                and clock.get("correction_admission_close_elapsed_s") == 257_700
+                and clock.get("qualified_endpoint_elapsed_s") == 259_200
+                and clock.get("admission_open_at_floor_before_exact_boundary")
+                is True
+                and clock.get("admission_closed_at_exact_boundary") is True
+                and clock.get("forward_host_utc_step_did_not_close_early") is True
+                and clock.get("backward_host_utc_step_did_not_delay_endpoint")
+                is True
+            )
+        )
         if (
             not isinstance(transaction, dict)
             or transaction.get("complete_multi_transaction_sequence") is not True
@@ -477,13 +565,7 @@ def validate_operational_rehearsal(
                 ),
                 int,
             )
-            or not isinstance(clock, dict)
-            or clock.get("correction_admission_close_elapsed_s") != 257_700
-            or clock.get("qualified_endpoint_elapsed_s") != 259_200
-            or clock.get("admission_open_at_floor_before_exact_boundary") is not True
-            or clock.get("admission_closed_at_exact_boundary") is not True
-            or clock.get("forward_host_utc_step_did_not_close_early") is not True
-            or clock.get("backward_host_utc_step_did_not_delay_endpoint") is not True
+            or not qualified_boundary_exact
             or manifest.get("programme_id") != programme.programme_id
             or manifest.get("profile_identity") != programme.profile_id
             or set(exact_files) != set(required_exact)

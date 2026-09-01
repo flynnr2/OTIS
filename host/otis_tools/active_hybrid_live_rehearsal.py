@@ -39,6 +39,7 @@ from .active_hybrid_live_supervisor import (
     QUERY_PERIOD_S,
     RP2040_TIMER0_TICKS_PER_SECOND,
     ActiveHybridLiveSupervisor,
+    _authoritative_capture_counters,
     forwarded_output_integration_prewrite_evidence,
     load_active_hybrid_spec,
 )
@@ -667,6 +668,13 @@ def _forwarded_integration_health_fixture(
             ("forwarded_clock_monitor", "program_length"): "3",
         }
     )
+    # The PTY wire producer must carry the same complete irreversible capture
+    # baseline that the real CX323 supervisor consumes at qualification.  The
+    # predecessor ignores the additional fields, so one fixture can exercise
+    # both historical V1 and current V2 process topologies without weakening
+    # either contract.
+    for key in _authoritative_capture_counters(CX323_D9_D6_72H_PROGRAMME):
+        health.setdefault(("pps_gate", key), "0")
     return health
 
 
@@ -2399,6 +2407,21 @@ def _create_rehearsal_run_manifest(
             },
             "qualification": {
                 "qualified_duration_s": programme.qualified_duration_s,
+                **(
+                    {
+                        "qualified_endpoint_contract": (
+                            "qualified_D14_D8_aperture_count_v2"
+                        ),
+                        "qualified_d14_aperture_count": (
+                            programme.qualified_d14_aperture_count
+                        ),
+                        "correction_response_reserve_d14_apertures": (
+                            programme.correction_response_reserve_d14_apertures
+                        ),
+                    }
+                    if programme.qualified_d14_aperture_count is not None
+                    else {}
+                ),
                 "absolute_wall_clock_limit_s": (
                     programme.authorized_absolute_wall_limit_s
                 ),
@@ -2657,6 +2680,8 @@ def _prewrite_boundary_supervisor(
             ("cx317_active", "frequency_only_application_count"): "0",
         }
     )
+    for key in _authoritative_capture_counters(supervisor.programme):
+        health.setdefault(("pps_gate", key), "0")
     if supervisor.programme.forwarded_output_integration:
         health.update(
             _forwarded_integration_health_fixture(local_monitor_fault=True)
@@ -2965,6 +2990,22 @@ def _exercise_qualified_device_time_boundaries(
         }
     )
 
+    accepted_window_origin: int | None = None
+    boundary_reference_sequence_origin: int | None = None
+    if programme.qualified_d14_aperture_count is not None:
+        # Start close enough to uint32 rollover that the accelerated rehearsal
+        # also proves the declared counter-domain projection.  These are raw
+        # producer counters; only their equal modular deltas are qualified
+        # D14/D8 aperture progress.
+        accepted_window_origin = 0xFFFFFF00
+        boundary_reference_sequence_origin = 0xFFFFFE00
+        health[("pps_gate", "accepted_window_count")] = str(
+            accepted_window_origin
+        )
+        health[("pps_gate", "boundary_reference_sequence")] = str(
+            boundary_reference_sequence_origin
+        )
+
     health[("cx317_active", "uptime_s")] = str(origin_uptime_s)
     if programme.integrated_long_run:
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)] = (
@@ -2988,6 +3029,17 @@ def _exercise_qualified_device_time_boundaries(
         == "est:cx317:selected600:device_clock_rehearsal"
         and supervisor.state["qualified_origin_timestamp_ticks"] == origin_ticks
         and supervisor.state["qualified_origin_session_id"] == 1
+        and (
+            programme.qualified_d14_aperture_count is None
+            or (
+                supervisor.state["qualified_d14_accepted_window_origin"]
+                == accepted_window_origin
+                and supervisor.state[
+                    "qualified_d14_reference_sequence_origin"
+                ]
+                == boundary_reference_sequence_origin
+            )
+        )
     )
 
     if programme.terminal_after_first_response:
@@ -3029,6 +3081,143 @@ def _exercise_qualified_device_time_boundaries(
             raise RuntimeError(
                 "integrated first-response device-clock rehearsal failed"
             )
+        return result
+
+    if programme.qualified_d14_aperture_count is not None:
+        target = programme.qualified_d14_aperture_count
+        reserve = programme.correction_response_reserve_d14_apertures
+        if (
+            reserve is None
+            or accepted_window_origin is None
+            or boundary_reference_sequence_origin is None
+        ):
+            raise RuntimeError("CX323 D14 aperture rehearsal contract is incomplete")
+        admission_close = target - reserve
+        timer0_ticks = int(
+            health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
+        )
+
+        def set_aperture_progress(progress: int) -> None:
+            health[("pps_gate", "accepted_window_count")] = str(
+                (accepted_window_origin + progress) & 0xFFFFFFFF
+            )
+            health[("pps_gate", "boundary_reference_sequence")] = str(
+                (boundary_reference_sequence_origin + progress) & 0xFFFFFFFF
+            )
+
+        def boundary_observation(
+            progress: int, *, response_horizon_closed: bool
+        ) -> dict[str, Any]:
+            return {
+                "qualified_d14_d8_apertures": progress,
+                "accepted_window_count": int(
+                    health[("pps_gate", "accepted_window_count")]
+                ),
+                "boundary_reference_sequence": int(
+                    health[("pps_gate", "boundary_reference_sequence")]
+                ),
+                "rp2040_timer0_ticks": int(
+                    health[(
+                        LIVE_FRONTIER_COMPONENT,
+                        LIVE_FRONTIER_TICKS_KEY,
+                    )]
+                ),
+                "response_horizon_closed": response_horizon_closed,
+                "terminal_reached": supervisor.state["terminal"] is not None,
+            }
+
+        set_aperture_progress(admission_close - 1)
+        admission_open = not supervisor._close_response_horizon_if_required(
+            health
+        )
+        admission_open_observation = boundary_observation(
+            admission_close - 1,
+            response_horizon_closed=not admission_open,
+        )
+
+        set_aperture_progress(admission_close)
+        admission_closed = supervisor._close_response_horizon_if_required(
+            health
+        )
+        admission_closed_observation = boundary_observation(
+            admission_close,
+            response_horizon_closed=admission_closed,
+        )
+
+        wall_origin_epoch = datetime.fromisoformat(
+            supervisor.envelope.wall_origin_utc.replace("Z", "+00:00")
+        ).timestamp()
+        set_aperture_progress(target - 1)
+        supervisor._maybe_finish(health, wall_origin_epoch + 50_000, 0.0)
+        endpoint_open = supervisor.state["terminal"] is None
+        endpoint_open_observation = boundary_observation(
+            target - 1,
+            response_horizon_closed=True,
+        )
+
+        set_aperture_progress(target)
+        supervisor._maybe_finish(health, wall_origin_epoch - 1_000, 0.0)
+        endpoint_closed = (
+            (supervisor.state.get("terminal") or {}).get("reason")
+            == supervisor.programme.qualified_endpoint_reason
+        )
+        endpoint_closed_observation = boundary_observation(
+            target,
+            response_horizon_closed=True,
+        )
+        observations = {
+            "admission_open": admission_open_observation,
+            "admission_closed": admission_closed_observation,
+            "endpoint_open": endpoint_open_observation,
+            "endpoint_closed": endpoint_closed_observation,
+        }
+        timer0_held_constant = all(
+            item["rp2040_timer0_ticks"] == timer0_ticks
+            for item in observations.values()
+        )
+        result = {
+            "time_domain": "qualified_D14_D8_aperture_count_v2",
+            "supporting_local_ordering_domain": "rp2040_timer0",
+            "capture_session": 1,
+            "qualified_origin_subsecond_ticks": origin_subsecond_ticks,
+            "fractional_origin_deferred_until_lower_bound": (
+                fractional_origin_deferred
+            ),
+            "exact_fractional_origin_established": exact_origin_established,
+            "accepted_window_count_origin": accepted_window_origin,
+            "boundary_reference_sequence_origin": (
+                boundary_reference_sequence_origin
+            ),
+            "qualified_endpoint_d14_d8_apertures": target,
+            "correction_response_reserve_d14_apertures": reserve,
+            "correction_admission_close_d14_d8_apertures": admission_close,
+            "boundary_observations": observations,
+            "admission_open_before_exact_aperture_boundary": admission_open,
+            "admission_closed_at_exact_aperture_boundary": admission_closed,
+            "endpoint_open_before_exact_aperture_boundary": endpoint_open,
+            "endpoint_closed_at_exact_aperture_boundary": endpoint_closed,
+            "rp2040_timer0_held_constant_across_aperture_boundaries": (
+                timer0_held_constant
+            ),
+            "forward_host_utc_step_did_not_close_early": endpoint_open,
+            "backward_host_utc_step_did_not_delay_endpoint": endpoint_closed,
+            "physical_actions_performed": 0,
+        }
+        if not all(
+            result[key]
+            for key in (
+                "fractional_origin_deferred_until_lower_bound",
+                "exact_fractional_origin_established",
+                "admission_open_before_exact_aperture_boundary",
+                "admission_closed_at_exact_aperture_boundary",
+                "endpoint_open_before_exact_aperture_boundary",
+                "endpoint_closed_at_exact_aperture_boundary",
+                "rp2040_timer0_held_constant_across_aperture_boundaries",
+                "forward_host_utc_step_did_not_close_early",
+                "backward_host_utc_step_did_not_delay_endpoint",
+            )
+        ):
+            raise RuntimeError("CX323 qualified D14 aperture rehearsal failed")
         return result
 
     qualified_duration_s = supervisor.programme.qualified_duration_s
@@ -6106,20 +6295,29 @@ def _run_real_process_topology(
                     "physical_aperture_incomplete_count_changed:1->2,"
                     "association_loss_count_changed:0->1"
                 )
+                expected_capture_baseline = {
+                    key: 0
+                    for key in _authoritative_capture_counters(programme)
+                }
+                expected_capture_baseline[
+                    "physical_aperture_incomplete_count"
+                ] = 1
+                expected_capture_observed = dict(expected_capture_baseline)
+                expected_capture_observed.update(
+                    {
+                        "rejected_window_count": 1,
+                        "physical_aperture_incomplete_count": 2,
+                        "association_loss_count": 1,
+                    }
+                )
                 expected_fault_detail = {
                     "reason": expected_fault_reason,
                     "qualified_origin_session_id": 1,
                     "observed_capture_session_id": 2,
-                    "authoritative_capture_baseline": {
-                        "rejected_window_count": 0,
-                        "physical_aperture_incomplete_count": 1,
-                        "association_loss_count": 0,
-                    },
-                    "observed_authoritative_capture_counters": {
-                        "rejected_window_count": 1,
-                        "physical_aperture_incomplete_count": 2,
-                        "association_loss_count": 1,
-                    },
+                    "authoritative_capture_baseline": expected_capture_baseline,
+                    "observed_authoritative_capture_counters": (
+                        expected_capture_observed
+                    ),
                     "last_confirmed_code": int(
                         real_transaction_path["applied_code"]
                     ),
