@@ -126,12 +126,20 @@ boundary interval to the preceding extended value; setup, application and
 acknowledgement instants may be projected into that coordinate only when they
 are unambiguously close to a retained boundary.
 
-Its canonical domain name is `rp2040_timer0_extended`, with a nominal rate of
-16 MHz and strict non-wrapping ordering. It is derived evidence, not a wider
-hardware counter and not a new timing authority. Raw `rp2040_timer0` records
-remain unchanged. A value in one domain must not be compared directly with a
-value in the other without the explicit session reconstruction or projection
-that relates them.
+Its canonical domain name is `rp2040_timer0_extended`, with a nominal encoded
+scale of 16,000,000 units per second and strict non-wrapping ordering. Both it
+and raw `rp2040_timer0` ultimately come from a 1 MHz RP2040 microsecond counter
+whose values are multiplied by 16. Their actual quantum is therefore 16
+encoded ticks, or 1 us, not 62.5 ns. Extension is derived evidence, not a wider
+hardware counter, finer resolution, or new timing authority. Raw
+`rp2040_timer0` records remain unchanged. A value in one domain must not be
+compared directly with a value in the other without the explicit session
+reconstruction or projection that relates them.
+
+The two TIMER0 domains are projected, local, non-metrological coordinates.
+They are suitable for local ordering, telemetry, and exact integer comparisons
+at their declared quantum. They are not D8-derived capture domains and must not
+be presented as the metrological timebase for D10 events.
 
 ### Host written
 
@@ -158,9 +166,13 @@ The finite resolution imposed by the tick rate of the timing source.
 
 Examples:
 
-- 16 MHz implies 62.5 ns ticks;
+- a native 16 MHz counter implies 62.5 ns ticks;
 - 10 MHz implies 100 ns ticks;
 - 20 MHz implies 50 ns ticks.
+
+An encoded unit rate does not by itself imply the same quantum. For example,
+`rp2040_timer0` is represented in 16,000,000 units per second but can change
+only in 16-unit steps, so its quantum is 1 us.
 
 Quantization is distinct from accuracy, precision, jitter, stability, and drift.
 

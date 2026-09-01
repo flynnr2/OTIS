@@ -96,8 +96,9 @@ from .time_domains import forward_progress
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/d9_d6_frequency_only_digital_endurance_contract_v1.json"
 TOOL_ID = "otis_d9_d6_frequency_only_digital_endurance_v1"
-# ``rp2040_timer0`` is the emitted 16 MHz capture counter.  All endurance
-# thresholds remain in this domain from record ingestion through analysis.
+# ``rp2040_timer0`` is the emitted 16 MHz-encoded local timer coordinate with
+# a 16-tick/1 us quantum. All endurance thresholds remain in this domain from
+# record ingestion through analysis.
 TIMER_HZ = RP2040_TIMER0_TICKS_PER_SECOND
 LIVE_STAGE = "OTIS_D9_D6_FREQUENCY_ONLY_DIGITAL_ENDURANCE_LIVE"
 EVIDENCE_EPOCH = "OTIS_D9_D6_FREQUENCY_ONLY_DIGITAL_ENDURANCE_EPOCH_1"

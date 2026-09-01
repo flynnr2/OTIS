@@ -2514,6 +2514,24 @@ void emit_common_boot_status(void) {
   emit_status_u32("capture", "nominal_capture_clock_hz",
                   OTIS_NOMINAL_CAPTURE_CLOCK_HZ, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_PROFILE_ASSUMPTION);
+  emit_status_u32("capture", "timestamp_source_counter_hz",
+                  OTIS_RP2040_TIMER0_SOURCE_COUNTER_HZ, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u32("capture", "timestamp_encoding_scale",
+                  OTIS_RP2040_TIMER0_TICKS_PER_US, OTIS_SEVERITY_INFO,
+                  OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u32("capture", "timestamp_quantum_ticks",
+                  OTIS_RP2040_TIMER0_TIMESTAMP_QUANTUM_TICKS,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status_u32("capture", "timestamp_quantum_ns",
+                  OTIS_RP2040_TIMER0_TIMESTAMP_QUANTUM_NS,
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status("capture", "timestamp_coordinate_semantics",
+              "projected_local_non_metrological", OTIS_SEVERITY_WARN,
+              OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
+  emit_status("capture", "timestamp_provenance",
+              "rp2040_timerawl_or_arduino_micros_1mhz_encoded_x16",
+              OTIS_SEVERITY_WARN, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
   emit_status_u32("reference", "nominal_pps_hz", OTIS_NOMINAL_PPS_HZ,
                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
   emit_status_u32("reference", "nominal_tcxo_hz", OTIS_NOMINAL_TCXO_HZ,

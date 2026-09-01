@@ -72,6 +72,9 @@ static_assert(kNominalGainHzPerCode > 0.0,
 constexpr char kNominalGainHzPerCodeText[] = "0.000170726025874";
 constexpr uint32_t kStartupWarmupS = OTIS_CX317_STARTUP_WARMUP_S;
 constexpr uint32_t kSettlingExclusionS = OTIS_CX317_SETTLING_EXCLUSION_S;
+#if OTIS_ENABLE_EXACT_POST_APPLICATION_SETTLING
+constexpr uint64_t kCaptureTicksPerSecond = 16000000ull;
+#endif
 constexpr int32_t kActiveLiveUpdateCodes = 0;
 constexpr uint8_t kQueueDepth = 4u;
 constexpr size_t kFrameCapacity = 1536u;
@@ -116,13 +119,17 @@ bool selected_model_applicable = false;
 bool recovery_requested = false;
 #if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
 OtisTimer0Extension timer_extension = {};
-#endif
-#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
-OtisCx321PlantSignAccumulator plant_sign_accumulator = {};
-uint64_t previous_boundary_ticks = 0u;
 uint64_t previous_boundary_extended_ticks = 0u;
 uint32_t previous_boundary_session = 0u;
 bool previous_boundary_available = false;
+#endif
+#if OTIS_ENABLE_EXACT_POST_APPLICATION_SETTLING
+uint64_t exact_settling_deadline_ticks = 0u;
+uint32_t exact_settling_capture_session = 0u;
+bool exact_settling_deadline_available = false;
+#endif
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+OtisCx321PlantSignAccumulator plant_sign_accumulator = {};
 bool latest_natural_tight_inside = false;
 #endif
 
@@ -434,13 +441,17 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   recovery_requested = false;
 #if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   otis_timer0_extension_init(&timer_extension);
-#endif
-#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
-  plant_sign_accumulator = {};
-  previous_boundary_ticks = 0u;
   previous_boundary_extended_ticks = 0u;
   previous_boundary_session = 0u;
   previous_boundary_available = false;
+#endif
+#if OTIS_ENABLE_EXACT_POST_APPLICATION_SETTLING
+  exact_settling_deadline_ticks = 0u;
+  exact_settling_capture_session = 0u;
+  exact_settling_deadline_available = false;
+#endif
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
+  plant_sign_accumulator = {};
   latest_natural_tight_inside = false;
 #endif
   return true;
@@ -485,6 +496,11 @@ void otis_cx317_preview_live_on_dac_applied(uint16_t applied_code,
   selected_estimator_valid = false;
   selected_model_applicable = false;
   settling_until_s = uptime_s + kSettlingExclusionS;
+#if OTIS_ENABLE_EXACT_POST_APPLICATION_SETTLING
+  exact_settling_deadline_ticks = 0u;
+  exact_settling_capture_session = 0u;
+  exact_settling_deadline_available = false;
+#endif
   otis_cx317_i_only_engine_note_dac_epoch(&controller, uptime_s);
 #else
   (void)applied_code;
@@ -511,6 +527,17 @@ void otis_cx317_preview_live_on_dac_applied_epoch_exact(
     uint64_t application_ticks, uint32_t capture_session) {
   otis_cx317_preview_live_on_dac_applied_epoch(applied_code, dac_epoch,
                                                uptime_s);
+#if OTIS_ENABLE_EXACT_POST_APPLICATION_SETTLING
+  constexpr uint64_t kSettlingExclusionTicks =
+      static_cast<uint64_t>(kSettlingExclusionS) * kCaptureTicksPerSecond;
+  if (application_ticks != 0u && capture_session != 0u &&
+      application_ticks <= UINT64_MAX - kSettlingExclusionTicks) {
+    exact_settling_deadline_ticks =
+        application_ticks + kSettlingExclusionTicks;
+    exact_settling_capture_session = capture_session;
+    exact_settling_deadline_available = true;
+  }
+#endif
 #if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   if (!timer_extension.available ||
       timer_extension.capture_session != capture_session)
@@ -551,6 +578,11 @@ void otis_cx317_preview_live_on_boundary(
   const bool boundary_extended = otis_timer0_extension_advance_boundary(
       &timer_extension, observation->pps_timestamp_ticks,
       observation->session, &current_boundary_extended_ticks);
+  const bool interval_opening_exact =
+      boundary_extended && previous_boundary_available &&
+      previous_boundary_session == observation->session;
+  const uint64_t interval_opening_extended_ticks =
+      previous_boundary_extended_ticks;
 #endif
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
   OtisCx321PlantSignEstimate plant_estimate = {};
@@ -567,10 +599,13 @@ void otis_cx317_preview_live_on_boundary(
   } else {
     otis_cx321_plant_sign_accumulator_invalidate(&plant_sign_accumulator);
   }
-  previous_boundary_ticks = observation->pps_timestamp_ticks;
+#endif
+#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
   previous_boundary_extended_ticks = current_boundary_extended_ticks;
   previous_boundary_session = observation->session;
   previous_boundary_available = true;
+#endif
+#if OTIS_ENABLE_CX321_ACTIVE_HYBRID
   const auto deliver_plant_estimate = [&]() {
     if (plant_estimate_ready && !plant_estimate_delivered) {
       otis_cx317_active_live_on_plant_sign_estimate(
@@ -604,7 +639,18 @@ void otis_cx317_preview_live_on_boundary(
   // interval that began one second earlier, so it still straddles the
   // excluded settling window.  Admit only boundaries strictly after it; the
   // 600th accepted interval then closes after the full 900 + 600 seconds.
-  if (uptime_s < warmup_complete_s || uptime_s <= settling_until_s) {
+  bool settling_interval_excluded = uptime_s <= settling_until_s;
+#if OTIS_ENABLE_EXACT_POST_APPLICATION_SETTLING
+  if (exact_settling_deadline_available) {
+    settling_interval_excluded =
+        !interval_opening_exact ||
+        observation->session != exact_settling_capture_session ||
+        interval_opening_extended_ticks < exact_settling_deadline_ticks;
+    if (!settling_interval_excluded)
+      exact_settling_deadline_available = false;
+  }
+#endif
+  if (uptime_s < warmup_complete_s || settling_interval_excluded) {
     otis_cx317_snapshot_estimator_reset(&estimator);
     selected_estimator_valid = false;
     selected_model_applicable = false;

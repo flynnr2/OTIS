@@ -21,13 +21,14 @@ from typing import Any
 from .active_hybrid_activation import validate_frozen_run_manifest
 from .active_hybrid_programme_contract import (
     CX320_PROGRAMME,
-    CX322_D9_D6_72H_PROGRAMME,
+    ActiveHybridProgramme,
     programme_from_mapping,
 )
 from .capture_runtime_checks import _serial_owner_pids
 from .contracts import (
     ACTIVE_HYBRID_DECISION_V1_FIELDS,
     ACTIVE_HYBRID_DECISION_V2_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
     ACTIVE_TRANSACTION_V1_FIELDS,
     ACTIVE_TRANSACTION_V2_FIELDS,
 )
@@ -46,7 +47,7 @@ HYBRID_EXACT = Path("csv/active_hybrid_decisions_v2.csv")
 CAPTURE_MAX_AGE_S = 15.0
 EVIDENCE_MAX_AGE_S = 15.0
 EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
-CAMPAIGN18_PREWRITE_QUALIFICATION_DEADLINE_S = 660.0
+PREWRITE_QUALIFICATION_DEADLINE_S = 660.0
 
 _AT2_NON_JOIN_FIELDS = frozenset(
     {
@@ -231,7 +232,7 @@ def _exact_sidecar_progress(
     }
 
 
-def _campaign18_exact_timing_progress(run_dir: Path, *, now: float) -> dict[str, Any]:
+def _exact_lifecycle_timing_progress(run_dir: Path, *, now: float) -> dict[str, Any]:
     transaction_rows = _stable_contract_rows(
         run_dir / ACTIVE, ACTIVE_TRANSACTION_V1_FIELDS
     )
@@ -287,6 +288,70 @@ def _campaign18_exact_timing_progress(run_dir: Path, *, now: float) -> dict[str,
     }
 
 
+def _maintenance_evidence_progress(
+    run_dir: Path,
+    *,
+    programme: ActiveHybridProgramme,
+    expected_build_identity: str,
+    now: float,
+) -> dict[str, Any]:
+    """Read the descriptor-declared CX323 maintenance evidence without I/O."""
+
+    contract = programme.maintenance_record_contract
+    record_type = programme.maintenance_record_type
+    if contract != "active_hybrid_maintenance_v1" or record_type != "AHM":
+        raise ValueError("unsupported long-run maintenance evidence descriptor")
+    path = run_dir / "csv" / f"{contract}.csv"
+    rows = _stable_contract_rows(path, ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
+    mismatches: list[str] = []
+    previous_sequence = 0
+    latest: dict[str, str] | None = None
+    expected = {
+        "record_type": record_type,
+        "run_identity": programme.runtime_run_identity,
+        "build_identity": expected_build_identity,
+        "profile_identity": programme.profile_id,
+        "policy_id": programme.policy_id,
+        "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
+    }
+    for row_number, row in enumerate(rows, start=1):
+        try:
+            sequence = int(row["maintenance_record_sequence"])
+        except (TypeError, ValueError):
+            mismatches.append(f"AHM row {row_number} sequence is malformed")
+            continue
+        if sequence <= previous_sequence:
+            mismatches.append(f"AHM row {row_number} sequence is not increasing")
+        previous_sequence = sequence
+        for field, value in expected.items():
+            if row.get(field) != value:
+                mismatches.append(
+                    f"AHM row {row_number} {field} differs: "
+                    f"{row.get(field)!r} != {value!r}"
+                )
+        latest = {
+            field: row.get(field, "")
+            for field in (
+                "maintenance_record_sequence",
+                "event",
+                "maintenance_state_after",
+                "request_pending_after",
+                "response_pending_after",
+                "metadata_hold_after",
+                "reason",
+            )
+        }
+    return {
+        "required": True,
+        "contract": contract,
+        "record_type": record_type,
+        "rows": len(rows),
+        "age_s": _age_s(path, now=now),
+        "latest": latest,
+        "mismatches": mismatches,
+    }
+
+
 def _pid_alive(value: object) -> bool:
     try:
         pid = int(value)
@@ -332,9 +397,10 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
     raw_age = _age_s(run_dir / RAW_SERIAL, now=now)
     integrity_faults: list[str] = []
     exact_timing: dict[str, Any] | None = None
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    maintenance: dict[str, Any] | None = None
+    if programme.integrated_long_run:
         try:
-            exact_timing = _campaign18_exact_timing_progress(run_dir, now=now)
+            exact_timing = _exact_lifecycle_timing_progress(run_dir, now=now)
         except (OSError, TypeError, ValueError) as exc:
             exact_timing = {
                 "required": True,
@@ -357,6 +423,36 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
                 )
             elif int(progress["join_lag_rows"]) > 1 or progress["lag_stale"]:
                 integrity_faults.append(f"{record_type}_sidecar_join_lag_stale")
+    if programme.persistent_maintenance_policy:
+        expected_pre_setup_header_only = bool(
+            isinstance(supervisor, dict)
+            and supervisor.get("manual_start_sent") is False
+            and supervisor.get("setup_confirmed_utc") is None
+            and supervisor.get("latest_hybrid_state") in {None, "SETUP_PENDING"}
+        )
+        try:
+            maintenance = _maintenance_evidence_progress(
+                run_dir,
+                programme=programme,
+                expected_build_identity=str(manifest["firmware"]["build_identity"]),
+                now=now,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            maintenance = {
+                "required": True,
+                "unavailable": True,
+                "mismatches": [str(exc)],
+            }
+        maintenance["expected_pre_setup_header_only"] = (
+            expected_pre_setup_header_only
+        )
+        if maintenance.get("unavailable") is True or (
+            not maintenance.get("rows")
+            and not expected_pre_setup_header_only
+        ):
+            integrity_faults.append("maintenance_evidence_unavailable")
+        elif maintenance["mismatches"]:
+            integrity_faults.append("maintenance_evidence_identity_mismatch")
     if capture is None:
         integrity_faults.append("capture_state_missing")
     else:
@@ -382,12 +478,12 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
         elif raw_age > EVIDENCE_MAX_AGE_S:
             integrity_faults.append("raw_evidence_stale")
         if (
-            programme is CX322_D9_D6_72H_PROGRAMME
+            programme.integrated_long_run
             and isinstance(prewrite_readiness, dict)
             and prewrite_readiness.get("ready") is False
             and prewrite_elapsed_s is not None
             and prewrite_elapsed_s
-            > CAMPAIGN18_PREWRITE_QUALIFICATION_DEADLINE_S
+            > PREWRITE_QUALIFICATION_DEADLINE_S
         ):
             integrity_faults.append("prewrite_qualification_deadline_expired")
 
@@ -470,9 +566,7 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "maximum_poll_interval_s": 10,
             "plant_sign_ack_deadline_s": 30,
             "evidence_stale_after_s": EVIDENCE_MAX_AGE_S,
-            "campaign18_prewrite_qualification_deadline_s": (
-                CAMPAIGN18_PREWRITE_QUALIFICATION_DEADLINE_S
-            ),
+            "prewrite_qualification_deadline_s": PREWRITE_QUALIFICATION_DEADLINE_S,
         },
         "capture": {
             "pid": capture_pid,
@@ -523,6 +617,7 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "active_transactions": transactions,
             "active_hybrid_decisions": hybrid,
             "exact_timing_sidecars": exact_timing,
+            "maintenance_evidence": maintenance,
             "plant_sign_qualification": plant_sign,
             "plant_sign_state": (
                 None if supervisor is None else supervisor.get("latest_plant_sign_state")

@@ -16,16 +16,16 @@ from host.otis_tools.programme_status import (
 )
 
 
-def test_tracked_status_selects_72h_integrated_engineering() -> None:
+def test_tracked_status_selects_72h_corrected_adaptive_hybrid() -> None:
     status = load_programme_status()
 
     assert status["active_programme"] == (
-        "cx322_d9_d6_72h_sustained_engineering"
+        "cx323_d9_d6_72h_adaptive_hybrid"
     )
     integrated = status["programmes"][status["active_programme"]]
     assert integrated["allowed_operations"] == [
         "offline_preparation",
-        "cx322_d9_d6_72h_sustained_engineering_live"
+        "cx323_d9_d6_72h_adaptive_hybrid_live"
     ]
     assert integrated["finite_envelope"][
         "maximum_total_automatic_applications"
@@ -37,9 +37,12 @@ def test_tracked_status_selects_72h_integrated_engineering() -> None:
     assert integrated["finite_envelope"]["absolute_wall_clock_limit_s"] == 280800
     assert integrated["serial"]["baud"] == 115200
     assert integrated["serial"]["stored_device_path_authority"] is False
-    predecessor = status["programmes"]["cx322_d9_d6_integration_engineering"]
+    assert integrated["finite_envelope"]["setup_code"] == 0xA84D
+    predecessor = status["programmes"][
+        "cx322_d9_d6_72h_sustained_engineering"
+    ]
     assert predecessor["state"] == (
-        "superseded_by_cx322_d9_d6_72h_sustained_engineering"
+        "superseded_by_cx323_d9_d6_72h_adaptive_hybrid"
     )
     assert predecessor["allowed_operations"] == []
     assert predecessor["physical_authority_effective"] is False

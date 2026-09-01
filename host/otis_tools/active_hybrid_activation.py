@@ -14,12 +14,15 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from typing import Any
 
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
+    CX323_REHEARSAL_COVERAGE,
+    CX323_D9_D6_72H_PROGRAMME,
     CX320_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     integrated_setup_provenance_contract,
@@ -35,9 +38,14 @@ from .active_hybrid_bundle import (
 from .active_hybrid_proposal import validate_proposal
 from .evidence_index import package_identity
 from .run_paths import (
+    cx323_active_timing_csv_files,
     cx321_csv_files,
     default_csv_files,
     exact_active_timing_csv_files,
+)
+from .time_domains import (
+    canonical_domain_declaration,
+    validate_domain_declarations,
 )
 
 
@@ -103,6 +111,7 @@ CAMPAIGN18_REHEARSAL_COVERAGE = (
     "campaign18_repeated_natural_transaction",
     "campaign18_GNSS_hold_causal_requalification",
     "campaign18_exact_72h_endpoint_clock",
+    "campaign18_authoritative_capture_fault_terminal",
 )
 FIFO_PATHS = {
     "normal_command": "control/normal_commands.fifo",
@@ -307,13 +316,17 @@ def validate_operational_rehearsal(
     coverage = report.get("coverage")
     tool_bindings = report.get("tool_bindings")
     expected_coverage = set(REHEARSAL_COVERAGE)
+    if programme.sustained_status_contract:
+        expected_coverage.add("mandatory_sustained_status_snapshot_identity")
     if programme.sustained_regulation:
         expected_coverage.update(SUSTAINED_REHEARSAL_COVERAGE)
     if programme.engineering_unarmed_observation_s > 0:
         expected_coverage.add("integrated_unarmed_concurrency_observation_boundary")
     if programme.forwarded_output_integration:
         expected_coverage.add("integrated_setup_provenance_boundary")
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.persistent_maintenance_policy:
+        expected_coverage.update(CX323_REHEARSAL_COVERAGE)
+    elif programme.integrated_long_run:
         expected_coverage.update(CAMPAIGN18_REHEARSAL_COVERAGE)
     if (
         report.get("schema_version") != 1
@@ -411,21 +424,28 @@ def validate_operational_rehearsal(
                 "CX321 rehearsal lacks the exact real-process plant-sign "
                 "transaction path"
             )
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.integrated_long_run:
         topology = report.get("real_process_topology", {})
         transaction = (
-            topology.get("cx322_real_transaction_path", {})
+            topology.get("integrated_long_run_real_transaction_path", {})
+            or topology.get("cx322_real_transaction_path", {})
             if isinstance(topology, dict)
             else {}
         )
         clock = report.get("accelerated_qualified_device_clock", {})
         manifest_path = path.parent / "process_topology/run/run_manifest.json"
-        manifest = _read_object(manifest_path, "Campaign 18 rehearsal manifest")
+        manifest = _read_object(
+            manifest_path, "integrated long-run rehearsal manifest"
+        )
         files = manifest.get("files", [])
         required_exact = {
             "active_transactions_v2": "csv/active_transactions_v2.csv",
             "active_hybrid_decisions_v2": "csv/active_hybrid_decisions_v2.csv",
         }
+        if programme.persistent_maintenance_policy:
+            required_exact["active_hybrid_maintenance_v1"] = (
+                "csv/active_hybrid_maintenance_v1.csv"
+            )
         exact_files = {
             item.get("contract"): item
             for item in files
@@ -433,6 +453,13 @@ def validate_operational_rehearsal(
             and item.get("contract") in required_exact
         }
         domains = manifest.get("domains", [])
+        domain_errors = validate_domain_declarations(
+            domains,
+            require_complete=(
+                require_current_tools
+                and programme.key == CX323_D9_D6_72H_PROGRAMME.key
+            ),
+        )
         if (
             not isinstance(transaction, dict)
             or transaction.get("complete_multi_transaction_sequence") is not True
@@ -467,6 +494,7 @@ def validate_operational_rehearsal(
             )
             or manifest.get("contracts", {}).get("active_transactions_v2") != 2
             or manifest.get("contracts", {}).get("active_hybrid_decisions_v2") != 2
+            or domain_errors
             or not any(
                 isinstance(item, dict)
                 and item.get("name") == "rp2040_timer0_extended"
@@ -590,8 +618,23 @@ def _attempt_descriptor(
                 "qualified_12h_endpoint_complete"
             )
         operator_abort_decisions = {"operator_abort"}
-        if programme is CX322_D9_D6_72H_PROGRAMME:
-            operator_abort_decisions.add("cx322_d9_d6_72h_operator_abort")
+        operator_abort_decisions.update(
+            decision
+            for decision in programme.terminal_decisions
+            if decision.endswith("_operator_abort")
+        )
+        campaign18_legacy_live_health_handoff = (
+            isinstance(supervisor_terminal, dict)
+            and isinstance(supervisor_terminal.get("reason"), str)
+            and re.fullmatch(
+                r"cx322_d9_d6_72h_live_supervisor_fault:"
+                r"active live-health handoff is invalid: new snapshot "
+                r"generation began before the prior generation [1-9][0-9]* "
+                r"completed",
+                supervisor_terminal["reason"],
+            )
+            is not None
+        )
         failed_physical_gate = (
             seal.get("status") == "failed"
             and seal.get("primary_decision")
@@ -614,6 +657,200 @@ def _attempt_descriptor(
             and terminal.get("abort_delivery_count") == 1
             and isinstance(supervisor_terminal, dict)
             and supervisor_terminal.get("result") == "aborted"
+        )
+        campaign18_capture_terminal = (
+            programme is CX322_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and acquisition_gate.get("passed") is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("static_terminal_exact") is True
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and endpoint_complete_check is False
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and (
+                seal.get("primary_decision")
+                == "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+                or (
+                    seal.get("primary_decision")
+                    == "cx322_d9_d6_72h_identity_or_evidence_fault"
+                    and supervisor_terminal.get("primary_decision")
+                    == "measurement_authority_or_platform_fault"
+                    and (
+                        supervisor_terminal.get("reason")
+                        == (
+                            "cx322_d9_d6_72h_live_supervisor_fault:"
+                            "live active_fail_static asserted"
+                        )
+                        or campaign18_legacy_live_health_handoff
+                    )
+                )
+            )
+        )
+        cx323_firmware_fail_static_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and acquisition_gate.get("passed") is False
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is False
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and supervisor_terminal.get("reason")
+            == (
+                "cx323_d9_d6_72h_live_supervisor_fault:"
+                "live active_fail_static asserted"
+            )
+            and isinstance(terminal.get("static_code"), int)
+            and programme.minimum_code
+            <= terminal["static_code"]
+            <= programme.maximum_code
+            and supervisor_terminal.get("last_confirmed_code")
+            == terminal["static_code"]
+        )
+        # Campaign19 Attempt 7 reached the first request frontier before the
+        # original host inspected the already-retained firmware partition
+        # fault.  Its sealed terminal therefore carries the old
+        # acknowledgement-observation diagnosis instead of the later exact
+        # ``live active_fail_static asserted`` reason.  Accept only that
+        # complete, immutable legacy shape as evidence of an incomplete gate;
+        # this authorizes a new identified attempt without reclassifying the
+        # predecessor as a successful acquisition.
+        cx323_legacy_ack_observation_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and acquisition_gate.get("passed") is False
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is False
+            and seal.get("evidence_snapshot_validation")
+            == {"failures": [], "warnings": []}
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("latest_hybrid_state")
+            == "FIRST_PHASE_TRANSACTION"
+            and terminal.get("static_terminal_exact") is False
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(terminal.get("static_code"), int)
+            and programme.minimum_code
+            <= terminal["static_code"]
+            <= programme.maximum_code
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and supervisor_terminal.get("reason")
+            == (
+                "cx323_d9_d6_72h_live_supervisor_fault:"
+                "active-hybrid evidence acknowledgement reached the host "
+                "serial write boundary but firmware consumption is unconfirmed"
+            )
+            and supervisor_terminal.get("last_confirmed_code")
+            == terminal["static_code"]
+            and isinstance(seal.get("source_artifacts_sha256"), dict)
+            and all(
+                isinstance(seal["source_artifacts_sha256"].get(path), str)
+                and len(seal["source_artifacts_sha256"][path]) == 64
+                for path in (
+                    "COMPLETE",
+                    "csv/health.csv",
+                    "raw/serial.log",
+                    "reports/cx317_active_supervisor_events.jsonl",
+                    "reports/cx317_active_supervisor_state.json",
+                )
+            )
+        )
+        # Campaign19 Attempt 8 completed its first exact application and
+        # response, but the CX323 status getter subsequently overwrote the
+        # correct CX323 counters/checkpoint with zero-valued legacy-engine
+        # fields.  The live supervisor correctly rejected the resulting
+        # impossible ``HYBRID_TRACKING`` snapshot.  Accept only the sealed
+        # shape whose independent transaction and maintenance replay proves
+        # that exact response checkpoint; this admits a new identified
+        # attempt without reclassifying the interrupted acquisition.
+        application_counts = seal.get("application_counts_and_budgets", {})
+        timing_join = seal.get("integrated_exact_timing_sidecar_join", {})
+        active_replay = seal.get("active_hybrid_replay", {})
+        cx323_status_serialization_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and acquisition_gate.get("passed") is True
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is True
+            and seal.get("evidence_snapshot_validation")
+            == {"failures": [], "warnings": []}
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("latest_hybrid_state") == "HYBRID_TRACKING"
+            and terminal.get("static_terminal_exact") is True
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(terminal.get("static_code"), int)
+            and programme.minimum_code
+            <= terminal["static_code"]
+            <= programme.maximum_code
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and supervisor_terminal.get("reason")
+            == (
+                "cx323_d9_d6_72h_live_supervisor_fault:"
+                "CX320 HYBRID_TRACKING lacks the first checkpoint"
+            )
+            and supervisor_terminal.get("last_confirmed_code")
+            == terminal["static_code"]
+            and isinstance(application_counts, dict)
+            and application_counts.get("exact") is True
+            and application_counts.get("automatic_application_count") == 1
+            and application_counts.get("physical_control_application_count")
+            == 1
+            and application_counts.get("phase_material_application_count") == 1
+            and application_counts.get("first_phase_checkpoint_passed") is True
+            and application_counts.get(
+                "first_phase_observation_checkpoint_exact"
+            )
+            is True
+            and application_counts.get("all_response_checkpoints_passed")
+            is True
+            and isinstance(timing_join, dict)
+            and timing_join.get("exact") is True
+            and timing_join.get("mismatches") == []
+            and isinstance(active_replay, dict)
+            and active_replay.get("all_response_checkpoints_passed") is True
+            and isinstance(seal.get("source_artifacts_sha256"), dict)
+            and all(
+                isinstance(seal["source_artifacts_sha256"].get(path), str)
+                and len(seal["source_artifacts_sha256"][path]) == 64
+                for path in (
+                    "COMPLETE",
+                    "csv/active_hybrid_maintenance_v1.csv",
+                    "csv/active_transactions_v2.csv",
+                    "csv/health.csv",
+                    "raw/serial.log",
+                    "reports/cx317_active_supervisor_events.jsonl",
+                    "reports/cx317_active_supervisor_state.json",
+                )
+            )
         )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
@@ -647,6 +884,10 @@ def _attempt_descriptor(
             or not (
                 failed_physical_gate
                 or failed_post_acquisition_gate
+                or campaign18_capture_terminal
+                or cx323_firmware_fail_static_terminal
+                or cx323_legacy_ack_observation_terminal
+                or cx323_status_serialization_terminal
                 or bounded_operator_abort
                 or bounded_pre_setup_provenance
             )
@@ -994,7 +1235,16 @@ def _required_files(
         "hybrid_preview_decisions_v1",
         "tight_deadband_decisions_v1",
     }
-    if programme is CX322_D9_D6_72H_PROGRAMME:
+    if programme.persistent_maintenance_policy:
+        source = cx323_active_timing_csv_files()
+        required.update(
+            {
+                "active_transactions_v2",
+                "active_hybrid_decisions_v2",
+                programme.maintenance_record_contract,
+            }
+        )
+    elif programme.integrated_long_run:
         source = exact_active_timing_csv_files()
         required.update(
             {"active_transactions_v2", "active_hybrid_decisions_v2"}
@@ -1160,6 +1410,15 @@ def create_run_manifest(
             },
             "qualification": {
                 "qualified_duration_s": programme.qualified_duration_s,
+                **(
+                    {
+                        "qualified_endpoint_contract": "qualified_D14_D8_aperture_count_v2",
+                        "qualified_d14_aperture_count": programme.qualified_d14_aperture_count,
+                        "correction_response_reserve_d14_apertures": programme.correction_response_reserve_d14_apertures,
+                    }
+                    if programme.qualified_d14_aperture_count is not None
+                    else {}
+                ),
                 "absolute_wall_clock_limit_s": (
                     programme.authorized_absolute_wall_limit_s
                 ),
@@ -1169,8 +1428,8 @@ def create_run_manifest(
             },
         },
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
-            {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
+            canonical_domain_declaration("rp2040_timer0"),
+            canonical_domain_declaration("h1_cx317_ocxo_10mhz"),
         ],
         "channels": [
             *(
@@ -1271,13 +1530,10 @@ def create_run_manifest(
     }
     if (
         programme.identification_required
-        or programme is CX322_D9_D6_72H_PROGRAMME
+        or programme.integrated_long_run
     ):
         manifest["domains"].append(
-            {
-                "name": "rp2040_timer0_extended",
-                "nominal_hz": 16_000_000,
-            }
+            canonical_domain_declaration("rp2040_timer0_extended")
         )
     if programme.identification_required:
         manifest["programme_policy"] = bundle["programme_policy"]
@@ -1416,6 +1672,17 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         != progressive_checkpoint_contract(programme)
         or qualification.get("qualified_duration_s")
         != programme.qualified_duration_s
+        or (
+            programme.qualified_d14_aperture_count is not None
+            and (
+                qualification.get("qualified_endpoint_contract")
+                != "qualified_D14_D8_aperture_count_v2"
+                or qualification.get("qualified_d14_aperture_count")
+                != programme.qualified_d14_aperture_count
+                or qualification.get("correction_response_reserve_d14_apertures")
+                != programme.correction_response_reserve_d14_apertures
+            )
+        )
         or qualification.get("absolute_wall_clock_limit_s")
         != programme.authorized_absolute_wall_limit_s
         or qualification.get("no_extension") is not True
@@ -1444,12 +1711,29 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
             raise ValueError("CX321 plant-sign manifest binding differs")
     if not required_contracts <= set(manifest.get("contracts", {})):
         raise ValueError("CX320 live manifest lacks decision-bearing contracts")
+    domain_errors = validate_domain_declarations(
+        manifest.get("domains"),
+    )
+    if domain_errors:
+        raise ValueError(
+            "CX320 live manifest time-domain declaration differs: "
+            + "; ".join(domain_errors)
+        )
     return manifest
 
 
 def validate_run_manifest(path: Path) -> dict[str, Any]:
     manifest = validate_frozen_run_manifest(path)
     programme = programme_from_mapping(manifest)
+    domain_errors = validate_domain_declarations(
+        manifest.get("domains"),
+        require_complete=(programme.key == CX323_D9_D6_72H_PROGRAMME.key),
+    )
+    if domain_errors:
+        raise ValueError(
+            "CX320 current live manifest time-domain declaration differs: "
+            + "; ".join(domain_errors)
+        )
     validate_activation(
         Path(manifest["activation"]["path"]),
         bundle_path=Path(manifest["bundle"]["path"]),

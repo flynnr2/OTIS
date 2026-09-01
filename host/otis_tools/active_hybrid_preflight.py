@@ -121,7 +121,10 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         "DUALCORE?",
         "DAC?",
         "ACTIVE?",
-        f"ACTIVE SETUP 1 1 1 100 1 0xA83C 1 {configuration_sha256}",
+        (
+            "ACTIVE SETUP 1 1 1 100 1 "
+            f"0x{programme.setup_code:04X} 1 {configuration_sha256}"
+        ),
         "ACTIVE ARM 1 1 1",
         "ACTIVE EVIDENCE 1 1",
         (
@@ -140,7 +143,7 @@ def preflight(*, bundle_path: Path, proposal_path: Path) -> dict[str, Any]:
         "exact_policy_profile_build_and_UF2_bound": True,
         "frozen_replay_passed": all(bundle["offline_replay"]["selection_checks"].values()),
         "command_envelope_parses": len(normalized) == len(commands),
-        "one_setup_code": "0xA83C" in normalized[4],
+        "one_setup_code": f"0x{programme.setup_code:04X}" in normalized[4],
         "normal_and_abort_paths_distinct": bundle["topology"]["normal_and_priority_abort_fifos_distinct"],
         "cx321_extended_phase4_envelope_parses": (
             not programme.identification_required

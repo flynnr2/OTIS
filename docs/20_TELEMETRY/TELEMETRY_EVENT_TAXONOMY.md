@@ -74,6 +74,7 @@ contextualize, or derive from those facts.
 | `DAC_UPDATE`       | control_action | Oscillator steering command or applied control action    |
 | `ACTIVE_TRANSACTION_TIMING` | control_action | Exact counter-domain timing sidecar for an active transaction record |
 | `ACTIVE_HYBRID_DECISION_TIMING` | state | Exact counter-domain timing sidecar for a hybrid decision record |
+| `ACTIVE_HYBRID_MAINTENANCE` | state | Exact CX323 persistence, debt, request, propagation, response, metadata-hold, and fail-static lifecycle evidence |
 | `ENVIRONMENT`      | context        | Temperature, pressure, humidity, voltage, board context  |
 | `DEVICE_STATE`     | provenance     | Boot, firmware, hardware, clock-source, runtime state    |
 | `CONFIG_SNAPSHOT`  | provenance     | Run configuration, selected profile, calibration, schema |
@@ -196,6 +197,41 @@ the sidecars are canonical for their exact lifecycle timing in the activated
 reordered or identity-inconsistent join and must not substitute the legacy
 whole-second display fields for cadence, response-reserve, right-censor,
 endpoint or terminal decisions.
+
+### CX323 active-hybrid maintenance evidence
+
+`ACTIVE_HYBRID_MAINTENANCE` is encoded as `AHM` under
+`active_hybrid_maintenance_v1`. It is non-actionable state evidence for
+`CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1`; it is not a raw timing
+observation and does not replace D14 `REF`, D8 `CNT`, `AHY`, `AH2`, `ACT`, or
+`AT2`.
+
+Every CX323 decision has exactly one AHM decision row joined to its exact AHY
+content row and AH2 `rp2040_timer0_extended` timing row. Request-producing
+decisions additionally join the exact ACT/AT2 request record. Separate AHM
+lifecycle events record unaccepted request rejection or expiry, application
+plus first-dependent-consumer propagation, response completion, recoverable
+GNSS-metadata hold and causal requalification, and a fail-static latch. An
+application acknowledgement without the exact applied code, DAC epoch, and
+first dependent consumer cannot commit correction debt.
+
+AHM preserves before/after persistence, pending, metadata-hold, and signed
+integer FLL/PLL debt state. The source frontier is in PPS snapshot endpoint
+sequence space with support `(opening, closing]`; the event clock is exactly
+`rp2040_timer0_extended`. Missing, duplicate, backward, partial, or
+identity-inconsistent records are unknown/invalid evidence, never clean or
+unchanged state.
+
+Each row also declares its complete firmware evidence-burst sequence, ordinal,
+and cardinality. The producer must reserve capacity for the whole causal burst
+before emitting its first AHY/AH2/AHM or ACT/AT2/AHM member. A partial burst is
+a maintenance-evidence fault; the row-level contract cannot by itself prove
+cross-core queue admission, which remains a native integration and rehearsal
+requirement.
+
+The exact fields, event cardinalities, identity joins, debt transitions, GNSS
+hold semantics, and verifier obligations are frozen in
+[`CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md`](../50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md).
 
 ---
 

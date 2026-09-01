@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 from hashlib import sha256
+from io import StringIO
+import inspect
 import json
 from pathlib import Path
 
@@ -11,12 +13,19 @@ from host.otis_tools import active_hybrid_activation as activation
 from host.otis_tools import active_hybrid_live_analyze as live_analyze
 from host.otis_tools import active_hybrid_live_rehearsal as rehearsal
 from host.otis_tools.active_hybrid_programme_contract import (
+    CX323_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
     CX322_PROGRAMME,
 )
 from host.otis_tools.active_hybrid_live_analyze import (
     _response_dependent_consumer_propagation,
+)
+from host.otis_tools.active_hybrid_evidence_guard import (
+    replay_cx323_maintenance_history,
+)
+from host.otis_tools.active_hybrid_programme_contract import (
+    CX323_REHEARSAL_COVERAGE,
 )
 from host.otis_tools.active_status_contract import (
     complete_active_status_snapshots,
@@ -26,6 +35,7 @@ from host.otis_tools.capture_serial import CsvRecordSplitter
 from host.otis_tools.contracts import (
     ACTIVE_HYBRID_DECISION_V1_FIELDS,
     ACTIVE_HYBRID_DECISION_V2_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
     ACTIVE_TRANSACTION_V2_FIELDS,
     CONTRACT_FIELDS,
 )
@@ -37,6 +47,41 @@ def _binding(path: Path) -> dict[str, object]:
         "sha256": sha256(path.read_bytes()).hexdigest(),
         "size_bytes": path.stat().st_size,
     }
+
+
+def test_supervisor_startup_exit_reports_process_output_without_fifo_timeout(
+    tmp_path: Path,
+) -> None:
+    class ExitedSupervisor:
+        returncode = 17
+        stdout = StringIO("exact startup identity mismatch\n")
+
+        @staticmethod
+        def poll() -> int:
+            return 17
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "exited before host-abort FIFO: exit=17; "
+            "exact startup identity mismatch"
+        ),
+    ):
+        rehearsal._supervisor_and_abort_ready(
+            ExitedSupervisor(), tmp_path / "host_abort.fifo"  # type: ignore[arg-type]
+        )
+
+
+def test_cx323_rehearsal_and_activation_share_one_exact_coverage_contract() -> None:
+    assert rehearsal.CX323_REHEARSAL_COVERAGE is CX323_REHEARSAL_COVERAGE
+    assert activation.CX323_REHEARSAL_COVERAGE is CX323_REHEARSAL_COVERAGE
+    assert CX323_REHEARSAL_COVERAGE == (
+        "cx323_exact_AT2_AH2_AHM_atomic_capture",
+        "cx323_repeated_controller_transaction",
+        "cx323_GNSS_hold_causal_requalification",
+        "cx323_exact_72h_endpoint_clock",
+        "cx323_authoritative_capture_fault_terminal",
+    )
 
 
 def _fixture(tmp_path: Path) -> tuple[Path, dict, Path, dict]:
@@ -183,6 +228,197 @@ def test_campaign18_fixture_defers_a_zero_authority_consumer_after_requalificati
     assert _response_dependent_consumer_propagation(
         transactions, mutated
     )["exact"] is False
+
+
+def test_cx323_fixture_uses_its_own_identity_and_ahm_lifecycle() -> None:
+    policy_path = CX323_D9_D6_72H_PROGRAMME.policy_path
+    bundle = {
+        "programme_id": CX323_D9_D6_72H_PROGRAMME.programme_id,
+        "firmware": {
+            "build_identity": "a" * 64 + ":" + "b" * 64,
+            "profile_id": CX323_D9_D6_72H_PROGRAMME.profile_id,
+        },
+        "policy": {
+            "path": str(policy_path),
+            "policy_sha256": sha256(policy_path.read_bytes()).hexdigest(),
+        },
+    }
+
+    decisions, transactions, summary, maintenance = (
+        rehearsal._cx323_maintenance_transaction_fixture(bundle)
+    )
+    estimates = rehearsal._cx322_selected_estimate_fixture(decisions, bundle)
+    policy_document = json.loads(policy_path.read_text(encoding="utf-8"))
+
+    assert summary["applications"] and len(summary["applications"]) == 2
+    assert all(
+        row["run_identity"] == CX323_D9_D6_72H_PROGRAMME.runtime_run_identity
+        and row["profile_identity"] == CX323_D9_D6_72H_PROGRAMME.profile_id
+        for row in [*decisions, *transactions, *maintenance]
+    )
+    assert all(
+        row["active_policy_sha256"] == bundle["policy"]["policy_sha256"]
+        for row in [*decisions, *transactions, *maintenance]
+    )
+    assert all(
+        row["numerical_policy_sha256"]
+        == bundle["policy"]["policy_sha256"]
+        for row in transactions
+    )
+    assert all(
+        row["frequency_estimator_sha256"]
+        == policy_document["bindings"]["frequency_estimator"]["sha256"]
+        for row in decisions
+    )
+    assert all(
+        row["estimator_sha256"]
+        == policy_document["bindings"]["frequency_estimator"]["sha256"]
+        and row["model_sha256"]
+        == policy_document["bindings"]["plant_model"]["sha256"]
+        for row in transactions
+    )
+    assert maintenance[0]["event"] == "policy_activation"
+    assert maintenance[0]["policy_id"] == CX323_D9_D6_72H_PROGRAMME.policy_id
+    assert {row["event"] for row in maintenance} >= {
+        "decision",
+        "application_first_consumer",
+        "response_complete",
+        "gnss_metadata_hold_enter",
+        "gnss_metadata_requalified",
+    }
+    assert all(
+        set(row) == set(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
+        for row in maintenance
+    )
+    assert all(
+        row["estimator_version"]
+        == policy_document["maintenance_selection"][
+            "selected_frequency_estimator"
+        ]
+        and row["config_hash"]
+        == policy_document["bindings"]["frequency_estimator"]["sha256"]
+        for row in estimates
+    )
+    assert [row["event"] for row in maintenance] == [
+        "policy_activation",
+        "decision",
+        "application_first_consumer",
+        "decision",
+        "response_complete",
+        "decision",
+        "decision",
+        "application_first_consumer",
+        "decision",
+        "response_complete",
+        "gnss_metadata_hold_enter",
+        "gnss_metadata_requalified",
+        "decision",
+        "decision",
+    ]
+    assert [int(row["evidence_burst_sequence"]) for row in maintenance] == list(
+        range(1, 15)
+    )
+    assert [
+        (row["decision_sequence"], row["transaction_event"])
+        for row in maintenance
+        if row["transaction_event"] != "none"
+    ] == [
+        ("1", "request_created"),
+        ("1", "application"),
+        ("1", "response"),
+        ("4", "request_created"),
+        ("4", "application"),
+        ("4", "response"),
+    ]
+    replay = replay_cx323_maintenance_history(
+        decisions,
+        transactions,
+        maintenance,
+        policy_path=policy_path,
+        expected_run_identity=CX323_D9_D6_72H_PROGRAMME.runtime_run_identity,
+        expected_build_identity=bundle["firmware"]["build_identity"],
+        expected_profile_identity=CX323_D9_D6_72H_PROGRAMME.profile_id,
+        expected_active_policy_sha256=bundle["policy"]["policy_sha256"],
+    )
+    assert replay["exact"] is True
+    assert replay["completed_response_decision_sequences"] == [1, 4]
+    response_consumers = rehearsal._cx323_response_maintenance_consumers(
+        transactions, maintenance
+    )
+    assert response_consumers["exact"] is True
+    assert (
+        response_consumers["controller_state_authority"]
+        == "active_hybrid_maintenance_v1"
+    )
+    assert summary["native_conformance"] == {
+        "exact": True,
+        "oracle": "firmware_builder_and_formatter_field_semantics_v1",
+        "checked_ahm_rows": 14,
+        "checked_ahy_rows": 7,
+        "checked_act_rows": 9,
+    }
+    assert all(
+        row["request_sequence"] == "0"
+        and row["acceptance_sequence"] == "0"
+        and row["application_sequence"] == "0"
+        for row in (decisions[0], decisions[3])
+    )
+    assert all(
+        row["authority_state"] == "REFERENCE_HOLD"
+        and row["request_sequence"] == "0"
+        and row["acceptance_sequence"] == "0"
+        and row["application_sequence"] == "0"
+        and row["response_class"] == "unavailable"
+        for row in decisions[-2:]
+    )
+    assert decisions[0]["state_before"] == "PHASE_QUALIFY"
+    assert decisions[0]["state_after"] == "FIRST_PHASE_TRANSACTION"
+    assert decisions[2]["state_before"] == "HYBRID_TRACKING"
+    assert decisions[2]["state_after"] == "HYBRID_TRACKING"
+    assert maintenance[0]["capture_session"] == "0"
+    assert maintenance[0]["phase_epoch"] == "0"
+    assert maintenance[0]["phase_valid"] == "false"
+    assert maintenance[0]["hybrid_record_sequence"] == "0"
+    assert maintenance[0]["decision_sequence"] == "0"
+    assert [row["reason"] for row in maintenance if row["event"] == "response_complete"] == [
+        "response_completed",
+        "response_completed",
+    ]
+    assert [
+        row["reason"]
+        for row in maintenance
+        if row["event"] == "application_first_consumer"
+    ] == [
+        "application_and_first_consumer_committed",
+        "application_and_first_consumer_committed",
+    ]
+    assert [int(row["interval_sign"]) for row in maintenance[1:12]] == [
+        1,
+        1,
+        1,
+        1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+    ]
+    assert maintenance[1]["frontier_relation"] == "first"
+    assert maintenance[6]["frontier_relation"] == "contiguous"
+    assert maintenance[11][
+        "requalification_d14_d8_observation_sequence"
+    ] == "4200"
+    assert all(
+        row["raw_fll_demand_picocodes"] == "0"
+        and row["raw_pll_demand_picocodes"] == "0"
+        and row["candidate_total_demand_picocodes"] == "0"
+        and row["safe_cap_codes"] == "0"
+        and row["requested_delta_codes"] == "0"
+        for row in maintenance[10:12]
+    )
+    assert summary["post_requalification_decision_sequences"] == [6, 7]
 
 
 def test_campaign18_exact_sidecars_round_trip_through_capture_splitter(
@@ -351,10 +587,67 @@ def test_campaign18_rehearsal_manifest_requires_exact_timing_sidecars(
     assert observed["contracts"]["active_hybrid_decisions_v2"] == 2
     assert files["active_transactions_v2"].get("optional") is None
     assert files["active_hybrid_decisions_v2"].get("optional") is None
-    assert {
-        "name": "rp2040_timer0_extended",
-        "nominal_hz": 16_000_000,
-    } in observed["domains"]
+    extended = next(
+        item
+        for item in observed["domains"]
+        if item["name"] == "rp2040_timer0_extended"
+    )
+    assert extended["nominal_hz"] == 16_000_000
+    assert extended["source_counter_hz"] == 1_000_000
+    assert extended["encoding_scale"] == 16
+    assert extended["quantum_ticks"] == 16
+    assert extended["quantum_ns"] == 1_000
+    assert extended["coordinate_semantics"] == (
+        "projected_local_non_metrological"
+    )
+
+
+def test_cx323_current_rehearsal_requires_complete_timer0_semantics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    bundle["programme_id"] = CX323_D9_D6_72H_PROGRAMME.programme_id
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    monkeypatch.setattr(
+        rehearsal, "validate_bundle", lambda path, programme: bundle
+    )
+    monkeypatch.setattr(
+        rehearsal, "validate_proposal", lambda path, programme: proposal
+    )
+    run_dir = tmp_path / "campaign19-run"
+    run_dir.mkdir()
+
+    path = rehearsal._create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/pts/99",
+    )
+    observed = rehearsal.validate_rehearsal_run_manifest(path)
+    assert all(
+        item.get("quantum_ticks") == 16 and item.get("quantum_ns") == 1_000
+        for item in observed["domains"]
+        if item["name"] in {"rp2040_timer0", "rp2040_timer0_extended"}
+    )
+
+    changed = json.loads(path.read_text(encoding="utf-8"))
+    raw = next(
+        item for item in changed["domains"] if item["name"] == "rp2040_timer0"
+    )
+    del raw["quantum_ns"]
+    unsigned = {
+        key: value
+        for key, value in changed.items()
+        if key != "manifest_sha256"
+    }
+    changed["manifest_sha256"] = rehearsal._canonical_sha256(unsigned)
+    path.chmod(0o600)
+    path.write_text(json.dumps(changed), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="time-domain declaration differs"):
+        rehearsal.validate_rehearsal_run_manifest(path)
 
 
 def test_rehearsal_manifest_rejects_non_pty_device(
@@ -456,16 +749,23 @@ def test_cx321_rehearsal_manifest_declares_extended_plant_sign_time_domain(
     )
     observed = json.loads(path.read_text(encoding="utf-8"))
 
-    assert {
-        "name": "rp2040_timer0_extended",
-        "nominal_hz": 16_000_000,
-    } in observed["domains"]
+    extended = next(
+        item
+        for item in observed["domains"]
+        if item["name"] == "rp2040_timer0_extended"
+    )
+    assert extended["nominal_hz"] == 16_000_000
+    assert extended["quantum_ticks"] == 16
+    assert extended["quantum_ns"] == 1_000
     assert observed["contracts"]["plant_sign_qualification_v1"] == 1
 
 
 def test_activation_and_rehearsal_require_the_same_complete_coverage() -> None:
     assert set(rehearsal.REHEARSAL_COVERAGE) == set(
         activation.REHEARSAL_COVERAGE
+    )
+    assert set(rehearsal.CAMPAIGN18_REHEARSAL_COVERAGE) == set(
+        activation.CAMPAIGN18_REHEARSAL_COVERAGE
     )
 
 
@@ -770,3 +1070,12 @@ def test_accelerated_qualified_boundaries_use_device_time(
         "backward_host_utc_step_did_not_delay_endpoint": True,
         "physical_actions_performed": 0,
     }
+
+
+def test_qualified_device_clock_binds_confirmed_code_to_selected_programme() -> None:
+    source = inspect.getsource(
+        rehearsal._exercise_qualified_device_time_boundaries
+    )
+
+    assert "programme.setup_code" in source
+    assert '"43068"' not in source

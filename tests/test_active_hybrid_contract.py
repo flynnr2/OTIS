@@ -140,6 +140,57 @@ def test_deliberate_challenge_is_physical_but_not_phase_materiality(
     assert "phase materiality counterfactual differs" in " ".join(result.errors)
 
 
+def test_cx323_uses_integer_legacy_materiality_and_defers_lossy_holds_to_ahm(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "active_hybrid_decisions_v1.csv"
+    context = CsvValidationContext(
+        "active_hybrid_decisions_v1", frozenset(), frozenset()
+    )
+    row = _row()
+    row.update(
+        {
+            "profile_identity": "cx323_d9_d6_72h_adaptive_hybrid",
+            "reason": "phase_material_legacy_request_ready",
+            "frequency_term_hz": "0.000000000000",
+            "phase_term_hz": "0.000000000000",
+            "combined_demand_hz": "0.000000000000",
+            "raw_combined_delta_codes": "0.000000000000",
+            "requested_delta_codes": "6",
+            "requested_code": str(int(row["current_applied_code"]) + 6),
+            "counterfactual_frequency_only_delta_codes": "5",
+            "phase_materially_influenced": "true",
+        }
+    )
+    _write(path, row)
+    assert validate_csv(path, context).ok
+
+    row["phase_materially_influenced"] = "false"
+    _write(path, row)
+    result = validate_csv(path, context)
+    assert not result.ok
+    assert "phase materiality counterfactual differs" in " ".join(result.errors)
+
+    row.update(
+        {
+            "reason": "maintenance_request_ready",
+            "raw_combined_delta_codes": "-4.807504602373",
+            "requested_delta_codes": "-4",
+            "requested_code": str(int(row["current_applied_code"]) - 4),
+            "counterfactual_frequency_only_delta_codes": "-5",
+            "phase_materially_influenced": "false",
+        }
+    )
+    _write(path, row)
+    assert validate_csv(path, context).ok
+
+    row["phase_materially_influenced"] = "true"
+    _write(path, row)
+    result = validate_csv(path, context)
+    assert not result.ok
+    assert "phase materiality counterfactual differs" in " ".join(result.errors)
+
+
 def test_firmware_header_and_capture_splitter_use_the_exact_contract(
     tmp_path: Path,
 ) -> None:

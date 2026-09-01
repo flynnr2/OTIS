@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "policy_id": "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
+  "candidate_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
+  "status": "selected_for_implementation_native_parity_and_rehearsal_pending",
+  "oscillator_identity": "CX317",
+  "programme_id": "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_V1",
+  "question": "Can the corrected phase-priority controller sustain bounded D14-referenced hybrid authority for 72 qualified hours without the demonstrated 600-second quantization limit cycle?",
+  "bindings": {
+    "predecessor_72h_contract": {
+      "path": "docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_d9_d6_72h_integrated_engineering_contract_v1.json",
+      "sha256": "715e111b61fb25129cb4e0ee1fe421f5512448290b7b6f017f10030cec556a20"
+    },
+    "successor_study_contract_v1": {
+      "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v1.json",
+      "file_sha256": "619622119030dafc0c085a040ea3ac846c3ee82337c2c6f8c15d39629ca97160",
+      "semantic_sha256": "8041ebb49269fdf5b81ca23e6e5637029d356e83af6e48428ab5cc88f8df827c",
+      "disposition": "superseded_non_effective_execution"
+    },
+    "successor_study_contract_v2": {
+      "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v2.json",
+      "file_sha256": "fc46b30e2bd323cdcbfdefa84fc7a35943584007120f3e1b9b96bbe98ba379af",
+      "semantic_sha256": "20b729dce477349704ce09e7cacf14047525450d50230c8f114f75959289d707"
+    },
+    "successor_study_contract_v3": {
+      "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v3.json",
+      "file_sha256": "a9915b61f295eaa743d8803ee609dd2a3f5b3136fff41d4dc6766929e6f06949",
+      "semantic_sha256": "32a7f47330404e1cf7ea724517643deff078e74d3e1aa50127c378bced5f4d53"
+    },
+    "successor_comparison": {
+      "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/cx323_successor_offline_comparison_v2.json",
+      "file_sha256": "1df490f02e4fc9e0033aeebaa7b5c8f77ba8141368a7ce46396e1025a8bcfcad",
+      "semantic_sha256": "8096abbee3ee8295fc6cb53a6d0c6ca9af876bf529d464521e55776e105fb982"
+    },
+    "selected_architecture": {
+      "path": "docs/10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md",
+      "sha256": "324f432e4cb13bb899ec9dfc23e8d1425d9f664fa074c5a1251e7cba412a07ae"
+    },
+    "maintenance_evidence_contract": {
+      "path": "docs/50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md",
+      "sha256": "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
+    },
+    "frequency_estimator": {
+      "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
+      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    },
+    "phase_estimator": {
+      "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
+      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    },
+    "plant_model": {
+      "path": "profiles/plant_models/cx317_pps_gated_v2.json",
+      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+    },
+    "response_policy": {
+      "path": "profiles/discipline/cx317_response_classification_v2.json",
+      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+    }
+  },
+  "identities": {
+    "firmware_profile": "cx323_d9_d6_72h_adaptive_hybrid",
+    "operation": "cx323_d9_d6_72h_adaptive_hybrid_live",
+    "runtime_run_identity": "cx323_d9_d6_72h_adaptive_hybrid:1",
+    "compatibility_floor": "OTIS_CX323_D9_D6_72H_EVIDENCE_EPOCH_1",
+    "live_stage": "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_LIVE",
+    "bundle_id": "cx323_d9_d6_72h_adaptive_hybrid_bundle_v1",
+    "activation_id": "cx323_d9_d6_72h_adaptive_hybrid_activation_v1",
+    "maintenance_record_type": "AHM",
+    "maintenance_record_contract": "active_hybrid_maintenance_v1"
+  },
+  "topology": {
+    "reference_input": "D14_authoritative_PPS",
+    "oscillator_count_input": "D8_authoritative_oscillator_count",
+    "D9_role": "forwarded_output_zero_control_authority",
+    "D6_role": "diagnostic_monitor_zero_control_authority",
+    "D10_role": "optional_external_event_zero_reference_and_control_authority",
+    "gnss_role": "qualification_metadata_from_same_receiver_as_D14_never_timing_authority",
+    "gnss_baud": 115200,
+    "serial_device_selection": "auto_detect_on_every_enumeration",
+    "serial_owner_count": 1
+  },
+  "unchanged_legacy_paths": {
+    "outside_TIGHT_INSIDE": "CX322_exact_numerical_transaction_and_guard_semantics",
+    "legacy_phase_material": "CX322_exact_numerical_transaction_and_guard_semantics",
+    "phase_material_classification": "legacy_combined_integer_delta_differs_from_legacy_frequency_only_integer_delta_after_step_and_range_before_cadence_budget_direction_and_chatter",
+    "phase_pull_in_s": 21600,
+    "absolute_phase_bias_hz": "1/600",
+    "integrator_gain_codes_per_hz_per_decision": "2884.5027706464516",
+    "phase_direction_coherence": "unchanged",
+    "alternation_guard": "unchanged",
+    "low_efficiency_guard": "unchanged"
+  },
+  "maintenance_selection": {
+    "requires_tight_state": "TIGHT_INSIDE",
+    "requires_legacy_phase_material": false,
+    "selected_frequency_estimator": "cx317_selected_600s_nonoverlap_v1",
+    "window_s": 600,
+    "frontier_support": "(opening_closing]",
+    "contiguous_frontier": "next_opening_eq_prior_closing",
+    "overlap_frontier": "next_opening_lt_prior_closing",
+    "gap_frontier": "next_opening_gt_prior_closing",
+    "required_consecutive_same_sign_windows": 2,
+    "same_identity_fields": [
+      "capture_session",
+      "applied_code",
+      "dac_epoch",
+      "phase_epoch_and_validity",
+      "selected_estimator_identity"
+    ]
+  },
+  "maintenance_arithmetic": {
+    "frequency_centre_units": "-36*accumulated_edge_error_counts",
+    "phase_centre_units": "clamp(-relative_phase_cycles,-36,+36)",
+    "combined_centre_units": "frequency_centre_units+phase_centre_units",
+    "unit_hz": "1/21600",
+    "closed_interval_half_width_units": 18,
+    "strict_sign": "positive_if_lower_gt_0_negative_if_upper_lt_0_otherwise_zero_containing",
+    "conservative_maximum_plant_gain_hz_per_code": "173340101/1000000000000",
+    "no_zero_cross_cap": "floor(nearest_zero_interval_units*1000000000000/(21600*173340101))",
+    "maximum_step_codes": 21,
+    "rounding": "half_away_from_zero",
+    "authoritative_fixed_point_unit": "signed_integer_picocode_1e_minus_12_code",
+    "picocode_reduced_numerator": 625000000000000000000,
+    "picocode_reduced_denominator": 4680182727,
+    "conversion": "checked_signed_128_bit_quotient_remainder_never_form_centre_times_1e24",
+    "maximum_absolute_combined_centre_units": 332041393326771929124,
+    "native_boundary_contract": "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V3"
+  },
+  "correction_debt": {
+    "enabled": true,
+    "maximum_absolute_total_picocodes": 500000000000,
+    "component_tags": [
+      "FLL",
+      "PLL"
+    ],
+    "commit": "only_after_exact_acceptance_application_code_epoch_and_first_dependent_consumer",
+    "tag_allocation": "magnitude_weighted_by_current_raw_component_plus_prior_same_component_debt_with_PLL_as_exact_remainder",
+    "preserve_without_accrual": [
+      "persistence_hold",
+      "cadence_hold",
+      "source_overlap",
+      "source_gap_restart",
+      "settling_hold",
+      "reference_or_metadata_hold",
+      "request_rejection_or_expiry",
+      "response_pending_or_completion"
+    ],
+    "reset_both": [
+      "zero_containing_or_opposite_interval",
+      "phase_material_or_outside_tight_legacy_path",
+      "capture_session_or_selected_estimator_change",
+      "new_policy_activation"
+    ],
+    "phase_loss_or_epoch_change": "preserve_FLL_discard_PLL",
+    "unknown_or_incomplete_application": "fail_static"
+  },
+  "gnss_metadata_hold": {
+    "recoverable_serial_metadata_anomaly": "hold_new_correction_preserve_last_confirmed_code_and_D14_D8_capture",
+    "no_forced_glitch": true,
+    "debt": "freeze_without_accrual",
+    "requalification": "fresh_same_receiver_metadata_then_two_complete_causally_later_maintenance_windows",
+    "run_terminal": false
+  },
+  "global_authority_limits": {
+    "maximum_automatic_applications": 144,
+    "maximum_cumulative_absolute_movement_codes": 3024,
+    "maximum_combined_step_codes": 21,
+    "minimum_applied_cadence_s": 1800,
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "maximum_outstanding_requests": 1,
+    "deliberate_challenges": 0,
+    "automatic_retry": false,
+    "automatic_restoration": false,
+    "interpretation": "permits_one_max_step_automatic_application_at_every_eligible_30_minute_boundary_for_the_complete_72_hours"
+  },
+  "finite_timing": {
+    "qualified_duration_s": 259200,
+    "qualified_clock": "D14_D8_qualified_firmware_tick_domain",
+    "qualification_deadline_s": 5400,
+    "wall_clock_limit_s": 280800,
+    "milestone_interval_qualified_s": 21600,
+    "milestones_qualified_s": [
+      21600,
+      43200,
+      64800,
+      86400,
+      108000,
+      129600,
+      151200,
+      172800,
+      194400,
+      216000,
+      237600,
+      259200
+    ],
+    "minimum_final_response_reserve_s": 1500,
+    "extension": "forbidden",
+    "inherited_24h_or_12h_duration": false
+  },
+  "live_controller_inhibit": {
+    "alternation_or_low_efficiency": "latch_controller_authority_inhibited_acquisition_continues",
+    "host_abort": false,
+    "endpoint_verdict": "cx323_d9_d6_72h_hybrid_authority_not_sustained"
+  },
+  "terminal_decisions": [
+    "cx323_d9_d6_72h_qualified_hybrid_complete",
+    "cx323_d9_d6_72h_hybrid_authority_not_sustained",
+    "cx323_d9_d6_72h_right_censored_incomplete",
+    "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault",
+    "cx323_d9_d6_72h_D9_configuration_or_readback_fault",
+    "cx323_d9_d6_72h_controller_or_transaction_fault",
+    "cx323_d9_d6_72h_maintenance_evidence_fault",
+    "cx323_d9_d6_72h_identity_or_evidence_fault",
+    "cx323_d9_d6_72h_operator_abort",
+    "cx323_d9_d6_72h_pre_setup_no_write_abort"
+  ],
+  "promotion_gates": {
+    "host_policy_and_oracle_tests": "pending",
+    "native_firmware_and_Python_bit_exact_parity": "pending",
+    "AHM_contract_parser_and_join_tests": "pending",
+    "exact_firmware_profile_compile": "pending",
+    "campaign_release_gate": "pending",
+    "complete_operational_path_rehearsal": "pending",
+    "exact_live_bundle_and_activation": "pending"
+  },
+  "authority_lineage": {
+    "operator_direction_date_utc": "2026-08-31",
+    "scope": "complete_the_72_hour_run_including_controller_changes_firmware_build_and_flash_benchwork_testing_issue_resolution_launch_monitoring_analysis_sealing_and_registration",
+    "standing_authority_received": true,
+    "no_additional_incremental_authorization_required": true,
+    "effective_only_after_all_promotion_gates_and_exact_activation_binding": true
+  },
+  "claims_not_made": [
+    "waveform_or_load_characterization",
+    "calibrated_absolute_frequency_accuracy",
+    "UTC_or_absolute_time_accuracy",
+    "cross_phase_epoch_continuity",
+    "physical_post_divergence_performance_before_the_new_72h_run"
+  ]
+}

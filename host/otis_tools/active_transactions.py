@@ -21,7 +21,11 @@ import time
 
 from .contracts import CsvValidationContext, validate_csv
 from .abort_transport import AbortFifo
-from .run_loader import CAPTURE_IN_PROGRESS_FLAG, SUSTAINED_HYBRID_PROFILE_ID
+from .run_loader import (
+    CAPTURE_IN_PROGRESS_FLAG,
+    CX323_D9_D6_72H_PROFILE_ID,
+    SUSTAINED_HYBRID_PROFILE_ID,
+)
 from .serial_commands import send_command_to_fifo
 
 
@@ -38,6 +42,21 @@ PLANT_SIGN_SPLIT_POLL_S = 0.02
 # actuator deadline. Core 0 records the exact post-write capture tick; ACT
 # records the later Core 1 acknowledgement-consumption second.
 CROSS_CORE_ACTUATOR_ACK_MAXIMUM_AGE_S = 30
+
+# These profiles use the complete four-phase hybrid transaction protocol.  The
+# successor is deliberately listed under its own frozen identity: it must not
+# borrow Campaign18's transaction/replay authority by an alias.
+HYBRID_TRANSACTION_PROFILE_IDS = frozenset(
+    {
+        "cx320_active_hybrid",
+        "cx321_active_hybrid",
+        "cx322_direct_hybrid",
+        "cx322_d9_d6_integration_engineering",
+        "cx322_d9_d6_72h_sustained_engineering",
+        SUSTAINED_HYBRID_PROFILE_ID,
+        CX323_D9_D6_72H_PROFILE_ID,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -550,7 +569,7 @@ class ActiveTransactionSupervisor:
             raise ValueError("active snapshot session changed during the campaign")
         return True
 
-    def _preserve_and_acknowledge(self, row: dict[str, str], phase: int) -> None:
+    def _preserve_and_acknowledge(self, row: dict[str, str], phase: int) -> bool:
         record_sequence = int(row["transaction_record_sequence"])
         request_sequence = int(row["request_sequence"])
         step = request_sequence if request_sequence else 0
@@ -568,13 +587,7 @@ class ActiveTransactionSupervisor:
         active_csv = self.run_dir / ACTIVE_CSV
         _fsync_path(active_csv)
         _fsync_path(capsule)
-        hybrid_profile = self.spec.profile in {
-            "cx320_active_hybrid",
-            "cx321_active_hybrid",
-            "cx322_direct_hybrid",
-            "cx322_d9_d6_integration_engineering",
-            SUSTAINED_HYBRID_PROFILE_ID,
-        }
+        hybrid_profile = self.spec.profile in HYBRID_TRANSACTION_PROFILE_IDS
         acknowledgement_command = f"ACTIVE EVIDENCE {request_sequence} {phase}"
         plant_sign_response = False
         identification_phase4 = (
@@ -705,6 +718,13 @@ class ActiveTransactionSupervisor:
                     else None
                 ),
                 estimates_csv=self.run_dir / "csv/estimates_v2.csv",
+                maintenance_csv=(
+                    self.run_dir / "csv/active_hybrid_maintenance_v1.csv"
+                    if self.spec.profile == CX323_D9_D6_72H_PROFILE_ID
+                    else None
+                ),
+                maximum_applications=self.spec.correction_limit,
+                maximum_cumulative_movement_codes=self.spec.cumulative_limit,
             )
             attestation_path = capsule_dir / (
                 f"record_{record_sequence:06d}_response_replay_attestation.json"
@@ -735,10 +755,22 @@ class ActiveTransactionSupervisor:
                     "a different active-hybrid evidence acknowledgement is already inflight"
                 )
             if not self._confirm_evidence_acknowledgement(inflight):
-                raise ValueError(
-                    "active-hybrid evidence acknowledgement reached the host serial write "
-                    "boundary but firmware consumption is unconfirmed"
-                )
+                # The command crossed the sole host write boundary, so an
+                # unchanged exact firmware frontier is pending observation,
+                # not permission to resend and not a host terminal.  Retain
+                # the inflight identity for the next health/transaction pass.
+                pending_count = int(inflight.get("pending_observation_count", 0)) + 1
+                inflight["pending_observation_count"] = pending_count
+                self._save()
+                if pending_count == 1:
+                    self._event(
+                        "firmware_evidence_acknowledgement_pending",
+                        record_sequence=record_sequence,
+                        request_sequence=request_sequence,
+                        phase=phase,
+                        host_write_confirmed=True,
+                    )
+                return False
         else:
             self._command(f"ACTIVE EVIDENCE {request_sequence} {phase}")
         acknowledged = self.state["acknowledged_record_sequences"]
@@ -754,6 +786,7 @@ class ActiveTransactionSupervisor:
             phase=phase,
             capsule=str(capsule),
         )
+        return True
 
     def _process_transactions(self) -> None:
         path = self.run_dir / ACTIVE_CSV
@@ -846,7 +879,10 @@ class ActiveTransactionSupervisor:
                 }
             )
             phase = phases[event]
-            self._preserve_and_acknowledge(row, phase)
+            if not self._preserve_and_acknowledge(row, phase):
+                # Preserve strict record order.  A later row cannot be
+                # released until firmware has consumed this exact phase.
+                return
             if event in {"request_accepted", "request_created"}:
                 self._event(
                     (

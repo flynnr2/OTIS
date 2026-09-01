@@ -22,6 +22,12 @@ class TimeDomain:
     counter_width_bits: int | None
     modulus_ticks: int | None
     rollover: str
+    source_counter_hz: int | None = None
+    encoding_scale: int | None = None
+    quantum_ticks: int | None = None
+    quantum_ns: int | None = None
+    coordinate_semantics: str | None = None
+    provenance: str | None = None
 
     @property
     def permits_rollover(self) -> bool:
@@ -39,6 +45,12 @@ TIME_DOMAINS: Mapping[str, TimeDomain] = {
         counter_width_bits=36,
         modulus_ticks=RP2040_TIMER0_MICROS_WRAP_TICKS,
         rollover="modular_forward",
+        source_counter_hz=1_000_000,
+        encoding_scale=16,
+        quantum_ticks=16,
+        quantum_ns=1_000,
+        coordinate_semantics="projected_local_non_metrological",
+        provenance="rp2040_timerawl_or_arduino_micros_1mhz_encoded_x16",
     ),
     # CX321 plant-sign evidence carries firmware-extended TIMER0 coordinates.
     # These values are reconstructed monotonically across the 32-bit
@@ -50,6 +62,12 @@ TIME_DOMAINS: Mapping[str, TimeDomain] = {
         counter_width_bits=None,
         modulus_ticks=None,
         rollover="strict_nonwrapping",
+        source_counter_hz=1_000_000,
+        encoding_scale=16,
+        quantum_ticks=16,
+        quantum_ns=1_000,
+        coordinate_semantics="projected_local_non_metrological",
+        provenance="session_bound_wrap_reconstruction_of_rp2040_timer0",
     ),
     # D8 counted-edge totals are not RP2040 timer coordinates.  Current CSV
     # timestamp fields do not use this domain, but declaring its strict
@@ -103,8 +121,42 @@ def time_domain(name: str) -> TimeDomain:
         raise ValueError(f"unsupported timestamp domain {name!r}") from exc
 
 
-def validate_domain_declarations(domains: object) -> tuple[str, ...]:
-    """Validate current manifest declarations against canonical semantics."""
+def canonical_domain_declaration(name: str) -> dict[str, object]:
+    """Return the complete current manifest declaration for one domain."""
+
+    semantics = time_domain(name)
+    declaration: dict[str, object] = {
+        "name": semantics.name,
+        "nominal_hz": semantics.nominal_hz,
+    }
+    for field in (
+        "counter_width_bits",
+        "modulus_ticks",
+        "rollover",
+        "source_counter_hz",
+        "encoding_scale",
+        "quantum_ticks",
+        "quantum_ns",
+        "coordinate_semantics",
+        "provenance",
+    ):
+        value = getattr(semantics, field)
+        if value is not None:
+            declaration[field] = value
+    return declaration
+
+
+def validate_domain_declarations(
+    domains: object,
+    *,
+    require_complete: bool = False,
+) -> tuple[str, ...]:
+    """Validate manifest declarations against canonical semantics.
+
+    Historical manifests may omit optional semantic fields.  A current
+    manifest generator can request the complete canonical declaration; any
+    field that is supplied is always checked for contradiction.
+    """
 
     if not isinstance(domains, list) or not domains:
         return ("run_manifest.json: domains must be a non-empty list",)
@@ -143,12 +195,22 @@ def validate_domain_declarations(domains: object) -> tuple[str, ...]:
             "counter_width_bits": semantics.counter_width_bits,
             "modulus_ticks": semantics.modulus_ticks,
             "rollover": semantics.rollover,
+            "source_counter_hz": semantics.source_counter_hz,
+            "encoding_scale": semantics.encoding_scale,
+            "quantum_ticks": semantics.quantum_ticks,
+            "quantum_ns": semantics.quantum_ns,
+            "coordinate_semantics": semantics.coordinate_semantics,
+            "provenance": semantics.provenance,
         }
         for field, expected in optional.items():
             if field in value and value[field] != expected:
                 errors.append(
                     f"run_manifest.json: domain {name!r} {field}={value[field]!r} "
                     f"contradicts canonical {expected!r}"
+                )
+            elif require_complete and expected is not None and field not in value:
+                errors.append(
+                    f"run_manifest.json: domain {name!r} lacks canonical {field}"
                 )
     return tuple(errors)
 

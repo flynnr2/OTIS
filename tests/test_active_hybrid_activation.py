@@ -12,6 +12,7 @@ from host.otis_tools.active_hybrid_programme_contract import (
     CX321_PROGRAMME,
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
     SUSTAINED_HYBRID_PROGRAMME,
 )
 
@@ -28,13 +29,24 @@ def _semantic(value: dict[str, object], field: str) -> dict[str, object]:
     return {**value, field: activation._canonical_sha256(value)}
 
 
-def test_campaign18_alone_requires_exact_active_timing_sidecars() -> None:
+def test_long_run_programmes_require_their_exact_evidence_products() -> None:
     campaign18 = {
         entry["contract"]: entry
         for entry in activation._required_files(CX322_D9_D6_72H_PROGRAMME)
     }
     assert campaign18["active_transactions_v2"].get("optional") is None
     assert campaign18["active_hybrid_decisions_v2"].get("optional") is None
+
+    cx323 = {
+        entry["contract"]: entry
+        for entry in activation._required_files(CX323_D9_D6_72H_PROGRAMME)
+    }
+    assert cx323["active_transactions_v2"].get("optional") is None
+    assert cx323["active_hybrid_decisions_v2"].get("optional") is None
+    assert cx323["active_hybrid_maintenance_v1"] == {
+        "path": "csv/active_hybrid_maintenance_v1.csv",
+        "contract": "active_hybrid_maintenance_v1",
+    }
 
     for historical in (
         CX320_PROGRAMME,
@@ -47,6 +59,7 @@ def test_campaign18_alone_requires_exact_active_timing_sidecars() -> None:
         }
         assert "active_transactions_v2" not in contracts
         assert "active_hybrid_decisions_v2" not in contracts
+        assert "active_hybrid_maintenance_v1" not in contracts
 
 
 def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(
@@ -64,6 +77,7 @@ def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(
             *activation.REHEARSAL_COVERAGE,
             *activation.CAMPAIGN18_REHEARSAL_COVERAGE,
             "integrated_setup_provenance_boundary",
+            "mandatory_sustained_status_snapshot_identity",
         )
     }
     unsigned = {
@@ -719,6 +733,392 @@ def test_campaign18_later_activation_accepts_programme_operator_abort_terminal(
     assert observed["predecessor_physical_terminal"][
         "primary_decision"
     ] == "cx322_d9_d6_72h_operator_abort"
+
+
+@pytest.mark.parametrize(
+    ("primary_decision", "supervisor_primary_decision", "supervisor_reason"),
+    (
+        (
+            "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault",
+            "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault",
+            "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault:session",
+        ),
+        (
+            "cx322_d9_d6_72h_identity_or_evidence_fault",
+            "measurement_authority_or_platform_fault",
+            "cx322_d9_d6_72h_live_supervisor_fault:"
+            "live active_fail_static asserted",
+        ),
+        (
+            "cx322_d9_d6_72h_identity_or_evidence_fault",
+            "measurement_authority_or_platform_fault",
+            "cx322_d9_d6_72h_live_supervisor_fault:"
+            "active live-health handoff is invalid: new snapshot generation "
+            "began before the prior generation 2006 completed",
+        ),
+    ),
+)
+def test_campaign18_later_activation_accepts_exact_capture_terminal(
+    tmp_path: Path,
+    primary_decision: str,
+    supervisor_primary_decision: str,
+    supervisor_reason: str,
+) -> None:
+    predecessor_run = tmp_path / "campaign18-attempt-2"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "campaign18-attempt-2",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": primary_decision,
+        "acquisition_gate": {"passed": True},
+        "descriptive_prior_comparisons": {
+            "qualified_endpoint_complete": False,
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "static_terminal_exact": True,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": supervisor_primary_decision,
+                "reason": supervisor_reason,
+            },
+        },
+    }
+    predecessor_path = reports / "cx322_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=3,
+        reason="fresh Campaign18 interval after capture discontinuity",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX322_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 3
+    assert observed["predecessor_physical_terminal"]["primary_decision"] == (
+        primary_decision
+    )
+
+
+def test_campaign18_legacy_capture_terminal_requires_exact_misclassification(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "campaign18-attempt-2"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "campaign18-attempt-2",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx322_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": True},
+        "descriptive_prior_comparisons": {
+            "qualified_endpoint_complete": False,
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "static_terminal_exact": True,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": "measurement_authority_or_platform_fault",
+                "reason": "a different identity failure",
+            },
+        },
+    }
+    predecessor_path = reports / "cx322_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    with pytest.raises(ValueError, match="incomplete physical gate"):
+        activation._attempt_descriptor(
+            ordinal=3,
+            reason="fresh Campaign18 interval after capture discontinuity",
+            predecessor_terminal_path=predecessor_path,
+            programme=CX322_D9_D6_72H_PROGRAMME,
+        )
+
+
+def test_cx323_later_activation_accepts_exact_firmware_fail_static_terminal(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "cx323-attempt-1"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "cx323-attempt-1",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "static_code": 43085,
+            "static_terminal_exact": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": (
+                    "cx323_d9_d6_72h_identity_or_evidence_fault"
+                ),
+                "reason": (
+                    "cx323_d9_d6_72h_live_supervisor_fault:"
+                    "live active_fail_static asserted"
+                ),
+                "last_confirmed_code": 43085,
+            },
+        },
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=2,
+        reason="rerun after exact firmware cadence correction",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 2
+    assert observed["automatic_retry"] is False
+    assert observed["predecessor_physical_terminal"]["primary_decision"] == (
+        "cx323_d9_d6_72h_identity_or_evidence_fault"
+    )
+
+
+def test_cx323_later_activation_accepts_exact_legacy_ack_observation_terminal(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "cx323-attempt-7"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    source_hashes = {
+        path: str(index) * 64
+        for index, path in enumerate(
+            (
+                "COMPLETE",
+                "csv/health.csv",
+                "raw/serial.log",
+                "reports/cx317_active_supervisor_events.jsonl",
+                "reports/cx317_active_supervisor_state.json",
+            ),
+            start=1,
+        )
+    }
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "cx323-attempt-7",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "evidence_snapshot_validation": {"failures": [], "warnings": []},
+        "source_artifacts_sha256": source_hashes,
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "latest_hybrid_state": "FIRST_PHASE_TRANSACTION",
+            "static_code": 43085,
+            "static_terminal_exact": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": (
+                    "cx323_d9_d6_72h_identity_or_evidence_fault"
+                ),
+                "reason": (
+                    "cx323_d9_d6_72h_live_supervisor_fault:"
+                    "active-hybrid evidence acknowledgement reached the host "
+                    "serial write boundary but firmware consumption is unconfirmed"
+                ),
+                "last_confirmed_code": 43085,
+            },
+        },
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=3,
+        reason="rerun after exact evidence-frontier admission correction",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 3
+    assert observed["automatic_retry"] is False
+    assert observed["predecessor_physical_terminal"]["run_id"] == (
+        "cx323-attempt-7"
+    )
+
+
+def test_cx323_legacy_ack_observation_terminal_requires_retained_health_hash(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "cx323-attempt-7"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "cx323-attempt-7",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": False},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "evidence_snapshot_validation": {"failures": [], "warnings": []},
+        "source_artifacts_sha256": {},
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "latest_hybrid_state": "FIRST_PHASE_TRANSACTION",
+            "static_code": 43085,
+            "static_terminal_exact": False,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": (
+                    "cx323_d9_d6_72h_identity_or_evidence_fault"
+                ),
+                "reason": (
+                    "cx323_d9_d6_72h_live_supervisor_fault:"
+                    "active-hybrid evidence acknowledgement reached the host "
+                    "serial write boundary but firmware consumption is unconfirmed"
+                ),
+                "last_confirmed_code": 43085,
+            },
+        },
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    with pytest.raises(ValueError, match="incomplete physical gate"):
+        activation._attempt_descriptor(
+            ordinal=3,
+            reason="rerun after exact evidence-frontier admission correction",
+            predecessor_terminal_path=predecessor_path,
+            programme=CX323_D9_D6_72H_PROGRAMME,
+        )
+
+
+def test_cx323_later_activation_accepts_exact_status_serialization_terminal(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "cx323-attempt-8"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    source_hashes = {
+        path: str(index) * 64
+        for index, path in enumerate(
+            (
+                "COMPLETE",
+                "csv/active_hybrid_maintenance_v1.csv",
+                "csv/active_transactions_v2.csv",
+                "csv/health.csv",
+                "raw/serial.log",
+                "reports/cx317_active_supervisor_events.jsonl",
+                "reports/cx317_active_supervisor_state.json",
+            ),
+            start=1,
+        )
+    }
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "cx323-attempt-8",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "acquisition_gate": {"passed": True},
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": True
+        },
+        "evidence_snapshot_validation": {"failures": [], "warnings": []},
+        "source_artifacts_sha256": source_hashes,
+        "active_hybrid_replay": {"all_response_checkpoints_passed": True},
+        "integrated_exact_timing_sidecar_join": {
+            "exact": True,
+            "mismatches": [],
+        },
+        "application_counts_and_budgets": {
+            "exact": True,
+            "automatic_application_count": 1,
+            "physical_control_application_count": 1,
+            "phase_material_application_count": 1,
+            "first_phase_checkpoint_passed": True,
+            "first_phase_observation_checkpoint_exact": True,
+            "all_response_checkpoints_passed": True,
+        },
+        "terminal": {
+            "abort_submission_count": 1,
+            "abort_delivery_count": 1,
+            "endpoint_complete": False,
+            "latest_hybrid_state": "HYBRID_TRACKING",
+            "static_code": 43086,
+            "static_terminal_exact": True,
+            "supervisor_terminal": {
+                "result": "aborted",
+                "primary_decision": (
+                    "cx323_d9_d6_72h_identity_or_evidence_fault"
+                ),
+                "reason": (
+                    "cx323_d9_d6_72h_live_supervisor_fault:"
+                    "CX320 HYBRID_TRACKING lacks the first checkpoint"
+                ),
+                "last_confirmed_code": 43086,
+            },
+        },
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=9,
+        reason="rerun after exact CX323 status serialization correction",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+
+    assert observed["ordinal"] == 9
+    assert observed["automatic_retry"] is False
+    assert observed["predecessor_physical_terminal"]["run_id"] == (
+        "cx323-attempt-8"
+    )
+
+    application_counts = predecessor_unsigned[
+        "application_counts_and_budgets"
+    ]
+    assert isinstance(application_counts, dict)
+    application_counts["first_phase_checkpoint_passed"] = False
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+    with pytest.raises(ValueError, match="incomplete physical gate"):
+        activation._attempt_descriptor(
+            ordinal=9,
+            reason="rerun after exact CX323 status serialization correction",
+            predecessor_terminal_path=predecessor_path,
+            programme=CX323_D9_D6_72H_PROGRAMME,
+        )
 
 
 def test_later_activation_accepts_exact_pre_setup_provenance_terminal(

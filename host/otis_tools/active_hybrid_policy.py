@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from enum import Enum
+from fractions import Fraction
 from hashlib import sha256
 import json
 import math
@@ -27,6 +28,12 @@ SUPPORTED_POLICY_IDS = {
     "CX322_BOUNDED_HYBRID_FACT_GATHERING_V1",
     "OTIS_SUSTAINED_HYBRID_REGULATION_V1",
 }
+CX323_POLICY_ID = "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
+CX323_POLICY_PATH = (
+    REPO_ROOT / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json"
+)
+CX323_POLICY_SHA256 = "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
+CX323_LEGACY_POLICY_SHA256 = "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
 TOOL_ID = "cx320_active_hybrid_policy_reference_v1"
 
 
@@ -112,8 +119,10 @@ def _is_unavailable_historical_binding(name: str, source: Path) -> bool:
     return name == "predecessor_programme_seal" and relative.parts[:1] == ("runs",)
 
 
-def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy:
+def load_policy(path: Path = DEFAULT_POLICY) -> ActiveHybridPolicy | "CX323Policy":
     value = _read_object(path)
+    if value.get("policy_id") == CX323_POLICY_ID:
+        return load_cx323_policy(path)
     policy_id = value.get("policy_id")
     if value.get("schema_version") != 1 or policy_id not in SUPPORTED_POLICY_IDS:
         raise ValueError("unsupported active-hybrid policy identity")
@@ -1093,3 +1102,844 @@ class ActiveHybridController:
 
 def decision_dict(decision: HybridDecision) -> dict[str, Any]:
     return asdict(decision)
+
+
+# CX323 is deliberately a separate controller/oracle.  The CX320/CX322 class
+# above remains the exact historical implementation and must not gain CX323
+# state, fixed-point arithmetic, or metadata semantics by accident.
+_CX323_PICO = 1_000_000_000_000
+_CX323_DEBT_LIMIT = 500_000_000_000
+_CX323_TICKS_PER_SECOND = 16_000_000
+_CX323_NUMERATOR = 625_000_000_000_000_000_000
+_CX323_DENOMINATOR = 4_680_182_727
+_CX323_GAIN = Fraction("2884.5027706464516")
+# The selected profile's campaign setup code.  It is named rather than derived
+# from a range offset so that the hardware/setup binding is explicit.
+_CX323_DEFAULT_SETUP_CODE = 0xA84D
+
+
+@dataclass(frozen=True)
+class CX323Policy:
+    policy_id: str
+    policy_sha256: str
+    frequency_estimator_id: str
+    maximum_step_codes: int
+    minimum_code: int
+    maximum_code: int
+    minimum_cadence_s: int
+    settling_exclusion_s: int
+    maximum_applications: int
+    maximum_cumulative_movement_codes: int
+    setup_code: int = _CX323_DEFAULT_SETUP_CODE
+
+
+def load_cx323_policy(path: Path = CX323_POLICY_PATH) -> CX323Policy:
+    """Load and bind the selected CX323 host/oracle policy profile."""
+
+    value = _read_object(path)
+    observed_sha256 = _sha256_file(path)
+    if (
+        (value.get("schema_version"), observed_sha256)
+        not in {
+            (2, CX323_POLICY_SHA256),
+            (1, CX323_LEGACY_POLICY_SHA256),
+        }
+        or value.get("policy_id") != CX323_POLICY_ID
+        or value.get("candidate_id")
+        != "cx323_phase_priority_persistent_cap_tagged_debt_v1"
+        or value.get("status")
+        != "selected_for_implementation_native_parity_and_rehearsal_pending"
+    ):
+        raise ValueError("CX323 policy profile identity differs")
+    bindings = value.get("bindings")
+    if not isinstance(bindings, dict):
+        raise ValueError("CX323 policy bindings must be an object")
+    for name, binding in bindings.items():
+        if not isinstance(binding, dict) or "path" not in binding:
+            raise ValueError(f"CX323 binding {name} differs")
+        expected = binding.get("sha256", binding.get("file_sha256"))
+        source = REPO_ROOT / str(binding["path"])
+        if not isinstance(expected, str) or not source.is_file() or _sha256_file(source) != expected:
+            raise ValueError(f"CX323 binding differs: {name}")
+    selection = value.get("maintenance_selection", {})
+    arithmetic = value.get("maintenance_arithmetic", {})
+    limits = value.get("global_authority_limits", {})
+    debt = value.get("correction_debt", {})
+    if (
+        selection.get("requires_tight_state") != "TIGHT_INSIDE"
+        or selection.get("required_consecutive_same_sign_windows") != 2
+        or selection.get("frontier_support") != "(opening_closing]"
+        or arithmetic.get("authoritative_fixed_point_unit")
+        != "signed_integer_picocode_1e_minus_12_code"
+        or arithmetic.get("picocode_reduced_numerator") != _CX323_NUMERATOR
+        or arithmetic.get("picocode_reduced_denominator") != _CX323_DENOMINATOR
+        or arithmetic.get("maximum_absolute_combined_centre_units")
+        != 332_041_393_326_771_929_124
+        or arithmetic.get("native_boundary_contract")
+        != "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY_V3"
+        or debt.get("maximum_absolute_total_picocodes") != _CX323_DEBT_LIMIT
+        or limits.get("maximum_outstanding_requests") != 1
+    ):
+        raise ValueError("CX323 frozen maintenance semantics differ")
+    return CX323Policy(
+        policy_id=CX323_POLICY_ID,
+        policy_sha256=_sha256_file(path),
+        frequency_estimator_id=str(selection["selected_frequency_estimator"]),
+        maximum_step_codes=int(limits["maximum_combined_step_codes"]),
+        minimum_code=int(limits["minimum_code"]),
+        maximum_code=int(limits["maximum_code"]),
+        minimum_cadence_s=int(limits["minimum_applied_cadence_s"]),
+        settling_exclusion_s=900,
+        maximum_applications=int(limits["maximum_automatic_applications"]),
+        maximum_cumulative_movement_codes=int(
+            limits["maximum_cumulative_absolute_movement_codes"]
+        ),
+        setup_code=_CX323_DEFAULT_SETUP_CODE,
+    )
+
+
+@dataclass(frozen=True)
+class CX323Debt:
+    fll_picocodes: int = 0
+    pll_picocodes: int = 0
+
+    @property
+    def total_picocodes(self) -> int:
+        return self.fll_picocodes + self.pll_picocodes
+
+
+@dataclass(frozen=True)
+class CX323Observation:
+    timestamp_s: int
+    capture_session: int
+    source_first_sequence: int
+    source_last_sequence: int
+    dac_epoch: int
+    applied_code: int
+    accumulated_edge_error_counts: int
+    tight_state: str
+    phase_epoch: int
+    relative_phase_cycles: int
+    frequency_estimator_id: str = "cx317_selected_600s_nonoverlap_v1"
+    phase_valid: bool = True
+    authority_valid: bool = True
+    settled: bool = True
+    cadence_eligible: bool = True
+    metadata_qualified: bool = True
+    # Exact extended rp2040_timer0 counter.  None is retained only for
+    # historical/offline fixtures, where timestamp_s is projected exactly.
+    timestamp_ticks: int | None = None
+
+
+@dataclass(frozen=True)
+class CX323Decision:
+    decision_sequence: int
+    reason: str
+    requested_delta_codes: int
+    requested_code: int
+    safe_cap_codes: int
+    persistence_count: int
+    raw_combined_picocodes: int
+    raw_fll_picocodes: int
+    raw_pll_picocodes: int
+    committed_debt_picocodes: int
+    maintenance_request: bool = False
+    decision_timestamp_ticks: int = 0
+    counterfactual_frequency_only_delta_codes: int = 0
+    phase_materially_influenced: bool = False
+    step_limited: bool = False
+    range_clamped: bool = False
+    cadence_limited: bool = False
+    count_limited: bool = False
+    cumulative_budget_limited: bool = False
+
+
+def _cx323_round_ratio(numerator: int, denominator: int) -> int:
+    magnitude = abs(numerator)
+    result = (2 * magnitude + denominator) // (2 * denominator)
+    return result if numerator >= 0 else -result
+
+
+def cx323_centre_to_picocodes(centre_units: int) -> int:
+    """Checked reduced quotient/remainder fixed-point conversion."""
+
+    magnitude = abs(centre_units)
+    quotient, remainder = divmod(magnitude, _CX323_DENOMINATOR)
+    result = quotient * _CX323_NUMERATOR + _cx323_round_ratio(
+        remainder * _CX323_NUMERATOR, _CX323_DENOMINATOR
+    )
+    return result if centre_units >= 0 else -result
+
+
+class CX323PhasePriorityController:
+    """Selected tagged-debt maintenance controller, without I/O authority."""
+
+    def __init__(
+        self,
+        policy: CX323Policy,
+        *,
+        setup_applied_code: int | None = None,
+        setup_dac_epoch: int = 1,
+    ) -> None:
+        self.policy = policy
+        self.applied_code = 0
+        self.dac_epoch = 0
+        self.application_count = 0
+        self.cumulative_movement_codes = 0
+        self.last_application_s: int | None = None
+        self.last_application_ticks: int | None = None
+        self.chatter_origin_code = 0
+        self.direction_history: list[int] = []
+        self.debt = CX323Debt()
+        self.persistence_sign = 0
+        self.persistence_count = 0
+        self.persistence_identity: tuple[int, int, int, int, bool, str] | None = None
+        self.last_closing_frontier: int | None = None
+        self.request_pending = False
+        self._pending_decision: CX323Decision | None = None
+        self._pending_decision_timestamp_s: int | None = None
+        self._pending_decision_timestamp_ticks: int | None = None
+        self.response_pending = False
+        self.metadata_hold = False
+        self.metadata_requalified = False
+        self.requalification_frontier: int | None = None
+        self.requalification_window_count = 0
+        self._requalification_last_closing_frontier: int | None = None
+        self._requalification_identity: tuple[int, int, int, int, bool, str] | None = None
+        self.fail_static_reason: str | None = None
+        self.decision_sequence = 0
+        self._current_timestamp_ticks = 0
+        self.establish_setup(
+            applied_code=(
+                policy.setup_code if setup_applied_code is None else setup_applied_code
+            ),
+            dac_epoch=setup_dac_epoch,
+        )
+
+    def establish_setup(self, *, applied_code: int, dac_epoch: int) -> None:
+        """Bind the controller to an explicitly observed setup code and epoch."""
+
+        if self.request_pending or self.response_pending or self.last_application_s is not None:
+            raise HybridPolicyError("setup_establishment_after_control_started")
+        if not self.policy.minimum_code <= applied_code <= self.policy.maximum_code:
+            raise ValueError("CX323 setup code outside frozen authority range")
+        if dac_epoch <= 0:
+            raise ValueError("CX323 setup DAC epoch must be positive")
+        self.applied_code = applied_code
+        self.dac_epoch = dac_epoch
+        self.chatter_origin_code = applied_code
+
+    def _reset(self, *, preserve_debt: bool) -> None:
+        if not preserve_debt:
+            self.debt = CX323Debt()
+        self.persistence_sign = 0
+        self.persistence_count = 0
+        self.persistence_identity = None
+        self.last_closing_frontier = None
+
+    def _fail_static(self, reason: str) -> None:
+        self.fail_static_reason = reason
+        self.request_pending = False
+        self._pending_decision = None
+        self._pending_decision_timestamp_s = None
+        self._pending_decision_timestamp_ticks = None
+        self.response_pending = False
+
+    @staticmethod
+    def _centre(observation: CX323Observation) -> tuple[int, int, int]:
+        phase = max(-36, min(36, -observation.relative_phase_cycles))
+        centre = -36 * observation.accumulated_edge_error_counts + phase
+        return centre, centre - 18, centre + 18
+
+    @staticmethod
+    def _sign(lower: int, upper: int) -> int:
+        return 1 if lower > 0 else -1 if upper < 0 else 0
+
+    def _cap(self, centre: int, code: int) -> int:
+        lower, upper = centre - 18, centre + 18
+        sign = self._sign(lower, upper)
+        if not sign:
+            return 0
+        nearest = lower if sign > 0 else -upper
+        cap = min(
+            self.policy.maximum_step_codes,
+            nearest * 1_000_000_000_000 // (21_600 * 173_340_101),
+            max(
+                0,
+                self.policy.maximum_cumulative_movement_codes
+                - self.cumulative_movement_codes,
+            ),
+        )
+        return max(
+            0,
+            min(
+                cap,
+                self.policy.maximum_code - code
+                if sign > 0
+                else code - self.policy.minimum_code,
+            ),
+        )
+
+    def _legacy_deltas(
+        self, observation: CX323Observation, *, phase_enabled: bool = True
+    ) -> tuple[int, int, bool, bool]:
+        phase = (
+            max(-36, min(36, -observation.relative_phase_cycles))
+            if phase_enabled
+            else 0
+        )
+        frequency = _CX323_GAIN * Fraction(-observation.accumulated_edge_error_counts, 600)
+        combined = frequency + _CX323_GAIN * Fraction(phase, 21_600)
+
+        def limited(value: Fraction) -> tuple[int, bool, bool]:
+            rounded = _cx323_round_ratio(value.numerator, value.denominator)
+            step = max(
+                -self.policy.maximum_step_codes,
+                min(self.policy.maximum_step_codes, rounded),
+            )
+            requested = min(
+                self.policy.maximum_code,
+                max(self.policy.minimum_code, self.applied_code + step),
+            )
+            return (
+                requested - self.applied_code,
+                step != rounded,
+                requested != self.applied_code + step,
+            )
+
+        combined_delta, step_limited, range_clamped = limited(combined)
+        frequency_delta, _, _ = limited(frequency)
+        return combined_delta, frequency_delta, step_limited, range_clamped
+
+    @staticmethod
+    def _timestamp_ticks(observation: CX323Observation) -> int:
+        return (
+            observation.timestamp_s * _CX323_TICKS_PER_SECOND
+            if observation.timestamp_ticks is None
+            else observation.timestamp_ticks
+        )
+
+    def _cadence_status(
+        self, observation: CX323Observation
+    ) -> tuple[bool, bool]:
+        if not observation.cadence_eligible:
+            return True, False
+        if self.last_application_ticks is None:
+            return False, False
+        timestamp_ticks = self._timestamp_ticks(observation)
+        if timestamp_ticks < self.last_application_ticks:
+            return True, True
+        return (
+            timestamp_ticks - self.last_application_ticks
+            < self.policy.minimum_cadence_s * _CX323_TICKS_PER_SECOND,
+            False,
+        )
+
+    def _chatter_reason(self, delta: int) -> str | None:
+        direction = 1 if delta > 0 else -1
+        prospective = [*self.direction_history[-3:], direction]
+        reversals = sum(a != b for a, b in zip(prospective, prospective[1:]))
+        if len(prospective) == 4 and reversals == 3:
+            return "prospective_repeated_alternation"
+        path = self.cumulative_movement_codes + abs(delta)
+        net = abs(self.applied_code + delta - self.chatter_origin_code)
+        if path >= 42 and 4 * net <= path:
+            return "prospective_low_efficiency_path"
+        return None
+
+    def _decision(
+        self,
+        reason: str,
+        delta: int = 0,
+        cap: int = 0,
+        raw: int = 0,
+        fll: int = 0,
+        pll: int = 0,
+        *,
+        maintenance_request: bool = False,
+        counterfactual_frequency_only_delta_codes: int = 0,
+        phase_materially_influenced: bool = False,
+        step_limited: bool = False,
+        range_clamped: bool = False,
+        cadence_limited: bool = False,
+        count_limited: bool = False,
+        cumulative_budget_limited: bool = False,
+    ) -> CX323Decision:
+        return CX323Decision(
+            decision_sequence=self.decision_sequence,
+            reason=reason,
+            requested_delta_codes=delta,
+            requested_code=self.applied_code + delta,
+            safe_cap_codes=cap,
+            persistence_count=self.persistence_count,
+            raw_combined_picocodes=raw,
+            raw_fll_picocodes=fll,
+            raw_pll_picocodes=pll,
+            committed_debt_picocodes=self.debt.total_picocodes,
+            maintenance_request=maintenance_request,
+            decision_timestamp_ticks=self._current_timestamp_ticks,
+            counterfactual_frequency_only_delta_codes=(
+                counterfactual_frequency_only_delta_codes
+            ),
+            phase_materially_influenced=phase_materially_influenced,
+            step_limited=step_limited,
+            range_clamped=range_clamped,
+            cadence_limited=cadence_limited,
+            count_limited=count_limited,
+            cumulative_budget_limited=cumulative_budget_limited,
+        )
+
+    def _request_or_hold(
+        self,
+        observation: CX323Observation,
+        *,
+        delta: int,
+        reason: str,
+        cap: int,
+        raw: int = 0,
+        fll: int = 0,
+        pll: int = 0,
+        phase_term: int = 0,
+        enforce_phase_direction: bool = False,
+        maintenance_request: bool = False,
+        counterfactual_frequency_only_delta_codes: int = 0,
+        phase_materially_influenced: bool = False,
+        step_limited: bool = False,
+        range_clamped: bool = False,
+    ) -> CX323Decision:
+        projection = {
+            "counterfactual_frequency_only_delta_codes": (
+                counterfactual_frequency_only_delta_codes
+            ),
+            "phase_materially_influenced": phase_materially_influenced,
+            "step_limited": step_limited,
+            "range_clamped": range_clamped,
+        }
+        cadence_held, timestamp_backward = self._cadence_status(observation)
+        if cadence_held:
+            if timestamp_backward:
+                self._fail_static("observation_timestamp_backward")
+                return self._decision(self.fail_static_reason)
+            return self._decision(
+                "cadence_hold",
+                cap=cap,
+                raw=raw,
+                fll=fll,
+                pll=pll,
+                cadence_limited=True,
+                **projection,
+            )
+        if delta and enforce_phase_direction and phase_term and delta * phase_term < 0:
+            return self._decision(
+                "phase_direction_coherence_hold",
+                cap=cap,
+                raw=raw,
+                fll=fll,
+                pll=pll,
+                **projection,
+            )
+        if delta == 0:
+            return self._decision(
+                "zero_rounded_or_range_hold",
+                cap=cap,
+                raw=raw,
+                fll=fll,
+                pll=pll,
+                **projection,
+            )
+        if self.application_count >= self.policy.maximum_applications:
+            return self._decision(
+                "global_application_budget_hold",
+                cap=cap,
+                raw=raw,
+                fll=fll,
+                pll=pll,
+                count_limited=True,
+                **projection,
+            )
+        if (
+            self.cumulative_movement_codes + abs(delta)
+            > self.policy.maximum_cumulative_movement_codes
+        ):
+            return self._decision(
+                "global_cumulative_movement_budget_hold",
+                cap=cap,
+                raw=raw,
+                fll=fll,
+                pll=pll,
+                cumulative_budget_limited=True,
+                **projection,
+            )
+        chatter = self._chatter_reason(delta)
+        if chatter is not None:
+            self._fail_static(chatter)
+            return self._decision(
+                chatter, cap=cap, raw=raw, fll=fll, pll=pll, **projection
+            )
+        decision = self._decision(
+            reason,
+            delta,
+            cap,
+            raw,
+            fll,
+            pll,
+            maintenance_request=maintenance_request,
+            **projection,
+        )
+        self.request_pending = True
+        self._pending_decision = decision
+        self._pending_decision_timestamp_s = observation.timestamp_s
+        self._pending_decision_timestamp_ticks = self._timestamp_ticks(observation)
+        return decision
+
+    def _legacy_request(
+        self,
+        observation: CX323Observation,
+        *,
+        delta: int,
+        reason: str,
+        phase_term: int = 0,
+        reset_debt: bool = True,
+        enforce_phase_direction: bool = True,
+        counterfactual_frequency_only_delta_codes: int = 0,
+        phase_materially_influenced: bool = False,
+        step_limited: bool = False,
+        range_clamped: bool = False,
+    ) -> CX323Decision:
+        # Legacy/outside paths are a maintenance boundary, never an implicit
+        # continuation of a tagged-debt persistence interval.
+        self._reset(preserve_debt=not reset_debt)
+        return self._request_or_hold(
+            observation,
+            delta=delta,
+            reason=reason,
+            cap=self.policy.maximum_step_codes,
+            pll=phase_term,
+            phase_term=phase_term,
+            enforce_phase_direction=enforce_phase_direction,
+            counterfactual_frequency_only_delta_codes=(
+                counterfactual_frequency_only_delta_codes
+            ),
+            phase_materially_influenced=phase_materially_influenced,
+            step_limited=step_limited,
+            range_clamped=range_clamped,
+        )
+
+    def enter_metadata_hold(self) -> None:
+        self.metadata_hold = True
+        self.metadata_requalified = False
+        self.requalification_frontier = None
+        self.requalification_window_count = 0
+        self._requalification_last_closing_frontier = None
+        self._requalification_identity = None
+        self._reset(preserve_debt=True)
+
+    def new_policy_activation(self) -> None:
+        """Explicit activation boundary; it never inherits maintenance debt."""
+
+        if self.request_pending or self.response_pending:
+            self._fail_static("new_policy_activation_with_outstanding_transaction")
+            raise HybridPolicyError(self.fail_static_reason)
+        self._reset(preserve_debt=False)
+
+    def requalify_metadata(self, evidence_frontier: int) -> None:
+        if not self.metadata_hold:
+            raise HybridPolicyError("metadata requalification without hold")
+        if evidence_frontier <= 0:
+            raise ValueError("metadata requalification frontier must be positive")
+        # Fresh serial metadata is necessary but not sufficient to restore
+        # actuation.  D14/D8 must provide two complete causally later windows
+        # while the last confirmed code and debt remain frozen.
+        self.metadata_requalified = True
+        self.requalification_frontier = evidence_frontier
+        self.requalification_window_count = 0
+        self._requalification_last_closing_frontier = None
+        self._requalification_identity = None
+        self._reset(preserve_debt=True)
+
+    def _advance_metadata_requalification(
+        self,
+        observation: CX323Observation,
+        identity: tuple[int, int, int, int, bool, str],
+    ) -> str | None:
+        """Advance the independent two-window D14/D8 requalification gate."""
+
+        if not self.metadata_hold or not self.metadata_requalified:
+            return None
+        if self.requalification_frontier is None:
+            self._fail_static("metadata_requalification_frontier_missing")
+            return self.fail_static_reason
+        if observation.source_first_sequence < self.requalification_frontier:
+            return "metadata_requalification_frontier_hold"
+        previous = self._requalification_last_closing_frontier
+        if previous is not None and observation.source_first_sequence < previous:
+            return "metadata_requalification_overlap_hold"
+        contiguous = (
+            previous is not None
+            and observation.source_first_sequence == previous
+            and self._requalification_identity == identity
+        )
+        self.requalification_window_count = (
+            min(2, self.requalification_window_count + 1) if contiguous else 1
+        )
+        self._requalification_last_closing_frontier = observation.source_last_sequence
+        self._requalification_identity = identity
+        if self.requalification_window_count < 2:
+            return "metadata_requalification_window_hold"
+        self.metadata_hold = False
+        self.metadata_requalified = False
+        self.requalification_frontier = None
+        self._requalification_last_closing_frontier = None
+        self._requalification_identity = None
+        return None
+
+    def reject_or_expire_request(self) -> None:
+        if not self.request_pending or self.response_pending:
+            self._fail_static("invalid_request_rejection_transition")
+            raise HybridPolicyError(self.fail_static_reason)
+        self.request_pending = False
+        self._pending_decision = None
+        self._pending_decision_timestamp_s = None
+        self._pending_decision_timestamp_ticks = None
+
+    def decide(self, observation: CX323Observation) -> CX323Decision:
+        self.decision_sequence += 1
+        self._current_timestamp_ticks = self._timestamp_ticks(observation)
+        if self.fail_static_reason:
+            return self._decision(self.fail_static_reason)
+        if (
+            observation.timestamp_s
+            != self._current_timestamp_ticks // _CX323_TICKS_PER_SECOND
+        ):
+            self._fail_static("observation_timestamp_domain_mismatch")
+            return self._decision(self.fail_static_reason)
+        if observation.source_last_sequence <= observation.source_first_sequence:
+            self._fail_static("invalid_selected_window_frontier")
+            return self._decision(self.fail_static_reason)
+        if self.request_pending:
+            return self._decision("request_pending_hold")
+        if self.response_pending:
+            return self._decision("response_pending_hold")
+        if not observation.metadata_qualified:
+            if not observation.metadata_qualified:
+                if not self.metadata_hold or self.metadata_requalified:
+                    self.enter_metadata_hold()
+            return self._decision("metadata_hold")
+        if self.metadata_hold and not self.metadata_requalified:
+            return self._decision("metadata_hold")
+        if (observation.applied_code != self.applied_code
+                or observation.dac_epoch != self.dac_epoch):
+            self._fail_static("unknown_or_contradictory_application_or_DAC_epoch")
+            return self._decision(self.fail_static_reason)
+        identity = (observation.capture_session, observation.applied_code,
+                    observation.dac_epoch, observation.phase_epoch,
+                    observation.phase_valid, observation.frequency_estimator_id)
+        if self.persistence_identity is not None and identity != self.persistence_identity:
+            old = self.persistence_identity
+            if observation.capture_session != old[0] or observation.frequency_estimator_id != old[5]:
+                self._reset(preserve_debt=False)
+            elif observation.applied_code != old[1] or observation.dac_epoch != old[2]:
+                self._fail_static("unknown_or_contradictory_application_or_DAC_epoch")
+                return self._decision(self.fail_static_reason)
+            elif observation.phase_epoch != old[3] or observation.phase_valid != old[4]:
+                self.debt = CX323Debt(self.debt.fll_picocodes, 0)
+                self._reset(preserve_debt=True)
+        if not observation.authority_valid:
+            self._reset(preserve_debt=True)
+            return self._decision("reference_invalidity_or_authority_hold")
+        if not observation.settled:
+            self._reset(preserve_debt=True)
+            return self._decision("settling_hold")
+        metadata_requalification_hold = self._advance_metadata_requalification(
+            observation, identity
+        )
+        if self.fail_static_reason:
+            return self._decision(self.fail_static_reason)
+        if metadata_requalification_hold in {
+            "metadata_requalification_frontier_hold",
+            "metadata_requalification_overlap_hold",
+        }:
+            return self._decision(metadata_requalification_hold)
+        if not observation.phase_valid:
+            self.debt = CX323Debt(self.debt.fll_picocodes, 0)
+            self._reset(preserve_debt=True)
+            combined_legacy, frequency_legacy, step_limited, range_clamped = (
+                self._legacy_deltas(
+                observation, phase_enabled=False
+                )
+            )
+            projection = {
+                "counterfactual_frequency_only_delta_codes": frequency_legacy,
+                "phase_materially_influenced": False,
+                "step_limited": step_limited,
+                "range_clamped": range_clamped,
+            }
+            if metadata_requalification_hold:
+                return self._decision(metadata_requalification_hold, **projection)
+            return self._legacy_request(
+                observation,
+                delta=combined_legacy,
+                reason="phase_degraded_frequency_only_request_ready",
+                reset_debt=False,
+                enforce_phase_direction=False,
+                **projection,
+            )
+
+        # The CX322-compatible paths are complete control paths, not merely
+        # labels.  They deliberately precede the tagged-debt frontier and
+        # persistence state machine.
+        (
+            combined_legacy,
+            frequency_legacy,
+            step_limited,
+            range_clamped,
+        ) = self._legacy_deltas(observation)
+        phase_material = combined_legacy != frequency_legacy
+        projection = {
+            "counterfactual_frequency_only_delta_codes": frequency_legacy,
+            "phase_materially_influenced": phase_material,
+            "step_limited": step_limited,
+            "range_clamped": range_clamped,
+        }
+        phase_term = max(-36, min(36, -observation.relative_phase_cycles))
+        if observation.tight_state != "TIGHT_INSIDE":
+            if metadata_requalification_hold:
+                self._reset(preserve_debt=False)
+                return self._decision(metadata_requalification_hold, **projection)
+            return self._legacy_request(
+                observation,
+                delta=combined_legacy,
+                reason="outside_tight_legacy_request_ready",
+                phase_term=phase_term,
+                **projection,
+            )
+        if phase_material:
+            if metadata_requalification_hold:
+                self._reset(preserve_debt=False)
+                return self._decision(metadata_requalification_hold, **projection)
+            return self._legacy_request(
+                observation,
+                delta=combined_legacy,
+                reason="phase_material_legacy_request_ready",
+                phase_term=phase_term,
+                **projection,
+            )
+        if self.last_closing_frontier is not None:
+            if observation.source_first_sequence < self.last_closing_frontier:
+                return self._decision("source_overlap_hold", **projection)
+            if observation.source_first_sequence > self.last_closing_frontier:
+                centre, lower, upper = self._centre(observation)
+                sign = self._sign(lower, upper)
+                if not sign or (self.persistence_count and sign != self.persistence_sign):
+                    self._reset(preserve_debt=False)
+                self.persistence_count = 1
+                self.persistence_sign = sign
+                self.persistence_identity = identity
+                self.last_closing_frontier = observation.source_last_sequence
+                return self._decision(
+                    "source_gap_persistence_restart", **projection
+                )
+        centre, lower, upper = self._centre(observation)
+        sign = self._sign(lower, upper)
+        if not sign:
+            self._reset(preserve_debt=False)
+            return self._decision("zero_containing_interval", **projection)
+        if self.persistence_count and self.persistence_sign != sign:
+            self._reset(preserve_debt=False)
+        same = self.persistence_count and self.persistence_identity == identity and self.persistence_sign == sign
+        self.persistence_count = min(2, self.persistence_count + 1) if same else 1
+        self.persistence_sign = sign
+        self.persistence_identity = identity
+        self.last_closing_frontier = observation.source_last_sequence
+        cap = self._cap(centre, observation.applied_code)
+        if metadata_requalification_hold:
+            return self._decision(
+                metadata_requalification_hold, cap=cap, **projection
+            )
+        cadence_held, timestamp_backward = self._cadence_status(observation)
+        if cadence_held:
+            if timestamp_backward:
+                self._fail_static("observation_timestamp_backward")
+                return self._decision(self.fail_static_reason)
+            return self._decision(
+                "cadence_hold", cap=cap, cadence_limited=True, **projection
+            )
+        if self.persistence_count < 2:
+            return self._decision(
+                "persistence_first_interval_hold", cap=cap, **projection
+            )
+        raw = cx323_centre_to_picocodes(centre)
+        fll = cx323_centre_to_picocodes(-36 * observation.accumulated_edge_error_counts)
+        pll = raw - fll
+        total = raw + self.debt.total_picocodes
+        rounded = _cx323_round_ratio(total, _CX323_PICO)
+        delta = max(-cap, min(cap, rounded))
+        return self._request_or_hold(
+            observation,
+            delta=delta,
+            reason="maintenance_request_ready",
+            cap=cap,
+            raw=raw,
+            fll=fll,
+            pll=pll,
+            phase_term=pll,
+            enforce_phase_direction=True,
+            maintenance_request=True,
+            **projection,
+        )
+
+    def confirm_application(self, decision: CX323Decision, *, applied_code: int,
+                            dac_epoch: int, first_consumer_exact: bool) -> None:
+        if (
+            not self.request_pending
+            or self._pending_decision != decision
+            or self._pending_decision_timestamp_s is None
+            or self._pending_decision_timestamp_ticks is None
+            or decision.requested_delta_codes == 0
+        ):
+            self._fail_static("invalid_or_unexpected_application")
+            raise HybridPolicyError(self.fail_static_reason)
+        if (not first_consumer_exact or applied_code != decision.requested_code
+                or dac_epoch != self.dac_epoch + 1):
+            self._fail_static("application_without_exact_first_consumer")
+            raise HybridPolicyError(self.fail_static_reason)
+        if decision.maintenance_request:
+            total = decision.raw_combined_picocodes + self.debt.total_picocodes
+            residual = max(-_CX323_DEBT_LIMIT, min(_CX323_DEBT_LIMIT,
+                total - decision.requested_delta_codes * _CX323_PICO))
+            fll_weight = abs(decision.raw_fll_picocodes + self.debt.fll_picocodes)
+            pll_weight = abs(decision.raw_pll_picocodes + self.debt.pll_picocodes)
+            if fll_weight + pll_weight:
+                fll_debt = _cx323_round_ratio(residual * fll_weight, fll_weight + pll_weight)
+                self.debt = CX323Debt(fll_debt, residual - fll_debt)
+            else:
+                self.debt = CX323Debt(residual, 0)
+        else:
+            # A legacy request begins a new maintenance epoch.  It must not
+            # manufacture a tagged residual from maintenance-only arithmetic.
+            residual = 0
+            self.debt = CX323Debt()
+        if self.debt.total_picocodes != residual:
+            self._fail_static("debt_tag_sum_invariant_failure")
+            raise HybridPolicyError(self.fail_static_reason)
+        self.applied_code = applied_code
+        self.dac_epoch = dac_epoch
+        self.application_count += 1
+        self.cumulative_movement_codes += abs(decision.requested_delta_codes)
+        # Bind cadence to the decision that originated the application.  A
+        # later observation while the request is pending is evidence only; it
+        # must not move the actuator's causal application frontier.
+        self.last_application_s = self._pending_decision_timestamp_s
+        self.last_application_ticks = self._pending_decision_timestamp_ticks
+        self.direction_history.append(1 if decision.requested_delta_codes > 0 else -1)
+        self.request_pending = False
+        self._pending_decision = None
+        self._pending_decision_timestamp_s = None
+        self._pending_decision_timestamp_ticks = None
+        self.response_pending = True
+        self._reset(preserve_debt=True)
+
+    def complete_response(self, *, fresh_exact: bool) -> None:
+        if not self.response_pending or not fresh_exact:
+            return
+        self.response_pending = False

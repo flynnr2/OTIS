@@ -11,9 +11,47 @@ long runs despite the unavailable oscilloscope/counter waveform evidence:
 - the 72-hour unchanged-CX322 hybrid programme bound by
   [`cx322_d9_d6_72h_integrated_engineering_contract_v1.json`](cx322_d9_d6_72h_integrated_engineering_contract_v1.json).
 
-The frequency-only run has passed by provenance-linked host-only supersession,
-and the exact 72-hour activation is prepared but not launched. See
-[`05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md`](05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md).
+The frequency-only run has passed by provenance-linked host-only supersession.
+All four 72-hour hybrid attempts stopped before the endpoint. Attempt 3
+isolated a firmware ACTIVE-status admission defect after 8,460 qualified
+seconds of otherwise healthy live hybrid steering. Attempt 4 then retained
+40,849.108902 qualified seconds with healthy timing/output/GNSS evidence and
+exactly exposed a quantization-driven `prospective_repeated_alternation`
+terminal in the unchanged request law, plus three host-platform escapes. An
+unchanged Campaign18 restart is not successor-ready. See
+[`05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md`](05_FREQUENCY_ONLY_24H_ATTEMPT9_RESULT_AND_72H_READINESS.md),
+[`06_HYBRID_72H_ATTEMPT2_RESULT_AND_RESTART_READINESS.md`](06_HYBRID_72H_ATTEMPT2_RESULT_AND_RESTART_READINESS.md)
+and
+[`07_HYBRID_72H_ATTEMPT3_TELEMETRY_ADMISSION_TERMINAL.md`](07_HYBRID_72H_ATTEMPT3_TELEMETRY_ADMISSION_TERMINAL.md),
+then
+[`08_HYBRID_72H_ATTEMPT4_CONTROLLER_TERMINAL.md`](08_HYBRID_72H_ATTEMPT4_CONTROLLER_TERMINAL.md).
+
+The successor CX323 Campaign19 Attempt 7 then retained about three qualified
+hours through its first actionable +1-code decision. A deterministic
+cross-core evidence-capacity defect stopped the trailing CTL record before any
+correction was accepted or applied. The complete causal verdict and bounded
+Attempt 8 correction are recorded in
+[`09_HYBRID_72H_ATTEMPT7_EVIDENCE_QUEUE_TERMINAL.md`](09_HYBRID_72H_ATTEMPT7_EVIDENCE_QUEUE_TERMINAL.md).
+
+Attempt 8 then completed the first CX323 +1-code physical transaction, but
+stopped after 8,707.306673
+qualified seconds when the firmware status getter overwrote correct CX323
+checkpoint and application fields with zero-valued legacy-engine state. The
+host correctly rejected that impossible snapshot. The retained scientific
+evidence, causal verdict and status correction are recorded in
+[`10_HYBRID_72H_ATTEMPT8_STATUS_SERIALIZATION_TERMINAL.md`](10_HYBRID_72H_ATTEMPT8_STATUS_SERIALIZATION_TERMINAL.md).
+
+A later exact-counter audit established that Attempt 8's response completed
+766.593 ms early. Separately authorized Attempt 9 then applied one automatic
++5-code correction from `0xA84D` to `0xA852` and retained 15,851.376625
+qualified seconds. Its response completed 60.146 ms before the same frozen
+1,500-second minimum. The run was independently aborted and its retained raw
+evidence was analyzed, sealed and externally registered without a second
+application; its formal acquisition and offline-finalization gates both
+failed. The exact timing cause,
+superseding Attempt 8 and Attempt 9 registrations, bounded repair and no-retry
+boundary are recorded in
+[`11_HYBRID_72H_ATTEMPT9_EXACT_RESPONSE_TIMING_TERMINAL.md`](11_HYBRID_72H_ATTEMPT9_EXACT_RESPONSE_TIMING_TERMINAL.md).
 
 This authority supersedes the original Gate B waveform dependency and the
 Prompt 04 stop boundary only for these explicitly identified engineering

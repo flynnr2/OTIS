@@ -14,7 +14,10 @@ from host.otis_tools.contracts import (
     CsvValidationContext,
     validate_csv,
 )
-from host.otis_tools.run_paths import exact_active_timing_csv_files
+from host.otis_tools.run_paths import (
+    cx323_active_timing_csv_files,
+    exact_active_timing_csv_files,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -148,6 +151,21 @@ def test_long_run_inventory_adds_v2_without_mutating_v1_paths() -> None:
     assert inventory["active_hybrid_decisions_v2"]["path"] == (
         "csv/active_hybrid_decisions_v2.csv"
     )
+
+
+def test_cx323_inventory_adds_required_maintenance_evidence_only() -> None:
+    campaign18 = {
+        entry["contract"] for entry in exact_active_timing_csv_files()
+    }
+    cx323 = {
+        entry["contract"]: entry for entry in cx323_active_timing_csv_files()
+    }
+
+    assert "active_hybrid_maintenance_v1" not in campaign18
+    assert cx323["active_hybrid_maintenance_v1"] == {
+        "path": "csv/active_hybrid_maintenance_v1.csv",
+        "contract": "active_hybrid_maintenance_v1",
+    }
 
 
 def test_firmware_sidecars_are_gated_and_cover_exact_lifecycle_boundaries() -> None:

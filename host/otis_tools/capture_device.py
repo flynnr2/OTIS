@@ -31,6 +31,7 @@ from .serial_commands import (
     parse_serial_command,
     parse_timestamped_command_line,
 )
+from .time_domains import canonical_domain_declaration
 
 
 LOGGER = logging.getLogger("otis.capture_device")
@@ -317,10 +318,7 @@ def _create_manifest_if_missing(
             "version": 1,
         },
         "domains": [
-            {
-                "name": "rp2040_timer0",
-                "nominal_hz": 16000000,
-            }
+            canonical_domain_declaration("rp2040_timer0")
         ],
         "channels": [
             {"channel_id": 1, "role": "authoritative_pps_reference", "record_family": "raw_events_v1"},

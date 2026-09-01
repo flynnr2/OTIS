@@ -55,7 +55,10 @@ from .active_hybrid_live_supervisor import (
     FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH,
     FORWARDED_MONITOR_OBSERVABILITY_KEYS,
 )
-from .active_status_contract import ACTIVE_STATUS_CONTRACT_KEYS
+from .active_status_contract import (
+    ACTIVE_STATUS_CONTRACT_KEYS,
+    SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT,
+)
 from .gnss_operational_baud_policy import (
     GNSS_OPERATIONAL_REQUIRED_DEFINES,
     require_exact_gnss_operational_baud_policy,
@@ -855,7 +858,7 @@ def _live_activation_blockers(bundle: Mapping[str, Any]) -> list[str]:
         if registered.get(contract_id, {}).get("path") != path:
             blockers.append(f"{contract_id}_capture_path_not_registered")
     active_keys = ACTIVE_STATUS_CONTRACT_KEYS.get(
-        "cx317_active_status_snapshot_v1", ()
+        SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT, ()
     )
     if not _GNSS_HOLD_STATUS_KEYS.issubset(active_keys):
         blockers.append("gnss_hold_causal_status_contract_not_registered")

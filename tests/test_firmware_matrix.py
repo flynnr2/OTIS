@@ -36,6 +36,7 @@ CURRENT_PROFILES = {
     "cx322_direct_hybrid",
     "cx322_d9_d6_integration_engineering",
     "cx322_d9_d6_72h_sustained_engineering",
+    "cx323_d9_d6_72h_adaptive_hybrid",
     "otis_sustained_hybrid_regulation_v1",
     "d9_forwarded_output_no_control",
     "d9_disabled_no_control_baseline",
@@ -65,7 +66,7 @@ def test_matrix_contains_only_current_profiles_and_guards() -> None:
     matrix = load_matrix()
     profiles = matrix["profiles"]
     assert {item["id"] for item in profiles} == CURRENT_PROFILES | CURRENT_GUARDS
-    assert len(profiles) == 27
+    assert len(profiles) == 28
     assert {item["lifecycle"] for item in profiles} == {
         "keep_active",
         "keep_compile_only",
@@ -144,11 +145,29 @@ def test_integrated_cx322_profile_changes_only_d9_d6_selectors() -> None:
         "cx322_direct_hybrid",
         "cx322_d9_d6_integration_engineering",
         "cx322_d9_d6_72h_sustained_engineering",
+        "cx323_d9_d6_72h_adaptive_hybrid",
         "d9_d6_frequency_only_lower",
     ):
         defines = _profile(matrix, profile_id)["defines"]
         assert defines["OTIS_GNSS_OPERATIONAL_CONFIG_BLIND_PROMOTION"] == "1"
         assert defines["OTIS_GNSS_OPERATIONAL_PROMOTION_SETTLE_MS"] == "1200u"
+
+
+def test_cx323_profile_is_distinct_and_freezes_full_72h_authority() -> None:
+    defines = _profile(
+        load_matrix(), "cx323_d9_d6_72h_adaptive_hybrid"
+    )["defines"]
+
+    assert defines["OTIS_CX317_ACTIVE_CAMPAIGN"] == (
+        "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID"
+    )
+    assert defines["OTIS_CX317_ACTIVE_START_CODE"] == "0xA84Du"
+    assert defines["OTIS_CX317_ACTIVE_CORRECTION_LIMIT"] == "144u"
+    assert defines["OTIS_CX317_ACTIVE_CUMULATIVE_LIMIT_CODES"] == "3024u"
+    assert defines["OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS"] == "144u"
+    assert defines["OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES"] == "3024u"
+    assert defines["OTIS_ENABLE_FORWARDED_D9_OUTPUT"] == "1"
+    assert defines["OTIS_ENABLE_FORWARDED_D6_MONITOR"] == "1"
 
 
 @pytest.mark.parametrize(

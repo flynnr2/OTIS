@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from host.otis_tools.active_status_contract import (
+    ACTIVE_STATUS_KEYS,
+    CX321_ACTIVE_STATUS_KEYS,
+    SNAPSHOT_BEGIN_KEY,
+    SNAPSHOT_COMPLETE_KEY,
+    SNAPSHOT_CONTRACT_KEY,
+    SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,8 +98,36 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
     header = (FIRMWARE / "otis_dual_core_partition.h").read_text(
         encoding="utf-8"
     )
+    active_source = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    visit_start = active_source.index(
+        "void otis_cx317_active_live_visit_status("
+    )
+    visit_end = active_source.index(
+        "static void emit_direct_active_status", visit_start
+    )
+    emitted_keys = set(
+        re.findall(
+            r'visitor\(context,\s*"([^"]+)"',
+            active_source[visit_start:visit_end],
+        )
+    )
+    envelope = {
+        SNAPSHOT_BEGIN_KEY,
+        SNAPSHOT_CONTRACT_KEY,
+        SNAPSHOT_COMPLETE_KEY,
+    }
+    declared_fields = (
+        set(ACTIVE_STATUS_KEYS)
+        | set(SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS)
+        | set(CX321_ACTIVE_STATUS_KEYS)
+    )
 
-    assert "OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 33u" in header
+    assert emitted_keys - envelope == declared_fields
+    assert len(declared_fields) == 63
+    assert len(SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS) == 55
+    assert "OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 63u" in header
     assert "OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u" in header
     assert "OTIS_FORWARDED_MONITOR_HEALTH_TELEMETRY_BURST = 13u" in header
     assert (
@@ -104,9 +142,9 @@ def test_stage7_active_status_burst_is_formula_derived_and_fits_queue() -> None:
         "OTIS_TIMING_HEALTH_TELEMETRY_BURST +\n"
         "    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST"
     ) in header
-    assert "OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 152u" in header
+    assert "OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 212u" in header
     assert "OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 169u" in header
-    assert "OTIS_TELEMETRY_QUEUE_DEPTH = 192u" in header
+    assert "OTIS_TELEMETRY_QUEUE_DEPTH = 212u" in header
     assert "OTIS_TELEMETRY_QUEUE_DEPTH >=\n" in header
 
 
@@ -308,9 +346,12 @@ def test_dual_core_timing_paths_keep_full_formatters_out_of_automatic_storage() 
     assert "OtisEvidenceFrameMessage evidence_frame_scratch = {};" in active
     assert "OtisEvidenceFrameMessage message = {};" not in active
     # ACT request/application evidence, the AHY decision record, the exact
-    # long-run timing sidecar and the CX321 plant-sign lifecycle share one
-    # statically allocated evidence frame.
-    assert active.count("otis_dual_core_publish_evidence(&evidence_frame_scratch)") == 5
+    # long-run timing sidecar, CX321 plant-sign lifecycle, and CX323 AHM record
+    # share one statically allocated evidence frame. The wrapper either adds
+    # that frame to CX323's preformatted atomic burst or publishes it directly
+    # for historical profiles.
+    assert active.count("publish_evidence_message(&evidence_frame_scratch)") == 6
+    assert "otis_dual_core_publish_evidence(&evidence_frame_scratch)" not in active
 
     assert "OtisEvidenceFrameMessage dual_core_association_loss_scratch = {};" in sketch
     association_start = sketch.index(

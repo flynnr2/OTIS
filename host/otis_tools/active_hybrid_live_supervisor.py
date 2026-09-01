@@ -26,10 +26,10 @@ from .active_hybrid_evidence_guard import (
 from .active_hybrid_programme_contract import (
     ActiveHybridProgramme,
     CX320_PROGRAMME,
-    CX322_D9_D6_72H_PROGRAMME,
     programme_from_mapping,
     progressive_checkpoint_contract,
 )
+from .active_hybrid_policy import load_cx323_policy
 from .active_status_live_state import (
     LIVE_FRONTIER_COMPONENT,
     LIVE_FRONTIER_DOMAIN_KEY,
@@ -149,6 +149,28 @@ FORWARDED_MONITOR_OBSERVABILITY_KEYS = (
     ("forwarded_clock_monitor", "pio_rxstall_count"),
     ("forwarded_clock_monitor", "fault_flags"),
 )
+
+
+def _programme_terminal_decision(
+    programme: ActiveHybridProgramme,
+    suffix: str,
+    *,
+    fallback: str,
+) -> str:
+    """Resolve one exact programme terminal without inheriting labels."""
+
+    matches = sorted(
+        decision
+        for decision in programme.terminal_decisions
+        if decision.endswith(suffix)
+    )
+    if len(matches) == 1:
+        return matches[0]
+    if programme.integrated_long_run:
+        raise ValueError(
+            f"{programme.key} must declare exactly one terminal ending {suffix!r}"
+        )
+    return fallback
 
 
 def forwarded_output_integration_prewrite_evidence(
@@ -341,6 +363,17 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         or control.get("maximum_code") != programme.maximum_code
         or qualification.get("qualified_duration_s")
         != programme.qualified_duration_s
+        or (
+            programme.qualified_d14_aperture_count is not None
+            and (
+                qualification.get("qualified_endpoint_contract")
+                != "qualified_D14_D8_aperture_count_v2"
+                or qualification.get("qualified_d14_aperture_count")
+                != programme.qualified_d14_aperture_count
+                or qualification.get("correction_response_reserve_d14_apertures")
+                != programme.correction_response_reserve_d14_apertures
+            )
+        )
         or qualification.get("absolute_wall_clock_limit_s")
         != programme.authorized_absolute_wall_limit_s
         or qualification.get("no_extension") is not True
@@ -355,29 +388,104 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             else CX320_PROGRAMME.programme_id
         )
     )
-    numerical = natural_policy.get("numerical_policy", {})
     authority = natural_policy.get("global_authority_limits", {})
-    if (
-        natural_policy.get("programme_id")
-        != expected_natural_policy_programme_id
-        or natural_policy.get("policy_id") != programme.natural_policy_id
-        or natural_policy.get("setup", {}).get("exact_start_code")
-        != programme.setup_code
-        or authority.get("maximum_total_automatic_applications")
-        != programme.maximum_applications
-        or authority.get("maximum_cumulative_absolute_movement_codes")
-        != programme.maximum_cumulative_movement_codes
-        or authority.get("maximum_combined_step_codes")
-        != programme.maximum_step_codes
-        or authority.get("minimum_applied_cadence_s")
-        != programme.minimum_applied_cadence_s
-        or authority.get("minimum_code") != programme.minimum_code
-        or authority.get("maximum_code") != programme.maximum_code
-        or numerical.get("settling_exclusion_s") != 900
-        or numerical.get("fresh_support_after_settling_s") != 600
-        or numerical.get("response_support_total_s") != 1500
-    ):
-        raise ValueError("current CX320 policy does not carry the exact live envelope")
+    if programme.persistent_maintenance_policy:
+        try:
+            selected_policy = load_cx323_policy(natural_policy_path)
+        except ValueError as exc:
+            raise ValueError(
+                "current CX323 policy does not carry the exact live envelope"
+            ) from exc
+        selection = natural_policy.get("maintenance_selection", {})
+        finite_timing = natural_policy.get("finite_timing", {})
+        controller_inhibit = natural_policy.get("live_controller_inhibit", {})
+        if (
+            natural_policy.get("programme_id")
+            != expected_natural_policy_programme_id
+            or natural_policy.get("policy_id") != programme.natural_policy_id
+            or authority.get("maximum_automatic_applications")
+            != programme.maximum_applications
+            or authority.get("maximum_cumulative_absolute_movement_codes")
+            != programme.maximum_cumulative_movement_codes
+            or authority.get("maximum_combined_step_codes")
+            != programme.maximum_step_codes
+            or authority.get("minimum_applied_cadence_s")
+            != programme.minimum_applied_cadence_s
+            or authority.get("minimum_code") != programme.minimum_code
+            or authority.get("maximum_code") != programme.maximum_code
+            or authority.get("maximum_outstanding_requests") != 1
+            or authority.get("deliberate_challenges")
+            != programme.maximum_deliberate_challenges
+            or authority.get("automatic_retry") is not False
+            or authority.get("automatic_restoration") is not False
+            or selection.get("requires_tight_state") != "TIGHT_INSIDE"
+            or selection.get("requires_legacy_phase_material") is not False
+            or selection.get("selected_frequency_estimator")
+            != selected_policy.frequency_estimator_id
+            or selection.get("window_s") != 600
+            or selection.get("frontier_support") != "(opening_closing]"
+            or selection.get("contiguous_frontier")
+            != "next_opening_eq_prior_closing"
+            or selection.get("overlap_frontier")
+            != "next_opening_lt_prior_closing"
+            or selection.get("gap_frontier")
+            != "next_opening_gt_prior_closing"
+            or selection.get("required_consecutive_same_sign_windows") != 2
+            or finite_timing.get("qualified_duration_s")
+            != programme.qualified_duration_s
+            or finite_timing.get("qualified_endpoint_contract")
+            != "qualified_D14_D8_aperture_count_v2"
+            or finite_timing.get("qualified_d14_aperture_count")
+            != programme.qualified_d14_aperture_count
+            or finite_timing.get("qualified_clock")
+            != "accepted_D14_D8_apertures_in_one_capture_session"
+            or finite_timing.get("qualification_deadline_s") != 5_400
+            or finite_timing.get("wall_clock_limit_s")
+            != programme.authorized_absolute_wall_limit_s
+            or finite_timing.get("milestone_interval_qualified_s") != 21_600
+            or finite_timing.get("milestones_qualified_s")
+            != list(range(21_600, programme.qualified_duration_s + 1, 21_600))
+            or finite_timing.get("minimum_final_response_reserve_s") != 1500
+            or finite_timing.get("minimum_final_response_reserve_d14_apertures")
+            != programme.correction_response_reserve_d14_apertures
+            or finite_timing.get("extension") != "forbidden"
+            or finite_timing.get("inherited_24h_or_12h_duration") is not False
+            or controller_inhibit.get("alternation_or_low_efficiency")
+            != "latch_controller_authority_inhibited_acquisition_continues"
+            or controller_inhibit.get("host_abort") is not False
+            or controller_inhibit.get("endpoint_verdict")
+            != "cx323_d9_d6_72h_hybrid_authority_not_sustained"
+            or set(natural_policy.get("terminal_decisions", ()))
+            != set(programme.terminal_decisions)
+        ):
+            raise ValueError(
+                "current CX323 policy does not carry the exact live envelope"
+            )
+    else:
+        numerical = natural_policy.get("numerical_policy", {})
+        if (
+            natural_policy.get("programme_id")
+            != expected_natural_policy_programme_id
+            or natural_policy.get("policy_id") != programme.natural_policy_id
+            or natural_policy.get("setup", {}).get("exact_start_code")
+            != programme.setup_code
+            or authority.get("maximum_total_automatic_applications")
+            != programme.maximum_applications
+            or authority.get("maximum_cumulative_absolute_movement_codes")
+            != programme.maximum_cumulative_movement_codes
+            or authority.get("maximum_combined_step_codes")
+            != programme.maximum_step_codes
+            or authority.get("minimum_applied_cadence_s")
+            != programme.minimum_applied_cadence_s
+            or authority.get("minimum_code") != programme.minimum_code
+            or authority.get("maximum_code") != programme.maximum_code
+            or numerical.get("settling_exclusion_s") != 900
+            or numerical.get("fresh_support_after_settling_s") != 600
+            or numerical.get("response_support_total_s") != 1500
+        ):
+            raise ValueError(
+                "current CX320 policy does not carry the exact live envelope"
+            )
 
     if programme.identification_required:
         active_authority = policy.get("global_authority_limits", {})
@@ -396,7 +504,11 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             or active_authority.get("maximum_code") != programme.maximum_code
         ):
             raise ValueError("current CX321 programme policy envelope differs")
-    if programme.response_checkpoint_observational and not programme.sustained_regulation:
+    if (
+        programme.response_checkpoint_observational
+        and not programme.sustained_regulation
+        and not programme.persistent_maintenance_policy
+    ):
         terminal_semantics = policy.get("terminal_semantics", {})
         if terminal_semantics.get(
             "bounded_direct_hybrid_early_safety_stop_reasons"
@@ -534,6 +646,35 @@ def _truth(health: dict[tuple[str, str], str], key: str) -> bool:
     return health.get(("cx317_active", key)) == "true"
 
 
+_AUTHORITATIVE_CAPTURE_COUNTERS = (
+    "rejected_window_count",
+    "physical_aperture_incomplete_count",
+    "association_loss_count",
+)
+_AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH = {
+    "valid": "true",
+    "control_eligible": "true",
+    "reference_validity": "valid",
+    "count_validity": "valid",
+    "boundary_validity": "valid",
+    "aperture_validity": "valid",
+    "observation_pair_validity": "valid",
+    "fifo_continuity": "continuous",
+    "association_state": "clean",
+}
+
+
+def _authoritative_capture_health_faults(
+    health: dict[tuple[str, str], str],
+) -> list[str]:
+    faults: list[str] = []
+    for key, expected in _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items():
+        observed = health.get(("pps_gate", key))
+        if observed != expected:
+            faults.append(f"{key}:{observed!r}!={expected!r}")
+    return faults
+
+
 class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
     """CX320 live authority layered on the proven active-control transport."""
 
@@ -610,6 +751,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("qualified_frontier_raw_ticks", None)
         self.state.setdefault("qualified_frontier_extended_ticks", None)
         self.state.setdefault("qualified_endpoint_extended_timestamp_ticks", None)
+        self.state.setdefault("qualified_d14_accepted_window_origin", None)
+        self.state.setdefault("qualified_d14_reference_sequence_origin", None)
+        self.state.setdefault("qualified_d14_accepted_apertures", None)
+        self.state.setdefault("qualified_d14_reference_sequence_endpoint", None)
+        self.state.setdefault("qualified_authoritative_capture_baseline", None)
         self.state.setdefault("latest_hybrid_state", None)
         self.state.setdefault("first_phase_checkpoint_passed", False)
         self.state.setdefault("first_phase_observation_checkpoint_exact", False)
@@ -797,45 +943,47 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         }[phase]
         # A periodic status query submitted immediately before the evidence
         # command can arrive after the pre-submit baseline and is therefore
-        # generation-fresh but causally stale.  Retry a bounded number of
-        # complete snapshots while the exact pre-submit frontier persists.
-        # Four five-second queries remain inside the frozen 30-second host
-        # replay/acknowledgement deadline.
-        health: dict[tuple[str, str], str] | None = None
-        observed_phase = ""
-        for _ in range(4):
-            health = self._fresh_active_snapshot_after(baseline)
-            baseline = int(
-                health[("cx317_active", "snapshot_generation_complete")]
-            )
-            observed_phase = health.get(("cx317_active", "evidence_phase"), "")
-            observed_request = int(
-                health.get(("cx317_active", "evidence_request_sequence"), "0")
-            )
-            if observed_phase == pre_submit_phase:
-                if observed_request != request_sequence:
-                    raise ValueError(
-                        "CX320 evidence acknowledgement retained a contradictory "
-                        "request identity"
-                    )
-                continue
-            if (
-                observed_phase == "evidence_clear"
-                and observed_request != 0
-            ) or (
-                observed_phase != "evidence_clear"
-                and observed_request != request_sequence
-            ):
+        # generation-fresh but causally stale.  Observe one complete snapshot
+        # per supervisor pass and persist that frontier in the inflight record.
+        # This keeps platform-health checks interleaved with acknowledgement
+        # observation instead of blocking them behind four back-to-back queries.
+        baseline = int(
+            acknowledgement.get("last_observed_snapshot_generation", baseline)
+        )
+        health = self._fresh_active_snapshot_after(baseline)
+        observed_generation = int(
+            health[("cx317_active", "snapshot_generation_complete")]
+        )
+        acknowledgement["last_observed_snapshot_generation"] = observed_generation
+        observed_phase = health.get(("cx317_active", "evidence_phase"), "")
+        observed_request = int(
+            health.get(("cx317_active", "evidence_request_sequence"), "0")
+        )
+        if observed_phase == pre_submit_phase:
+            if observed_request != request_sequence:
                 raise ValueError(
-                    "CX320 evidence acknowledgement advanced to a contradictory "
+                    "CX320 evidence acknowledgement retained a contradictory "
                     "request identity"
                 )
-            if observed_phase not in permitted:
-                return False
-            break
-        else:
             return False
-        assert health is not None
+        if (
+            observed_phase == "evidence_clear" and observed_request != 0
+        ) or (
+            observed_phase != "evidence_clear"
+            and observed_request != request_sequence
+        ):
+            raise ValueError(
+                "CX320 evidence acknowledgement advanced to a contradictory "
+                "request identity"
+            )
+        if observed_phase not in permitted:
+            raise ValueError(
+                "CX320 evidence acknowledgement advanced to an impossible "
+                "phase ordering: "
+                f"submitted_phase={phase} "
+                f"pre_submit_phase={pre_submit_phase} "
+                f"observed_phase={observed_phase}"
+            )
         self._programme_event(
             "firmware_evidence_acknowledgement_confirmed",
             request_sequence=request_sequence,
@@ -928,42 +1076,70 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                         f"{row.get(field)!r} != {value!r}"
                     )
 
+    def _enter_host_verification_hold(self, error: Exception) -> None:
+        """Inhibit host authority without terminating firmware acquisition."""
+        if self.state.get("host_verification_hold") is not None:
+            return
+        try:
+            rows = _read_csv(self.run_dir / ACTIVE_CSV)
+        except (OSError, UnicodeError, ValueError):
+            rows = []
+        physical = next(
+            (
+                row
+                for row in reversed(rows)
+                if row.get("event")
+                in {"response", "application", "manual_start"}
+            ),
+            {},
+        )
+
+        def integer(field: str, fallback: int = 0) -> int:
+            try:
+                return int(physical.get(field, fallback))
+            except (TypeError, ValueError):
+                return fallback
+
+        retained_code = self.state.get("terminal_static_code")
+        fallback_code = retained_code if isinstance(retained_code, int) else 0
+
+        hold = {
+            "entered_utc": _utc_now(),
+            "error": str(error),
+            "record_sequence": integer("transaction_record_sequence"),
+            "request_sequence": integer("request_sequence"),
+            "response_class": physical.get("response_class", "unavailable"),
+            "applied_code": integer("applied_code", fallback_code),
+            "dac_epoch": integer("dac_epoch"),
+            "correction_count": integer("correction_count"),
+            "cumulative_movement_codes": integer(
+                "cumulative_movement_codes"
+            ),
+        }
+        self.state["host_verification_hold"] = hold
+        self.state["arm_pending"] = False
+        self.state["arm_sent_at_utc"] = None
+        self._save()
+        self._programme_event("host_verification_hold_entered", **hold)
+
+    def _validate_hybrid_decisions_or_hold(self) -> bool:
+        try:
+            self._validate_hybrid_decisions()
+        except (OSError, UnicodeError, ValueError) as exc:
+            self._enter_host_verification_hold(exc)
+            return False
+        return True
+
     def _process_transactions(self) -> None:
         if self.state.get("host_verification_hold") is not None:
-            self._validate_hybrid_decisions()
+            return
+        if not self._validate_hybrid_decisions_or_hold():
             return
         prior_terminal = self.state.get("terminal")
         try:
             super()._process_transactions()
         except IndependentReplayMismatch as exc:
-            rows = _read_csv(self.run_dir / ACTIVE_CSV)
-            response = next(
-                (row for row in reversed(rows) if row.get("event") == "response"),
-                {},
-            )
-            hold = {
-                "entered_utc": _utc_now(),
-                "error": str(exc),
-                "record_sequence": int(
-                    response.get("transaction_record_sequence", "0")
-                ),
-                "request_sequence": int(response.get("request_sequence", "0")),
-                "response_class": response.get(
-                    "response_class", "unavailable"
-                ),
-                "applied_code": int(response.get("applied_code", "0")),
-                "dac_epoch": int(response.get("dac_epoch", "0")),
-                "correction_count": int(response.get("correction_count", "0")),
-                "cumulative_movement_codes": int(
-                    response.get("cumulative_movement_codes", "0")
-                ),
-            }
-            self.state["host_verification_hold"] = hold
-            self.state["arm_pending"] = False
-            self.state["arm_sent_at_utc"] = None
-            self._save()
-            self._programme_event("host_verification_hold_entered", **hold)
-            self._validate_hybrid_decisions()
+            self._enter_host_verification_hold(exc)
             return
         except ResponseCheckpointRejected as exc:
             rows = _read_csv(self.run_dir / ACTIVE_CSV)
@@ -982,6 +1158,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
             self._abort("hybrid_response_wrong_or_frequency_not_reacquired")
             self._validate_hybrid_decisions()
+            return
+        if self.state.get("inflight_evidence_acknowledgement") is not None:
+            # The already-written command is awaiting a causally later
+            # firmware snapshot.  Do not perform downstream transaction or
+            # controller accounting and, critically, do not resend it.
             return
         # The shared frequency supervisor historically treated exhausted
         # frequency authority as an early campaign success.  CX320 instead
@@ -1035,7 +1216,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                         phase_epoch=int(phase_epochs[0]),
                     )
                     self._abort("phase_or_frequency_regulation_not_sustained")
-        self._validate_hybrid_decisions()
+        self._validate_hybrid_decisions_or_hold()
 
     def _runtime_health_integrity(
         self, health: dict[tuple[str, str], str]
@@ -1060,7 +1241,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         )
         if (
             prospective_controller_inhibit
-            and self.programme is not CX322_D9_D6_72H_PROGRAMME
+            and not self.programme.controller_inhibit_acquisition_continues
         ):
             self.state["arm_pending"] = False
             self.state["arm_sent_at_utc"] = None
@@ -1081,7 +1262,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         platform_health = health
         if (
             prospective_controller_inhibit
-            and self.programme is CX322_D9_D6_72H_PROGRAMME
+            and self.programme.controller_inhibit_acquisition_continues
         ):
             self.state["arm_pending"] = False
             self.state["arm_sent_at_utc"] = None
@@ -1098,7 +1279,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 )
             # This firmware assertion is the intended controller-local
             # authority inhibition. Preserve all independent platform and
-            # D14/D8 checks while preventing it from terminating Campaign 18.
+            # D14/D8 checks while preventing it from terminating the finite
+            # integrated long run.
             platform_health = dict(health)
             platform_health[("cx317_active", "fail_static")] = "false"
         ControlSupervisorBase._check_fail_static_health(self, platform_health)
@@ -1175,7 +1357,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             raise ValueError(f"unexpected CX320 hybrid state: {hybrid_state!r}")
         if hybrid_state == "FAIL_STATIC" and not (
             prospective_controller_inhibit
-            and self.programme is CX322_D9_D6_72H_PROGRAMME
+            and self.programme.controller_inhibit_acquisition_continues
         ):
             raise ValueError(f"CX320 firmware entered FAIL_STATIC: {hybrid_reason}")
 
@@ -1440,8 +1622,15 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             session_id = int(health[("cx317_active", "session_id")])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("CX320 qualified origin device clock is malformed") from exc
-        if self.programme is CX322_D9_D6_72H_PROGRAMME:
+        authoritative_capture_baseline: dict[str, int] | None = None
+        qualified_origin_extended_ticks: int | None = None
+        qualified_frontier_raw_ticks: int | None = None
+        qualified_frontier_extended_ticks: int | None = None
+        if self.programme.integrated_long_run:
+            if _authoritative_capture_health_faults(health):
+                return
             try:
+                session_id = int(health[("pps_gate", "snapshot_session")])
                 frontier_ticks = int(
                     health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
                 )
@@ -1475,11 +1664,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             if forward.valid and forward.distance_ticks is not None and (
                 forward.distance_ticks <= maximum_lead_ticks
             ):
-                self.state["qualified_origin_extended_timestamp_ticks"] = (
-                    origin_ticks
-                )
-                self.state["qualified_frontier_raw_ticks"] = frontier_ticks
-                self.state["qualified_frontier_extended_ticks"] = (
+                qualified_origin_extended_ticks = origin_ticks
+                qualified_frontier_raw_ticks = frontier_ticks
+                qualified_frontier_extended_ticks = (
                     origin_ticks + forward.distance_ticks
                 )
             elif reverse.valid and reverse.distance_ticks is not None and (
@@ -1488,6 +1675,31 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 return
             else:
                 raise ValueError("CX320 qualified origin device clock is incoherent")
+            authoritative_capture_baseline = {}
+            for key in _AUTHORITATIVE_CAPTURE_COUNTERS:
+                try:
+                    value = int(health[("pps_gate", key)])
+                except (KeyError, TypeError, ValueError):
+                    return
+                if value < 0:
+                    return
+                authoritative_capture_baseline[key] = value
+            if self.programme.qualified_d14_aperture_count is not None:
+                try:
+                    accepted_origin = int(
+                        health[("pps_gate", "accepted_window_count")]
+                    )
+                    reference_origin = int(
+                        health[("pps_gate", "boundary_reference_sequence")]
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "CX323 qualified D14 aperture origin is unavailable"
+                    ) from exc
+                if not (0 <= accepted_origin < 1 << 32) or not (
+                    0 <= reference_origin < 1 << 32
+                ):
+                    raise ValueError("CX323 qualified D14 aperture origin is malformed")
         else:
             current_uptime_lower_bound_ticks = (
                 current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
@@ -1511,6 +1723,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state["qualified_origin_estimate_id"] = estimate["estimate_id"]
         self.state["qualified_origin_timestamp_ticks"] = origin_ticks
         self.state["qualified_origin_session_id"] = session_id
+        if self.programme.integrated_long_run:
+            self.state["qualified_origin_extended_timestamp_ticks"] = (
+                qualified_origin_extended_ticks
+            )
+            self.state["qualified_frontier_raw_ticks"] = (
+                qualified_frontier_raw_ticks
+            )
+            self.state["qualified_frontier_extended_ticks"] = (
+                qualified_frontier_extended_ticks
+            )
+            if self.programme.qualified_d14_aperture_count is not None:
+                self.state["qualified_d14_accepted_window_origin"] = accepted_origin
+                self.state["qualified_d14_reference_sequence_origin"] = reference_origin
+        self.state["qualified_authoritative_capture_baseline"] = (
+            authoritative_capture_baseline
+        )
         self._save()
         self._programme_event(
             "qualified_origin_established",
@@ -1522,7 +1750,90 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             source_dac_ref=estimate["source_dac_ref"],
             dac_epoch=dac_epoch,
             qualified_duration_s=self.programme.qualified_duration_s,
+            qualified_d14_aperture_count=(
+                self.programme.qualified_d14_aperture_count
+            ),
+            accepted_window_count_origin=self.state.get(
+                "qualified_d14_accepted_window_origin"
+            ),
+            boundary_reference_sequence_origin=self.state.get(
+                "qualified_d14_reference_sequence_origin"
+            ),
+            authoritative_capture_baseline=self.state.get(
+                "qualified_authoritative_capture_baseline"
+            ),
         )
+
+    def _abort_on_authoritative_capture_discontinuity(
+        self, health: dict[tuple[str, str], str]
+    ) -> bool:
+        """Stop an integrated long run before post-discontinuity work."""
+
+        if not self.programme.integrated_long_run:
+            return False
+        origin_session = self.state.get("qualified_origin_session_id")
+        if origin_session is None:
+            return False
+        faults: list[str] = []
+        if type(origin_session) is not int:
+            faults.append("qualified_capture_session_malformed")
+            origin_session = -1
+        faults.extend(_authoritative_capture_health_faults(health))
+        try:
+            current_session = int(health[("pps_gate", "snapshot_session")])
+        except (KeyError, TypeError, ValueError):
+            current_session = -1
+            faults.append("current_capture_session_unavailable")
+
+        if current_session != origin_session:
+            faults.append(
+                f"capture_session_changed:{origin_session}->{current_session}"
+            )
+        baseline = self.state.get("qualified_authoritative_capture_baseline")
+        if not isinstance(baseline, dict):
+            baseline = {}
+            faults.append("qualified_authoritative_capture_baseline_unavailable")
+        observed_counters: dict[str, int | str | None] = {}
+        for key in _AUTHORITATIVE_CAPTURE_COUNTERS:
+            try:
+                expected = int(baseline[key])
+                observed = int(health[("pps_gate", key)])
+            except (KeyError, TypeError, ValueError):
+                observed_counters[key] = health.get(("pps_gate", key))
+                faults.append(f"{key}_unavailable")
+                continue
+            observed_counters[key] = observed
+            if observed != expected:
+                faults.append(f"{key}_changed:{expected}->{observed}")
+        if not faults:
+            return False
+
+        self.state["arm_pending"] = False
+        self.state["arm_sent_at_utc"] = None
+        reason = (
+            f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
+            + ",".join(faults)
+        )
+        detail = {
+            "reason": reason,
+            "qualified_origin_session_id": origin_session,
+            "observed_capture_session_id": current_session,
+            "authoritative_capture_baseline": baseline,
+            "observed_authoritative_capture_counters": observed_counters,
+            "last_confirmed_code": self.state.get("terminal_static_code"),
+            "new_control_authority": False,
+        }
+        self.state["authoritative_capture_terminal_detail"] = detail
+        self._abort(reason)
+        try:
+            self._programme_event(
+                "authoritative_capture_discontinuity_observed", **detail
+            )
+        except OSError:
+            # The priority abort and retained terminal are decision-bearing;
+            # this supplementary event must never delay or undo them.
+            pass
+        return True
 
     def _qualified_elapsed_ticks(
         self, health: dict[tuple[str, str], str]
@@ -1534,13 +1845,24 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if type(origin) is not int or type(origin_session) is not int:
             raise ValueError("CX320 retained qualified origin is incomplete")
         try:
-            current_session = int(health[("cx317_active", "session_id")])
+            current_session = int(
+                health[
+                    (
+                        "pps_gate"
+                        if self.programme.integrated_long_run
+                        else "cx317_active",
+                        "snapshot_session"
+                        if self.programme.integrated_long_run
+                        else "session_id",
+                    )
+                ]
+            )
             current_uptime_s = int(health[("cx317_active", "uptime_s")])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("CX320 current qualified device clock is malformed") from exc
         if current_session != origin_session:
             raise ValueError("CX320 capture session changed after qualified origin")
-        if self.programme is CX322_D9_D6_72H_PROGRAMME:
+        if self.programme.integrated_long_run:
             try:
                 current_raw_ticks = int(
                     health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
@@ -1587,10 +1909,56 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             raise ValueError("CX320 device clock moved behind qualified origin")
         return elapsed
 
+    def _qualified_d14_apertures(
+        self, health: dict[tuple[str, str], str]
+    ) -> int | None:
+        target = self.programme.qualified_d14_aperture_count
+        if target is None:
+            return None
+        accepted_origin = self.state.get("qualified_d14_accepted_window_origin")
+        reference_origin = self.state.get("qualified_d14_reference_sequence_origin")
+        if type(accepted_origin) is not int or type(reference_origin) is not int:
+            return None
+        try:
+            accepted_now = int(health[("pps_gate", "accepted_window_count")])
+            reference_now = int(
+                health[("pps_gate", "boundary_reference_sequence")]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("CX323 qualified D14 aperture progress is unavailable") from exc
+        accepted_delta = (accepted_now - accepted_origin) & 0xFFFFFFFF
+        reference_delta = (reference_now - reference_origin) & 0xFFFFFFFF
+        if accepted_delta > 0x7FFFFFFF or reference_delta > 0x7FFFFFFF:
+            raise ValueError("CX323 qualified D14 aperture counter moved backward")
+        if accepted_delta != reference_delta:
+            raise ValueError(
+                "CX323 accepted-window and D14 reference progress differ"
+            )
+        self.state["qualified_d14_accepted_apertures"] = accepted_delta
+        self.state["qualified_d14_reference_sequence_endpoint"] = reference_now
+        return accepted_delta
+
     def _close_response_horizon_if_required(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
         elapsed_ticks = self._qualified_elapsed_ticks(health)
+        aperture_progress = self._qualified_d14_apertures(health)
+        if self.programme.qualified_d14_aperture_count is not None:
+            reserve = self.programme.correction_response_reserve_d14_apertures
+            if aperture_progress is None or reserve is None:
+                return False
+            if aperture_progress < self.programme.qualified_d14_aperture_count - reserve:
+                return False
+            if self.state["response_horizon_closed_utc"] is None:
+                self.state["response_horizon_closed_utc"] = _utc_now()
+                self._save()
+                self._programme_event(
+                    "correction_admission_closed_for_response_horizon",
+                    accepted_d14_d8_apertures=aperture_progress,
+                    required_response_reserve_d14_apertures=reserve,
+                    endpoint_contract="qualified_D14_D8_aperture_count_v2",
+                )
+            return True
         if elapsed_ticks is None:
             return False
         admission_ticks = (
@@ -1647,6 +2015,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             return
         state = health.get(("cx317_active", "state"), "")
         reason = health.get(("cx317_active", "reason"), "")
+        controller_inhibit = (
+            self.programme.controller_inhibit_acquisition_continues
+            and state == "FAULT"
+            and reason
+            in {
+                "prospective_repeated_alternation",
+                "prospective_low_efficiency_path",
+            }
+            and self.state.get("controller_authority_inhibited_reason") == reason
+        )
+        if controller_inhibit:
+            # _check_fail_static_health() has already converted this exact
+            # firmware policy terminal into the programme's controller-local
+            # no-new-authority state.  The next run-loop consumer must not
+            # reinterpret the same retained FAULT record as a platform fault.
+            return
         if state in {"FAULT", "ABORTED"}:
             raise ValueError(f"device active state {state.lower()}: {reason}")
         if state in {"REFERENCE_HOLD", "GNSS_METADATA_HOLD"}:
@@ -1677,7 +2061,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._save()
             self._programme_event(
                 "exact_setup_requested",
-                code=SETUP_CODE,
+                code=self.programme.setup_code,
                 authorization_sequence=request["authorization_sequence"],
                 status_generation=request["status_generation"],
                 query_nonce=request["query_nonce"],
@@ -1903,6 +2287,23 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._abort("phase_channel_degraded_frequency_control_retained")
             return
 
+        qualification_deadline_s = self.programme.qualification_deadline_s
+        setup_confirmed_utc = self.state.get("setup_confirmed_utc")
+        if (
+            qualification_deadline_s is not None
+            and isinstance(setup_confirmed_utc, str)
+            and setup_confirmed_utc
+            and self.state.get("qualification_started_utc") is None
+        ):
+            if (
+                now_epoch - _parse_utc_epoch(setup_confirmed_utc)
+                >= qualification_deadline_s
+            ):
+                self._abort(
+                    f"{self.programme.key}_qualification_deadline_expired"
+                )
+            return
+
         if (
             self.programme.terminal_after_first_response
             and (
@@ -1936,26 +2337,31 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             return
 
         qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
+        qualified_d14_apertures = self._qualified_d14_apertures(health)
         qualified_target_ticks = (
             self.programme.qualified_duration_s
             * RP2040_TIMER0_TICKS_PER_SECOND
         )
-        if (
-            self.programme is CX322_D9_D6_72H_PROGRAMME
-            and qualified_elapsed_ticks is not None
+        endpoint_reached = (
+            qualified_d14_apertures >= self.programme.qualified_d14_aperture_count
+            if self.programme.qualified_d14_aperture_count is not None
+            and qualified_d14_apertures is not None
+            else qualified_elapsed_ticks is not None
             and qualified_elapsed_ticks >= qualified_target_ticks
+        )
+        if (
+            self.programme.integrated_long_run
+            and endpoint_reached
             and self.state.get("qualified_endpoint_extended_timestamp_ticks")
             is None
         ):
-            self.state["qualified_endpoint_extended_timestamp_ticks"] = (
-                int(self.state["qualified_origin_extended_timestamp_ticks"])
-                + qualified_target_ticks
+            self.state["qualified_endpoint_extended_timestamp_ticks"] = self.state.get(
+                "qualified_frontier_extended_ticks"
             )
             self._save()
         hold = self.state.get("host_verification_hold")
         if (
-            qualified_elapsed_ticks is not None
-            and qualified_elapsed_ticks >= qualified_target_ticks
+            endpoint_reached
             and isinstance(hold, dict)
         ):
             if (
@@ -1980,8 +2386,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._save()
             return
         if (
-            qualified_elapsed_ticks is not None
-            and qualified_elapsed_ticks >= qualified_target_ticks
+            endpoint_reached
             and self._healthy_terminal_ready(health)
         ):
             self._set_healthy_endpoint(
@@ -2018,7 +2423,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         super()._abort(reason)
         terminal = self.state["terminal"]
         if reason == "independent_host_abort_fifo":
-            terminal["primary_decision"] = "operator_abort"
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_operator_abort",
+                fallback="operator_abort",
+            )
         elif reason == "phase_channel_degraded_frequency_control_retained":
             terminal["primary_decision"] = (
                 "phase_channel_degraded_frequency_control_retained"
@@ -2029,6 +2438,25 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             )
         elif reason == "phase_or_frequency_regulation_not_sustained":
             terminal["primary_decision"] = reason
+        elif reason.startswith(
+            f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
+        ):
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_D14_D8_authority_or_capture_fault",
+                fallback="measurement_authority_or_platform_fault",
+            )
+        elif (
+            self.programme.integrated_long_run
+            and reason.startswith(
+                f"{self.programme.key}_live_supervisor_fault:"
+            )
+        ):
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_identity_or_evidence_fault",
+                fallback="measurement_authority_or_platform_fault",
+            )
         elif self.programme.sustained_regulation and reason in {
             "prospective_repeated_alternation",
             "prospective_low_efficiency_path",
@@ -2052,7 +2480,17 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         elif "absolute_wall_endpoint" in reason or reason.startswith(
             f"{self.programme.key}_wall_endpoint"
         ):
-            terminal["primary_decision"] = "right_censored_incomplete"
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_right_censored_incomplete",
+                fallback="right_censored_incomplete",
+            )
+        elif reason == f"{self.programme.key}_qualification_deadline_expired":
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_right_censored_incomplete",
+                fallback="right_censored_incomplete",
+            )
         elif (
             self.programme.response_checkpoint_observational
             and reason
@@ -2119,17 +2557,27 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 ):
                     self._command("CONFIG?")
                     last_output_status_query = now
-                self._process_transactions()
                 health = self._current_health()
-                self._check_fail_static_health(health)
-                self._check_setup_transaction_timeout(health, time.time())
-                self._check_prewrite_contract(health, now - started)
-                self._maybe_qualify(health)
-                self._maybe_finish(health, time.time(), now - started)
-                if self.state["terminal"] is None:
-                    self._maybe_start_or_arm(
-                        health, elapsed_monotonic_s=now - started
-                    )
+                if not self._abort_on_authoritative_capture_discontinuity(health):
+                    # A genuine firmware/platform fault takes precedence over
+                    # interpreting an unchanged acknowledgement frontier.  In
+                    # Attempt 7 the reverse order masked EvidenceExhausted as
+                    # a host consumption-confirmation failure.
+                    self._check_fail_static_health(health)
+                    self._process_transactions()
+                    health = self._current_health()
+                    if not self._abort_on_authoritative_capture_discontinuity(
+                        health
+                    ):
+                        self._check_fail_static_health(health)
+                        self._check_setup_transaction_timeout(health, time.time())
+                        self._check_prewrite_contract(health, now - started)
+                        self._maybe_qualify(health)
+                        self._maybe_finish(health, time.time(), now - started)
+                        if self.state["terminal"] is None:
+                            self._maybe_start_or_arm(
+                                health, elapsed_monotonic_s=now - started
+                            )
                 if self.state["terminal"] is not None:
                     if not self.state["terminal_event_emitted"]:
                         self._programme_event(

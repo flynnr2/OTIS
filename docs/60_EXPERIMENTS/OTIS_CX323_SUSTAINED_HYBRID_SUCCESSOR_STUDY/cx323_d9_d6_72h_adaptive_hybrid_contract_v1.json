@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "contract_id": "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_ENGINEERING_CONTRACT_V1",
+  "purpose": "Demonstrate sustained D14-referenced hybrid control authority for exactly 72 qualified hours with the CX323 phase-priority persistent-maintenance controller, permitting an in-envelope automatic application at every eligible 30-minute decision boundary for the full interval while preserving exact D14/D8 evidence, bounded nonterminal GNSS-metadata holdover, and zero-authority D9/D6 diagnostics.",
+  "persistent_maintenance": {
+    "identities": {
+      "programme_id": "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_V1",
+      "profile_id": "cx323_d9_d6_72h_adaptive_hybrid",
+      "operation": "cx323_d9_d6_72h_adaptive_hybrid_live",
+      "runtime_run_identity": "cx323_d9_d6_72h_adaptive_hybrid:1",
+      "live_stage": "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_LIVE",
+      "compatibility_floor": "OTIS_CX323_D9_D6_72H_EVIDENCE_EPOCH_1",
+      "bundle_id": "cx323_d9_d6_72h_adaptive_hybrid_bundle_v1",
+      "activation_id": "cx323_d9_d6_72h_adaptive_hybrid_activation_v1"
+    },
+    "selected_policy": {
+      "policy_id": "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
+      "path": "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
+      "sha256": "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
+    },
+    "selection_and_native_boundary": {
+      "v2_selection": {
+        "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v2.json",
+        "file_sha256": "fc46b30e2bd323cdcbfdefa84fc7a35943584007120f3e1b9b96bbe98ba379af",
+        "semantic_sha256": "20b729dce477349704ce09e7cacf14047525450d50230c8f114f75959289d707"
+      },
+      "v3_native_boundary_correction": {
+        "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v3.json",
+        "file_sha256": "a9915b61f295eaa743d8803ee609dd2a3f5b3136fff41d4dc6766929e6f06949",
+        "semantic_sha256": "32a7f47330404e1cf7ea724517643deff078e74d3e1aa50127c378bced5f4d53"
+      }
+    },
+    "maintenance_evidence": {
+      "record_type": "AHM",
+      "record_contract": "active_hybrid_maintenance_v1",
+      "normative_contract_path": "docs/50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md",
+      "normative_contract_sha256": "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
+    }
+  },
+  "firmware": {
+    "profile_id": "cx323_d9_d6_72h_adaptive_hybrid",
+    "campaign_macro": "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID",
+    "selected_policy_id": "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
+    "selected_policy_file_sha256": "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24",
+    "native_fixed_point_boundary_semantic_sha256": "32a7f47330404e1cf7ea724517643deff078e74d3e1aa50127c378bced5f4d53",
+    "profile_matrix_status": "exact_compile_and_release_gate_required_before_activation",
+    "deliberate_reversal_challenge_enabled": false
+  },
+  "serial": {
+    "baud": 115200,
+    "selection": "capture_device_--auto-detect_fresh_for_every_capture_and_reenumeration",
+    "required_candidate_count": 1,
+    "stored_device_path_permitted": false,
+    "stored_board_serial_permitted": false,
+    "sole_serial_owner_required": true,
+    "continuous_bounded_drain_required": true,
+    "independent_abort_delivery_required": true
+  },
+  "time": {
+    "source_counter_domain": "rp2040_timer0",
+    "counter_domain": "rp2040_timer0_extended",
+    "nominal_counter_hz": 16000000,
+    "qualified_duration_s": 259200,
+    "qualification_deadline_s": 5400,
+    "absolute_wall_limit_s": 280800,
+    "milestone_interval_qualified_s": 21600,
+    "milestones_qualified_s": [
+      21600,
+      43200,
+      64800,
+      86400,
+      108000,
+      129600,
+      151200,
+      172800,
+      194400,
+      216000,
+      237600,
+      259200
+    ],
+    "qualification_origin": "first_complete_fresh_selected_600_estimate_after_exact_setup_code_epoch_establishment_and_common_D14_D8_health",
+    "extension": "forbidden"
+  },
+  "starting_dac": {
+    "pre_setup_physical_code": "unknown_unreadable_after_power_cycle",
+    "pre_setup_firmware_epoch": 0,
+    "dac_query_role": "driver_session_provenance_only_not_physical_register_readback",
+    "establishment_mode": "one_prospectively_authorized_exact_ACTIVE_SETUP",
+    "setup_code": 43085,
+    "setup_code_hex": "0xA84D",
+    "setup_write_limit": 1,
+    "setup_counts_as_automatic_application": false,
+    "required_established_epoch": 1,
+    "required_first_known_boundary": "setup_acceptance_application_DAC_epoch_and_first_dependent_consumer_exact",
+    "retry_permitted": false,
+    "restoration_permitted": false
+  },
+  "controller_envelope": {
+    "automatic_application_limit": 144,
+    "automatic_application_limit_derivation": "259200_qualified_seconds_divided_by_1800_seconds_per_application",
+    "automatic_cumulative_movement_limit_codes": 3024,
+    "automatic_cumulative_movement_limit_derivation": "144_applications_multiplied_by_21_codes_per_application",
+    "automatic_step_limit_codes": 21,
+    "total_dac_write_limit_including_setup": 145,
+    "authority_ceilings_are_nonbinding_not_targets": true,
+    "minimum_automatic_application_count": 0,
+    "minimum_application_cadence_s": 1800,
+    "maximum_outstanding_transactions": 1,
+    "dac_min_code": 43008,
+    "dac_min_code_hex": "0xA800",
+    "dac_max_code": 43776,
+    "dac_max_code_hex": "0xAB00",
+    "deliberate_reversal_challenge_permitted": false,
+    "automatic_retry_permitted": false,
+    "restoration_write_permitted": false,
+    "close_new_application_admission_before_endpoint_s": 1500,
+    "eligible_decision_opportunity_requires_policy_evaluation": true,
+    "interpretation": "permits_one_max_step_automatic_application_at_every_eligible_30_minute_boundary_for_the_complete_72_hours"
+  },
+  "record_replay": {
+    "record_contract": "active_hybrid_maintenance_v1",
+    "record_type": "AHM",
+    "hash_chain_required": true,
+    "counter_domain_exact_through_replay": true,
+    "single_reducer_required_for_supervisor_monitor_and_analyzer": true,
+    "application_lifecycle": [
+      "maintenance_opportunity",
+      "automatic_request",
+      "automatic_acceptance",
+      "automatic_application",
+      "first_dependent_consumer",
+      "automatic_response"
+    ],
+    "hold_dispositions_are_evidence_not_missing_applications": true,
+    "endpoint_semantics": "exact_72h_qualified_ticks_no_pending_opportunity_or_outstanding_transaction_and_no_completion_on_authority_ceiling",
+    "required_metric_families": [
+      "D14_referenced_D8_frequency_and_relative_phase_performance",
+      "oscillator_drift_and_control_effort",
+      "FLL_and_PLL_raw_capped_applied_and_debt_components",
+      "measurement_window_length_support_overlap_gap_and_settling",
+      "transaction_request_acceptance_application_first_consumer_and_response",
+      "requested_applied_net_and_cumulative_movement",
+      "opportunities_corrections_holds_lost_opportunities_and_inhibit",
+      "GNSS_metadata_hold_duration_requalification_and_holdover_performance"
+    ]
+  },
+  "timing_truth": {
+    "reference_input": "D14",
+    "oscillator_and_control_input": "D8",
+    "D14_D8_continuity_required": true,
+    "GNSS_serial_role": "same_receiver_qualification_metadata_only_never_timing_authority",
+    "D10_role": "optional_external_event_zero_reference_and_control_authority"
+  },
+  "d9": {
+    "role": "fixed_forwarded_output_with_digital_configuration_and_readback_gate_only",
+    "required_state": "configured_10mhz_forwarded_unqualified",
+    "source": "D8_GPIO20_GPIN0",
+    "destination": "D9_GPIO21_GPOUT0",
+    "integer_divider": 1,
+    "fractional_divider": 0,
+    "readback_exact_required": true,
+    "measurement_authority": false,
+    "control_authority": false
+  },
+  "d6": {
+    "role": "D9_through_1k_series_resistor_digital_diagnostic_sidecar",
+    "allowed_statuses": [
+      "present",
+      "local_degraded"
+    ],
+    "measurement_authority": false,
+    "control_authority": false,
+    "failure_policy": "local_drop_new_diagnostic_only_never_alters_D14_D8_validity_control_or_terminal"
+  },
+  "gnss_metadata_hold": {
+    "recoverable_anomaly_is_run_terminal": false,
+    "force_or_inject_glitch": false,
+    "new_corrections_during_hold": "inhibited",
+    "last_confirmed_dac_code": "preserved",
+    "D14_D8_capture_and_qualification": "continues",
+    "estimator_and_phase_history": "preserved_unless_independently_invalidated",
+    "maintenance_debt": "frozen_without_accrual",
+    "resumption": "fresh_same_receiver_metadata_then_two_complete_causally_later_maintenance_windows"
+  },
+  "controller_inhibit": {
+    "trigger": "persistent_alternation_or_low_efficiency_guard",
+    "new_control_authority": "inhibited",
+    "last_confirmed_dac_code": "preserved",
+    "acquisition_continues": true,
+    "D14_D8_canonical_evidence_continues": true,
+    "host_abort": false,
+    "endpoint_terminal": "cx323_d9_d6_72h_hybrid_authority_not_sustained"
+  },
+  "entry_gates": [
+    "exact_signed_contract_bundle_profile_policy_and_binary_identity",
+    "V2_selection_and_V3_native_boundary_contracts_exact",
+    "AHM_contract_parser_join_and_replay_tests_pass",
+    "native_firmware_and_Python_bit_exact_parity_pass",
+    "exact_firmware_profile_compile_and_campaign_release_gate_pass",
+    "complete_operational_path_rehearsal_pass",
+    "fresh_auto_detect_exactly_one_candidate_at_115200",
+    "sole_serial_owner_continuous_drain_and_independent_abort_ready",
+    "D9_exact_source_destination_dividers_gpio_state_and_readback",
+    "D14_D8_continuous_and_control_eligible",
+    "GNSS_metadata_fresh_from_same_D14_receiver",
+    "one_exact_setup_establishment_applied_as_code_0xA84D_epoch_1",
+    "setup_code_epoch_identity_reached_first_dependent_consumer",
+    "first_complete_fresh_selected_600_estimate_after_establishment",
+    "no_outstanding_control_transaction",
+    "exact_live_bundle_and_activation_bound"
+  ],
+  "terminals": {
+    "qualified_complete": "cx323_d9_d6_72h_qualified_hybrid_complete",
+    "authority_not_sustained": "cx323_d9_d6_72h_hybrid_authority_not_sustained",
+    "right_censored_incomplete": "cx323_d9_d6_72h_right_censored_incomplete",
+    "authoritative_capture_fault": "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault",
+    "d9_digital_fault": "cx323_d9_d6_72h_D9_configuration_or_readback_fault",
+    "controller_or_transaction_fault": "cx323_d9_d6_72h_controller_or_transaction_fault",
+    "maintenance_evidence_fault": "cx323_d9_d6_72h_maintenance_evidence_fault",
+    "identity_or_evidence_fault": "cx323_d9_d6_72h_identity_or_evidence_fault",
+    "operator_abort": "cx323_d9_d6_72h_operator_abort",
+    "pre_setup_no_write_abort": "cx323_d9_d6_72h_pre_setup_no_write_abort"
+  },
+  "claim_boundary": {
+    "programme_class": "adaptive_hybrid_physical_qualification_without_waveform_promotion",
+    "waveform_evidence_status": "unresolved_oscilloscope_deferred",
+    "waveform_claim_permitted": false,
+    "prompt02_waveform_gate_satisfied": false,
+    "prompt02_promotion_permitted": false,
+    "may_establish": [
+      "72h_D14_D8_measurement_and_sustained_hybrid_control_continuity",
+      "D9_digital_configuration_and_readback_continuity",
+      "D6_local_digital_diagnostic_continuity",
+      "D9_D6_resource_queue_transport_and_control_noninterference",
+      "CX323_FLL_PLL_window_debt_drift_holdover_and_control_performance"
+    ],
+    "cannot_establish": [
+      "D9_voltage_levels_or_logic_margin",
+      "D9_duty_cycle_rise_fall_ringing_or_load_response",
+      "D9_propagation_delay_or_jitter",
+      "independently_referenced_D9_frequency",
+      "general_D9_waveform_qualification",
+      "Prompt02_or_master_programme_waveform_promotion"
+    ]
+  },
+  "promotion_gates": {
+    "host_policy_and_oracle_tests": "required_before_activation",
+    "native_firmware_and_Python_bit_exact_parity": "required_before_activation",
+    "AHM_contract_parser_and_join_tests": "required_before_activation",
+    "exact_firmware_profile_compile": "required_before_activation",
+    "campaign_release_gate": "required_before_activation",
+    "complete_operational_path_rehearsal": "required_before_activation",
+    "exact_live_bundle_and_activation": "required_before_physical_execution"
+  },
+  "authority_lineage": {
+    "operator_direction_date_utc": "2026-08-31",
+    "scope": "complete_all_non_oscilloscope_tests_then_execute_the_exact_72_hour_adaptive_hybrid_run_including_build_flash_benchwork_issue_resolution_monitoring_analysis_sealing_and_registration",
+    "standing_operator_authority_received": true,
+    "no_additional_incremental_authorization_required": true,
+    "effective_only_after_all_promotion_gates_and_exact_activation_binding": true
+  },
+  "physical_execution": {
+    "authorized_by_this_contract_alone": false,
+    "exact_bundle_activation_required": true,
+    "preflight_rehearsal_release_and_live_entry_gates_required": true,
+    "oscilloscope_required_for_this_run": false,
+    "oscilloscope_waveform_qualification_deferred": true
+  },
+  "contract_semantic_sha256": "b989e480f963d06dab5c228b001ceb0f83fe574e376f1b94447fb7c1d89a1f1e"
+}

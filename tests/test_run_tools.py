@@ -208,6 +208,55 @@ def test_cx322_d9_d6_72h_requires_exact_epoch_and_identity(
         load_manifest(run_dir)
 
 
+def test_cx323_d9_d6_72h_is_a_distinct_current_evidence_package(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "cx323_d9_d6_72h"
+    value = _write_manifest(
+        run_dir,
+        compatibility_floor="OTIS_CX323_D9_D6_72H_EVIDENCE_EPOCH_1",
+        run_id="cx323_d9_d6_72h_attempt1",
+        stage="OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_LIVE",
+        programme_id="OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_V1",
+        cx319=None,
+        cx323_d9_d6_72h={
+            "profile_id": "cx323_d9_d6_72h_adaptive_hybrid"
+        },
+    )
+
+    assert load_manifest(run_dir).data == value
+
+
+@pytest.mark.parametrize(
+    "change",
+    (
+        {"compatibility_floor": "OTIS_CX322_D9_D6_72H_EVIDENCE_EPOCH_1"},
+        {"programme_id": "OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_V1"},
+        {"cx323_d9_d6_72h": {"profile_id": "cx322_d9_d6_72h_sustained_engineering"}},
+    ),
+)
+def test_cx323_d9_d6_72h_rejects_campaign18_identity_inheritance(
+    tmp_path: Path, change: dict[str, object]
+) -> None:
+    run_dir = tmp_path / "wrong_cx323_d9_d6_72h"
+    values: dict[str, object] = {
+        "compatibility_floor": "OTIS_CX323_D9_D6_72H_EVIDENCE_EPOCH_1",
+        "stage": "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_LIVE",
+        "programme_id": "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_V1",
+        "cx319": None,
+        "cx323_d9_d6_72h": {
+            "profile_id": "cx323_d9_d6_72h_adaptive_hybrid"
+        },
+    }
+    values.update(change)
+    _write_manifest(run_dir, **values)
+
+    with pytest.raises(
+        ValueError, match="OTIS_CX323_D9_D6_72H_EVIDENCE_EPOCH_1"
+    ):
+        load_manifest(run_dir)
+
+
 def test_sustained_hybrid_is_a_current_evidence_package(
     tmp_path: Path,
 ) -> None:

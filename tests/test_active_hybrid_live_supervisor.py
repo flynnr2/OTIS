@@ -9,10 +9,12 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import active_hybrid_live_supervisor as live
+from host.otis_tools import active_transactions
 from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
 from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
 )
 from host.otis_tools.active_control_supervisor import (
     _next_selected_interval_is_cadence_eligible,
@@ -243,6 +245,58 @@ def _integrated_manifest() -> dict:
     return manifest
 
 
+def _cx323_manifest(*, policy_path: Path | None = None) -> dict:
+    manifest = _manifest()
+    programme = CX323_D9_D6_72H_PROGRAMME
+    policy_path = policy_path or programme.policy_path
+    policy_sha256 = sha256(policy_path.read_bytes()).hexdigest()
+    manifest.update(
+        {
+            "programme_id": programme.programme_id,
+            "stage": programme.live_stage,
+            "run_identity": programme.runtime_run_identity,
+            "profile_identity": programme.profile_id,
+            "policy": {
+                "path": str(policy_path),
+                "sha256": policy_sha256,
+                "size_bytes": policy_path.stat().st_size,
+                "policy_sha256": policy_sha256,
+            },
+        }
+    )
+    section = manifest.pop("cx320")
+    section["run_identity"] = programme.runtime_run_identity
+    section["profile_id"] = programme.profile_id
+    section["setup"]["code"] = programme.setup_code
+    section["automatic_control"].update(
+        {
+            "maximum_total_applications": (
+                programme.authorized_maximum_physical_applications
+            ),
+            "maximum_total_automatic_applications": (
+                programme.authorized_maximum_applications
+            ),
+            "maximum_deliberate_challenges": 0,
+            "maximum_cumulative_movement_codes": (
+                programme.authorized_maximum_cumulative_movement_codes
+            ),
+        }
+    )
+    section["qualification"].update(
+        {
+            "qualified_duration_s": programme.qualified_duration_s,
+            "qualified_endpoint_contract": "qualified_D14_D8_aperture_count_v2",
+            "qualified_d14_aperture_count": programme.qualified_d14_aperture_count,
+            "correction_response_reserve_d14_apertures": programme.correction_response_reserve_d14_apertures,
+            "absolute_wall_clock_limit_s": (
+                programme.authorized_absolute_wall_limit_s
+            ),
+        }
+    )
+    manifest[programme.manifest_section] = section
+    return manifest
+
+
 def test_cx321_runtime_binds_active_and_numerical_policy_domains() -> None:
     manifest = _cx321_manifest()
     _, identities = live.load_active_hybrid_spec(manifest)
@@ -269,6 +323,65 @@ def test_integrated_runtime_accepts_explicit_historical_policy_identity() -> Non
     assert identities["active_policy_sha256"] == manifest["policy"][
         "policy_sha256"
     ]
+
+
+def test_cx323_runtime_dispatches_its_persistent_maintenance_envelope() -> None:
+    manifest = _cx323_manifest()
+
+    spec, identities = live.load_active_hybrid_spec(manifest)
+
+    assert spec.profile == CX323_D9_D6_72H_PROGRAMME.profile_id
+    assert spec.run_identity == CX323_D9_D6_72H_PROGRAMME.runtime_run_identity
+    assert spec.start_code == CX323_D9_D6_72H_PROGRAMME.setup_code
+    assert spec.correction_limit == 144
+    assert spec.cumulative_limit == 3_024
+    assert identities["active_policy_sha256"] == manifest["policy"][
+        "policy_sha256"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "changed_value"),
+    (
+        ("maintenance_selection", "requires_tight_state", "OUTSIDE"),
+        ("maintenance_selection", "requires_legacy_phase_material", True),
+        ("maintenance_selection", "frontier_support", "[opening_closing]"),
+        (
+            "maintenance_selection",
+            "selected_frequency_estimator",
+            "different_estimator",
+        ),
+        (
+            "live_controller_inhibit",
+            "alternation_or_low_efficiency",
+            "host_abort",
+        ),
+        ("finite_timing", "qualified_clock", "wall_clock"),
+        ("finite_timing", "qualification_deadline_s", 3_600),
+        ("finite_timing", "milestone_interval_qualified_s", 3_600),
+        ("finite_timing", "wall_clock_limit_s", 24 * 3_600),
+    ),
+)
+def test_cx323_runtime_rejects_changed_exact_policy_semantics(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    changed_value: object,
+) -> None:
+    changed_path = tmp_path / "changed_cx323_policy.json"
+    changed = json.loads(
+        CX323_D9_D6_72H_PROGRAMME.policy_path.read_text(encoding="utf-8")
+    )
+    changed[section][field] = changed_value
+    changed_path.write_text(
+        json.dumps(changed, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError, match="CX323 policy does not carry the exact live envelope"
+    ):
+        live.load_active_hybrid_spec(_cx323_manifest(policy_path=changed_path))
 
 
 def _supervisor(
@@ -351,17 +464,35 @@ def _health(
             ("cx318_preview", "actionable"): "false",
             ("cx318_preview", "actuation_authorized"): "false",
             ("cx318_preview", "authorization_consumed"): "false",
+            ("pps_gate", "rejected_window_count"): "0",
+            ("pps_gate", "accepted_window_count"): "0",
+            ("pps_gate", "boundary_reference_sequence"): "0",
+            ("pps_gate", "physical_aperture_incomplete_count"): "1",
+            ("pps_gate", "association_loss_count"): "0",
+            ("pps_gate", "snapshot_session"): "1",
+            ("pps_gate", "valid"): "true",
+            ("pps_gate", "control_eligible"): "true",
+            ("pps_gate", "reference_validity"): "valid",
+            ("pps_gate", "count_validity"): "valid",
+            ("pps_gate", "boundary_validity"): "valid",
+            ("pps_gate", "aperture_validity"): "valid",
+            ("pps_gate", "observation_pair_validity"): "valid",
+            ("pps_gate", "fifo_continuity"): "continuous",
+            ("pps_gate", "association_state"): "clean",
         }
     )
     return health
 
 
 def _set_campaign18_exact_clock(
-    supervisor: live.ActiveHybridLiveSupervisor, *, elapsed_ticks: int
+    supervisor: live.ActiveHybridLiveSupervisor,
+    *,
+    elapsed_ticks: int,
+    programme=CX322_D9_D6_72H_PROGRAMME,
 ) -> dict[tuple[str, str], str]:
     origin = 1_000_000
     frontier = origin + elapsed_ticks
-    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.programme = programme
     supervisor.state["qualified_origin_timestamp_ticks"] = origin
     supervisor.state["qualified_origin_extended_timestamp_ticks"] = origin
     supervisor.state["qualified_origin_session_id"] = 1
@@ -436,6 +567,105 @@ def test_campaign18_exact_259200_second_endpoint_and_descriptor_name(
     )
 
 
+def test_cx323_exact_endpoint_uses_successor_identity_not_campaign18(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    endpoint_ticks = (
+        CX323_D9_D6_72H_PROGRAMME.qualified_duration_s
+        * live.RP2040_TIMER0_TICKS_PER_SECOND
+    )
+    health = _set_campaign18_exact_clock(
+        supervisor,
+        elapsed_ticks=endpoint_ticks,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+    supervisor.state["qualified_d14_accepted_window_origin"] = 100
+    supervisor.state["qualified_d14_reference_sequence_origin"] = 200
+    health[("pps_gate", "accepted_window_count")] = str(100 + 259_200)
+    health[("pps_gate", "boundary_reference_sequence")] = str(200 + 259_200)
+    health.update(
+        {
+            ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",
+            ("cx317_active", "first_phase_checkpoint_passed"): "true",
+        }
+    )
+
+    supervisor._maybe_finish(health, 1_800_000_000.0, 0.0)
+
+    assert supervisor.state["terminal"]["reason"] == (
+        "cx323_d9_d6_72h_qualified_hybrid_complete"
+    )
+    assert "cx322" not in supervisor.state["terminal"]["reason"]
+
+
+def test_cx323_setup_confirmed_qualification_deadline_submits_exact_abort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    setup_epoch = 1_800_000_000.0
+    supervisor.state["setup_confirmed_utc"] = _utc(setup_epoch)
+    supervisor.state["qualification_started_utc"] = None
+    supervisor._save()
+    submitted: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        active_transactions,
+        "send_command_to_fifo",
+        lambda path, command: submitted.append((path, command)),
+    )
+    health = _health(supervisor)
+
+    supervisor._maybe_finish(health, setup_epoch + 5_400.0 - 0.001, 0.0)
+    assert supervisor.state["terminal"] is None
+    assert submitted == []
+
+    supervisor._maybe_finish(health, setup_epoch + 5_400.0, 0.0)
+
+    assert submitted == [(supervisor.emergency_command_fifo, "ACTIVE ABORT")]
+    assert supervisor.state["terminal"] == {
+        "result": "aborted",
+        "reason": "cx323_d9_d6_72h_qualification_deadline_expired",
+        "utc": supervisor.state["terminal"]["utc"],
+        "primary_decision": "cx323_d9_d6_72h_right_censored_incomplete",
+    }
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ("prospective_repeated_alternation", "prospective_low_efficiency_path"),
+)
+def test_cx323_controller_inhibit_retains_acquisition_until_endpoint(
+    tmp_path: Path, reason: str
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    health = _health(
+        supervisor,
+        hybrid_state="FAIL_STATIC",
+        hybrid_reason=reason,
+        fail_static="true",
+    )
+    health.update(
+        {
+            ("cx317_active", "state"): "FAULT",
+            ("cx317_active", "reason"): reason,
+            ("cx317_active", "gnss_metadata_hold_active"): "false",
+            ("cx317_active", "gnss_metadata_hold_transaction_pending"): "false",
+            ("cx317_active", "gnss_metadata_hold_entry_sequence"): "0",
+            ("cx317_active", "gnss_metadata_requalification_sequence"): "0",
+            ("cx317_active", "gnss_metadata_qualification_frontier"): "0",
+            ("cx317_active", "d14_d8_observation_sequence"): "1",
+        }
+    )
+
+    supervisor._check_fail_static_health(health)
+    supervisor._maybe_start_or_arm(health)
+
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["controller_authority_inhibited_reason"] == reason
+
+
 @pytest.mark.parametrize(
     "reason",
     ("prospective_repeated_alternation", "prospective_low_efficiency_path"),
@@ -453,6 +683,8 @@ def test_campaign18_controller_inhibit_does_not_end_D14_D8_acquisition(
     )
     health.update(
         {
+            ("cx317_active", "state"): "FAULT",
+            ("cx317_active", "reason"): reason,
             ("cx317_active", "gnss_metadata_hold_active"): "false",
             ("cx317_active", "gnss_metadata_hold_transaction_pending"): "false",
             ("cx317_active", "gnss_metadata_hold_entry_sequence"): "0",
@@ -463,11 +695,37 @@ def test_campaign18_controller_inhibit_does_not_end_D14_D8_acquisition(
     )
 
     supervisor._check_fail_static_health(health)
+    supervisor._maybe_start_or_arm(health)
 
     assert supervisor.state["terminal"] is None
     assert supervisor.state["arm_pending"] is False
     assert supervisor.state["controller_authority_inhibited_reason"] == reason
     assert health[("cx317_active", "fail_static")] == "true"
+
+
+def test_campaign18_unlatched_or_unrecognized_device_fault_still_stops_arm_path(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    health = _health(
+        supervisor,
+        hybrid_state="FAIL_STATIC",
+        hybrid_reason="unexpected_policy_fault",
+        fail_static="true",
+    )
+    health.update(
+        {
+            ("cx317_active", "state"): "FAULT",
+            ("cx317_active", "reason"): "unexpected_policy_fault",
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="device active state fault: unexpected_policy_fault",
+    ):
+        supervisor._maybe_start_or_arm(health)
 
 
 def _ready() -> PrewriteReadiness:
@@ -707,6 +965,68 @@ def test_host_replay_disagreement_holds_authority_without_aborting(
         "cumulative_movement_codes": 5,
     }
     assert events[0][0] == "cx320_host_verification_hold_entered"
+
+
+def test_ahy_identity_failure_holds_host_and_later_loops_are_passive(
+    tmp_path: Path, monkeypatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    reasons: list[str] = []
+    commands: list[str] = []
+    events: list[tuple[str, dict[str, object]]] = []
+    base_calls: list[str] = []
+    validation_calls: list[str] = []
+    manual_start = {
+        "event": "manual_start",
+        "transaction_record_sequence": "1",
+        "request_sequence": "0",
+        "response_class": "unavailable",
+        "applied_code": "43085",
+        "dac_epoch": "1",
+        "correction_count": "0",
+        "cumulative_movement_codes": "0",
+    }
+
+    def process(_self: object) -> None:
+        base_calls.append("processed")
+
+    def reject_ahy() -> None:
+        validation_calls.append("validated")
+        raise ValueError(
+            "AHY identity mismatch for build_identity: 'stale' != 'frozen'"
+        )
+
+    monkeypatch.setattr(
+        live.FrequencyControlSupervisor, "_process_transactions", process
+    )
+    monkeypatch.setattr(supervisor, "_abort", reasons.append)
+    monkeypatch.setattr(supervisor, "_command", commands.append)
+    monkeypatch.setattr(
+        supervisor,
+        "_event",
+        lambda name, **values: events.append((name, values)),
+    )
+    monkeypatch.setattr(supervisor, "_validate_hybrid_decisions", reject_ahy)
+    monkeypatch.setattr(live, "_read_csv", lambda _path: [manual_start])
+
+    supervisor._process_transactions()
+    supervisor._maybe_start_or_arm(_health(supervisor))
+    supervisor._process_transactions()
+
+    assert reasons == []
+    assert commands == []
+    assert supervisor.state["terminal"] is None
+    assert supervisor.state["host_verification_hold"]["error"] == (
+        "AHY identity mismatch for build_identity: 'stale' != 'frozen'"
+    )
+    assert supervisor.state["host_verification_hold"]["applied_code"] == 43085
+    assert supervisor.state["host_verification_hold"]["dac_epoch"] == 1
+    assert supervisor.state["arm_pending"] is False
+    assert base_calls == []
+    assert validation_calls == ["validated"]
+    assert [name for name, _values in events] == [
+        "cx320_host_verification_hold_entered"
+    ]
 
 
 def test_cx320_uses_observed_raw_pps_qualification_deadline(
@@ -1003,6 +1323,264 @@ def test_campaign18_qualified_origin_consumes_exact_retained_frontier(
     assert supervisor.state["qualified_origin_extended_timestamp_ticks"] == origin
     assert supervisor.state["qualified_frontier_raw_ticks"] == origin
     assert supervisor.state["qualified_frontier_extended_ticks"] == origin
+    assert supervisor.state["qualified_authoritative_capture_baseline"] == {
+        "rejected_window_count": 0,
+        "physical_aperture_incomplete_count": 1,
+        "association_loss_count": 0,
+    }
+
+
+@pytest.mark.parametrize(
+    ("health_changes", "reason_fragment"),
+    (
+        (
+            {
+                ("pps_gate", "snapshot_session"): "2",
+                ("pps_gate", "rejected_window_count"): "1",
+                ("pps_gate", "physical_aperture_incomplete_count"): "2",
+                ("pps_gate", "association_loss_count"): "1",
+            },
+            "capture_session_changed:1->2",
+        ),
+        (
+            {
+                ("pps_gate", "association_state"): "lost",
+                ("pps_gate", "aperture_validity"): "invalid",
+                ("pps_gate", "observation_pair_validity"): "invalid",
+                ("pps_gate", "control_eligible"): "false",
+            },
+            "association_state:'lost'!='clean'",
+        ),
+    ),
+)
+def test_campaign18_capture_discontinuity_aborts_before_transaction_processing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    health_changes: dict[tuple[str, str], str],
+    reason_fragment: str,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_origin_timestamp_ticks": 1_000_000,
+            "qualified_authoritative_capture_baseline": {
+                "rejected_window_count": 0,
+                "physical_aperture_incomplete_count": 1,
+                "association_loss_count": 0,
+            },
+            "terminal_static_code": 0xA853,
+        }
+    )
+    supervisor._save()
+    capture_flag = supervisor.run_dir / live.CAPTURE_IN_PROGRESS_FLAG
+    capture_flag.parent.mkdir(parents=True, exist_ok=True)
+    capture_flag.write_text("fixture\n", encoding="utf-8")
+    discontinuity = _health(supervisor, session_id="1")
+    discontinuity.update(health_changes)
+    normal_commands: list[str] = []
+    emergency_commands: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        supervisor, "_command", lambda command: normal_commands.append(command)
+    )
+    monkeypatch.setattr(supervisor, "_check_capture_transport_state", lambda: None)
+    monkeypatch.setattr(supervisor, "_renew_lease", lambda: None)
+    monkeypatch.setattr(supervisor, "_current_health", lambda **_kwargs: discontinuity)
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: discontinuity,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_process_transactions",
+        lambda: pytest.fail(
+            "post-discontinuity transaction processing must not run"
+        ),
+    )
+    monkeypatch.setattr(
+        "host.otis_tools.active_transactions.send_command_to_fifo",
+        lambda path, command: emergency_commands.append((path, command)),
+    )
+
+    assert supervisor.run() == 2
+
+    assert normal_commands == ["CONFIG?", "DUALCORE?", "DAC?"]
+    assert emergency_commands == [
+        (supervisor.emergency_command_fifo, "ACTIVE ABORT")
+    ]
+    assert supervisor.state["terminal"]["last_confirmed_code"] == 0xA853
+    assert supervisor.state["terminal"]["primary_decision"] == (
+        "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+    )
+    assert reason_fragment in supervisor.state["terminal"]["reason"]
+
+
+def test_firmware_partition_fault_is_classified_before_ack_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    capture_flag = supervisor.run_dir / live.CAPTURE_IN_PROGRESS_FLAG
+    capture_flag.parent.mkdir(parents=True, exist_ok=True)
+    capture_flag.write_text("fixture\n", encoding="utf-8")
+    faulted = _health(supervisor)
+    faulted[("dual_core", "partition_fault")] = "evidence_queue_exhausted"
+    faulted[("dual_core", "fail_static")] = "true"
+    monkeypatch.setattr(supervisor, "_command", lambda _command: None)
+    monkeypatch.setattr(supervisor, "_check_capture_transport_state", lambda: None)
+    monkeypatch.setattr(supervisor, "_renew_lease", lambda: None)
+    monkeypatch.setattr(supervisor, "_current_health", lambda **_kwargs: faulted)
+    monkeypatch.setattr(
+        supervisor, "_fresh_active_snapshot_after", lambda _generation: faulted
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_process_transactions",
+        lambda: pytest.fail(
+            "firmware fault must be classified before acknowledgement processing"
+        ),
+    )
+
+    with pytest.raises(
+        ValueError, match="dual-core partition fault: evidence_queue_exhausted"
+    ):
+        supervisor.run()
+
+
+def test_campaign18_missing_counter_aborts_before_optional_event_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_origin_timestamp_ticks": 1_000_000,
+            "qualified_authoritative_capture_baseline": {
+                "rejected_window_count": 0,
+                "physical_aperture_incomplete_count": 1,
+                "association_loss_count": 0,
+            },
+            "terminal_static_code": 0xA853,
+        }
+    )
+    health = _health(supervisor)
+    del health[("pps_gate", "association_loss_count")]
+    emergency_commands: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        "host.otis_tools.active_transactions.send_command_to_fifo",
+        lambda path, command: emergency_commands.append((path, command)),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_programme_event",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("fixture")),
+    )
+
+    assert supervisor._abort_on_authoritative_capture_discontinuity(health)
+
+    assert emergency_commands == [
+        (supervisor.emergency_command_fifo, "ACTIVE ABORT")
+    ]
+    assert supervisor.state["terminal"]["primary_decision"] == (
+        "cx322_d9_d6_72h_D14_D8_authority_or_capture_fault"
+    )
+    assert "association_loss_count_unavailable" in supervisor.state[
+        "terminal"
+    ]["reason"]
+
+
+def test_campaign18_live_supervisor_fault_uses_canonical_terminal(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["terminal_static_code"] = 0xA850
+
+    supervisor._abort(
+        "cx322_d9_d6_72h_live_supervisor_fault:"
+        "active live-health handoff is invalid"
+    )
+
+    assert supervisor.state["terminal"] == {
+        "result": "aborted",
+        "reason": (
+            "cx322_d9_d6_72h_live_supervisor_fault:"
+            "active live-health handoff is invalid"
+        ),
+        "primary_decision": "cx322_d9_d6_72h_identity_or_evidence_fault",
+        "utc": supervisor.state["terminal"]["utc"],
+        "last_confirmed_code": 0xA850,
+    }
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected"),
+    (
+        (
+            "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault:fixture",
+            "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault",
+        ),
+        (
+            "cx323_d9_d6_72h_live_supervisor_fault:fixture",
+            "cx323_d9_d6_72h_identity_or_evidence_fault",
+        ),
+        (
+            "cx323_d9_d6_72h_wall_endpoint_without_clear_static_terminal",
+            "cx323_d9_d6_72h_right_censored_incomplete",
+        ),
+    ),
+)
+def test_cx323_abort_uses_only_successor_terminal_identities(
+    tmp_path: Path, reason: str, expected: str
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    supervisor.state["terminal_static_code"] = 0xA84D
+
+    supervisor._abort(reason)
+
+    assert supervisor.state["terminal"]["primary_decision"] == expected
+    assert "cx322" not in supervisor.state["terminal"]["primary_decision"]
+
+
+def test_campaign18_qualification_defers_incomplete_capture_baseline_atomically(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX322_D9_D6_72H_PROGRAMME
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    supervisor._save()
+    origin = (2400 * live.RP2040_TIMER0_TICKS_PER_SECOND) % (1 << 32)
+    _append_selected_estimate(
+        supervisor,
+        estimate_seq=4,
+        source_dac_ref="live:DAC:1",
+        timestamp_ticks=origin,
+    )
+    health = _health(supervisor, dac_epoch="1")
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_TICKS_KEY)] = str(
+        origin
+    )
+    health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
+        "rp2040_timer0"
+    )
+    del health[("pps_gate", "association_loss_count")]
+
+    supervisor._maybe_qualify(health)
+
+    for key in (
+        "qualification_started_utc",
+        "qualified_origin_estimate_id",
+        "qualified_origin_timestamp_ticks",
+        "qualified_origin_session_id",
+        "qualified_origin_extended_timestamp_ticks",
+        "qualified_frontier_raw_ticks",
+        "qualified_frontier_extended_ticks",
+        "qualified_authoritative_capture_baseline",
+    ):
+        assert supervisor.state[key] is None
 
 
 def test_qualified_clock_defers_fractional_origin_until_uptime_lower_bound(
@@ -1159,6 +1737,7 @@ def test_exact_setup_then_frequency_acquisition_arm(
     tmp_path: Path, monkeypatch
 ) -> None:
     supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
     commands: list[str] = []
     monkeypatch.setattr(supervisor, "_prewrite_readiness", lambda health: _ready())
     monkeypatch.setattr(
@@ -1186,6 +1765,12 @@ def test_exact_setup_then_frequency_acquisition_arm(
 
     assert commands == ["ACTIVE SETUP exact"]
     assert supervisor.state["manual_start_sent"] is True
+    setup_event = next(
+        json.loads(line)
+        for line in supervisor.events_path.read_text(encoding="utf-8").splitlines()
+        if json.loads(line)["event"].endswith("exact_setup_requested")
+    )
+    assert setup_event["code"] == CX323_D9_D6_72H_PROGRAMME.setup_code
 
     _write_control_hold(supervisor)
     acquiring = _health(supervisor, selected_interval_count="0")
@@ -1382,6 +1967,31 @@ def test_checkpoint_release_is_observed_only_from_firmware_state(
     )
 
 
+def test_tracking_snapshot_rejects_missing_firmware_checkpoint(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["manual_start_sent"] = True
+    impossible = _health(
+        supervisor,
+        hybrid_state="HYBRID_TRACKING",
+        hybrid_reason="response_completed",
+        first_phase_checkpoint_passed="false",
+        correction_count="1",
+        automatic_application_count="0",
+        phase_nonzero_application_count="0",
+        phase_material_application_count="0",
+        frequency_only_application_count="0",
+        cumulative_movement_codes="1",
+        dac_epoch="2",
+    )
+
+    with pytest.raises(
+        ValueError, match="CX320 HYBRID_TRACKING lacks the first checkpoint"
+    ):
+        supervisor._check_fail_static_health(impossible)
+
+
 def test_nonmaterial_combined_application_allows_overlapping_phase_count(
     tmp_path: Path,
 ) -> None:
@@ -1468,6 +2078,8 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
         "_fresh_active_snapshot_after",
         lambda _generation: next(stale_then_advanced),
     )
+    acknowledgement.pop("last_observed_snapshot_generation", None)
+    assert supervisor._confirm_evidence_acknowledgement(acknowledgement) is False
     assert supervisor._confirm_evidence_acknowledgement(acknowledgement) is True
 
     contradictory = dict(advanced)
@@ -1478,6 +2090,48 @@ def test_evidence_acknowledgement_requires_a_later_firmware_snapshot(
         lambda _generation: contradictory,
     )
     with pytest.raises(ValueError, match="contradictory request identity"):
+        supervisor._confirm_evidence_acknowledgement(acknowledgement)
+
+
+@pytest.mark.parametrize(
+    ("phase", "pre_submit_phase", "observed_phase"),
+    (
+        (1, "request_pending", "unknown_phase"),
+        (2, "acceptance_pending", "request_pending"),
+        (3, "application_pending", "acceptance_pending"),
+        (4, "response_pending", "application_pending"),
+    ),
+)
+def test_evidence_acknowledgement_rejects_backward_or_unknown_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: int,
+    pre_submit_phase: str,
+    observed_phase: str,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    acknowledgement = {
+        "record_sequence": phase + 1,
+        "request_sequence": 1,
+        "phase": phase,
+        "host_write_confirmed": True,
+        "pre_submit_snapshot_generation": 7,
+        "pre_submit_evidence_phase": pre_submit_phase,
+    }
+    impossible = _health(
+        supervisor,
+        snapshot_generation_begin="8",
+        snapshot_generation_complete="8",
+        evidence_phase=observed_phase,
+        evidence_request_sequence="1",
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_fresh_active_snapshot_after",
+        lambda _generation: impossible,
+    )
+
+    with pytest.raises(ValueError, match="impossible phase ordering"):
         supervisor._confirm_evidence_acknowledgement(acknowledgement)
 
 

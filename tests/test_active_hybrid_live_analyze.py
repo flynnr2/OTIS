@@ -30,7 +30,75 @@ from host.otis_tools.active_hybrid_live_analyze import (
 from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_72H_PROGRAMME,
     CX322_D9_D6_INTEGRATION_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
 )
+
+
+def _aperture_endpoint_fixture() -> tuple[
+    dict[str, object], list[dict[str, str]], list[dict[str, str]]
+]:
+    state: dict[str, object] = {
+        "qualified_origin_session_id": 7,
+        "qualified_d14_reference_sequence_origin": 100,
+        "qualified_d14_reference_sequence_endpoint": 103,
+        "qualified_d14_accepted_apertures": 3,
+    }
+    d14_rows: list[dict[str, str]] = []
+    d8_rows: list[dict[str, str]] = []
+    for offset in range(1, 4):
+        snapshot = 200 + offset
+        ticks = 1_000_000 + offset * 16_000_000
+        d14_rows.append(
+            {
+                "session": "7",
+                "snapshot_sequence": str(snapshot),
+                "reference_sequence": str(100 + offset),
+                "reference_timestamp_ticks": str(ticks),
+                "status": "0",
+            }
+        )
+        d8_rows.append(
+            {
+                "count_seq": str(snapshot),
+                "gate_close_ticks": str(ticks),
+                "channel_id": "2",
+                "flags": "0",
+            }
+        )
+    return state, d14_rows, d8_rows
+
+
+def test_cx323_aperture_endpoint_proves_retained_contiguous_d14_d8_rows() -> None:
+    state, d14_rows, d8_rows = _aperture_endpoint_fixture()
+
+    proof = live_analyze._cx323_d14_aperture_endpoint_proof(
+        supervisor_state=state,
+        d14_rows=d14_rows,
+        d8_rows=d8_rows,
+        target=3,
+    )
+
+    assert proof["exact"] is True
+    assert proof["accepted_d14_d8_apertures"] == 3
+    assert proof["retained_apertures_proved"] == 3
+
+
+def test_cx323_aperture_endpoint_rejects_missing_or_invalid_d8_support() -> None:
+    state, d14_rows, d8_rows = _aperture_endpoint_fixture()
+    assert live_analyze._cx323_d14_aperture_endpoint_proof(
+        supervisor_state=state,
+        d14_rows=d14_rows,
+        d8_rows=d8_rows[:-1],
+        target=3,
+    )["exact"] is False
+
+    d8_rows[-1]["flags"] = str(live_analyze.COUNT_INVALID_FLAGS)
+    assert live_analyze._cx323_d14_aperture_endpoint_proof(
+        supervisor_state=state,
+        d14_rows=d14_rows,
+        d8_rows=d8_rows,
+        target=3,
+    )["exact"] is False
 
 
 def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit() -> None:
@@ -38,7 +106,8 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         "result": "healthy_stop",
         "reason": CX322_D9_D6_72H_PROGRAMME.qualified_endpoint_reason,
     }
-    assert live_analyze._campaign18_outcome(
+    assert live_analyze._integrated_long_run_outcome(
+        programme=CX322_D9_D6_72H_PROGRAMME,
         integrity_exact=True,
         operator_abort=False,
         platform_terminal=False,
@@ -46,7 +115,8 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         terminal=terminal,
         controller_authority_inhibited=False,
     ) == ("passed", "cx322_d9_d6_72h_qualified_engineering_complete")
-    assert live_analyze._campaign18_outcome(
+    assert live_analyze._integrated_long_run_outcome(
+        programme=CX322_D9_D6_72H_PROGRAMME,
         integrity_exact=True,
         operator_abort=False,
         platform_terminal=False,
@@ -54,7 +124,8 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         terminal=terminal,
         controller_authority_inhibited=False,
     ) == ("bounded_nonpass", "cx322_d9_d6_72h_right_censored_incomplete")
-    assert live_analyze._campaign18_outcome(
+    assert live_analyze._integrated_long_run_outcome(
+        programme=CX322_D9_D6_72H_PROGRAMME,
         integrity_exact=True,
         operator_abort=False,
         platform_terminal=False,
@@ -65,6 +136,120 @@ def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit(
         "bounded_nonpass",
         "cx322_d9_d6_72h_controller_or_transaction_fault",
     )
+
+
+def test_cx323_integrated_outcome_uses_its_declared_inhibit_terminal() -> None:
+    terminal = {
+        "result": "healthy_stop",
+        "reason": CX323_D9_D6_72H_PROGRAMME.qualified_endpoint_reason,
+    }
+    assert live_analyze._integrated_long_run_outcome(
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        integrity_exact=True,
+        operator_abort=False,
+        platform_terminal=False,
+        endpoint_complete=True,
+        terminal=terminal,
+        controller_authority_inhibited=True,
+    ) == (
+        "bounded_nonpass",
+        "cx323_d9_d6_72h_hybrid_authority_not_sustained",
+    )
+
+
+def test_cx323_integrated_success_uses_its_declared_qualified_endpoint() -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    terminal = {
+        "result": "healthy_stop",
+        "reason": programme.qualified_endpoint_reason,
+    }
+
+    outcome = live_analyze._integrated_long_run_outcome(
+        programme=programme,
+        integrity_exact=True,
+        operator_abort=False,
+        platform_terminal=False,
+        endpoint_complete=True,
+        terminal=terminal,
+        controller_authority_inhibited=False,
+    )
+
+    assert outcome == ("passed", "cx323_d9_d6_72h_qualified_hybrid_complete")
+    assert outcome[1] in programme.terminal_decisions
+
+
+def test_cx323_final_replay_dispatches_to_its_ahm_oracle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    maintenance = [{"event": "policy_activation"}]
+    observed: dict[str, object] = {}
+
+    def replay(decisions, transactions, maintenance_rows, **kwargs):
+        observed.update(
+            {
+                "decisions": decisions,
+                "transactions": transactions,
+                "maintenance_rows": maintenance_rows,
+                **kwargs,
+            }
+        )
+        return {
+            "exact": True,
+            "replay_mode": "cx323_phase_priority_oracle_with_AHM_v1",
+            "comparisons": [],
+        }
+
+    monkeypatch.setattr(live_analyze, "replay_cx323_maintenance_history", replay)
+    result = _replay_ahy(
+        [],
+        [],
+        policy_path=programme.policy_path,
+        expected_run_identity=programme.runtime_run_identity,
+        expected_build_identity="a" * 64 + ":" + "b" * 64,
+        expected_profile_identity=programme.profile_id,
+        maintenance_rows=maintenance,
+    )
+
+    assert result["exact"] is True
+    assert result["replay_mode"] == "cx323_phase_priority_oracle_with_AHM_v1"
+    assert observed["maintenance_rows"] is maintenance
+    assert observed["policy_path"] == programme.policy_path
+
+
+def test_cx323_analyzer_normalizes_only_its_frozen_profile_bindings() -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    policy = live_analyze.load_policy(programme.policy_path)
+    document = json.loads(programme.policy_path.read_text(encoding="utf-8"))
+
+    bindings = live_analyze._analysis_policy_bindings(
+        programme=programme,
+        policy=policy,
+        policy_document=document,
+    )
+
+    assert bindings == {
+        "frequency_estimator_sha256": document["bindings"]["frequency_estimator"]["sha256"],
+        "phase_estimator_sha256": document["bindings"]["phase_estimator"]["sha256"],
+        "plant_model_sha256": document["bindings"]["plant_model"]["sha256"],
+        "response_policy_sha256": document["bindings"]["response_policy"]["sha256"],
+        "tight_deadband_policy_sha256": programme.tight_deadband_policy_sha256,
+        "settling_exclusion_s": 900,
+        "response_checkpoint_observational": True,
+        "policy_sha256": policy.policy_sha256,
+    }
+    tight_policy = (
+        Path(__file__).resolve().parents[1]
+        / "profiles/discipline/cx319_stabilized_tight_deadband_v1.json"
+    )
+    assert live_analyze._sha256_file(tight_policy) == (
+        programme.tight_deadband_policy_sha256
+    )
+    firmware_preview = (
+        Path(__file__).resolve().parents[1]
+        / "firmware/arduino/otis_nano_rp2040_connect/otis_cx317_preview_live.cpp"
+    ).read_text(encoding="utf-8")
+    assert programme.tight_deadband_policy_sha256 in firmware_preview
 
 
 def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() -> None:
@@ -152,6 +337,418 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
         )
         assert observed["exact"] is False
         assert observed["mismatches"]
+
+    # Exact TIMER0 extension is scoped to the capture session. A recoverable
+    # association reset can therefore begin a lower counter epoch without
+    # weakening ordering or the one-to-one V1/V2 identity join.
+    decision_session_2 = {
+        **decision,
+        "hybrid_record_sequence": "2",
+        "decision_sequence": "2",
+        "capture_session": "2",
+        "source_first_sequence": "0",
+        "source_last_sequence": "600",
+        "reason": "measurement_authority_or_common_health_fault",
+    }
+    ah2_session_2 = {
+        **decision_session_2,
+        "record_type": "AH2",
+        "schema_version": "2",
+        "timing_record_sequence": "3",
+        "decision_timestamp_ticks": "1000",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    session_reset = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=[transaction],
+        decisions=[decision, decision_session_2],
+        transaction_timings=[at2],
+        decision_timings=[ah2, ah2_session_2],
+    )
+    assert session_reset["exact"] is True
+
+    decision_session_2_later = {
+        **decision_session_2,
+        "hybrid_record_sequence": "3",
+        "decision_sequence": "3",
+        "source_first_sequence": "600",
+        "source_last_sequence": "1200",
+    }
+    ah2_session_2_backward = {
+        **decision_session_2_later,
+        "record_type": "AH2",
+        "schema_version": "2",
+        "timing_record_sequence": "4",
+        "decision_timestamp_ticks": "999",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    within_session_backward = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=[transaction],
+        decisions=[decision, decision_session_2, decision_session_2_later],
+        transaction_timings=[at2],
+        decision_timings=[ah2, ah2_session_2, ah2_session_2_backward],
+    )
+    assert within_session_backward["exact"] is False
+    assert within_session_backward["mismatches"] == [
+        "AH2 exact identity/order mismatch hybrid_record_sequence=3"
+    ]
+
+    session_identity_mismatch = live_analyze.campaign18_exact_timing_sidecar_join(
+        transactions=[transaction],
+        decisions=[decision, decision_session_2],
+        transaction_timings=[at2],
+        decision_timings=[
+            ah2,
+            {**ah2_session_2, "capture_session": "3"},
+        ],
+    )
+    assert session_identity_mismatch["exact"] is False
+    assert session_identity_mismatch["mismatches"] == [
+        "AH2 join mismatch hybrid_record_sequence=2"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("application_ticks", "response_ticks", "expected_exact"),
+    (
+        # Attempt 8 completed 766.593 ms before the frozen exact horizon.
+        (153_791_624_736, 177_779_359_248, False),
+        # Attempt 9 completed 60.146 ms before the frozen exact horizon.
+        (259_311_385_072, 283_310_422_736, False),
+        # The exact 1,500-second counter boundary is admissible.
+        (
+            259_311_385_072,
+            259_311_385_072 + 1_500 * 16_000_000,
+            True,
+        ),
+    ),
+)
+def test_cx323_exact_response_timing_rejects_sub_1500_second_completion(
+    application_ticks: int, response_ticks: int, expected_exact: bool
+) -> None:
+    identity = {
+        "run_identity": CX323_D9_D6_72H_PROGRAMME.runtime_run_identity,
+        "build_identity": "a" * 64 + ":" + "b" * 64,
+        "profile_identity": CX323_D9_D6_72H_PROGRAMME.profile_id,
+        "session_id": "1",
+        "request_sequence": "1",
+        "decision_sequence": "7",
+        "source_first_sequence": "1200",
+        "source_last_sequence": "1800",
+        "authorization_sequence": "1",
+        "nonce": "42",
+        "accepted_code": "43086",
+        "applied_code": "43086",
+        "application_sequence": "1",
+        "dac_epoch": "2",
+    }
+    application = {
+        "transaction_record_sequence": "3",
+        "event": "application",
+        "reason": "application_applied",
+        **identity,
+    }
+    response = {
+        "transaction_record_sequence": "4",
+        "event": "response",
+        "reason": "response_observed",
+        **identity,
+    }
+    timings = [
+        {
+            **application,
+            "record_type": "AT2",
+            "schema_version": "2",
+            "timing_record_sequence": "1",
+            "event_timestamp_ticks": str(application_ticks),
+            "time_domain": "rp2040_timer0_extended",
+        },
+        {
+            **response,
+            "record_type": "AT2",
+            "schema_version": "2",
+            "timing_record_sequence": "2",
+            "event_timestamp_ticks": str(response_ticks),
+            "time_domain": "rp2040_timer0_extended",
+        },
+    ]
+
+    result = live_analyze.exact_lifecycle_timing_sidecar_join(
+        transactions=[application, response],
+        decisions=[],
+        transaction_timings=timings,
+        decision_timings=[],
+        minimum_response_elapsed_ticks=1_500 * 16_000_000,
+    )
+
+    assert result["exact"] is expected_exact
+    assert bool(result["mismatches"]) is not expected_exact
+    if not expected_exact:
+        elapsed_ticks = response_ticks - application_ticks
+        assert result["mismatches"][-1] == (
+            "AT2 response elapsed ticks are below the exact minimum "
+            f"request_sequence=1 elapsed_ticks={elapsed_ticks} "
+            "minimum_ticks=24000000000"
+        )
+
+
+def _cx323_maintenance_stream() -> tuple[
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    str,
+    str,
+]:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    build_identity = "a" * 64 + ":" + "b" * 64
+    active_policy_sha256 = "c" * 64
+    identity = {
+        "run_identity": programme.runtime_run_identity,
+        "build_identity": build_identity,
+        "profile_identity": programme.profile_id,
+    }
+    decision = {
+        "hybrid_record_sequence": "1",
+        "decision_sequence": "1",
+        "capture_session": "7",
+        "source_first_sequence": "1200",
+        "source_last_sequence": "1800",
+        "reason": "maintenance_request_ready",
+        **identity,
+    }
+    decision_timing = {
+        **decision,
+        "record_type": "AH2",
+        "schema_version": "2",
+        "timing_record_sequence": "1",
+        "decision_timestamp_ticks": "28800000000",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    transaction = {
+        "transaction_record_sequence": "1",
+        "event": "request_created",
+        "request_sequence": "1",
+        "decision_sequence": "1",
+        "source_first_sequence": "1200",
+        "source_last_sequence": "1800",
+        "application_sequence": "0",
+        **identity,
+    }
+    transaction_timing = {
+        **transaction,
+        "record_type": "AT2",
+        "schema_version": "2",
+        "timing_record_sequence": "2",
+        "event_timestamp_ticks": "28800000001",
+        "time_domain": "rp2040_timer0_extended",
+    }
+    activation = {
+        "record_type": "AHM",
+        "maintenance_record_sequence": "1",
+        "event": "policy_activation",
+        "event_timestamp_ticks": "1",
+        "time_domain": "rp2040_timer0_extended",
+        "policy_id": programme.policy_id,
+        "active_policy_sha256": active_policy_sha256,
+        "hybrid_record_sequence": "0",
+        "hybrid_timing_record_sequence": "0",
+        "decision_sequence": "0",
+        "transaction_record_sequence": "0",
+        "transaction_timing_record_sequence": "0",
+        "request_sequence": "0",
+        "application_sequence": "0",
+        "requalification_d14_d8_observation_sequence": "0",
+        "evidence_burst_sequence": "1",
+        "evidence_burst_record_ordinal": "1",
+        "evidence_burst_record_count": "1",
+        **identity,
+    }
+    request = {
+        "record_type": "AHM",
+        "maintenance_record_sequence": "2",
+        "event": "decision",
+        "event_timestamp_ticks": "28800000002",
+        "time_domain": "rp2040_timer0_extended",
+        "policy_id": programme.policy_id,
+        "active_policy_sha256": active_policy_sha256,
+        "hybrid_record_sequence": "1",
+        "hybrid_timing_record_sequence": "1",
+        "decision_sequence": "1",
+        "capture_session": "7",
+        "source_first_sequence": "1200",
+        "source_last_sequence": "1800",
+        "transaction_record_sequence": "1",
+        "transaction_timing_record_sequence": "2",
+        "transaction_event": "request_created",
+        "request_sequence": "1",
+        "application_sequence": "0",
+        "requalification_d14_d8_observation_sequence": "0",
+        "evidence_burst_sequence": "2",
+        "evidence_burst_record_ordinal": "5",
+        "evidence_burst_record_count": "5",
+        **identity,
+    }
+    return (
+        [activation, request],
+        [transaction],
+        [decision],
+        [transaction_timing],
+        [decision_timing],
+        build_identity,
+        active_policy_sha256,
+    )
+
+
+def test_cx323_maintenance_stream_exactly_joins_lifecycle_and_bursts() -> None:
+    (
+        maintenance,
+        transactions,
+        decisions,
+        transaction_timings,
+        decision_timings,
+        build_identity,
+        active_policy_sha256,
+    ) = _cx323_maintenance_stream()
+    sidecars = live_analyze.exact_lifecycle_timing_sidecar_join(
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+    )
+    result = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+
+    assert sidecars["exact"] is True
+    assert result == {
+        "required": True,
+        "exact": True,
+        "record_count": 2,
+        "burst_count": 2,
+        "mismatches": [],
+    }
+
+
+def test_cx323_maintenance_stream_rejects_campaign18_labels_and_hashes() -> None:
+    (
+        maintenance,
+        transactions,
+        decisions,
+        transaction_timings,
+        decision_timings,
+        build_identity,
+        active_policy_sha256,
+    ) = _cx323_maintenance_stream()
+    maintenance[1]["profile_identity"] = CX322_D9_D6_72H_PROGRAMME.profile_id
+    decisions[0]["profile_identity"] = CX322_D9_D6_72H_PROGRAMME.profile_id
+    maintenance[1]["active_policy_sha256"] = "d" * 64
+    result = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+
+    assert result["exact"] is False
+    assert any("profile_identity differs" in item for item in result["mismatches"])
+    assert "AHM row 2 active_policy_sha256 differs" in result["mismatches"]
+
+
+def test_cx323_maintenance_stream_rejects_broken_at2_join_and_partial_burst() -> None:
+    (
+        maintenance,
+        transactions,
+        decisions,
+        transaction_timings,
+        decision_timings,
+        build_identity,
+        active_policy_sha256,
+    ) = _cx323_maintenance_stream()
+    maintenance[1]["transaction_timing_record_sequence"] = "99"
+    maintenance[1]["evidence_burst_record_count"] = "4"
+    result = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+
+    assert result["exact"] is False
+    assert "AHM row 2 ACT/AT2 join differs" in result["mismatches"]
+    assert "AHM row 2 transaction burst is incomplete" in result["mismatches"]
+
+
+def test_cx323_maintenance_stream_requires_explicit_requalification_frontier() -> None:
+    (
+        maintenance,
+        transactions,
+        decisions,
+        transaction_timings,
+        decision_timings,
+        build_identity,
+        active_policy_sha256,
+    ) = _cx323_maintenance_stream()
+    requalified = dict(maintenance[1])
+    requalified.update(
+        {
+            "maintenance_record_sequence": "3",
+            "event": "gnss_metadata_requalified",
+            "transaction_record_sequence": "0",
+            "transaction_timing_record_sequence": "0",
+            "transaction_event": "none",
+            "request_sequence": "0",
+            "evidence_burst_sequence": "3",
+            "evidence_burst_record_ordinal": "1",
+            "evidence_burst_record_count": "1",
+            "requalification_d14_d8_observation_sequence": "2407",
+        }
+    )
+    maintenance.append(requalified)
+    exact = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+    assert exact["exact"] is True
+
+    requalified["requalification_d14_d8_observation_sequence"] = "0"
+    invalid = live_analyze.validate_maintenance_evidence_stream(
+        maintenance_rows=maintenance,
+        transactions=transactions,
+        decisions=decisions,
+        transaction_timings=transaction_timings,
+        decision_timings=decision_timings,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+        expected_build_identity=build_identity,
+        expected_active_policy_sha256=active_policy_sha256,
+    )
+    assert invalid["exact"] is False
+    assert any(
+        "GNSS requalification lacks its exact D14/D8 observation frontier"
+        in item
+        for item in invalid["mismatches"]
+    )
 from host.otis_tools.active_hybrid_policy import load_policy
 from host.otis_tools.active_hybrid_rehearsal import (
     _modeled_transaction,
@@ -1094,6 +1691,135 @@ def test_partial_prewrite_terminal_is_sealed_as_platform_fault(
         for failure in seal["retained_input_failures"]
     )
     assert seal["offline_finalization_gate"]["passed"] is False
+
+
+def test_cx323_final_analyzer_enters_ahm_replay_without_legacy_policy_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    run_dir = tmp_path / "cx323-final-analysis"
+    (run_dir / "csv").mkdir(parents=True)
+    (run_dir / "run_manifest.json").write_text("{}\n", encoding="utf-8")
+    (run_dir / "COMPLETE").write_text("{}\n", encoding="utf-8")
+    for name in (
+        "active_transactions_v2.csv",
+        "active_hybrid_decisions_v2.csv",
+        "active_hybrid_maintenance_v1.csv",
+        "forwarded_monitor_snapshots_v1.csv",
+        "pps_snapshots_v1.csv",
+        "count_observations_v1.csv",
+    ):
+        (run_dir / "csv" / name).write_text("", encoding="utf-8")
+    policy_sha256 = live_analyze._sha256_file(programme.policy_path)
+    build_identity = "b" * 64 + ":" + "c" * 64
+    manifest = {
+        "schema_version": 1,
+        "stage": programme.live_stage,
+        "programme_id": programme.programme_id,
+        "run_id": "cx323-final-analysis",
+        "run_identity": programme.runtime_run_identity,
+        "profile_identity": programme.profile_id,
+        "started_at_utc": "2026-08-31T12:00:00Z",
+        "manifest_sha256": "a" * 64,
+        "channels": [],
+        "domains": [
+            {"name": "rp2040_timer0_extended", "nominal_hz": 16_000_000}
+        ],
+        "contracts": {},
+        "files": [
+            {
+                "contract": "active_transactions_v2",
+                "path": "csv/active_transactions_v2.csv",
+            },
+            {
+                "contract": "active_hybrid_decisions_v2",
+                "path": "csv/active_hybrid_decisions_v2.csv",
+            },
+            {
+                "contract": "active_hybrid_maintenance_v1",
+                "path": "csv/active_hybrid_maintenance_v1.csv",
+            },
+            {
+                "contract": "forwarded_monitor_snapshots_v1",
+                "path": "csv/forwarded_monitor_snapshots_v1.csv",
+            },
+            {
+                "contract": "pps_snapshots_v1",
+                "path": "csv/pps_snapshots_v1.csv",
+            },
+            {
+                "contract": "count_observations_v1",
+                "path": "csv/count_observations_v1.csv",
+            },
+        ],
+        "evidence_artifacts": [],
+        "policy": {
+            "path": str(programme.policy_path),
+            "sha256": policy_sha256,
+            "policy_sha256": policy_sha256,
+        },
+        "firmware": {
+            "build_identity": build_identity,
+            "uf2": {"sha256": "d" * 64},
+        },
+        "bundle": {"bundle_sha256": "e" * 64},
+        "proposal": {"proposal_sha256": "f" * 64},
+        "activation": {"activation_sha256": "1" * 64},
+        programme.manifest_section: {
+            "setup": {"code": programme.setup_code},
+            "automatic_control": {
+                "maximum_total_applications": 144,
+                "maximum_cumulative_movement_codes": 3_024,
+                "maximum_step_codes": 21,
+                "minimum_applied_cadence_s": 1_800,
+                "minimum_code": 0xA800,
+                "maximum_code": 0xAB00,
+            },
+        },
+    }
+    replay_calls: list[dict[str, object]] = []
+
+    def replay(*_args, **kwargs):
+        replay_calls.append(kwargs)
+        return {
+            "exact": True,
+            "replay_mode": "cx323_phase_priority_oracle_with_AHM_v1",
+            "decision_count": 0,
+            "phase_nonzero_decision_count": 0,
+            "phase_material_decision_count": 0,
+            "unmatched_request_decision_sequences": [],
+            "completed_response_decision_sequences": [],
+            "all_response_checkpoints_passed": True,
+            "comparisons": [],
+        }
+
+    monkeypatch.setattr(
+        live_analyze, "validate_frozen_run_manifest", lambda _path: manifest
+    )
+    monkeypatch.setattr(live_analyze, "replay_cx323_maintenance_history", replay)
+
+    output, seal = live_analyze.analyze(run_dir)
+
+    assert output.is_file()
+    assert replay_calls and replay_calls[0]["policy_path"] == programme.policy_path
+    assert seal["active_hybrid_replay"]["replay_mode"] == (
+        "cx323_phase_priority_oracle_with_AHM_v1"
+    )
+    assert not any(
+        "plant_gain_nominal_hz_per_code" in failure
+        for failure in seal["retained_input_failures"]
+    )
+    assert not any(
+        failure.startswith("response horizon facts:")
+        for failure in seal["retained_input_failures"]
+    )
+    assert seal["response_horizon_facts"] == {
+        "applicable": False,
+        "reason": "cx323_uses_exact_counter_domain_response_checkpoint",
+        "exact_response_horizon_s": 1_500,
+        "source": "integrated_exact_timing_sidecar_join",
+        "coarse_seconds_used_as_ticks": False,
+    }
 
 
 def test_cx320_analyzer_binds_tdb_to_frozen_frequency_predecessor() -> None:

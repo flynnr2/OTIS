@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from pathlib import Path
 
 from host.otis_tools import active_hybrid_activation as live_manifest
 from host.otis_tools import active_hybrid_monitor as monitor
 from host.otis_tools.active_hybrid_bundle import FRESH_SERIAL_AUTO_DETECT
 from host.otis_tools.active_hybrid_programme_contract import (
+    ActiveHybridProgramme,
     CX322_D9_D6_72H_PROGRAMME,
+    CX323_D9_D6_72H_PROGRAMME,
 )
 from host.otis_tools.contracts import CONTRACT_FIELDS
 from host.otis_tools.evidence import create_evidence_snapshot
@@ -31,6 +34,12 @@ def _write_csv_rows(path: Path, rows: list[dict[str, str]]) -> None:
         writer = csv.DictWriter(handle, fieldnames=tuple(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _write_csv_header(path: Path, contract: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        csv.DictWriter(handle, fieldnames=CONTRACT_FIELDS[contract]).writeheader()
 
 
 def _contract_row(contract: str, **values: str) -> dict[str, str]:
@@ -91,8 +100,13 @@ def _fixture(tmp_path: Path, monkeypatch) -> tuple[Path, float]:
     return run_dir, now
 
 
-def _campaign18_fixture(tmp_path: Path, monkeypatch) -> tuple[Path, float]:
-    """Build a physical live-manifest shape and use its production validator."""
+def _campaign18_fixture(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    programme: ActiveHybridProgramme = CX322_D9_D6_72H_PROGRAMME,
+) -> tuple[Path, float]:
+    """Build an integrated long-run manifest using the production validator."""
 
     run_dir = tmp_path / "campaign18-run"
     run_dir.mkdir()
@@ -103,10 +117,10 @@ def _campaign18_fixture(tmp_path: Path, monkeypatch) -> tuple[Path, float]:
     bundle = {
         "bundle_sha256": "d" * 64,
         "firmware": {
-            "profile_id": CX322_D9_D6_72H_PROGRAMME.profile_id,
+            "profile_id": programme.profile_id,
             "build_identity": build_identity,
         },
-        "policy": {"policy_id": CX322_D9_D6_72H_PROGRAMME.policy_id},
+        "policy": {"policy_id": programme.policy_id},
         "host_tools": {},
         "finite_limits": {
             "qualified_origin": "first_complete_fresh_authoritative_600s_estimate",
@@ -115,9 +129,9 @@ def _campaign18_fixture(tmp_path: Path, monkeypatch) -> tuple[Path, float]:
     }
     proposal = {"proposal_sha256": "e" * 64}
     activation = {
-        "programme_id": CX322_D9_D6_72H_PROGRAMME.programme_id,
+        "programme_id": programme.programme_id,
         "activation_sha256": "a" * 64,
-        "authority": live_manifest._authority(CX322_D9_D6_72H_PROGRAMME),
+        "authority": live_manifest._authority(programme),
         "device": {
             "path": None,
             "selection": FRESH_SERIAL_AUTO_DETECT,
@@ -188,9 +202,9 @@ def _campaign18_fixture(tmp_path: Path, monkeypatch) -> tuple[Path, float]:
         schema_version="1",
         transaction_record_sequence="1",
         event="application",
-        run_identity=CX322_D9_D6_72H_PROGRAMME.runtime_run_identity,
+        run_identity=programme.runtime_run_identity,
         build_identity=build_identity,
-        profile_identity=CX322_D9_D6_72H_PROGRAMME.profile_id,
+        profile_identity=programme.profile_id,
         session_id="7",
         request_sequence="1",
         decision_sequence="11",
@@ -227,9 +241,9 @@ def _campaign18_fixture(tmp_path: Path, monkeypatch) -> tuple[Path, float]:
         schema_version="1",
         hybrid_record_sequence="1",
         decision_sequence="12",
-        run_identity=CX322_D9_D6_72H_PROGRAMME.runtime_run_identity,
+        run_identity=programme.runtime_run_identity,
         build_identity=build_identity,
-        profile_identity=CX322_D9_D6_72H_PROGRAMME.profile_id,
+        profile_identity=programme.profile_id,
         capture_session="7",
         source_first_sequence="101",
         source_last_sequence="701",
@@ -256,6 +270,31 @@ def _campaign18_fixture(tmp_path: Path, monkeypatch) -> tuple[Path, float]:
     _write_csv(run_dir / monitor.ACTIVE_EXACT, transaction_timing)
     _write_csv(run_dir / monitor.HYBRID, decision)
     _write_csv(run_dir / monitor.HYBRID_EXACT, decision_timing)
+    if programme.persistent_maintenance_policy:
+        assert programme.maintenance_record_contract is not None
+        assert programme.maintenance_record_type is not None
+        maintenance = _contract_row(
+            programme.maintenance_record_contract,
+            record_type=programme.maintenance_record_type,
+            schema_version="1",
+            maintenance_record_sequence="1",
+            event="decision",
+            event_timestamp_ticks="48000000",
+            time_domain=monitor.EXACT_LIFECYCLE_TIME_DOMAIN,
+            run_identity=programme.runtime_run_identity,
+            build_identity=build_identity,
+            profile_identity=programme.profile_id,
+            policy_id=programme.policy_id,
+            maintenance_state_after="READY",
+            request_pending_after="false",
+            response_pending_after="false",
+            metadata_hold_after="false",
+            reason="maintenance_decision_observed",
+        )
+        _write_csv(
+            run_dir / "csv" / f"{programme.maintenance_record_contract}.csv",
+            maintenance,
+        )
     return run_dir, now
 
 
@@ -463,6 +502,119 @@ def test_campaign18_physical_manifest_monitor_reports_exact_sidecar_progress_and
     ]
 
 
+def test_cx323_long_run_monitor_requires_exact_maintenance_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir, now = _campaign18_fixture(
+        tmp_path, monkeypatch, programme=CX323_D9_D6_72H_PROGRAMME
+    )
+
+    running = monitor.snapshot(run_dir, now=now)
+
+    assert running["status"] == "running"
+    assert running["progress"]["exact_timing_sidecars"][
+        "join_exact_at_observed_frontier"
+    ] is True
+    maintenance = running["progress"]["maintenance_evidence"]
+    assert maintenance["required"] is True
+    assert maintenance["contract"] == "active_hybrid_maintenance_v1"
+    assert maintenance["record_type"] == "AHM"
+    assert maintenance["rows"] == 1
+    assert maintenance["mismatches"] == []
+
+    maintenance_path = run_dir / "csv/active_hybrid_maintenance_v1.csv"
+    # AHM is causal transition evidence, not a periodic heartbeat. Legal
+    # controller quiet periods exceed the old 660-second file-age threshold
+    # during startup and after an application; age remains informational.
+    os.utime(maintenance_path, (now - 3_600.0, now - 3_600.0))
+    monkeypatch.setattr(
+        monitor,
+        "_age_s",
+        lambda path, *, now: 3_600.0 if path == maintenance_path else 1.0,
+    )
+    old_but_complete = monitor.snapshot(run_dir, now=now)
+    assert old_but_complete["status"] == "running"
+    assert old_but_complete["progress"]["maintenance_evidence"]["age_s"] == (
+        3_600.0
+    )
+
+    row = monitor._stable_contract_rows(
+        maintenance_path, monitor.ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS
+    )[0]
+    # A CX322 label is not compatible with the selected successor descriptor,
+    # even though both profiles share the integrated long-run lifecycle.
+    row["profile_identity"] = CX322_D9_D6_72H_PROGRAMME.profile_id
+    _write_csv(maintenance_path, row)
+
+    mismatched = monitor.snapshot(run_dir, now=now)
+
+    assert mismatched["status"] == "fault"
+    assert "maintenance_evidence_identity_mismatch" in mismatched[
+        "integrity_faults"
+    ]
+    assert any(
+        "profile_identity differs" in item
+        for item in mismatched["progress"]["maintenance_evidence"]["mismatches"]
+    )
+
+    maintenance_path.unlink()
+    missing = monitor.snapshot(run_dir, now=now)
+
+    assert missing["status"] == "fault"
+    assert "maintenance_evidence_unavailable" in missing["integrity_faults"]
+
+
+def test_cx323_monitor_accepts_only_the_expected_pre_setup_ahm_header(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir, now = _campaign18_fixture(
+        tmp_path, monkeypatch, programme=CX323_D9_D6_72H_PROGRAMME
+    )
+    state_path = run_dir / monitor.SUPERVISOR_STATE
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state.update(
+        {
+            "manual_start_sent": False,
+            "setup_confirmed_utc": None,
+            "latest_hybrid_state": "SETUP_PENDING",
+        }
+    )
+    _write_json(state_path, state)
+    for path, contract in (
+        (run_dir / monitor.ACTIVE, "active_transactions_v1"),
+        (run_dir / monitor.ACTIVE_EXACT, "active_transactions_v2"),
+        (run_dir / monitor.HYBRID, "active_hybrid_decisions_v1"),
+        (run_dir / monitor.HYBRID_EXACT, "active_hybrid_decisions_v2"),
+    ):
+        _write_csv_header(path, contract)
+    maintenance_path = run_dir / "csv/active_hybrid_maintenance_v1.csv"
+    _write_csv_header(maintenance_path, "active_hybrid_maintenance_v1")
+
+    waiting = monitor.snapshot(run_dir, now=now)
+
+    assert waiting["status"] == "running"
+    assert "maintenance_evidence_unavailable" not in waiting["integrity_faults"]
+    assert waiting["progress"]["maintenance_evidence"]["rows"] == 0
+    assert waiting["progress"]["maintenance_evidence"][
+        "expected_pre_setup_header_only"
+    ] is True
+
+    maintenance_path.unlink()
+    missing = monitor.snapshot(run_dir, now=now)
+    assert missing["status"] == "fault"
+    assert "maintenance_evidence_unavailable" in missing["integrity_faults"]
+
+    _write_csv_header(maintenance_path, "active_hybrid_maintenance_v1")
+    state["manual_start_sent"] = True
+    _write_json(state_path, state)
+    setup_started = monitor.snapshot(run_dir, now=now)
+    assert setup_started["status"] == "fault"
+    assert "maintenance_evidence_unavailable" in setup_started["integrity_faults"]
+    assert setup_started["progress"]["maintenance_evidence"][
+        "expected_pre_setup_header_only"
+    ] is False
+
+
 def test_generated_campaign18_manifest_loads_and_snapshots_through_generic_lifecycle(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -528,7 +680,7 @@ def test_campaign18_monitor_distinguishes_expected_prewrite_wait_from_deadline_e
 
     expired = monitor.snapshot(
         run_dir,
-        now=now + monitor.CAMPAIGN18_PREWRITE_QUALIFICATION_DEADLINE_S + 1,
+        now=now + monitor.PREWRITE_QUALIFICATION_DEADLINE_S + 1,
     )
     assert expired["status"] == "fault"
     assert "prewrite_qualification_deadline_expired" in expired[

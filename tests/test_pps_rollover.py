@@ -6,6 +6,26 @@ from pathlib import Path
 
 
 HELPER = Path("firmware/arduino/otis_nano_rp2040_connect/otis_timebase_math.h")
+SKETCH = Path(
+    "firmware/arduino/otis_nano_rp2040_connect/otis_nano_rp2040_connect.ino"
+)
+
+
+def test_timer0_source_and_quantum_are_explicit_in_firmware_status() -> None:
+    helper = HELPER.read_text()
+    sketch = SKETCH.read_text()
+
+    assert "OTIS_RP2040_TIMER0_SOURCE_COUNTER_HZ 1000000ul" in helper
+    assert "OTIS_RP2040_TIMER0_TIMESTAMP_QUANTUM_TICKS 16ul" in helper
+    assert "OTIS_RP2040_TIMER0_TIMESTAMP_QUANTUM_NS 1000ul" in helper
+    assert '"timestamp_source_counter_hz"' in sketch
+    assert '"timestamp_encoding_scale"' in sketch
+    assert '"timestamp_quantum_ticks"' in sketch
+    assert '"timestamp_quantum_ns"' in sketch
+    assert '"projected_local_non_metrological"' in sketch
+    assert (
+        '"rp2040_timerawl_or_arduino_micros_1mhz_encoded_x16"' in sketch
+    )
 WRAP_TICKS = (1 << 32) * 16
 NOMINAL_PPS_TICKS = 16_000_000
 SHORT_THRESHOLD_TICKS = 8_000_000
