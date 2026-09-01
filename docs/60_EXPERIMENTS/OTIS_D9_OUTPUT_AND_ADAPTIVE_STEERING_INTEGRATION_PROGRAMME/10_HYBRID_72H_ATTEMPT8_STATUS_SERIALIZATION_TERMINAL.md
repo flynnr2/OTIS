@@ -13,12 +13,15 @@ endpoint.
 The acquisition did establish the first complete CX323 physical control
 transaction. The controller requested +1 code, Core 0 accepted and applied
 `0xA84D` to `0xA84E`, and the applied DAC epoch advanced from 1 to 2. The
-response was observed at the exact 1,500-second horizon as 0.000000000 Hz and
-classified `healthy_indeterminate_near_resolution`. The ACT/AT2/AHM/AH2
-identity and ordering joins, the first-consumer checkpoint, and the response
-replay attestation were exact. This single quantization-limited response is
-valid evidence that the transaction path worked; it is not enough to judge
-long-term frequency or phase discipline.
+original analyzer described the response as occurring at the exact
+1,500-second horizon and classified it
+`healthy_indeterminate_near_resolution`. A later exact-counter audit prompted
+by Attempt 9 corrected that timing claim: application tick 153,791,624,736 to
+response tick 177,779,359,248 spans 23,987,734,512 ticks, or 1,499.233407
+seconds. It is 12,265,488 ticks (766.593 milliseconds) short of the frozen
+24,000,000,000-tick minimum. The transaction, first-consumer, identity and
+ordering evidence remains valid, but the response cannot qualify the frozen
+checkpoint or support later authority.
 
 Capture closed cleanly with exactly one serial owner after 60,312,450 bytes,
 507,389 parsed lines, zero parser errors, zero reconnects, and one independently
@@ -79,7 +82,19 @@ an automatic retry.
 - The exact `cx323_d9_d6_72h_adaptive_hybrid` firmware profile compiled from
   the committed correction.
 
-Per the operator's stop instruction, this work does not flash hardware, create
-a new live freeze, or launch Attempt 9. Any later physical run requires a new
-explicit start and the usual exact-bundle identity, operational-path
-rehearsal, auto-detected flash/readback, and live entry qualification.
+The later exact-timing repair does not alter or undo the status-serialization
+defect or its correction. It adds a second, scientifically material finding
+over the preserved acquisition. The original Attempt 8 seal remains preserved.
+The superseding exact-counter seal has semantic SHA-256
+`1ec754692168f777dd3377d741180e7ac7585f9282d9d489b96ad18d31fdfffa`,
+file SHA-256
+`9b28327e41992a0ba932b9996e360eb343a7c092e1c183609004ad49e785e54b`,
+and registered package content SHA-256
+`e7de93f51afc6c0f63206fb445e79cf6bf7e2bbcf7967627f8c5f72b69e9480c`.
+The corrected analyzer preserves the acquisition gate but rejects offline
+qualification at the exact response minimum.
+
+Per the operator's stop instruction at the time, this repair did not flash
+hardware, create a new live freeze, or launch Attempt 9. Attempt 9 was later
+separately authorized and is recorded in
+[`11_HYBRID_72H_ATTEMPT9_EXACT_RESPONSE_TIMING_TERMINAL.md`](11_HYBRID_72H_ATTEMPT9_EXACT_RESPONSE_TIMING_TERMINAL.md).
