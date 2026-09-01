@@ -424,6 +424,12 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             elif int(progress["join_lag_rows"]) > 1 or progress["lag_stale"]:
                 integrity_faults.append(f"{record_type}_sidecar_join_lag_stale")
     if programme.persistent_maintenance_policy:
+        expected_pre_setup_header_only = bool(
+            isinstance(supervisor, dict)
+            and supervisor.get("manual_start_sent") is False
+            and supervisor.get("setup_confirmed_utc") is None
+            and supervisor.get("latest_hybrid_state") in {None, "SETUP_PENDING"}
+        )
         try:
             maintenance = _maintenance_evidence_progress(
                 run_dir,
@@ -437,7 +443,13 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
                 "unavailable": True,
                 "mismatches": [str(exc)],
             }
-        if maintenance.get("unavailable") is True or not maintenance.get("rows"):
+        maintenance["expected_pre_setup_header_only"] = (
+            expected_pre_setup_header_only
+        )
+        if maintenance.get("unavailable") is True or (
+            not maintenance.get("rows")
+            and not expected_pre_setup_header_only
+        ):
             integrity_faults.append("maintenance_evidence_unavailable")
         elif maintenance["mismatches"]:
             integrity_faults.append("maintenance_evidence_identity_mismatch")

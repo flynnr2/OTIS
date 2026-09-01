@@ -2192,6 +2192,23 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._abort("phase_channel_degraded_frequency_control_retained")
             return
 
+        qualification_deadline_s = self.programme.qualification_deadline_s
+        setup_confirmed_utc = self.state.get("setup_confirmed_utc")
+        if (
+            qualification_deadline_s is not None
+            and isinstance(setup_confirmed_utc, str)
+            and setup_confirmed_utc
+            and self.state.get("qualification_started_utc") is None
+        ):
+            if (
+                now_epoch - _parse_utc_epoch(setup_confirmed_utc)
+                >= qualification_deadline_s
+            ):
+                self._abort(
+                    f"{self.programme.key}_qualification_deadline_expired"
+                )
+            return
+
         if (
             self.programme.terminal_after_first_response
             and (
@@ -2364,6 +2381,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         elif "absolute_wall_endpoint" in reason or reason.startswith(
             f"{self.programme.key}_wall_endpoint"
         ):
+            terminal["primary_decision"] = _programme_terminal_decision(
+                self.programme,
+                "_right_censored_incomplete",
+                fallback="right_censored_incomplete",
+            )
+        elif reason == f"{self.programme.key}_qualification_deadline_expired":
             terminal["primary_decision"] = _programme_terminal_decision(
                 self.programme,
                 "_right_censored_incomplete",

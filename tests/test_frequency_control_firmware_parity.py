@@ -77,6 +77,31 @@ def cx317_live_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="session")
+def cx323_exact_live_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    output = tmp_path_factory.mktemp("cx323_exact_live") / "live"
+    subprocess.run(
+        [
+            _compiler(), "-std=c++17", "-Wall", "-Wextra", "-Werror",
+            "-DOTIS_ENABLE_CX317_I_ONLY_PREVIEW=1",
+            "-DOTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=1",
+            "-DOTIS_ENABLE_ENV_SENSORS=1",
+            "-DOTIS_ENABLE_DAC_AD5693R=1",
+            "-DOTIS_ENABLE_EXACT_POST_APPLICATION_SETTLING=1",
+            str(ROOT / "tests/cpp/cx317_preview_live_harness.cpp"),
+            str(FIRMWARE / "otis_cx317_preview_live.cpp"),
+            str(FIRMWARE / "otis_cx317_i_only_engine.cpp"),
+            str(FIRMWARE / "otis_cx317_snapshot_estimator.cpp"),
+            str(FIRMWARE / "otis_decimal_format.cpp"),
+            str(FIRMWARE / "otis_timer0_extension.cpp"),
+            "-I", str(FIRMWARE), "-o", str(output),
+        ],
+        check=True,
+        cwd=ROOT,
+    )
+    return output
+
+
+@pytest.fixture(scope="session")
 def cx317_estimator_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
     output = tmp_path_factory.mktemp("cx317_estimator") / "estimator"
     subprocess.run(
@@ -299,6 +324,40 @@ def test_first_post_application_selected_estimate_closes_after_full_response_win
         + policy.settling_exclusion_s
         + policy.fresh_support_s
     ) * 16_000_000
+
+
+def test_cx323_fractional_application_excludes_every_interval_before_exact_900s(
+    cx323_exact_live_harness: Path,
+) -> None:
+    application_timestamp_ticks = 2_401 * 16_000_000 + 8_000_000
+    completed = subprocess.run(
+        [str(cx323_exact_live_harness), "fractional_exact_response_window"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    lines = completed.stdout.splitlines()
+    estimates = list(
+        csv.DictReader(
+            [lines[0], *[line for line in lines[2:] if line.startswith("EST,")]]
+        )
+    )
+    post_application_selected = [
+        row
+        for row in estimates
+        if "selected600" in row["estimate_id"]
+        and row["source_dac_ref"] == "live:DAC:2"
+    ]
+
+    assert len(post_application_selected) == 1
+    response = post_application_selected[0]
+    assert int(response["accepted_sample_count"]) == 600
+    assert int(response["source_reference_first_seq"]) == 3_302
+    assert int(response["source_reference_last_seq"]) == 3_902
+    assert int(response["estimator_timestamp_ticks"]) == 3_902 * 16_000_000
+    assert int(response["estimator_timestamp_ticks"]) >= (
+        application_timestamp_ticks + 1_500 * 16_000_000
+    )
 
 
 def test_live_preview_reference_fault_requalifies_without_explicit_recovery(

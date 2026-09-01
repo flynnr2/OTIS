@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import active_hybrid_live_supervisor as live
+from host.otis_tools import active_transactions
 from host.otis_tools.active_hybrid_programme_contract import CX321_PROGRAMME
 from host.otis_tools.active_hybrid_programme_contract import (
     CX322_D9_D6_72H_PROGRAMME,
@@ -587,6 +588,38 @@ def test_cx323_exact_endpoint_uses_successor_identity_not_campaign18(
         "cx323_d9_d6_72h_qualified_hybrid_complete"
     )
     assert "cx322" not in supervisor.state["terminal"]["reason"]
+
+
+def test_cx323_setup_confirmed_qualification_deadline_submits_exact_abort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    setup_epoch = 1_800_000_000.0
+    supervisor.state["setup_confirmed_utc"] = _utc(setup_epoch)
+    supervisor.state["qualification_started_utc"] = None
+    supervisor._save()
+    submitted: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        active_transactions,
+        "send_command_to_fifo",
+        lambda path, command: submitted.append((path, command)),
+    )
+    health = _health(supervisor)
+
+    supervisor._maybe_finish(health, setup_epoch + 5_400.0 - 0.001, 0.0)
+    assert supervisor.state["terminal"] is None
+    assert submitted == []
+
+    supervisor._maybe_finish(health, setup_epoch + 5_400.0, 0.0)
+
+    assert submitted == [(supervisor.emergency_command_fifo, "ACTIVE ABORT")]
+    assert supervisor.state["terminal"] == {
+        "result": "aborted",
+        "reason": "cx323_d9_d6_72h_qualification_deadline_expired",
+        "utc": supervisor.state["terminal"]["utc"],
+        "primary_decision": "cx323_d9_d6_72h_right_censored_incomplete",
+    }
 
 
 @pytest.mark.parametrize(

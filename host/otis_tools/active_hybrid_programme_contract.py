@@ -92,6 +92,9 @@ class ActiveHybridProgramme:
     controller_inhibit_acquisition_continues: bool = False
     gnss_metadata_hold_nonterminal: bool = False
     qualified_endpoint_reason_override: str | None = None
+    qualification_deadline_s: int | None = None
+    minimum_exact_response_elapsed_s: int | None = None
+    tight_deadband_policy_sha256: str | None = None
 
     @property
     def campaign_name(self) -> str:
@@ -659,6 +662,14 @@ CX323_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
     gnss_metadata_hold_nonterminal=True,
     qualified_endpoint_reason_override=(
         "cx323_d9_d6_72h_qualified_hybrid_complete"
+    ),
+    qualification_deadline_s=5_400,
+    minimum_exact_response_elapsed_s=1_500,
+    # The exact CX323 firmware matrix enables the stabilized CX319 preview.
+    # TDB is advisory for CX323, but its retained rows still bind and replay
+    # against this exact, source-frozen policy artifact identity.
+    tight_deadband_policy_sha256=(
+        "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a"
     ),
 )
 

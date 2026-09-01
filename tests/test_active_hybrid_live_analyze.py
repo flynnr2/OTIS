@@ -90,6 +90,27 @@ def test_cx323_integrated_outcome_uses_its_declared_inhibit_terminal() -> None:
     )
 
 
+def test_cx323_integrated_success_uses_its_declared_qualified_endpoint() -> None:
+    programme = CX323_D9_D6_72H_PROGRAMME
+    terminal = {
+        "result": "healthy_stop",
+        "reason": programme.qualified_endpoint_reason,
+    }
+
+    outcome = live_analyze._integrated_long_run_outcome(
+        programme=programme,
+        integrity_exact=True,
+        operator_abort=False,
+        platform_terminal=False,
+        endpoint_complete=True,
+        terminal=terminal,
+        controller_authority_inhibited=False,
+    )
+
+    assert outcome == ("passed", "cx323_d9_d6_72h_qualified_hybrid_complete")
+    assert outcome[1] in programme.terminal_decisions
+
+
 def test_cx323_final_replay_dispatches_to_its_ahm_oracle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -145,11 +166,23 @@ def test_cx323_analyzer_normalizes_only_its_frozen_profile_bindings() -> None:
         "phase_estimator_sha256": document["bindings"]["phase_estimator"]["sha256"],
         "plant_model_sha256": document["bindings"]["plant_model"]["sha256"],
         "response_policy_sha256": document["bindings"]["response_policy"]["sha256"],
-        "tight_deadband_policy_sha256": live_analyze.TIGHT_DEADBAND_POLICY_SHA256,
+        "tight_deadband_policy_sha256": programme.tight_deadband_policy_sha256,
         "settling_exclusion_s": 900,
         "response_checkpoint_observational": True,
         "policy_sha256": policy.policy_sha256,
     }
+    tight_policy = (
+        Path(__file__).resolve().parents[1]
+        / "profiles/discipline/cx319_stabilized_tight_deadband_v1.json"
+    )
+    assert live_analyze._sha256_file(tight_policy) == (
+        programme.tight_deadband_policy_sha256
+    )
+    firmware_preview = (
+        Path(__file__).resolve().parents[1]
+        / "firmware/arduino/otis_nano_rp2040_connect/otis_cx317_preview_live.cpp"
+    ).read_text(encoding="utf-8")
+    assert programme.tight_deadband_policy_sha256 in firmware_preview
 
 
 def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() -> None:
@@ -305,6 +338,90 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
     assert session_identity_mismatch["mismatches"] == [
         "AH2 join mismatch hybrid_record_sequence=2"
     ]
+
+
+@pytest.mark.parametrize(
+    ("application_ticks", "response_ticks", "expected_exact"),
+    (
+        # Attempt 8 completed 766.593 ms before the frozen exact horizon.
+        (153_791_624_736, 177_779_359_248, False),
+        # Attempt 9 completed 60.146 ms before the frozen exact horizon.
+        (259_311_385_072, 283_310_422_736, False),
+        # The exact 1,500-second counter boundary is admissible.
+        (
+            259_311_385_072,
+            259_311_385_072 + 1_500 * 16_000_000,
+            True,
+        ),
+    ),
+)
+def test_cx323_exact_response_timing_rejects_sub_1500_second_completion(
+    application_ticks: int, response_ticks: int, expected_exact: bool
+) -> None:
+    identity = {
+        "run_identity": CX323_D9_D6_72H_PROGRAMME.runtime_run_identity,
+        "build_identity": "a" * 64 + ":" + "b" * 64,
+        "profile_identity": CX323_D9_D6_72H_PROGRAMME.profile_id,
+        "session_id": "1",
+        "request_sequence": "1",
+        "decision_sequence": "7",
+        "source_first_sequence": "1200",
+        "source_last_sequence": "1800",
+        "authorization_sequence": "1",
+        "nonce": "42",
+        "accepted_code": "43086",
+        "applied_code": "43086",
+        "application_sequence": "1",
+        "dac_epoch": "2",
+    }
+    application = {
+        "transaction_record_sequence": "3",
+        "event": "application",
+        "reason": "application_applied",
+        **identity,
+    }
+    response = {
+        "transaction_record_sequence": "4",
+        "event": "response",
+        "reason": "response_observed",
+        **identity,
+    }
+    timings = [
+        {
+            **application,
+            "record_type": "AT2",
+            "schema_version": "2",
+            "timing_record_sequence": "1",
+            "event_timestamp_ticks": str(application_ticks),
+            "time_domain": "rp2040_timer0_extended",
+        },
+        {
+            **response,
+            "record_type": "AT2",
+            "schema_version": "2",
+            "timing_record_sequence": "2",
+            "event_timestamp_ticks": str(response_ticks),
+            "time_domain": "rp2040_timer0_extended",
+        },
+    ]
+
+    result = live_analyze.exact_lifecycle_timing_sidecar_join(
+        transactions=[application, response],
+        decisions=[],
+        transaction_timings=timings,
+        decision_timings=[],
+        minimum_response_elapsed_ticks=1_500 * 16_000_000,
+    )
+
+    assert result["exact"] is expected_exact
+    assert bool(result["mismatches"]) is not expected_exact
+    if not expected_exact:
+        elapsed_ticks = response_ticks - application_ticks
+        assert result["mismatches"][-1] == (
+            "AT2 response elapsed ticks are below the exact minimum "
+            f"request_sequence=1 elapsed_ticks={elapsed_ticks} "
+            "minimum_ticks=24000000000"
+        )
 
 
 def _cx323_maintenance_stream() -> tuple[
@@ -1625,6 +1742,17 @@ def test_cx323_final_analyzer_enters_ahm_replay_without_legacy_policy_shape(
         "plant_gain_nominal_hz_per_code" in failure
         for failure in seal["retained_input_failures"]
     )
+    assert not any(
+        failure.startswith("response horizon facts:")
+        for failure in seal["retained_input_failures"]
+    )
+    assert seal["response_horizon_facts"] == {
+        "applicable": False,
+        "reason": "cx323_uses_exact_counter_domain_response_checkpoint",
+        "exact_response_horizon_s": 1_500,
+        "source": "integrated_exact_timing_sidecar_join",
+        "coarse_seconds_used_as_ticks": False,
+    }
 
 
 def test_cx320_analyzer_binds_tdb_to_frozen_frequency_predecessor() -> None:

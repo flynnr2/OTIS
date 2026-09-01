@@ -181,12 +181,20 @@ def _analysis_policy_bindings(
                 raise ValueError(f"CX323 analyzer binding differs: {name}")
             return identity
 
+        tight_deadband_policy_sha256 = programme.tight_deadband_policy_sha256
+        if not isinstance(tight_deadband_policy_sha256, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", tight_deadband_policy_sha256
+        ):
+            raise ValueError(
+                "CX323 analyzer tight-deadband diagnostic binding is unavailable"
+            )
+
         return {
             "frequency_estimator_sha256": binding_sha256("frequency_estimator"),
             "phase_estimator_sha256": binding_sha256("phase_estimator"),
             "plant_model_sha256": binding_sha256("plant_model"),
             "response_policy_sha256": binding_sha256("response_policy"),
-            "tight_deadband_policy_sha256": TIGHT_DEADBAND_POLICY_SHA256,
+            "tight_deadband_policy_sha256": tight_deadband_policy_sha256,
             "settling_exclusion_s": policy.settling_exclusion_s,
             "response_checkpoint_observational": (
                 programme.response_checkpoint_observational
@@ -259,6 +267,7 @@ def exact_lifecycle_timing_sidecar_join(
     decisions: list[dict[str, str]],
     transaction_timings: list[dict[str, str]],
     decision_timings: list[dict[str, str]],
+    minimum_response_elapsed_ticks: int | None = None,
 ) -> dict[str, Any]:
     """Prove the mandatory one-to-one V1/V2 integrated lifecycle join."""
 
@@ -365,6 +374,41 @@ def exact_lifecycle_timing_sidecar_join(
         session_field="capture_session",
         join_fields=_AH2_JOIN_FIELDS,
     )
+    if minimum_response_elapsed_ticks is not None:
+        if minimum_response_elapsed_ticks <= 0:
+            raise ValueError("minimum response elapsed ticks must be positive")
+        application_ticks_by_request: dict[tuple[str, str], int] = {}
+        for timing in transaction_timings:
+            request_sequence = timing.get("request_sequence", "")
+            request_identity = (
+                timing.get("session_id", ""),
+                request_sequence,
+            )
+            event = timing.get("event")
+            try:
+                event_ticks = int(timing["event_timestamp_ticks"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if event == "application":
+                application_ticks_by_request[request_identity] = event_ticks
+            elif event == "response":
+                application_ticks = application_ticks_by_request.get(
+                    request_identity
+                )
+                if application_ticks is None:
+                    mismatches.append(
+                        "AT2 response lacks a preceding exact application "
+                        f"request_sequence={request_sequence}"
+                    )
+                    continue
+                elapsed_ticks = event_ticks - application_ticks
+                if elapsed_ticks < minimum_response_elapsed_ticks:
+                    mismatches.append(
+                        "AT2 response elapsed ticks are below the exact minimum "
+                        f"request_sequence={request_sequence} "
+                        f"elapsed_ticks={elapsed_ticks} "
+                        f"minimum_ticks={minimum_response_elapsed_ticks}"
+                    )
     all_timing_sequences: list[int] = []
     for timing in [*transaction_timings, *decision_timings]:
         try:
@@ -421,6 +465,12 @@ def require_campaign18_exact_timing_sidecars(
         ),
         decision_timings=_read_csv(
             _contract_path(manifest, "active_hybrid_decisions_v2")
+        ),
+        minimum_response_elapsed_ticks=(
+            programme.minimum_exact_response_elapsed_s
+            * RP2040_TIMER0_TICKS_PER_SECOND
+            if programme.minimum_exact_response_elapsed_s is not None
+            else None
         ),
     )
     if not result["exact"]:
@@ -2258,6 +2308,8 @@ def _integrated_long_run_outcome(
             "bounded_nonpass",
             decision(suffix),
         )
+    if programme.qualified_endpoint_reason in programme.terminal_decisions:
+        return "passed", programme.qualified_endpoint_reason
     return "passed", decision("qualified_engineering_complete")
 
 
@@ -2919,6 +2971,12 @@ def analyze(
             decisions=decision_rows,
             transaction_timings=transaction_timings,
             decision_timings=decision_timings,
+            minimum_response_elapsed_ticks=(
+                programme.minimum_exact_response_elapsed_s
+                * RP2040_TIMER0_TICKS_PER_SECOND
+                if programme.minimum_exact_response_elapsed_s is not None
+                else None
+            ),
         )
     maintenance_validation: dict[str, Any] | None = None
     maintenance_rows: list[dict[str, str]] | None = None
@@ -3237,20 +3295,39 @@ def analyze(
 
     response_horizon_facts: dict[str, Any] | None = None
     if programme.response_checkpoint_observational:
-        try:
-            fact_outputs = policy_document.get("fact_gathering_outputs", {})
-            horizons = fact_outputs.get("response_horizons_s")
-            if horizons != [600, 1500, 3600, 7200]:
-                raise ValueError("CX322 response horizons differ from the frozen set")
-            response_horizon_facts = _response_horizon_facts(
-                active_rows,
-                decision_rows,
-                horizons_s=[int(value) for value in horizons],
-                settling_exclusion_s=int(analysis_policy["settling_exclusion_s"]),
-            )
-        except (KeyError, TypeError, ValueError) as exc:
-            retained_input_failures.append(f"response horizon facts: {exc}")
-            response_horizon_facts = {"exact": False, "error": str(exc)}
+        if programme.persistent_maintenance_policy:
+            # CX323 has one decision-bearing 1,500-second response checkpoint,
+            # already validated above in exact rp2040_timer0 ticks.  The CX322
+            # coarse-second 600/1500/3600/7200 descriptive fact set is not part
+            # of the CX323 policy and must not be borrowed as an input gate.
+            response_horizon_facts = {
+                "applicable": False,
+                "reason": "cx323_uses_exact_counter_domain_response_checkpoint",
+                "exact_response_horizon_s": (
+                    programme.minimum_exact_response_elapsed_s
+                ),
+                "source": "integrated_exact_timing_sidecar_join",
+                "coarse_seconds_used_as_ticks": False,
+            }
+        else:
+            try:
+                fact_outputs = policy_document.get("fact_gathering_outputs", {})
+                horizons = fact_outputs.get("response_horizons_s")
+                if horizons != [600, 1500, 3600, 7200]:
+                    raise ValueError(
+                        "CX322 response horizons differ from the frozen set"
+                    )
+                response_horizon_facts = _response_horizon_facts(
+                    active_rows,
+                    decision_rows,
+                    horizons_s=[int(value) for value in horizons],
+                    settling_exclusion_s=int(
+                        analysis_policy["settling_exclusion_s"]
+                    ),
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                retained_input_failures.append(f"response horizon facts: {exc}")
+                response_horizon_facts = {"exact": False, "error": str(exc)}
 
     try:
         tdb_replay = replay_tight_deadband(

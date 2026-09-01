@@ -36,6 +36,12 @@ def _write_csv_rows(path: Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
+def _write_csv_header(path: Path, contract: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        csv.DictWriter(handle, fieldnames=CONTRACT_FIELDS[contract]).writeheader()
+
+
 def _contract_row(contract: str, **values: str) -> dict[str, str]:
     row = {field: "" for field in CONTRACT_FIELDS[contract]}
     unknown = set(values) - set(row)
@@ -556,6 +562,57 @@ def test_cx323_long_run_monitor_requires_exact_maintenance_evidence(
 
     assert missing["status"] == "fault"
     assert "maintenance_evidence_unavailable" in missing["integrity_faults"]
+
+
+def test_cx323_monitor_accepts_only_the_expected_pre_setup_ahm_header(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir, now = _campaign18_fixture(
+        tmp_path, monkeypatch, programme=CX323_D9_D6_72H_PROGRAMME
+    )
+    state_path = run_dir / monitor.SUPERVISOR_STATE
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state.update(
+        {
+            "manual_start_sent": False,
+            "setup_confirmed_utc": None,
+            "latest_hybrid_state": "SETUP_PENDING",
+        }
+    )
+    _write_json(state_path, state)
+    for path, contract in (
+        (run_dir / monitor.ACTIVE, "active_transactions_v1"),
+        (run_dir / monitor.ACTIVE_EXACT, "active_transactions_v2"),
+        (run_dir / monitor.HYBRID, "active_hybrid_decisions_v1"),
+        (run_dir / monitor.HYBRID_EXACT, "active_hybrid_decisions_v2"),
+    ):
+        _write_csv_header(path, contract)
+    maintenance_path = run_dir / "csv/active_hybrid_maintenance_v1.csv"
+    _write_csv_header(maintenance_path, "active_hybrid_maintenance_v1")
+
+    waiting = monitor.snapshot(run_dir, now=now)
+
+    assert waiting["status"] == "running"
+    assert "maintenance_evidence_unavailable" not in waiting["integrity_faults"]
+    assert waiting["progress"]["maintenance_evidence"]["rows"] == 0
+    assert waiting["progress"]["maintenance_evidence"][
+        "expected_pre_setup_header_only"
+    ] is True
+
+    maintenance_path.unlink()
+    missing = monitor.snapshot(run_dir, now=now)
+    assert missing["status"] == "fault"
+    assert "maintenance_evidence_unavailable" in missing["integrity_faults"]
+
+    _write_csv_header(maintenance_path, "active_hybrid_maintenance_v1")
+    state["manual_start_sent"] = True
+    _write_json(state_path, state)
+    setup_started = monitor.snapshot(run_dir, now=now)
+    assert setup_started["status"] == "fault"
+    assert "maintenance_evidence_unavailable" in setup_started["integrity_faults"]
+    assert setup_started["progress"]["maintenance_evidence"][
+        "expected_pre_setup_header_only"
+    ] is False
 
 
 def test_generated_campaign18_manifest_loads_and_snapshots_through_generic_lifecycle(
