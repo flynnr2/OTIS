@@ -4962,6 +4962,23 @@ def _exercise_cx322_real_transaction_path(
         with write_lock:
             _write_all_fd(master, payload)
 
+    def retained_request_frontier(request_sequence: int) -> bool:
+        """Return whether the live reducer retained this request's snapshot."""
+
+        live = read_live_health_state(run_dir / LIVE_STATE_PATH)
+        health = live.health
+        return (
+            live.state == "complete"
+            and health.get(("cx317_active", "evidence_request_sequence"))
+            == str(request_sequence)
+            and health.get(("cx317_active", "evidence_phase"))
+            == "acceptance_pending"
+            and health.get((LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY))
+            == str(request_frontier_ticks[request_sequence])
+            and health.get((LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY))
+            == "rp2040_timer0"
+        )
+
     def emulate_firmware() -> None:
         buffered = b""
         try:
@@ -5011,20 +5028,11 @@ def _exercise_cx322_real_transaction_path(
                             # service the PTY command loop needed to produce
                             # that snapshot; a synchronous phase-1 wait would
                             # deadlock the emulator against its own query.
-                            retained_frontier = _read_object(
-                                run_dir
-                                / "reports/cx317_active_supervisor_state.json"
-                            ).get("qualified_frontier_raw_ticks")
-                            expected_frontier = request_frontier_ticks[
-                                request_sequence
-                            ]
-                            if retained_frontier != expected_frontier:
+                            if not retained_request_frontier(request_sequence):
                                 raise RuntimeError(
                                     "Campaign18 request frontier was not "
                                     "consumed before phase 2: "
-                                    f"request={request_sequence}, "
-                                    f"retained={retained_frontier}, "
-                                    f"expected={expected_frontier}"
+                                    f"request={request_sequence}"
                                 )
                         state["evidence_phase"] = {
                             1: "acceptance_pending",
@@ -5333,16 +5341,10 @@ def _exercise_cx322_real_transaction_path(
                     # submit phase 2 while its durable state still names the
                     # preceding request.  Wait on a separate thread so the
                     # emulator can continue answering ACTIVE SNAPSHOT queries.
-                    expected_frontier = request_frontier_ticks[request_sequence]
-
                     def publish_after_retained_frontier() -> None:
                         try:
                             _wait_until(
-                                lambda: _read_object(
-                                    run_dir
-                                    / "reports/cx317_active_supervisor_state.json"
-                                ).get("qualified_frontier_raw_ticks")
-                                == expected_frontier,
+                                lambda: retained_request_frontier(request_sequence),
                                 10.0,
                                 "CX323 retained request frontier before "
                                 f"request {request_sequence} core0 acceptance",
