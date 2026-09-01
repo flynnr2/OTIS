@@ -125,7 +125,11 @@ from .run_paths import (
     exact_active_timing_csv_files,
 )
 from .serial_commands import send_timestamped_command_to_fifo
-from .time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
+from .time_domains import (
+    RP2040_TIMER0_MICROS_WRAP_TICKS,
+    canonical_domain_declaration,
+    validate_domain_declarations,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -2402,8 +2406,8 @@ def _create_rehearsal_run_manifest(
             },
         },
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
-            {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
+            canonical_domain_declaration("rp2040_timer0"),
+            canonical_domain_declaration("h1_cx317_ocxo_10mhz"),
         ],
         "channels": [
             *(
@@ -2472,10 +2476,7 @@ def _create_rehearsal_run_manifest(
         programme.identification_required or programme.integrated_long_run
     ):
         value["domains"].append(
-            {
-                "name": "rp2040_timer0_extended",
-                "nominal_hz": 16_000_000,
-            }
+            canonical_domain_declaration("rp2040_timer0_extended")
         )
     if programme.identification_required:
         value["programme_policy"] = bundle["programme_policy"]
@@ -2586,6 +2587,15 @@ def validate_rehearsal_run_manifest(path: Path) -> dict[str, Any]:
         )
     if not all(_binding_matches(item) for item in bundle["host_tools"].values()):
         raise ValueError("CX320 rehearsal current host-tool binding differs")
+    domain_errors = validate_domain_declarations(
+        value.get("domains"),
+        require_complete=(programme.key == CX323_D9_D6_72H_PROGRAMME.key),
+    )
+    if domain_errors:
+        raise ValueError(
+            f"{programme.key.upper()} rehearsal time-domain declaration differs: "
+            + "; ".join(domain_errors)
+        )
     return value
 
 

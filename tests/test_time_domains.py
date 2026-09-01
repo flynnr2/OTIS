@@ -7,7 +7,9 @@ import pytest
 from host.otis_tools.contracts import CsvValidationContext, validate_csv
 from host.otis_tools.time_domains import (
     RP2040_TIMER0_MICROS_WRAP_TICKS,
+    canonical_domain_declaration,
     forward_progress,
+    time_domain,
     unwrap_domain_ticks,
     validate_domain_declarations,
 )
@@ -107,6 +109,65 @@ def test_manifest_domain_declarations_reject_absent_unknown_and_contradictory() 
                 "nominal_hz": 16_000_000,
             }
         ]
+    )
+
+
+def test_timer0_domains_declare_encoded_scale_and_actual_quantum() -> None:
+    raw = time_domain("rp2040_timer0")
+    extended = time_domain("rp2040_timer0_extended")
+
+    for domain in (raw, extended):
+        assert domain.nominal_hz == 16_000_000
+        assert domain.source_counter_hz == 1_000_000
+        assert domain.encoding_scale == 16
+        assert domain.quantum_ticks == 16
+        assert domain.quantum_ns == 1_000
+        assert domain.coordinate_semantics == "projected_local_non_metrological"
+    assert raw.provenance == (
+        "rp2040_timerawl_or_arduino_micros_1mhz_encoded_x16"
+    )
+    assert extended.provenance == (
+        "session_bound_wrap_reconstruction_of_rp2040_timer0"
+    )
+
+
+def test_current_timer0_declaration_is_complete_but_legacy_minimal_remains_valid(
+) -> None:
+    current = canonical_domain_declaration("rp2040_timer0")
+
+    assert not validate_domain_declarations([current], require_complete=True)
+    assert not validate_domain_declarations(
+        [{"name": "rp2040_timer0", "nominal_hz": 16_000_000}]
+    )
+    missing = dict(current)
+    del missing["quantum_ns"]
+    assert any(
+        "lacks canonical quantum_ns" in error
+        for error in validate_domain_declarations([missing], require_complete=True)
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "contradiction"),
+    [
+        ("source_counter_hz", 16_000_000),
+        ("encoding_scale", 1),
+        ("quantum_ticks", 1),
+        ("quantum_ns", 62.5),
+        ("coordinate_semantics", "metrological_capture"),
+        ("provenance", "native_16mhz_counter"),
+    ],
+)
+def test_timer0_declaration_rejects_contradictory_quantum_or_provenance(
+    field: str,
+    contradiction: object,
+) -> None:
+    declaration = canonical_domain_declaration("rp2040_timer0")
+    declaration[field] = contradiction
+
+    errors = validate_domain_declarations([declaration])
+    assert any(
+        field in error and "contradicts canonical" in error for error in errors
     )
 
 

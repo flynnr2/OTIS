@@ -141,6 +141,8 @@ def test_cx323_72h_descriptor_is_distinct_and_exact() -> None:
     assert programme.runtime_run_identity == "cx323_d9_d6_72h_adaptive_hybrid:1"
     assert programme.setup_code == 0xA84D
     assert programme.qualified_duration_s == 72 * 3600
+    assert programme.qualified_d14_aperture_count == 259_200
+    assert programme.correction_response_reserve_d14_apertures == 1_511
     assert programme.authorized_absolute_wall_limit_s == 78 * 3600
     assert programme.authorized_maximum_applications == 144
     assert programme.authorized_maximum_physical_applications == 144

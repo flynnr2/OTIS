@@ -43,6 +43,10 @@ from .run_paths import (
     default_csv_files,
     exact_active_timing_csv_files,
 )
+from .time_domains import (
+    canonical_domain_declaration,
+    validate_domain_declarations,
+)
 
 
 TOOL_ID = "cx320_active_hybrid_live_activation_v1"
@@ -449,6 +453,13 @@ def validate_operational_rehearsal(
             and item.get("contract") in required_exact
         }
         domains = manifest.get("domains", [])
+        domain_errors = validate_domain_declarations(
+            domains,
+            require_complete=(
+                require_current_tools
+                and programme.key == CX323_D9_D6_72H_PROGRAMME.key
+            ),
+        )
         if (
             not isinstance(transaction, dict)
             or transaction.get("complete_multi_transaction_sequence") is not True
@@ -483,6 +494,7 @@ def validate_operational_rehearsal(
             )
             or manifest.get("contracts", {}).get("active_transactions_v2") != 2
             or manifest.get("contracts", {}).get("active_hybrid_decisions_v2") != 2
+            or domain_errors
             or not any(
                 isinstance(item, dict)
                 and item.get("name") == "rp2040_timer0_extended"
@@ -1398,6 +1410,15 @@ def create_run_manifest(
             },
             "qualification": {
                 "qualified_duration_s": programme.qualified_duration_s,
+                **(
+                    {
+                        "qualified_endpoint_contract": "qualified_D14_D8_aperture_count_v2",
+                        "qualified_d14_aperture_count": programme.qualified_d14_aperture_count,
+                        "correction_response_reserve_d14_apertures": programme.correction_response_reserve_d14_apertures,
+                    }
+                    if programme.qualified_d14_aperture_count is not None
+                    else {}
+                ),
                 "absolute_wall_clock_limit_s": (
                     programme.authorized_absolute_wall_limit_s
                 ),
@@ -1407,8 +1428,8 @@ def create_run_manifest(
             },
         },
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
-            {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
+            canonical_domain_declaration("rp2040_timer0"),
+            canonical_domain_declaration("h1_cx317_ocxo_10mhz"),
         ],
         "channels": [
             *(
@@ -1512,10 +1533,7 @@ def create_run_manifest(
         or programme.integrated_long_run
     ):
         manifest["domains"].append(
-            {
-                "name": "rp2040_timer0_extended",
-                "nominal_hz": 16_000_000,
-            }
+            canonical_domain_declaration("rp2040_timer0_extended")
         )
     if programme.identification_required:
         manifest["programme_policy"] = bundle["programme_policy"]
@@ -1654,6 +1672,17 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         != progressive_checkpoint_contract(programme)
         or qualification.get("qualified_duration_s")
         != programme.qualified_duration_s
+        or (
+            programme.qualified_d14_aperture_count is not None
+            and (
+                qualification.get("qualified_endpoint_contract")
+                != "qualified_D14_D8_aperture_count_v2"
+                or qualification.get("qualified_d14_aperture_count")
+                != programme.qualified_d14_aperture_count
+                or qualification.get("correction_response_reserve_d14_apertures")
+                != programme.correction_response_reserve_d14_apertures
+            )
+        )
         or qualification.get("absolute_wall_clock_limit_s")
         != programme.authorized_absolute_wall_limit_s
         or qualification.get("no_extension") is not True
@@ -1682,12 +1711,29 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
             raise ValueError("CX321 plant-sign manifest binding differs")
     if not required_contracts <= set(manifest.get("contracts", {})):
         raise ValueError("CX320 live manifest lacks decision-bearing contracts")
+    domain_errors = validate_domain_declarations(
+        manifest.get("domains"),
+    )
+    if domain_errors:
+        raise ValueError(
+            "CX320 live manifest time-domain declaration differs: "
+            + "; ".join(domain_errors)
+        )
     return manifest
 
 
 def validate_run_manifest(path: Path) -> dict[str, Any]:
     manifest = validate_frozen_run_manifest(path)
     programme = programme_from_mapping(manifest)
+    domain_errors = validate_domain_declarations(
+        manifest.get("domains"),
+        require_complete=(programme.key == CX323_D9_D6_72H_PROGRAMME.key),
+    )
+    if domain_errors:
+        raise ValueError(
+            "CX320 current live manifest time-domain declaration differs: "
+            + "; ".join(domain_errors)
+        )
     validate_activation(
         Path(manifest["activation"]["path"]),
         bundle_path=Path(manifest["bundle"]["path"]),

@@ -38,10 +38,10 @@ V3_CONTRACT_FILE_SHA256 = (
 )
 SELECTED_PROFILE = (
     ROOT
-    / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json"
+    / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json"
 )
 SELECTED_PROFILE_FILE_SHA256 = (
-    "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
+    "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
 )
 
 

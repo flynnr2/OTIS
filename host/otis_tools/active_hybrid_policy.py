@@ -30,9 +30,10 @@ SUPPORTED_POLICY_IDS = {
 }
 CX323_POLICY_ID = "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
 CX323_POLICY_PATH = (
-    REPO_ROOT / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json"
+    REPO_ROOT / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json"
 )
-CX323_POLICY_SHA256 = "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
+CX323_POLICY_SHA256 = "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
+CX323_LEGACY_POLICY_SHA256 = "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
 TOOL_ID = "cx320_active_hybrid_policy_reference_v1"
 
 
@@ -1136,14 +1137,18 @@ def load_cx323_policy(path: Path = CX323_POLICY_PATH) -> CX323Policy:
     """Load and bind the selected CX323 host/oracle policy profile."""
 
     value = _read_object(path)
+    observed_sha256 = _sha256_file(path)
     if (
-        value.get("schema_version") != 1
+        (value.get("schema_version"), observed_sha256)
+        not in {
+            (2, CX323_POLICY_SHA256),
+            (1, CX323_LEGACY_POLICY_SHA256),
+        }
         or value.get("policy_id") != CX323_POLICY_ID
         or value.get("candidate_id")
         != "cx323_phase_priority_persistent_cap_tagged_debt_v1"
         or value.get("status")
         != "selected_for_implementation_native_parity_and_rehearsal_pending"
-        or _sha256_file(path) != CX323_POLICY_SHA256
     ):
         raise ValueError("CX323 policy profile identity differs")
     bindings = value.get("bindings")

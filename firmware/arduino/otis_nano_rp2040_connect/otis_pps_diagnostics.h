@@ -86,8 +86,10 @@ static inline void otis_pps_diagnostics_increment_saturating(
 
 static inline uint64_t otis_pps_diagnostics_elapsed_ticks(
     uint64_t start_ticks, uint64_t end_ticks) {
-  // OTIS timer-domain timestamps carry the wrapping 32-bit micros() value in
-  // 16 MHz ticks. Use the repository's single-wrap modulo arithmetic.
+  // OTIS timer-domain timestamps carry the wrapping 1 MHz micros() value
+  // encoded as 16 units per microsecond. Use the repository's single-wrap
+  // modulo arithmetic; the 16 MHz encoded scale does not imply 62.5 ns
+  // capture resolution.
   return otis_timer0_interval_ticks(start_ticks, end_ticks);
 }
 

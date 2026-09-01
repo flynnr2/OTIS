@@ -82,6 +82,8 @@ class ActiveHybridProgramme:
     firmware_hybrid_maximum_automatic_applications: int | None = None
     firmware_hybrid_maximum_cumulative_movement_codes: int | None = None
     correction_response_reserve_s: int = 1800
+    qualified_d14_aperture_count: int | None = None
+    correction_response_reserve_d14_apertures: int | None = None
     accelerated_rehearsal_terminal_classifications: tuple[
         tuple[str, str], ...
     ] = ()
@@ -553,10 +555,10 @@ CX323_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
     manifest_section="cx323_d9_d6_72h",
     policy_id="CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
     policy_path=REPO_ROOT
-    / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
+    / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json",
     natural_policy_id="CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
     natural_policy_path=REPO_ROOT
-    / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json",
+    / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json",
     setup_code=0xA84D,
     maximum_applications=144,
     maximum_physical_applications=144,
@@ -625,13 +627,15 @@ CX323_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
     engineering_contract_path=REPO_ROOT
     / "docs/60_EXPERIMENTS/"
     "OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/"
-    "cx323_d9_d6_72h_adaptive_hybrid_contract_v1.json",
+    "cx323_d9_d6_72h_adaptive_hybrid_contract_v2.json",
     firmware_campaign_macro=(
         "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID"
     ),
     firmware_hybrid_maximum_automatic_applications=144,
     firmware_hybrid_maximum_cumulative_movement_codes=3_024,
     correction_response_reserve_s=1_500,
+    qualified_d14_aperture_count=259_200,
+    correction_response_reserve_d14_apertures=1_511,
     accelerated_rehearsal_terminal_classifications=(
         (
             "modeled_phase_transaction",

@@ -587,10 +587,67 @@ def test_campaign18_rehearsal_manifest_requires_exact_timing_sidecars(
     assert observed["contracts"]["active_hybrid_decisions_v2"] == 2
     assert files["active_transactions_v2"].get("optional") is None
     assert files["active_hybrid_decisions_v2"].get("optional") is None
-    assert {
-        "name": "rp2040_timer0_extended",
-        "nominal_hz": 16_000_000,
-    } in observed["domains"]
+    extended = next(
+        item
+        for item in observed["domains"]
+        if item["name"] == "rp2040_timer0_extended"
+    )
+    assert extended["nominal_hz"] == 16_000_000
+    assert extended["source_counter_hz"] == 1_000_000
+    assert extended["encoding_scale"] == 16
+    assert extended["quantum_ticks"] == 16
+    assert extended["quantum_ns"] == 1_000
+    assert extended["coordinate_semantics"] == (
+        "projected_local_non_metrological"
+    )
+
+
+def test_cx323_current_rehearsal_requires_complete_timer0_semantics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
+    bundle["programme_id"] = CX323_D9_D6_72H_PROGRAMME.programme_id
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    monkeypatch.setattr(
+        rehearsal, "validate_bundle", lambda path, programme: bundle
+    )
+    monkeypatch.setattr(
+        rehearsal, "validate_proposal", lambda path, programme: proposal
+    )
+    run_dir = tmp_path / "campaign19-run"
+    run_dir.mkdir()
+
+    path = rehearsal._create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/pts/99",
+    )
+    observed = rehearsal.validate_rehearsal_run_manifest(path)
+    assert all(
+        item.get("quantum_ticks") == 16 and item.get("quantum_ns") == 1_000
+        for item in observed["domains"]
+        if item["name"] in {"rp2040_timer0", "rp2040_timer0_extended"}
+    )
+
+    changed = json.loads(path.read_text(encoding="utf-8"))
+    raw = next(
+        item for item in changed["domains"] if item["name"] == "rp2040_timer0"
+    )
+    del raw["quantum_ns"]
+    unsigned = {
+        key: value
+        for key, value in changed.items()
+        if key != "manifest_sha256"
+    }
+    changed["manifest_sha256"] = rehearsal._canonical_sha256(unsigned)
+    path.chmod(0o600)
+    path.write_text(json.dumps(changed), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="time-domain declaration differs"):
+        rehearsal.validate_rehearsal_run_manifest(path)
 
 
 def test_rehearsal_manifest_rejects_non_pty_device(
@@ -692,10 +749,14 @@ def test_cx321_rehearsal_manifest_declares_extended_plant_sign_time_domain(
     )
     observed = json.loads(path.read_text(encoding="utf-8"))
 
-    assert {
-        "name": "rp2040_timer0_extended",
-        "nominal_hz": 16_000_000,
-    } in observed["domains"]
+    extended = next(
+        item
+        for item in observed["domains"]
+        if item["name"] == "rp2040_timer0_extended"
+    )
+    assert extended["nominal_hz"] == 16_000_000
+    assert extended["quantum_ticks"] == 16
+    assert extended["quantum_ns"] == 1_000
     assert observed["contracts"]["plant_sign_qualification_v1"] == 1
 
 

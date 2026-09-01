@@ -449,6 +449,66 @@ def campaign18_exact_timing_sidecar_join(
     )
 
 
+def _cx323_d14_aperture_endpoint_proof(
+    *,
+    supervisor_state: dict[str, Any],
+    d14_rows: list[dict[str, str]],
+    d8_rows: list[dict[str, str]],
+    target: int,
+) -> dict[str, Any]:
+    """Prove the prospective endpoint from retained D14/D8 apertures."""
+
+    try:
+        session = int(supervisor_state["qualified_origin_session_id"])
+        origin = int(supervisor_state["qualified_d14_reference_sequence_origin"])
+        endpoint = int(
+            supervisor_state["qualified_d14_reference_sequence_endpoint"]
+        )
+        accepted = int(supervisor_state["qualified_d14_accepted_apertures"])
+    except (KeyError, TypeError, ValueError) as exc:
+        return {"exact": False, "error": f"aperture endpoint state: {exc}"}
+    distance = (endpoint - origin) & 0xFFFFFFFF
+    if distance > 0x7FFFFFFF or accepted != distance or accepted < target:
+        return {
+            "exact": False,
+            "accepted_d14_d8_apertures": accepted,
+            "reference_sequence_distance": distance,
+            "required_d14_d8_apertures": target,
+        }
+    d8_by_sequence = {int(row["count_seq"]): row for row in d8_rows}
+    retained: list[tuple[int, dict[str, str], dict[str, str] | None]] = []
+    for row in d14_rows:
+        sequence = int(row["reference_sequence"])
+        delta = (sequence - origin) & 0xFFFFFFFF
+        if 1 <= delta <= distance:
+            retained.append((delta, row, d8_by_sequence.get(int(row["snapshot_sequence"]))))
+    retained.sort(key=lambda item: item[0])
+    exact = (
+        len(retained) == distance
+        and [item[0] for item in retained] == list(range(1, distance + 1))
+        and all(
+            int(d14["session"]) == session
+            and d14["status"] == "0"
+            and d8 is not None
+            and int(d8["flags"]) & COUNT_INVALID_FLAGS == 0
+            and d14["snapshot_sequence"] == d8["count_seq"]
+            and d14["reference_timestamp_ticks"] == d8["gate_close_ticks"]
+            and d8["channel_id"] == "2"
+            for _, d14, d8 in retained
+        )
+    )
+    return {
+        "exact": exact,
+        "contract": "qualified_D14_D8_aperture_count_v2",
+        "capture_session": session,
+        "origin_reference_sequence": origin,
+        "endpoint_reference_sequence": endpoint,
+        "accepted_d14_d8_apertures": accepted,
+        "required_d14_d8_apertures": target,
+        "retained_apertures_proved": len(retained),
+    }
+
+
 def require_campaign18_exact_timing_sidecars(
     run_dir: Path, manifest: RunManifest
 ) -> dict[str, Any]:
@@ -3376,6 +3436,7 @@ def analyze(
 
     health = latest_complete_health(run_dir / HEALTH_CSV)
     forwarded_output_integration: dict[str, Any] | None = None
+    d14_aperture_endpoint_proof: dict[str, Any] | None = None
     if programme.forwarded_output_integration:
         integration_missing, integration_mismatches = (
             forwarded_output_integration_prewrite_evidence(health)
@@ -3442,6 +3503,20 @@ def analyze(
             ),
             "d6_control_validity_or_terminal_authority": False,
         }
+        qualification = manifest_value.get(programme.manifest_section, {}).get(
+            "qualification", {}
+        )
+        if (
+            isinstance(qualification, dict)
+            and qualification.get("qualified_endpoint_contract")
+            == "qualified_D14_D8_aperture_count_v2"
+        ):
+            d14_aperture_endpoint_proof = _cx323_d14_aperture_endpoint_proof(
+                supervisor_state=supervisor_state,
+                d14_rows=d14_rows,
+                d8_rows=d8_rows,
+                target=int(qualification["qualified_d14_aperture_count"]),
+            )
     latest_hybrid_state = health.get(("cx317_active", "hybrid_state"), "")
     terminal_static_code = terminal.get(
         "last_confirmed_code", supervisor_state.get("terminal_static_code")
@@ -3584,6 +3659,10 @@ def analyze(
         terminal.get("result") == "healthy_stop"
         and terminal.get("reason") == programme.qualified_endpoint_reason
     )
+    if d14_aperture_endpoint_proof is not None:
+        endpoint_complete = endpoint_complete and bool(
+            d14_aperture_endpoint_proof.get("exact")
+        )
     phase_degraded = (
         terminal.get("primary_decision")
         == "phase_channel_degraded_frequency_control_retained"
@@ -3688,6 +3767,16 @@ def analyze(
                 )
             }
             if programme.persistent_maintenance_policy
+            else {}
+        ),
+        **(
+            {
+                "cx323_qualified_D14_D8_aperture_endpoint_exact": bool(
+                    d14_aperture_endpoint_proof
+                    and d14_aperture_endpoint_proof.get("exact")
+                )
+            }
+            if d14_aperture_endpoint_proof is not None
             else {}
         ),
         "plant_sign_evidence_replay_exact": bool(

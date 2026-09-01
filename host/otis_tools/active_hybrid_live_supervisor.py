@@ -363,6 +363,17 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         or control.get("maximum_code") != programme.maximum_code
         or qualification.get("qualified_duration_s")
         != programme.qualified_duration_s
+        or (
+            programme.qualified_d14_aperture_count is not None
+            and (
+                qualification.get("qualified_endpoint_contract")
+                != "qualified_D14_D8_aperture_count_v2"
+                or qualification.get("qualified_d14_aperture_count")
+                != programme.qualified_d14_aperture_count
+                or qualification.get("correction_response_reserve_d14_apertures")
+                != programme.correction_response_reserve_d14_apertures
+            )
+        )
         or qualification.get("absolute_wall_clock_limit_s")
         != programme.authorized_absolute_wall_limit_s
         or qualification.get("no_extension") is not True
@@ -422,8 +433,12 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             or selection.get("required_consecutive_same_sign_windows") != 2
             or finite_timing.get("qualified_duration_s")
             != programme.qualified_duration_s
+            or finite_timing.get("qualified_endpoint_contract")
+            != "qualified_D14_D8_aperture_count_v2"
+            or finite_timing.get("qualified_d14_aperture_count")
+            != programme.qualified_d14_aperture_count
             or finite_timing.get("qualified_clock")
-            != "D14_D8_qualified_firmware_tick_domain"
+            != "accepted_D14_D8_apertures_in_one_capture_session"
             or finite_timing.get("qualification_deadline_s") != 5_400
             or finite_timing.get("wall_clock_limit_s")
             != programme.authorized_absolute_wall_limit_s
@@ -431,6 +446,8 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
             or finite_timing.get("milestones_qualified_s")
             != list(range(21_600, programme.qualified_duration_s + 1, 21_600))
             or finite_timing.get("minimum_final_response_reserve_s") != 1500
+            or finite_timing.get("minimum_final_response_reserve_d14_apertures")
+            != programme.correction_response_reserve_d14_apertures
             or finite_timing.get("extension") != "forbidden"
             or finite_timing.get("inherited_24h_or_12h_duration") is not False
             or controller_inhibit.get("alternation_or_low_efficiency")
@@ -734,6 +751,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("qualified_frontier_raw_ticks", None)
         self.state.setdefault("qualified_frontier_extended_ticks", None)
         self.state.setdefault("qualified_endpoint_extended_timestamp_ticks", None)
+        self.state.setdefault("qualified_d14_accepted_window_origin", None)
+        self.state.setdefault("qualified_d14_reference_sequence_origin", None)
+        self.state.setdefault("qualified_d14_accepted_apertures", None)
+        self.state.setdefault("qualified_d14_reference_sequence_endpoint", None)
         self.state.setdefault("qualified_authoritative_capture_baseline", None)
         self.state.setdefault("latest_hybrid_state", None)
         self.state.setdefault("first_phase_checkpoint_passed", False)
@@ -1663,6 +1684,22 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 if value < 0:
                     return
                 authoritative_capture_baseline[key] = value
+            if self.programme.qualified_d14_aperture_count is not None:
+                try:
+                    accepted_origin = int(
+                        health[("pps_gate", "accepted_window_count")]
+                    )
+                    reference_origin = int(
+                        health[("pps_gate", "boundary_reference_sequence")]
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "CX323 qualified D14 aperture origin is unavailable"
+                    ) from exc
+                if not (0 <= accepted_origin < 1 << 32) or not (
+                    0 <= reference_origin < 1 << 32
+                ):
+                    raise ValueError("CX323 qualified D14 aperture origin is malformed")
         else:
             current_uptime_lower_bound_ticks = (
                 current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
@@ -1696,6 +1733,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self.state["qualified_frontier_extended_ticks"] = (
                 qualified_frontier_extended_ticks
             )
+            if self.programme.qualified_d14_aperture_count is not None:
+                self.state["qualified_d14_accepted_window_origin"] = accepted_origin
+                self.state["qualified_d14_reference_sequence_origin"] = reference_origin
         self.state["qualified_authoritative_capture_baseline"] = (
             authoritative_capture_baseline
         )
@@ -1710,6 +1750,15 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             source_dac_ref=estimate["source_dac_ref"],
             dac_epoch=dac_epoch,
             qualified_duration_s=self.programme.qualified_duration_s,
+            qualified_d14_aperture_count=(
+                self.programme.qualified_d14_aperture_count
+            ),
+            accepted_window_count_origin=self.state.get(
+                "qualified_d14_accepted_window_origin"
+            ),
+            boundary_reference_sequence_origin=self.state.get(
+                "qualified_d14_reference_sequence_origin"
+            ),
             authoritative_capture_baseline=self.state.get(
                 "qualified_authoritative_capture_baseline"
             ),
@@ -1860,10 +1909,56 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             raise ValueError("CX320 device clock moved behind qualified origin")
         return elapsed
 
+    def _qualified_d14_apertures(
+        self, health: dict[tuple[str, str], str]
+    ) -> int | None:
+        target = self.programme.qualified_d14_aperture_count
+        if target is None:
+            return None
+        accepted_origin = self.state.get("qualified_d14_accepted_window_origin")
+        reference_origin = self.state.get("qualified_d14_reference_sequence_origin")
+        if type(accepted_origin) is not int or type(reference_origin) is not int:
+            return None
+        try:
+            accepted_now = int(health[("pps_gate", "accepted_window_count")])
+            reference_now = int(
+                health[("pps_gate", "boundary_reference_sequence")]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("CX323 qualified D14 aperture progress is unavailable") from exc
+        accepted_delta = (accepted_now - accepted_origin) & 0xFFFFFFFF
+        reference_delta = (reference_now - reference_origin) & 0xFFFFFFFF
+        if accepted_delta > 0x7FFFFFFF or reference_delta > 0x7FFFFFFF:
+            raise ValueError("CX323 qualified D14 aperture counter moved backward")
+        if accepted_delta != reference_delta:
+            raise ValueError(
+                "CX323 accepted-window and D14 reference progress differ"
+            )
+        self.state["qualified_d14_accepted_apertures"] = accepted_delta
+        self.state["qualified_d14_reference_sequence_endpoint"] = reference_now
+        return accepted_delta
+
     def _close_response_horizon_if_required(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
         elapsed_ticks = self._qualified_elapsed_ticks(health)
+        aperture_progress = self._qualified_d14_apertures(health)
+        if self.programme.qualified_d14_aperture_count is not None:
+            reserve = self.programme.correction_response_reserve_d14_apertures
+            if aperture_progress is None or reserve is None:
+                return False
+            if aperture_progress < self.programme.qualified_d14_aperture_count - reserve:
+                return False
+            if self.state["response_horizon_closed_utc"] is None:
+                self.state["response_horizon_closed_utc"] = _utc_now()
+                self._save()
+                self._programme_event(
+                    "correction_admission_closed_for_response_horizon",
+                    accepted_d14_d8_apertures=aperture_progress,
+                    required_response_reserve_d14_apertures=reserve,
+                    endpoint_contract="qualified_D14_D8_aperture_count_v2",
+                )
+            return True
         if elapsed_ticks is None:
             return False
         admission_ticks = (
@@ -2242,26 +2337,31 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             return
 
         qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
+        qualified_d14_apertures = self._qualified_d14_apertures(health)
         qualified_target_ticks = (
             self.programme.qualified_duration_s
             * RP2040_TIMER0_TICKS_PER_SECOND
         )
+        endpoint_reached = (
+            qualified_d14_apertures >= self.programme.qualified_d14_aperture_count
+            if self.programme.qualified_d14_aperture_count is not None
+            and qualified_d14_apertures is not None
+            else qualified_elapsed_ticks is not None
+            and qualified_elapsed_ticks >= qualified_target_ticks
+        )
         if (
             self.programme.integrated_long_run
-            and qualified_elapsed_ticks is not None
-            and qualified_elapsed_ticks >= qualified_target_ticks
+            and endpoint_reached
             and self.state.get("qualified_endpoint_extended_timestamp_ticks")
             is None
         ):
-            self.state["qualified_endpoint_extended_timestamp_ticks"] = (
-                int(self.state["qualified_origin_extended_timestamp_ticks"])
-                + qualified_target_ticks
+            self.state["qualified_endpoint_extended_timestamp_ticks"] = self.state.get(
+                "qualified_frontier_extended_ticks"
             )
             self._save()
         hold = self.state.get("host_verification_hold")
         if (
-            qualified_elapsed_ticks is not None
-            and qualified_elapsed_ticks >= qualified_target_ticks
+            endpoint_reached
             and isinstance(hold, dict)
         ):
             if (
@@ -2286,8 +2386,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._save()
             return
         if (
-            qualified_elapsed_ticks is not None
-            and qualified_elapsed_ticks >= qualified_target_ticks
+            endpoint_reached
             and self._healthy_terminal_ready(health)
         ):
             self._set_healthy_endpoint(

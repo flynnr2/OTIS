@@ -42,9 +42,9 @@ constexpr char kActivePolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
 #elif OTIS_ENABLE_CX323_PHASE_PRIORITY_MAINTENANCE
 constexpr char kNumericalPolicyHash[] =
-    "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24";
+    "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926";
 constexpr char kActivePolicyHash[] =
-    "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24";
+    "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926";
 #elif OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION
 constexpr char kNumericalPolicyHash[] =
     "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c";

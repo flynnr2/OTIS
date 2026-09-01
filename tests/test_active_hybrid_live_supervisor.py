@@ -285,6 +285,9 @@ def _cx323_manifest(*, policy_path: Path | None = None) -> dict:
     section["qualification"].update(
         {
             "qualified_duration_s": programme.qualified_duration_s,
+            "qualified_endpoint_contract": "qualified_D14_D8_aperture_count_v2",
+            "qualified_d14_aperture_count": programme.qualified_d14_aperture_count,
+            "correction_response_reserve_d14_apertures": programme.correction_response_reserve_d14_apertures,
             "absolute_wall_clock_limit_s": (
                 programme.authorized_absolute_wall_limit_s
             ),
@@ -462,6 +465,8 @@ def _health(
             ("cx318_preview", "actuation_authorized"): "false",
             ("cx318_preview", "authorization_consumed"): "false",
             ("pps_gate", "rejected_window_count"): "0",
+            ("pps_gate", "accepted_window_count"): "0",
+            ("pps_gate", "boundary_reference_sequence"): "0",
             ("pps_gate", "physical_aperture_incomplete_count"): "1",
             ("pps_gate", "association_loss_count"): "0",
             ("pps_gate", "snapshot_session"): "1",
@@ -575,6 +580,10 @@ def test_cx323_exact_endpoint_uses_successor_identity_not_campaign18(
         elapsed_ticks=endpoint_ticks,
         programme=CX323_D9_D6_72H_PROGRAMME,
     )
+    supervisor.state["qualified_d14_accepted_window_origin"] = 100
+    supervisor.state["qualified_d14_reference_sequence_origin"] = 200
+    health[("pps_gate", "accepted_window_count")] = str(100 + 259_200)
+    health[("pps_gate", "boundary_reference_sequence")] = str(200 + 259_200)
     health.update(
         {
             ("cx317_active", "hybrid_state"): "HYBRID_TRACKING",

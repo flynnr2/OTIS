@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from host.otis_tools.active_hybrid_policy import (
@@ -64,10 +66,20 @@ def test_loads_exact_selected_profile_without_changing_legacy_loaders() -> None:
 
     assert policy.policy_id == "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
     assert policy.policy_sha256 == (
-        "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
+        "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
     )
     assert load_policy().policy_id == "CX320_BOUNDED_ACTIVE_HYBRID_TIGHT_V1"
     assert isinstance(ActiveHybridController(load_policy()), ActiveHybridController)
+
+
+def test_historical_cx323_policy_identity_remains_loadable() -> None:
+    legacy = load_cx323_policy(
+        Path("profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json")
+    )
+
+    assert legacy.policy_sha256 == (
+        "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
+    )
 
 
 def test_frozen_maintenance_sequences_and_legacy_path_classification() -> None:

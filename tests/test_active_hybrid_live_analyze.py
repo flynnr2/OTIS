@@ -34,6 +34,73 @@ from host.otis_tools.active_hybrid_programme_contract import (
 )
 
 
+def _aperture_endpoint_fixture() -> tuple[
+    dict[str, object], list[dict[str, str]], list[dict[str, str]]
+]:
+    state: dict[str, object] = {
+        "qualified_origin_session_id": 7,
+        "qualified_d14_reference_sequence_origin": 100,
+        "qualified_d14_reference_sequence_endpoint": 103,
+        "qualified_d14_accepted_apertures": 3,
+    }
+    d14_rows: list[dict[str, str]] = []
+    d8_rows: list[dict[str, str]] = []
+    for offset in range(1, 4):
+        snapshot = 200 + offset
+        ticks = 1_000_000 + offset * 16_000_000
+        d14_rows.append(
+            {
+                "session": "7",
+                "snapshot_sequence": str(snapshot),
+                "reference_sequence": str(100 + offset),
+                "reference_timestamp_ticks": str(ticks),
+                "status": "0",
+            }
+        )
+        d8_rows.append(
+            {
+                "count_seq": str(snapshot),
+                "gate_close_ticks": str(ticks),
+                "channel_id": "2",
+                "flags": "0",
+            }
+        )
+    return state, d14_rows, d8_rows
+
+
+def test_cx323_aperture_endpoint_proves_retained_contiguous_d14_d8_rows() -> None:
+    state, d14_rows, d8_rows = _aperture_endpoint_fixture()
+
+    proof = live_analyze._cx323_d14_aperture_endpoint_proof(
+        supervisor_state=state,
+        d14_rows=d14_rows,
+        d8_rows=d8_rows,
+        target=3,
+    )
+
+    assert proof["exact"] is True
+    assert proof["accepted_d14_d8_apertures"] == 3
+    assert proof["retained_apertures_proved"] == 3
+
+
+def test_cx323_aperture_endpoint_rejects_missing_or_invalid_d8_support() -> None:
+    state, d14_rows, d8_rows = _aperture_endpoint_fixture()
+    assert live_analyze._cx323_d14_aperture_endpoint_proof(
+        supervisor_state=state,
+        d14_rows=d14_rows,
+        d8_rows=d8_rows[:-1],
+        target=3,
+    )["exact"] is False
+
+    d8_rows[-1]["flags"] = str(live_analyze.COUNT_INVALID_FLAGS)
+    assert live_analyze._cx323_d14_aperture_endpoint_proof(
+        supervisor_state=state,
+        d14_rows=d14_rows,
+        d8_rows=d8_rows,
+        target=3,
+    )["exact"] is False
+
+
 def test_campaign18_outcome_requires_endpoint_and_classifies_controller_inhibit() -> None:
     terminal = {
         "result": "healthy_stop",

@@ -43,10 +43,10 @@ FRESH_SERIAL_AUTO_DETECT = (
 )
 CX323_POLICY_ID = "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
 CX323_POLICY_RELATIVE_PATH = Path(
-    "profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json"
+    "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json"
 )
 CX323_POLICY_SHA256 = (
-    "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
+    "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
 )
 CX323_V2_CONTRACT_RELATIVE_PATH = Path(
     "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/"
@@ -75,7 +75,7 @@ CX323_AHM_CONTRACT_SHA256 = (
     "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
 )
 CX323_ENGINEERING_CONTRACT_ID = (
-    "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_ENGINEERING_CONTRACT_V1"
+    "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_ENGINEERING_CONTRACT_V2"
 )
 CX323_REPLAY_ID = "cx323_progressive_tagged_debt_replay_v1"
 CX323_REPLAY_CANDIDATE_ID = (
@@ -394,6 +394,16 @@ def _engineering_contract_binding(
             or timing.get("source_counter_domain") != "rp2040_timer0"
             or timing.get("counter_domain") != "rp2040_timer0_extended"
             or timing.get("nominal_counter_hz") != 16_000_000
+            or timing.get("coordinate_units_per_second") != 16_000_000
+            or timing.get("source_counter_hz") != 1_000_000
+            or timing.get("encoding_scale") != 16
+            or timing.get("quantum_ticks") != 16
+            or timing.get("quantum_ns") != 1_000
+            or timing.get("projected_from") != "rp2040_timerawl_or_micros"
+            or timing.get("qualified_endpoint_contract")
+            != "qualified_D14_D8_aperture_count_v2"
+            or timing.get("qualified_d14_aperture_count")
+            != programme.qualified_d14_aperture_count
             or timing.get("qualification_deadline_s") != 5_400
             or starting_dac.get("pre_setup_physical_code")
             != "unknown_unreadable_after_power_cycle"
@@ -419,6 +429,10 @@ def _engineering_contract_binding(
                 "close_new_application_admission_before_endpoint_s"
             )
             != programme.correction_response_reserve_s
+            or envelope.get(
+                "close_new_application_admission_before_endpoint_d14_apertures"
+            )
+            != programme.correction_response_reserve_d14_apertures
             or envelope.get("authority_ceilings_are_nonbinding_not_targets")
             is not True
             or serial.get("baud") != 115200
@@ -1051,6 +1065,15 @@ def create_bundle(
         },
         "finite_limits": {
             "qualified_duration_s": programme.qualified_duration_s,
+            **(
+                {
+                    "qualified_endpoint_contract": "qualified_D14_D8_aperture_count_v2",
+                    "qualified_d14_aperture_count": programme.qualified_d14_aperture_count,
+                    "correction_response_reserve_d14_apertures": programme.correction_response_reserve_d14_apertures,
+                }
+                if programme.qualified_d14_aperture_count is not None
+                else {}
+            ),
             "qualified_origin": "first_complete_fresh_authoritative_600s_estimate_after_exact_setup_support_and_common_health_qualification",
             "absolute_wall_clock_limit_s": (
                 programme.authorized_absolute_wall_limit_s
@@ -1114,7 +1137,11 @@ def create_bundle(
             "priority_abort_delivery_required_before_capture_close": True,
         },
         "stop_conditions": [
-            "qualified_duration_complete",
+            (
+                "qualified_D14_D8_aperture_count_complete"
+                if programme.qualified_d14_aperture_count is not None
+                else "qualified_duration_complete"
+            ),
             "absolute_wall_clock_limit",
             (
                 "phase_degradation_recorded_frequency_only_continues"
