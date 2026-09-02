@@ -954,6 +954,7 @@ def test_capture_fault_requires_review_hold_before_explicit_operator_abort() -> 
     )
 
     assert branch < hold < ownership < explicit_abort < terminal
+    assert "supervisor.returncode != 3" in source[terminal:]
 
 
 def test_integrated_overlap_precedes_obstruction_and_requires_retained_fallback() -> None:

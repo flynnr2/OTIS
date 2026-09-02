@@ -6410,7 +6410,7 @@ def _run_real_process_topology(
                     "new_control_authority": False,
                 }
                 if (
-                    supervisor.returncode != 2
+                    supervisor.returncode != 3
                     or terminal.get("result") != "aborted"
                     or terminal.get("reason") != "independent_host_abort_fifo"
                     or terminal.get("primary_decision")
