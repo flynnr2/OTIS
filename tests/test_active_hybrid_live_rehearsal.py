@@ -942,6 +942,20 @@ def test_obstruction_queues_abort_before_resuming_the_supervisor() -> None:
     )
 
 
+def test_capture_fault_requires_review_hold_before_explicit_operator_abort() -> None:
+    source = Path(rehearsal.__file__).read_text(encoding="utf-8")
+    branch = source.index('endpoint_mode == "capture_fault"')
+    hold = source.index("capture-fault review hold", branch)
+    ownership = source.index("_serial_owner_pids(device)", hold)
+    explicit_abort = source.index("send_abort(host_abort)", ownership)
+    terminal = source.index(
+        "expected_operator_decision = next(",
+        explicit_abort,
+    )
+
+    assert branch < hold < ownership < explicit_abort < terminal
+
+
 def test_integrated_overlap_precedes_obstruction_and_requires_retained_fallback() -> None:
     source = Path(rehearsal.__file__).read_text(encoding="utf-8")
     overlap = source.index("_overlapping_active_status_generation_fixture(")

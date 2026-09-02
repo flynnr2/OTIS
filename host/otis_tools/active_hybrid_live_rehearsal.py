@@ -6314,8 +6314,44 @@ def _run_real_process_topology(
                         },
                     ),
                 )
+                _wait_until(
+                    lambda: (
+                        supervisor.poll() is None
+                        and _read_object(supervisor_state_path).get("terminal")
+                        is None
+                        and isinstance(
+                            _read_object(supervisor_state_path).get(
+                                "host_verification_hold"
+                            ),
+                            dict,
+                        )
+                    ),
+                    10.0,
+                    f"{endpoint_label} capture-fault review hold",
+                )
+                held_state = _read_object(supervisor_state_path)
+                hold = held_state.get("host_verification_hold") or {}
+                pre_abort_commands = _read_until_quiet(master)
+                if (
+                    supervisor.poll() is not None
+                    or held_state.get("terminal") is not None
+                    or hold.get("source") != "authoritative_capture_observer"
+                    or hold.get("review_status") != "operator_review_required"
+                    or hold.get("new_authority") is not False
+                    or b"ACTIVE ABORT\n" in pre_abort_commands
+                    or _serial_owner_pids(device) != {capture.pid}
+                ):
+                    raise RuntimeError(
+                        f"{endpoint_label} capture-fault did not preserve the "
+                        f"review hold and sole owner: hold={hold!r}"
+                    )
+                # The fault is only an alert. Exercise the independent abort
+                # path as an explicit operator action after reviewing it.
+                send_abort(host_abort)
                 supervisor.wait(timeout=10)
-                observed_commands = _read_until(master, b"ACTIVE ABORT\n")
+                observed_commands = pre_abort_commands + _read_until(
+                    master, b"ACTIVE ABORT\n"
+                )
                 _wait_until(
                     lambda: int(
                         _read_object(
@@ -6355,6 +6391,11 @@ def _run_real_process_topology(
                         "association_loss_count": 1,
                     }
                 )
+                expected_operator_decision = next(
+                    decision
+                    for decision in programme.terminal_decisions
+                    if decision.endswith("operator_abort")
+                )
                 expected_fault_detail = {
                     "reason": expected_fault_reason,
                     "qualified_origin_session_id": 1,
@@ -6371,16 +6412,16 @@ def _run_real_process_topology(
                 if (
                     supervisor.returncode != 2
                     or terminal.get("result") != "aborted"
-                    or terminal.get("reason") != expected_fault_reason
+                    or terminal.get("reason") != "independent_host_abort_fifo"
                     or terminal.get("primary_decision")
-                    != f"{programme.key}_D14_D8_authority_or_capture_fault"
+                    != expected_operator_decision
                     or terminal.get("last_confirmed_code")
                     != int(real_transaction_path["applied_code"])
                     or terminal_state.get("authoritative_capture_terminal_detail")
                     != expected_fault_detail
                 ):
                     raise RuntimeError(
-                        f"{endpoint_label} capture-fault terminal was not exact: "
+                        f"{endpoint_label} reviewed operator terminal was not exact: "
                         f"exit={supervisor.returncode}; terminal={terminal!r}"
                     )
                 _write_all_fd(
@@ -6544,6 +6585,9 @@ def _run_real_process_topology(
                     "supervisor_terminal_detail": terminal_state.get(
                         "authoritative_capture_terminal_detail"
                     ),
+                    "host_verification_hold": hold,
+                    "review_hold_observed_before_operator_abort": True,
+                    "capture_and_serial_owner_retained_during_hold": True,
                     "post_abort_complete_active_snapshot": post_abort_snapshot,
                     "post_fault_authority_commands": list(forbidden),
                     "retained_row_counts_before_fault": retained_before,
