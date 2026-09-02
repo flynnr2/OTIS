@@ -2174,6 +2174,72 @@ def test_checkpoint_release_is_observed_only_from_firmware_state(
     )
 
 
+def test_latched_checkpoint_allows_later_transaction_checkpoint_to_clear(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["manual_start_sent"] = True
+    supervisor._check_fail_static_health(
+        _health(
+            supervisor,
+            hybrid_state="HYBRID_TRACKING",
+            hybrid_reason="first_phase_checkpoint_passed_and_tight_reacquired",
+            first_phase_checkpoint_passed="true",
+            phase_nonzero_application_count="1",
+            phase_material_application_count="1",
+            correction_count="1",
+            cumulative_movement_codes="1",
+            confirmed_applied_code=str(live.SETUP_CODE - 1),
+            dac_epoch="2",
+        )
+    )
+
+    # Attempt 10's second application correctly cleared the current
+    # transaction checkpoint while retaining the earlier release authority.
+    supervisor._check_fail_static_health(
+        _health(
+            supervisor,
+            hybrid_state="FIRST_PHASE_TRANSACTION",
+            hybrid_reason="applied_history_reset_response_required",
+            first_phase_checkpoint_passed="false",
+            phase_nonzero_application_count="2",
+            phase_material_application_count="2",
+            correction_count="2",
+            cumulative_movement_codes="2",
+            confirmed_applied_code=str(live.SETUP_CODE - 2),
+            dac_epoch="3",
+        )
+    )
+
+    assert supervisor.state["later_authority_released"] is True
+    assert supervisor.state["phase_material_application_count"] == 2
+    assert supervisor.state["terminal_static_code"] == live.SETUP_CODE - 2
+
+
+def test_later_material_application_requires_latched_checkpoint_release(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.state["manual_start_sent"] = True
+    unreleased = _health(
+        supervisor,
+        hybrid_state="FIRST_PHASE_TRANSACTION",
+        hybrid_reason="applied_history_reset_response_required",
+        first_phase_checkpoint_passed="false",
+        phase_nonzero_application_count="2",
+        phase_material_application_count="2",
+        correction_count="2",
+        cumulative_movement_codes="2",
+        confirmed_applied_code=str(live.SETUP_CODE - 2),
+        dac_epoch="3",
+    )
+
+    with pytest.raises(
+        ValueError, match="CX320 later material authority preceded its checkpoint"
+    ):
+        supervisor._check_fail_static_health(unreleased)
+
+
 def test_tracking_snapshot_rejects_missing_firmware_checkpoint(
     tmp_path: Path,
 ) -> None:

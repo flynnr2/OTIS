@@ -868,6 +868,7 @@ def _attempt_descriptor(
         application_counts = seal.get("application_counts_and_budgets", {})
         timing_join = seal.get("integrated_exact_timing_sidecar_join", {})
         active_replay = seal.get("active_hybrid_replay", {})
+        acquisition_checks = acquisition_gate.get("checks", {})
         cx323_status_serialization_terminal = (
             programme is CX323_D9_D6_72H_PROGRAMME
             and seal.get("status") == "failed"
@@ -934,6 +935,106 @@ def _attempt_descriptor(
                 )
             )
         )
+        # Campaign19 Attempt 10 completed and durably released its first exact
+        # response checkpoint, then correctly cleared the firmware's current-
+        # transaction checkpoint when its second application began.  The host
+        # mistook that transient level for the already-latched authority gate
+        # and aborted.  Accept only the sealed two-application shape that
+        # proves the first causal release and the bounded static abort.  This
+        # admits a new identified attempt without reclassifying the incomplete
+        # acquisition or weakening any scientific acceptance criterion.
+        cx323_latched_checkpoint_semantic_contract_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and acquisition_gate.get("passed") is False
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is False
+            and seal.get("evidence_snapshot_validation")
+            == {"failures": [], "warnings": []}
+            and isinstance(acquisition_checks, dict)
+            and acquisition_checks.get("command_stream_exact") is True
+            and acquisition_checks.get(
+                "response_identity_through_first_dependent_decision_exact"
+            )
+            is True
+            and acquisition_checks.get(
+                "abort_submission_delivery_and_close_order_exact"
+            )
+            is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("latest_hybrid_state")
+            == "FIRST_PHASE_TRANSACTION"
+            and terminal.get("static_terminal_exact") is False
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(terminal.get("static_code"), int)
+            and programme.minimum_code
+            <= terminal["static_code"]
+            <= programme.maximum_code
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and supervisor_terminal.get("reason")
+            == (
+                "cx323_d9_d6_72h_live_supervisor_fault:"
+                "CX320 later material authority preceded its checkpoint"
+            )
+            and supervisor_terminal.get("last_confirmed_code")
+            == terminal["static_code"]
+            and isinstance(application_counts, dict)
+            and application_counts.get("exact") is False
+            and application_counts.get("setup_count") == 1
+            and application_counts.get("automatic_application_count") == 2
+            and application_counts.get("physical_control_application_count")
+            == 2
+            and application_counts.get("phase_material_application_count") == 2
+            and application_counts.get("cumulative_movement_codes") == 2
+            and application_counts.get("first_phase_checkpoint_passed") is True
+            and application_counts.get(
+                "first_phase_observation_checkpoint_exact"
+            )
+            is True
+            and application_counts.get(
+                "later_authority_gated_by_first_checkpoint"
+            )
+            is True
+            and application_counts.get("all_response_checkpoints_passed")
+            is True
+            and application_counts.get("dac_application_exact") is True
+            and application_counts.get(
+                "budgets_range_step_cadence_and_clamp_exact"
+            )
+            is True
+            and isinstance(timing_join, dict)
+            and timing_join.get("exact") is True
+            and timing_join.get("mismatches") == []
+            and isinstance(active_replay, dict)
+            and active_replay.get("exact") is False
+            and active_replay.get("phase_material_decision_count") == 2
+            and active_replay.get("all_response_checkpoints_passed") is True
+            and active_replay.get("unmatched_request_decision_sequences") == []
+            and isinstance(seal.get("source_artifacts_sha256"), dict)
+            and all(
+                isinstance(seal["source_artifacts_sha256"].get(path), str)
+                and len(seal["source_artifacts_sha256"][path]) == 64
+                for path in (
+                    "COMPLETE",
+                    "csv/active_hybrid_decisions_v2.csv",
+                    "csv/active_hybrid_maintenance_v1.csv",
+                    "csv/active_transactions_v2.csv",
+                    "csv/health.csv",
+                    "raw/serial.log",
+                    "reports/cx317_active_supervisor_events.jsonl",
+                    "reports/cx317_active_supervisor_state.json",
+                )
+            )
+        )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
             and seal.get("primary_decision") in operator_abort_decisions
@@ -970,6 +1071,7 @@ def _attempt_descriptor(
                 or cx323_firmware_fail_static_terminal
                 or cx323_legacy_ack_observation_terminal
                 or cx323_status_serialization_terminal
+                or cx323_latched_checkpoint_semantic_contract_terminal
                 or bounded_operator_abort
                 or bounded_pre_setup_provenance
             )

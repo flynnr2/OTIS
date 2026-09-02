@@ -1455,7 +1455,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             or material + frequency_only > corrections
         ):
             raise ValueError("CX320 firmware exceeded the frozen global authority")
-        if material > 1 and not checkpoint:
+        # The firmware checkpoint flag describes the current transaction and
+        # clears when a later material application starts.  Later authority is
+        # permitted by the first response checkpoint that the host already
+        # observed and durably latched, not by that transient current flag.
+        if material > 1 and not self.state["later_authority_released"]:
             raise ValueError("CX320 later material authority preceded its checkpoint")
         if hybrid_state == "HYBRID_TRACKING" and not checkpoint:
             raise ValueError("CX320 HYBRID_TRACKING lacks the first checkpoint")

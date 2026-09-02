@@ -5064,17 +5064,23 @@ def _exercise_cx322_real_transaction_path(
                                     "applied_code" if key == "requested_code" else key
                                 )
                                 state[target] = int(application[key])
+                            if (
+                                programme.sustained_regulation
+                                or programme.integrated_long_run
+                            ):
+                                # A real later application resets the current
+                                # response checkpoint until that transaction's
+                                # response completes.  The supervisor retains
+                                # the earlier authority release separately.
+                                state["checkpoint_passed"] = False
                         if phase == 4:
                             if programme.integrated_long_run:
                                 state["frontier_timestamp_ticks"] = (
                                     response_frontier_ticks[request_sequence]
                                 )
                             if (
-                                request_sequence == 1
-                                and (
-                                    programme.sustained_regulation
-                                    or programme.integrated_long_run
-                                )
+                                programme.sustained_regulation
+                                or programme.integrated_long_run
                             ):
                                 state["checkpoint_passed"] = True
                             if (
