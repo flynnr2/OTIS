@@ -1106,9 +1106,19 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                         f"{row.get(field)!r} != {value!r}"
                     )
 
-    def _enter_host_verification_hold(self, error: Exception) -> None:
+    def _enter_host_verification_hold(
+        self, error: Exception, *, source: str = "host_verifier"
+    ) -> None:
         """Inhibit host authority without terminating firmware acquisition."""
-        if self.state.get("host_verification_hold") is not None:
+        existing = self.state.get("host_verification_hold")
+        if isinstance(existing, dict):
+            existing["last_observed_utc"] = _utc_now()
+            existing["last_source"] = source
+            existing["last_error"] = str(error)
+            existing["occurrence_count"] = int(
+                existing.get("occurrence_count", 1)
+            ) + 1
+            self._save()
             return
         try:
             rows = _read_csv(self.run_dir / ACTIVE_CSV)
@@ -1135,7 +1145,17 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
 
         hold = {
             "entered_utc": _utc_now(),
+            "last_observed_utc": _utc_now(),
+            "source": source,
+            "last_source": source,
+            "error_type": type(error).__name__,
             "error": str(error),
+            "last_error": str(error),
+            "occurrence_count": 1,
+            "review_status": "operator_review_required",
+            "new_authority": False,
+            "capture_and_serial_owner_retained": True,
+            "evidence_ack_policy": "continue_exact_withhold_unverifiable",
             "record_sequence": integer("transaction_record_sequence"),
             "request_sequence": integer("request_sequence"),
             "response_class": physical.get("response_class", "unavailable"),
@@ -1150,7 +1170,38 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state["arm_pending"] = False
         self.state["arm_sent_at_utc"] = None
         self._save()
-        self._programme_event("host_verification_hold_entered", **hold)
+        try:
+            self._programme_event("host_verification_hold_entered", **hold)
+        except OSError:
+            # The atomically retained state is authoritative; a broken
+            # supplementary event sink must not defeat the review hold.
+            pass
+
+    def _process_transactions_during_host_verification_hold(self) -> None:
+        """Drain only transactions which still pass the frozen exact guards."""
+        prior_terminal = self.state.get("terminal")
+        try:
+            # This continues already-authorized request/accept/application/
+            # response handshakes.  It does not issue SETUP or ARM authority.
+            super()._process_transactions()
+        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+            self._enter_host_verification_hold(
+                exc, source="transaction_evidence_during_hold"
+            )
+            return
+        terminal = self.state.get("terminal")
+        if prior_terminal is None and isinstance(terminal, dict):
+            # A host-side response interpretation is an alert pending review,
+            # not authority to stop the acquisition or classify the campaign.
+            self.state["terminal"] = None
+            self._enter_host_verification_hold(
+                ValueError(
+                    "transaction consumer proposed terminal: "
+                    + json.dumps(terminal, sort_keys=True)
+                ),
+                source="transaction_terminal_during_hold",
+            )
+            self._save()
 
     def _validate_hybrid_decisions_or_hold(self) -> bool:
         try:
@@ -1162,6 +1213,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
 
     def _process_transactions(self) -> None:
         if self.state.get("host_verification_hold") is not None:
+            self._process_transactions_during_host_verification_hold()
             return
         if not self._validate_hybrid_decisions_or_hold():
             return
@@ -1186,8 +1238,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     response.get("observed_response_hz", "nan")
                 ),
             )
-            self._abort("hybrid_response_wrong_or_frequency_not_reacquired")
-            self._validate_hybrid_decisions()
+            self._enter_host_verification_hold(
+                exc, source="response_checkpoint_replay"
+            )
             return
         if self.state.get("inflight_evidence_acknowledgement") is not None:
             # The already-written command is awaiting a causally later
@@ -1245,7 +1298,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                         response_classes=classes,
                         phase_epoch=int(phase_epochs[0]),
                     )
-                    self._abort("phase_or_frequency_regulation_not_sustained")
+                    self._enter_host_verification_hold(
+                        ValueError("phase_or_frequency_regulation_not_sustained"),
+                        source="persistent_response_interpretation",
+                    )
         self._validate_hybrid_decisions_or_hold()
 
     def _runtime_health_integrity(
@@ -1858,14 +1914,16 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             "new_control_authority": False,
         }
         self.state["authoritative_capture_terminal_detail"] = detail
-        self._abort(reason)
+        self._enter_host_verification_hold(
+            ValueError(reason), source="authoritative_capture_observer"
+        )
         try:
             self._programme_event(
                 "authoritative_capture_discontinuity_observed", **detail
             )
         except OSError:
-            # The priority abort and retained terminal are decision-bearing;
-            # this supplementary event must never delay or undo them.
+            # The retained hold and detail are decision-bearing; this
+            # supplementary event must never delay continued acquisition.
             pass
         return True
 
@@ -2333,8 +2391,9 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 now_epoch - _parse_utc_epoch(setup_confirmed_utc)
                 >= qualification_deadline_s
             ):
-                self._abort(
-                    f"{self.programme.key}_qualification_deadline_expired"
+                reason = f"{self.programme.key}_qualification_deadline_expired"
+                self._enter_host_verification_hold(
+                    ValueError(reason), source="qualification_deadline_observer"
                 )
             return
 
@@ -2403,26 +2462,18 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             endpoint_reached
             and isinstance(hold, dict)
         ):
-            if (
-                health.get(("cx317_active", "state")) != "DISARMED"
-                or self.state.get("arm_pending")
-                or not _truth(health, "confirmed_applied_code_known")
-                or int(health[("cx317_active", "confirmed_applied_code")], 0)
-                != hold.get("applied_code")
-            ):
-                self._abort(
-                    f"{self.programme.key}_host_verification_hold_not_static_at_endpoint"
+            if hold.get("qualified_endpoint_observed_utc") is None:
+                hold["qualified_endpoint_observed_utc"] = _utc_now()
+                hold["qualified_endpoint_review_required"] = True
+                self._save()
+                self._programme_event(
+                    "host_verification_hold_qualified_endpoint_observed",
+                    applied_code=self.state.get("terminal_static_code"),
+                    firmware_state=health.get(("cx317_active", "state")),
+                    evidence_phase=health.get(("cx317_active", "evidence_phase")),
+                    review_status="operator_review_required",
+                    capture_continues=True,
                 )
-                return
-            self.state["terminal_static_code"] = hold["applied_code"]
-            self.state["terminal"] = {
-                "result": "nonpass",
-                "reason": f"{self.programme.key}_host_verification_hold_endpoint",
-                "primary_decision": "host_verification_hold_incomplete",
-                "last_confirmed_code": hold["applied_code"],
-                "utc": _utc_now(),
-            }
-            self._save()
             return
         if (
             endpoint_reached
@@ -2454,8 +2505,12 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 }
                 self._save()
             else:
-                self._abort(
-                    f"{self.programme.key}_wall_endpoint_without_clear_static_terminal"
+                reason = (
+                    f"{self.programme.key}_"
+                    "wall_endpoint_without_clear_static_terminal"
+                )
+                self._enter_host_verification_hold(
+                    ValueError(reason), source="wall_endpoint_observer"
                 )
 
     def _abort(self, reason: str) -> None:
@@ -2570,53 +2625,69 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     self._abort("independent_host_abort_fifo")
                     return 3
                 if not capture_flag.exists():
-                    self._abort("capture_owner_lost")
-                    return 4
-                if self.duration_s is not None and now - started > self.duration_s:
-                    self._abort("supervisor_duration_expired")
-                    return 5
-                if now - last_lease >= LEASE_PERIOD_S:
-                    self._check_capture_transport_state()
-                    self._renew_lease()
-                    last_lease = now
-                if now - last_query >= QUERY_PERIOD_S:
-                    current = self._current_health()
-                    generation = int(
-                        current.get(
-                            ("cx317_active", "snapshot_generation_complete"),
-                            "0",
-                        )
+                    self._enter_host_verification_hold(
+                        RuntimeError("capture owner in-progress marker is absent"),
+                        source="capture_owner_observer",
                     )
-                    self._fresh_active_snapshot_after(generation)
-                    last_query = time.monotonic()
-                if (
-                    self.programme.forwarded_output_integration
-                    and now - last_output_status_query
-                    >= FORWARDED_OUTPUT_STATUS_PERIOD_S
-                ):
-                    self._command("CONFIG?")
-                    last_output_status_query = now
-                health = self._current_health()
-                if not self._abort_on_authoritative_capture_discontinuity(health):
-                    # A genuine firmware/platform fault takes precedence over
-                    # interpreting an unchanged acknowledgement frontier.  In
-                    # Attempt 7 the reverse order masked EvidenceExhausted as
-                    # a host consumption-confirmation failure.
-                    self._check_fail_static_health(health)
-                    self._process_transactions()
+                    time.sleep(0.2)
+                    continue
+                if self.duration_s is not None and now - started > self.duration_s:
+                    self._enter_host_verification_hold(
+                        RuntimeError("supervisor duration observer expired"),
+                        source="supervisor_duration_observer",
+                    )
+                    self.duration_s = None
+                try:
+                    if now - last_lease >= LEASE_PERIOD_S:
+                        self._check_capture_transport_state()
+                        self._renew_lease()
+                        last_lease = now
+                    if now - last_query >= QUERY_PERIOD_S:
+                        current = self._current_health()
+                        generation = int(
+                            current.get(
+                                ("cx317_active", "snapshot_generation_complete"),
+                                "0",
+                            )
+                        )
+                        self._fresh_active_snapshot_after(generation)
+                        last_query = time.monotonic()
+                    if (
+                        self.programme.forwarded_output_integration
+                        and now - last_output_status_query
+                        >= FORWARDED_OUTPUT_STATUS_PERIOD_S
+                    ):
+                        self._command("CONFIG?")
+                        last_output_status_query = now
                     health = self._current_health()
                     if not self._abort_on_authoritative_capture_discontinuity(
                         health
                     ):
+                        # Firmware fail-static remains independent.  Host-side
+                        # interpretation failures enter a durable no-authority
+                        # review hold and leave acquisition alive.
                         self._check_fail_static_health(health)
-                        self._check_setup_transaction_timeout(health, time.time())
-                        self._check_prewrite_contract(health, now - started)
-                        self._maybe_qualify(health)
-                        self._maybe_finish(health, time.time(), now - started)
-                        if self.state["terminal"] is None:
-                            self._maybe_start_or_arm(
-                                health, elapsed_monotonic_s=now - started
-                            )
+                        self._process_transactions()
+                        health = self._current_health()
+                        if not self._abort_on_authoritative_capture_discontinuity(
+                            health
+                        ):
+                            self._check_fail_static_health(health)
+                            if self.state.get("host_verification_hold") is None:
+                                self._check_setup_transaction_timeout(
+                                    health, time.time()
+                                )
+                            self._check_prewrite_contract(health, now - started)
+                            self._maybe_qualify(health)
+                            self._maybe_finish(health, time.time(), now - started)
+                            if self.state["terminal"] is None:
+                                self._maybe_start_or_arm(
+                                    health, elapsed_monotonic_s=now - started
+                                )
+                except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                    self._enter_host_verification_hold(
+                        exc, source="live_supervisor_diagnostic_cycle"
+                    )
                 if self.state["terminal"] is not None:
                     if not self.state["terminal_event_emitted"]:
                         self._programme_event(
@@ -2734,8 +2805,8 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, SystemExit, TimeoutError, ValueError) as exc:
         if "supervisor" in locals():
             supervisor._programme_event("live_supervisor_fault", error=str(exc))
-            supervisor._abort(
-                f"{supervisor.programme.key}_live_supervisor_fault:{exc}"
+            supervisor._enter_host_verification_hold(
+                exc, source="live_supervisor_outer_boundary"
             )
             return 2
         parser.error(str(exc))

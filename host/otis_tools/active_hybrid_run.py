@@ -74,6 +74,7 @@ CAPTURE_LOG = Path("reports/cx320_active_hybrid_capture.log")
 SUPERVISOR_LOG = Path("reports/cx320_active_hybrid_supervisor.log")
 SUPERVISOR_STATE = Path("reports/cx317_active_supervisor_state.json")
 ORCHESTRATION_FAILURE = Path("reports/cx320_active_hybrid_orchestration_failure_v1.json")
+HOST_REVIEW_HOLD = Path("reports/cx320_active_hybrid_host_review_hold_v1.json")
 ABORT_DELIVERY_FAILURE = Path(
     "reports/cx320_active_hybrid_abort_delivery_failure_v1.json"
 )
@@ -751,6 +752,62 @@ def _write_failure(
     return path
 
 
+def _retain_live_capture_for_host_review(
+    *,
+    run_dir: Path,
+    activation: dict[str, Any],
+    error: Exception,
+    capture: subprocess.Popen[str],
+    supervisor: subprocess.Popen[str] | None,
+) -> dict[str, object]:
+    """Retain sole-owner capture until an operator ends it after review.
+
+    This path deliberately sends neither a priority abort nor a process signal.
+    The capture process continues draining serial while firmware independently
+    enforces its lease/evidence timeouts and fail-static behavior.
+    """
+    capture_alive_at_entry = capture.poll() is None
+    try:
+        path = run_dir / _programme_path(
+            HOST_REVIEW_HOLD,
+            programme_from_mapping(activation),
+        )
+        if not path.exists():
+            _atomic_new_json(
+                path,
+                {
+                    "schema_version": 1,
+                    "report_type": "cx320_active_hybrid_host_review_hold_v1",
+                    "tool": TOOL_ID,
+                    "recorded_utc": _utc_now(),
+                    "review_status": "operator_review_required",
+                    "host_abort_authority_exercised": False,
+                    "capture_alive_at_entry": capture_alive_at_entry,
+                    "capture_and_serial_owner_retained": capture_alive_at_entry,
+                    "new_controller_authority": False,
+                    "firmware_fail_static_independent": True,
+                    "error_type": type(error).__name__,
+                    "error": str(error),
+                    "capture_pid": capture.pid,
+                    "supervisor_pid": (
+                        supervisor.pid if supervisor is not None else None
+                    ),
+                    "supervisor_exit": (
+                        supervisor.poll() if supervisor is not None else None
+                    ),
+                },
+            )
+    except (OSError, TypeError, ValueError):
+        # Evidence publication failure cannot authorize teardown either.
+        pass
+    while capture.poll() is None:
+        time.sleep(1.0)
+    return {
+        "capture_alive_at_entry": capture_alive_at_entry,
+        "capture_exit": capture.poll(),
+    }
+
+
 def _registration(
     *,
     activation: dict[str, Any],
@@ -1278,18 +1335,13 @@ def run_active_hybrid_qualification(
         if capture_exit != 0:
             raise RuntimeError(f"CX320 capture exited with status {capture_exit}")
     except (Exception, KeyboardInterrupt) as caught:
+        operator_interrupted = not isinstance(caught, Exception)
         exc = (
             caught
             if isinstance(caught, Exception)
             else RuntimeError("operator interrupted CX320 live orchestration")
         )
         orchestration_error = exc
-        _write_failure(
-            run_dir=run_dir,
-            activation=activation,
-            error=exc,
-            phase="live_orchestration",
-        )
         if capture is not None:
             caught_terminal = _terminal(run_dir)
             if (
@@ -1305,12 +1357,51 @@ def run_active_hybrid_qualification(
                     pass
                 finally:
                     abort_delivery_resolved_or_bounded = True
-            elif (caught_terminal or {}).get("result") != "aborted":
+            elif operator_interrupted:
                 _bounded_priority_abort(
                     run_dir,
                     run_dir / EMERGENCY_FIFO,
                     capture,
                 )
+            elif (caught_terminal or {}).get("result") != "aborted":
+                review_hold = _retain_live_capture_for_host_review(
+                    run_dir=run_dir,
+                    activation=activation,
+                    error=exc,
+                    capture=capture,
+                    supervisor=supervisor,
+                )
+                capture_closed = True
+                advance_phase(
+                    finalization_journal,
+                    "capture_closed",
+                    {
+                        **review_hold,
+                        "host_review_required": True,
+                        "automatic_abort_or_teardown": False,
+                    },
+                )
+                complete = _write_complete(
+                    run_dir,
+                    terminal=None,
+                    orchestration_error=None,
+                )
+                return {
+                    "status": "pending_review",
+                    "primary_decision": "operator_review_required",
+                    "run_dir": str(run_dir),
+                    "complete": str(complete),
+                    "host_review_hold": str(
+                        run_dir / _programme_path(HOST_REVIEW_HOLD, programme)
+                    ),
+                    "firmware_flashes": 1,
+                }
+        _write_failure(
+            run_dir=run_dir,
+            activation=activation,
+            error=exc,
+            phase="live_orchestration_after_review_hold",
+        )
         if capture is None:
             capture_closed = True
             advance_phase(

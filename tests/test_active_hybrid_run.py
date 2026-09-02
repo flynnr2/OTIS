@@ -46,6 +46,42 @@ class FakeProcess:
         self.returned = -9
 
 
+def test_host_review_hold_retains_live_capture_without_abort_or_signal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    capture = FakeProcess(9001)
+    supervisor = FakeProcess(9002, exit_code=2)
+    supervisor.returned = 2
+    monkeypatch.setattr(
+        runner,
+        "programme_from_mapping",
+        lambda _mapping: runner.CX320_PROGRAMME,
+    )
+
+    def one_review_wait(_seconds: float) -> None:
+        capture.returned = 0
+
+    monkeypatch.setattr(runner.time, "sleep", one_review_wait)
+
+    result = runner._retain_live_capture_for_host_review(
+        run_dir=run_dir,
+        activation={},
+        error=RuntimeError("host supervisor exited"),
+        capture=capture,
+        supervisor=supervisor,
+    )
+
+    assert capture.signals == []
+    assert result == {"capture_alive_at_entry": True, "capture_exit": 0}
+    hold = json.loads((run_dir / runner.HOST_REVIEW_HOLD).read_text())
+    assert hold["review_status"] == "operator_review_required"
+    assert hold["host_abort_authority_exercised"] is False
+    assert hold["capture_and_serial_owner_retained"] is True
+    assert hold["capture_alive_at_entry"] is True
+
+
 def test_campaign18_exact_sidecar_join_is_required_before_analyze_or_register(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
