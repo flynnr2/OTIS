@@ -67,6 +67,14 @@ See
 and
 [`13_HYBRID_72H_ATTEMPT11_HOST_REPLAY_HOLD.md`](13_HYBRID_72H_ATTEMPT11_HOST_REPLAY_HOLD.md).
 
+Attempt 12 passed all offline and accelerated operational-path gates, then
+stopped at firmware entry when a detached macOS service context was denied
+access to the mounted RP2040 UF2 bootloader volume. The board reset, but no UF2
+copy, setup, DAC write, capture or qualification followed. This is a retained
+platform launch-mechanism terminal with no scientific result and no automatic
+retry authority. See
+[`14_HYBRID_72H_ATTEMPT12_FIRMWARE_ENTRY_TERMINAL.md`](14_HYBRID_72H_ATTEMPT12_FIRMWARE_ENTRY_TERMINAL.md).
+
 This authority supersedes the original Gate B waveform dependency and the
 Prompt 04 stop boundary only for these explicitly identified engineering
 acquisitions. It does not change the Prompt 02 waveform terminal, qualify the
