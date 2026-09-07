@@ -1456,6 +1456,108 @@ def test_later_activation_accepts_exact_pre_setup_provenance_terminal(
     ] == "pre_setup_provenance_unresolved"
 
 
+def test_attempt12_accepts_only_exact_attempt11_host_replay_hold(
+    tmp_path: Path,
+) -> None:
+    predecessor_run = tmp_path / "attempt11"
+    reports = predecessor_run / "reports"
+    reports.mkdir(parents=True)
+    (predecessor_run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    source_paths = (
+        "COMPLETE",
+        "csv/active_hybrid_decisions_v1.csv",
+        "csv/active_hybrid_maintenance_v1.csv",
+        "csv/active_transactions_v1.csv",
+        "csv/health.csv",
+        "raw/serial.log",
+        "reports/cx317_active_supervisor_events.jsonl",
+        "reports/cx317_active_supervisor_state.json",
+    )
+    predecessor_unsigned: dict[str, object] = {
+        "status": "failed",
+        "run_id": "hybrid_72h_attempt11",
+        "bundle_sha256": "1" * 64,
+        "build_identity": "2" * 64 + ":" + "3" * 64,
+        "primary_decision": "cx323_d9_d6_72h_identity_or_evidence_fault",
+        "evidence_snapshot_validation": {"failures": [], "warnings": []},
+        "acquisition_gate": {
+            "passed": False,
+            "checks": {
+                "command_stream_exact": True,
+                "response_identity_through_first_dependent_decision_exact": True,
+            },
+        },
+        "offline_finalization_gate": {
+            "replayable_without_physical_repeat": False
+        },
+        "application_counts_and_budgets": {
+            "exact": True,
+            "setup_count": 1,
+            "automatic_application_count": 11,
+            "physical_control_application_count": 11,
+            "phase_material_application_count": 10,
+            "cumulative_movement_codes": 19,
+            "later_authority_gated_by_first_checkpoint": True,
+            "all_response_checkpoints_passed": True,
+        },
+        "integrated_exact_timing_sidecar_join": {
+            "exact": True,
+            "mismatches": [],
+        },
+        "active_hybrid_replay": {
+            "exact": False,
+            "all_response_checkpoints_passed": True,
+            "unmatched_request_decision_sequences": [],
+            "comparisons": [
+                {
+                    "maintenance_record_sequence": "87",
+                    "event": "decision",
+                    "exact": False,
+                    "identity_exact": True,
+                    "sequence_exact": True,
+                    "numerical_exact": False,
+                    "transaction_binding_exact": True,
+                }
+            ],
+        },
+        "terminal": {
+            "abort_submission_count": 0,
+            "abort_delivery_count": 0,
+            "endpoint_complete": False,
+            "latest_hybrid_state": "HYBRID_TRACKING",
+            "static_code": 43086,
+            "static_terminal_exact": False,
+            "supervisor_terminal": {},
+        },
+        "source_artifacts_sha256": {path: "4" * 64 for path in source_paths},
+    }
+    predecessor_path = reports / "cx323_d9_d6_72h_physical_seal_v1.json"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+
+    observed = activation._attempt_descriptor(
+        ordinal=12,
+        reason="Attempt 12 after exact host replay repair",
+        predecessor_terminal_path=predecessor_path,
+        programme=CX323_D9_D6_72H_PROGRAMME,
+    )
+    assert observed["ordinal"] == 12
+    assert observed["predecessor_physical_terminal"]["run_id"] == (
+        "hybrid_72h_attempt11"
+    )
+
+    predecessor_unsigned["active_hybrid_replay"]["comparisons"][0][  # type: ignore[index]
+        "maintenance_record_sequence"
+    ] = "88"
+    _write(predecessor_path, _semantic(predecessor_unsigned, "seal_sha256"))
+    with pytest.raises(ValueError, match="incomplete physical gate"):
+        activation._attempt_descriptor(
+            ordinal=12,
+            reason="Attempt 12 after exact host replay repair",
+            predecessor_terminal_path=predecessor_path,
+            programme=CX323_D9_D6_72H_PROGRAMME,
+        )
+
+
 def test_later_activation_accepts_failed_post_acquisition_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

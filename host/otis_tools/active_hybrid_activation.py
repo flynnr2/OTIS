@@ -92,6 +92,7 @@ REHEARSAL_COVERAGE = (
     "post_abort_complete_active_snapshot",
     "logical_evidence_rotation",
     "analysis_seal_registration",
+    "unattended_analysis_seal_registration_without_model_participation",
 )
 SUSTAINED_REHEARSAL_COVERAGE = (
     "complete_multi_transaction_identity_sequence",
@@ -1035,6 +1036,108 @@ def _attempt_descriptor(
                 )
             )
         )
+        # Campaign19 Attempt 11 retained eleven coherent applications and
+        # responses, then entered a review-only host hold because the frozen
+        # independent replay reconstructed one zero-containing maintenance
+        # decision with pre-transition rather than decision-effective debt.
+        # Admit a successor only for that exact immutable no-abort shape.  The
+        # predecessor remains an incomplete acquisition with no inferred
+        # terminal closure or scientific acceptance.
+        replay_comparisons = (
+            active_replay.get("comparisons", [])
+            if isinstance(active_replay, dict)
+            else []
+        )
+        cx323_attempt11_host_replay_hold_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and seal.get("run_id") == "hybrid_72h_attempt11"
+            and acquisition_gate.get("passed") is False
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is False
+            and seal.get("evidence_snapshot_validation")
+            == {"failures": [], "warnings": []}
+            and isinstance(acquisition_checks, dict)
+            and acquisition_checks.get("command_stream_exact") is True
+            and acquisition_checks.get(
+                "response_identity_through_first_dependent_decision_exact"
+            )
+            is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("latest_hybrid_state") == "HYBRID_TRACKING"
+            and terminal.get("static_terminal_exact") is False
+            and terminal.get("abort_submission_count") == 0
+            and terminal.get("abort_delivery_count") == 0
+            and terminal.get("static_code") == 43086
+            and supervisor_terminal == {}
+            and isinstance(application_counts, dict)
+            and application_counts.get("exact") is True
+            and application_counts.get("setup_count") == 1
+            and application_counts.get("automatic_application_count") == 11
+            and application_counts.get("physical_control_application_count")
+            == 11
+            and application_counts.get("phase_material_application_count") == 10
+            and application_counts.get("cumulative_movement_codes") == 19
+            and application_counts.get(
+                "later_authority_gated_by_first_checkpoint"
+            )
+            is True
+            and application_counts.get("all_response_checkpoints_passed")
+            is True
+            and isinstance(timing_join, dict)
+            and timing_join.get("exact") is True
+            and timing_join.get("mismatches") == []
+            and isinstance(active_replay, dict)
+            and active_replay.get("exact") is False
+            and active_replay.get("all_response_checkpoints_passed") is True
+            and active_replay.get("unmatched_request_decision_sequences") == []
+            and [
+                {
+                    "maintenance_record_sequence": item.get(
+                        "maintenance_record_sequence"
+                    ),
+                    "event": item.get("event"),
+                    "identity_exact": item.get("identity_exact"),
+                    "sequence_exact": item.get("sequence_exact"),
+                    "numerical_exact": item.get("numerical_exact"),
+                    "transaction_binding_exact": item.get(
+                        "transaction_binding_exact"
+                    ),
+                }
+                for item in replay_comparisons
+                if isinstance(item, dict) and item.get("exact") is False
+            ]
+            == [
+                {
+                    "maintenance_record_sequence": "87",
+                    "event": "decision",
+                    "identity_exact": True,
+                    "sequence_exact": True,
+                    "numerical_exact": False,
+                    "transaction_binding_exact": True,
+                }
+            ]
+            and isinstance(seal.get("source_artifacts_sha256"), dict)
+            and all(
+                isinstance(seal["source_artifacts_sha256"].get(path), str)
+                and len(seal["source_artifacts_sha256"][path]) == 64
+                for path in (
+                    "COMPLETE",
+                    "csv/active_hybrid_decisions_v1.csv",
+                    "csv/active_hybrid_maintenance_v1.csv",
+                    "csv/active_transactions_v1.csv",
+                    "csv/health.csv",
+                    "raw/serial.log",
+                    "reports/cx317_active_supervisor_events.jsonl",
+                    "reports/cx317_active_supervisor_state.json",
+                )
+            )
+        )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
             and seal.get("primary_decision") in operator_abort_decisions
@@ -1072,6 +1175,7 @@ def _attempt_descriptor(
                 or cx323_legacy_ack_observation_terminal
                 or cx323_status_serialization_terminal
                 or cx323_latched_checkpoint_semantic_contract_terminal
+                or cx323_attempt11_host_replay_hold_terminal
                 or bounded_operator_abort
                 or bounded_pre_setup_provenance
             )

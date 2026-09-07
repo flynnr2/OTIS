@@ -165,6 +165,7 @@ REHEARSAL_COVERAGE = (
     "post_abort_complete_active_snapshot",
     "logical_evidence_rotation",
     "analysis_seal_registration",
+    "unattended_analysis_seal_registration_without_model_participation",
 )
 CAMPAIGN18_REHEARSAL_COVERAGE = (
     "campaign18_exact_AT2_AH2_capture",
@@ -3961,8 +3962,7 @@ def _cx323_maintenance_transaction_fixture(
                     ),
                     "candidate_total_demand_picocodes": str(
                         decision.raw_combined_picocodes
-                        + int(before["committed_fll_debt_before_picocodes"])
-                        + int(before["committed_pll_debt_before_picocodes"])
+                        + decision.committed_debt_picocodes
                     ),
                     "safe_cap_codes": str(decision.safe_cap_codes),
                     "requested_delta_codes": str(
@@ -7215,6 +7215,7 @@ def run(
                 "shared_fail_static_fault",
                 "transport_obstruction",
                 "analysis_seal_registration",
+                "unattended_analysis_seal_registration_without_model_participation",
             ],
         },
         "unexercised_physical_boundaries": [

@@ -1410,6 +1410,7 @@ def test_terminal_response_sign_rejection_is_exact_without_phase4_ack(
             "replayed_attestation_sha256": None,
             "checkpoint_passed": False,
             "expected_rejection": True,
+            "error": "CX320 frozen response-sign checkpoint did not pass",
         }
     ]
 

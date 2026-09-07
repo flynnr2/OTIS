@@ -986,6 +986,118 @@ def test_noncanonical_aborted_terminal_checks_delivery_before_capture_close(
     assert events == ["abort_delivery_checked", "capture_closed"]
 
 
+def test_healthy_runner_closes_and_finalizes_without_external_participation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    activation_path, activation, bundle = _activation(tmp_path)
+    run_dir = tmp_path / "run"
+    capture = FakeProcess(7201)
+    supervisor = FakeProcess(7202, exit_code=0)
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        runner, "validate_activation", lambda _path: (activation, bundle, {})
+    )
+    monkeypatch.setattr(
+        runner, "require_programme_operation_allowed", lambda *args: {}
+    )
+    owners = iter((set(), {capture.pid}))
+    monkeypatch.setattr(runner, "_serial_owner_pids", lambda _device: next(owners))
+    monkeypatch.setattr(
+        runner,
+        "read_board_identity",
+        lambda *args, **kwargs: {"serial_number": runner.EXPECTED_BOARD_SERIAL},
+    )
+    monkeypatch.setattr(
+        runner,
+        "_upload_exact_firmware",
+        lambda **kwargs: (
+            "/dev/cu.test",
+            {"serial_number": runner.EXPECTED_BOARD_SERIAL},
+            {},
+        ),
+    )
+
+    def manifest(**kwargs: object) -> dict[str, object]:
+        _write(Path(kwargs["output_path"]), {"manifest": "live"})
+        return {"manifest": "live"}
+
+    monkeypatch.setattr(runner, "create_run_manifest", manifest)
+    monkeypatch.setattr(
+        runner,
+        "load_manifest",
+        lambda _run_dir: SimpleNamespace(data={"manifest": "live"}),
+    )
+    journal = tmp_path / "journal.json"
+    _write(journal, {"phases": {}})
+    monkeypatch.setattr(runner, "begin_finalization", lambda **kwargs: journal)
+    monkeypatch.setattr(runner, "advance_phase", lambda *args, **kwargs: {})
+    monkeypatch.setattr(runner, "_capture_state_ready", lambda *args: True)
+    monkeypatch.setattr(
+        runner,
+        "_launch_process",
+        lambda command, _log: (
+            capture
+            if "host.otis_tools.capture_device" in command
+            else supervisor
+        ),
+    )
+    terminal = {
+        "result": "healthy_stop",
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": 0xA84E,
+    }
+
+    def wait(predicate, timeout_s, description):  # type: ignore[no-untyped-def]
+        del timeout_s
+        if "capture" in description and "command paths" in description:
+            os.mkfifo(run_dir / runner.NORMAL_FIFO)
+            os.mkfifo(run_dir / runner.EMERGENCY_FIFO)
+        elif "live supervisor" in description:
+            os.mkfifo(run_dir / runner.HOST_ABORT_FIFO)
+        elif "terminal" in description:
+            _write(run_dir / runner.SUPERVISOR_STATE, {"terminal": terminal})
+        assert predicate()
+
+    monkeypatch.setattr(runner, "_wait_until", wait)
+    monkeypatch.setattr(
+        runner,
+        "_wait_for_terminal_abort_delivery",
+        lambda _run_dir, _terminal: events.append("terminal_delivery_resolved"),
+    )
+
+    def close(_capture: FakeProcess) -> int:
+        events.append("capture_closed")
+        _capture.returned = 0
+        return 0
+
+    monkeypatch.setattr(runner, "_graceful_capture_stop", close)
+
+    def finalize(**kwargs: object) -> dict[str, object]:
+        assert kwargs["orchestration_error"] is None
+        events.append("analysis_seal_registration")
+        return {
+            "status": "passed",
+            "primary_decision": "bounded_active_hybrid_control_passed",
+            "evidence_content_sha256": "5" * 64,
+        }
+
+    monkeypatch.setattr(runner, "_finalize_and_register", finalize)
+
+    result = runner.run_active_hybrid_qualification(
+        activation_path=activation_path,
+        run_dir=run_dir,
+        evidence_index_path=tmp_path / "index.json",
+    )
+
+    assert result["status"] == "passed"
+    assert events == [
+        "terminal_delivery_resolved",
+        "capture_closed",
+        "analysis_seal_registration",
+    ]
+
+
 def test_upload_failure_is_retained_registered_and_never_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
