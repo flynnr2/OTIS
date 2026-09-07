@@ -1543,6 +1543,11 @@ def _response_attestations(
                 "checkpoint_passed": checkpoint_passed,
                 "expected_rejection": expected_rejection,
                 **(
+                    {"error": replayed["error"]}
+                    if "error" in replayed
+                    else {}
+                ),
+                **(
                     {"retained_attestation_tool_identity_superseded": True}
                     if retained_tool_identity_superseded
                     else {}

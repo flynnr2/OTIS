@@ -92,6 +92,7 @@ REHEARSAL_COVERAGE = (
     "post_abort_complete_active_snapshot",
     "logical_evidence_rotation",
     "analysis_seal_registration",
+    "unattended_analysis_seal_registration_without_model_participation",
 )
 SUSTAINED_REHEARSAL_COVERAGE = (
     "complete_multi_transaction_identity_sequence",
@@ -298,6 +299,79 @@ def _validate_frozen_inputs(
     return bundle, proposal
 
 
+def _cx323_aperture_rehearsal_exact(
+    clock: object, programme: ActiveHybridProgramme
+) -> bool:
+    """Validate the accelerated V2 D14/D8 aperture boundary evidence."""
+
+    if not isinstance(clock, dict):
+        return False
+    target = programme.qualified_d14_aperture_count
+    reserve = programme.correction_response_reserve_d14_apertures
+    if target is None or reserve is None:
+        return False
+    admission_close = target - reserve
+    accepted_origin = clock.get("accepted_window_count_origin")
+    reference_origin = clock.get("boundary_reference_sequence_origin")
+    observations = clock.get("boundary_observations")
+    if (
+        type(accepted_origin) is not int
+        or type(reference_origin) is not int
+        or not 0 <= accepted_origin < 1 << 32
+        or not 0 <= reference_origin < 1 << 32
+        or not isinstance(observations, dict)
+        or clock.get("time_domain")
+        != "qualified_D14_D8_aperture_count_v2"
+        or clock.get("supporting_local_ordering_domain") != "rp2040_timer0"
+        or clock.get("qualified_endpoint_d14_d8_apertures") != target
+        or clock.get("correction_response_reserve_d14_apertures") != reserve
+        or clock.get("correction_admission_close_d14_d8_apertures")
+        != admission_close
+        or clock.get("admission_open_before_exact_aperture_boundary") is not True
+        or clock.get("admission_closed_at_exact_aperture_boundary") is not True
+        or clock.get("endpoint_open_before_exact_aperture_boundary") is not True
+        or clock.get("endpoint_closed_at_exact_aperture_boundary") is not True
+        or clock.get(
+            "rp2040_timer0_held_constant_across_aperture_boundaries"
+        )
+        is not True
+        or clock.get("forward_host_utc_step_did_not_close_early") is not True
+        or clock.get("backward_host_utc_step_did_not_delay_endpoint") is not True
+    ):
+        return False
+
+    expected = {
+        "admission_open": (admission_close - 1, False, False),
+        "admission_closed": (admission_close, True, False),
+        "endpoint_open": (target - 1, True, False),
+        "endpoint_closed": (target, True, True),
+    }
+    timer0_ticks: int | None = None
+    for name, (progress, response_closed, terminal_reached) in expected.items():
+        item = observations.get(name)
+        if not isinstance(item, dict):
+            return False
+        accepted_now = item.get("accepted_window_count")
+        reference_now = item.get("boundary_reference_sequence")
+        observed_timer0_ticks = item.get("rp2040_timer0_ticks")
+        if (
+            type(accepted_now) is not int
+            or type(reference_now) is not int
+            or type(observed_timer0_ticks) is not int
+            or item.get("qualified_d14_d8_apertures") != progress
+            or ((accepted_now - accepted_origin) & 0xFFFFFFFF) != progress
+            or ((reference_now - reference_origin) & 0xFFFFFFFF) != progress
+            or item.get("response_horizon_closed") is not response_closed
+            or item.get("terminal_reached") is not terminal_reached
+        ):
+            return False
+        if timer0_ticks is None:
+            timer0_ticks = observed_timer0_ticks
+        elif observed_timer0_ticks != timer0_ticks:
+            return False
+    return True
+
+
 def validate_operational_rehearsal(
     path: Path,
     *,
@@ -460,6 +534,21 @@ def validate_operational_rehearsal(
                 and programme.key == CX323_D9_D6_72H_PROGRAMME.key
             ),
         )
+        qualified_boundary_exact = (
+            _cx323_aperture_rehearsal_exact(clock, programme)
+            if programme.qualified_d14_aperture_count is not None
+            else (
+                isinstance(clock, dict)
+                and clock.get("correction_admission_close_elapsed_s") == 257_700
+                and clock.get("qualified_endpoint_elapsed_s") == 259_200
+                and clock.get("admission_open_at_floor_before_exact_boundary")
+                is True
+                and clock.get("admission_closed_at_exact_boundary") is True
+                and clock.get("forward_host_utc_step_did_not_close_early") is True
+                and clock.get("backward_host_utc_step_did_not_delay_endpoint")
+                is True
+            )
+        )
         if (
             not isinstance(transaction, dict)
             or transaction.get("complete_multi_transaction_sequence") is not True
@@ -477,13 +566,7 @@ def validate_operational_rehearsal(
                 ),
                 int,
             )
-            or not isinstance(clock, dict)
-            or clock.get("correction_admission_close_elapsed_s") != 257_700
-            or clock.get("qualified_endpoint_elapsed_s") != 259_200
-            or clock.get("admission_open_at_floor_before_exact_boundary") is not True
-            or clock.get("admission_closed_at_exact_boundary") is not True
-            or clock.get("forward_host_utc_step_did_not_close_early") is not True
-            or clock.get("backward_host_utc_step_did_not_delay_endpoint") is not True
+            or not qualified_boundary_exact
             or manifest.get("programme_id") != programme.programme_id
             or manifest.get("profile_identity") != programme.profile_id
             or set(exact_files) != set(required_exact)
@@ -786,6 +869,7 @@ def _attempt_descriptor(
         application_counts = seal.get("application_counts_and_budgets", {})
         timing_join = seal.get("integrated_exact_timing_sidecar_join", {})
         active_replay = seal.get("active_hybrid_replay", {})
+        acquisition_checks = acquisition_gate.get("checks", {})
         cx323_status_serialization_terminal = (
             programme is CX323_D9_D6_72H_PROGRAMME
             and seal.get("status") == "failed"
@@ -852,6 +936,208 @@ def _attempt_descriptor(
                 )
             )
         )
+        # Campaign19 Attempt 10 completed and durably released its first exact
+        # response checkpoint, then correctly cleared the firmware's current-
+        # transaction checkpoint when its second application began.  The host
+        # mistook that transient level for the already-latched authority gate
+        # and aborted.  Accept only the sealed two-application shape that
+        # proves the first causal release and the bounded static abort.  This
+        # admits a new identified attempt without reclassifying the incomplete
+        # acquisition or weakening any scientific acceptance criterion.
+        cx323_latched_checkpoint_semantic_contract_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and acquisition_gate.get("passed") is False
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is False
+            and seal.get("evidence_snapshot_validation")
+            == {"failures": [], "warnings": []}
+            and isinstance(acquisition_checks, dict)
+            and acquisition_checks.get("command_stream_exact") is True
+            and acquisition_checks.get(
+                "response_identity_through_first_dependent_decision_exact"
+            )
+            is True
+            and acquisition_checks.get(
+                "abort_submission_delivery_and_close_order_exact"
+            )
+            is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("latest_hybrid_state")
+            == "FIRST_PHASE_TRANSACTION"
+            and terminal.get("static_terminal_exact") is False
+            and terminal.get("abort_submission_count") == 1
+            and terminal.get("abort_delivery_count") == 1
+            and isinstance(terminal.get("static_code"), int)
+            and programme.minimum_code
+            <= terminal["static_code"]
+            <= programme.maximum_code
+            and isinstance(supervisor_terminal, dict)
+            and supervisor_terminal.get("result") == "aborted"
+            and supervisor_terminal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and supervisor_terminal.get("reason")
+            == (
+                "cx323_d9_d6_72h_live_supervisor_fault:"
+                "CX320 later material authority preceded its checkpoint"
+            )
+            and supervisor_terminal.get("last_confirmed_code")
+            == terminal["static_code"]
+            and isinstance(application_counts, dict)
+            and application_counts.get("exact") is False
+            and application_counts.get("setup_count") == 1
+            and application_counts.get("automatic_application_count") == 2
+            and application_counts.get("physical_control_application_count")
+            == 2
+            and application_counts.get("phase_material_application_count") == 2
+            and application_counts.get("cumulative_movement_codes") == 2
+            and application_counts.get("first_phase_checkpoint_passed") is True
+            and application_counts.get(
+                "first_phase_observation_checkpoint_exact"
+            )
+            is True
+            and application_counts.get(
+                "later_authority_gated_by_first_checkpoint"
+            )
+            is True
+            and application_counts.get("all_response_checkpoints_passed")
+            is True
+            and application_counts.get("dac_application_exact") is True
+            and application_counts.get(
+                "budgets_range_step_cadence_and_clamp_exact"
+            )
+            is True
+            and isinstance(timing_join, dict)
+            and timing_join.get("exact") is True
+            and timing_join.get("mismatches") == []
+            and isinstance(active_replay, dict)
+            and active_replay.get("exact") is False
+            and active_replay.get("phase_material_decision_count") == 2
+            and active_replay.get("all_response_checkpoints_passed") is True
+            and active_replay.get("unmatched_request_decision_sequences") == []
+            and isinstance(seal.get("source_artifacts_sha256"), dict)
+            and all(
+                isinstance(seal["source_artifacts_sha256"].get(path), str)
+                and len(seal["source_artifacts_sha256"][path]) == 64
+                for path in (
+                    "COMPLETE",
+                    "csv/active_hybrid_decisions_v2.csv",
+                    "csv/active_hybrid_maintenance_v1.csv",
+                    "csv/active_transactions_v2.csv",
+                    "csv/health.csv",
+                    "raw/serial.log",
+                    "reports/cx317_active_supervisor_events.jsonl",
+                    "reports/cx317_active_supervisor_state.json",
+                )
+            )
+        )
+        # Campaign19 Attempt 11 retained eleven coherent applications and
+        # responses, then entered a review-only host hold because the frozen
+        # independent replay reconstructed one zero-containing maintenance
+        # decision with pre-transition rather than decision-effective debt.
+        # Admit a successor only for that exact immutable no-abort shape.  The
+        # predecessor remains an incomplete acquisition with no inferred
+        # terminal closure or scientific acceptance.
+        replay_comparisons = (
+            active_replay.get("comparisons", [])
+            if isinstance(active_replay, dict)
+            else []
+        )
+        cx323_attempt11_host_replay_hold_terminal = (
+            programme is CX323_D9_D6_72H_PROGRAMME
+            and seal.get("status") == "failed"
+            and seal.get("primary_decision")
+            == "cx323_d9_d6_72h_identity_or_evidence_fault"
+            and seal.get("run_id") == "hybrid_72h_attempt11"
+            and acquisition_gate.get("passed") is False
+            and offline_finalization_gate.get(
+                "replayable_without_physical_repeat"
+            )
+            is False
+            and seal.get("evidence_snapshot_validation")
+            == {"failures": [], "warnings": []}
+            and isinstance(acquisition_checks, dict)
+            and acquisition_checks.get("command_stream_exact") is True
+            and acquisition_checks.get(
+                "response_identity_through_first_dependent_decision_exact"
+            )
+            is True
+            and isinstance(terminal, dict)
+            and terminal.get("endpoint_complete") is False
+            and terminal.get("latest_hybrid_state") == "HYBRID_TRACKING"
+            and terminal.get("static_terminal_exact") is False
+            and terminal.get("abort_submission_count") == 0
+            and terminal.get("abort_delivery_count") == 0
+            and terminal.get("static_code") == 43086
+            and supervisor_terminal == {}
+            and isinstance(application_counts, dict)
+            and application_counts.get("exact") is True
+            and application_counts.get("setup_count") == 1
+            and application_counts.get("automatic_application_count") == 11
+            and application_counts.get("physical_control_application_count")
+            == 11
+            and application_counts.get("phase_material_application_count") == 10
+            and application_counts.get("cumulative_movement_codes") == 19
+            and application_counts.get(
+                "later_authority_gated_by_first_checkpoint"
+            )
+            is True
+            and application_counts.get("all_response_checkpoints_passed")
+            is True
+            and isinstance(timing_join, dict)
+            and timing_join.get("exact") is True
+            and timing_join.get("mismatches") == []
+            and isinstance(active_replay, dict)
+            and active_replay.get("exact") is False
+            and active_replay.get("all_response_checkpoints_passed") is True
+            and active_replay.get("unmatched_request_decision_sequences") == []
+            and [
+                {
+                    "maintenance_record_sequence": item.get(
+                        "maintenance_record_sequence"
+                    ),
+                    "event": item.get("event"),
+                    "identity_exact": item.get("identity_exact"),
+                    "sequence_exact": item.get("sequence_exact"),
+                    "numerical_exact": item.get("numerical_exact"),
+                    "transaction_binding_exact": item.get(
+                        "transaction_binding_exact"
+                    ),
+                }
+                for item in replay_comparisons
+                if isinstance(item, dict) and item.get("exact") is False
+            ]
+            == [
+                {
+                    "maintenance_record_sequence": "87",
+                    "event": "decision",
+                    "identity_exact": True,
+                    "sequence_exact": True,
+                    "numerical_exact": False,
+                    "transaction_binding_exact": True,
+                }
+            ]
+            and isinstance(seal.get("source_artifacts_sha256"), dict)
+            and all(
+                isinstance(seal["source_artifacts_sha256"].get(path), str)
+                and len(seal["source_artifacts_sha256"][path]) == 64
+                for path in (
+                    "COMPLETE",
+                    "csv/active_hybrid_decisions_v1.csv",
+                    "csv/active_hybrid_maintenance_v1.csv",
+                    "csv/active_transactions_v1.csv",
+                    "csv/health.csv",
+                    "raw/serial.log",
+                    "reports/cx317_active_supervisor_events.jsonl",
+                    "reports/cx317_active_supervisor_state.json",
+                )
+            )
+        )
         bounded_operator_abort = (
             seal.get("status") == "bounded_nonpass"
             and seal.get("primary_decision") in operator_abort_decisions
@@ -888,6 +1174,8 @@ def _attempt_descriptor(
                 or cx323_firmware_fail_static_terminal
                 or cx323_legacy_ack_observation_terminal
                 or cx323_status_serialization_terminal
+                or cx323_latched_checkpoint_semantic_contract_terminal
+                or cx323_attempt11_host_replay_hold_terminal
                 or bounded_operator_abort
                 or bounded_pre_setup_provenance
             )

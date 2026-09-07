@@ -810,16 +810,7 @@ def replay_cx323_maintenance_history(
                     replayed = controller.decide(observation)
                     candidate_total = (
                         replayed.raw_combined_picocodes
-                        + int(
-                            maintenance[
-                                "committed_fll_debt_before_picocodes"
-                            ]
-                        )
-                        + int(
-                            maintenance[
-                                "committed_pll_debt_before_picocodes"
-                            ]
-                        )
+                        + replayed.committed_debt_picocodes
                     )
                     numerical_exact = (
                         before_exact
@@ -1018,15 +1009,20 @@ def _await_cx323_maintenance_response(
     deadline = time.monotonic() + CX323_MAINTENANCE_VISIBILITY_TIMEOUT_S
     while True:
         rows = _rows(path) if path.is_file() else []
-        if any(
-            row.get("event") == "response_complete"
-            and row.get("transaction_record_sequence")
-            == response_row.get("transaction_record_sequence")
-            and row.get("request_sequence") == response_row.get("request_sequence")
-            and row.get("decision_sequence") == response_row.get("decision_sequence")
-            for row in rows
-        ):
-            return rows
+        for index, row in enumerate(rows):
+            if (
+                row.get("event") == "response_complete"
+                and row.get("transaction_record_sequence")
+                == response_row.get("transaction_record_sequence")
+                and row.get("request_sequence")
+                == response_row.get("request_sequence")
+                and row.get("decision_sequence")
+                == response_row.get("decision_sequence")
+            ):
+                # Reconstruct the exact causal prefix that existed before this
+                # response was acknowledged.  Later evidence must not change a
+                # previously completed checkpoint's verdict.
+                return rows[: index + 1]
         if time.monotonic() >= deadline:
             raise ValueError(
                 "CX323 response AHM was not visible before phase-4 acknowledgement"
@@ -1115,9 +1111,23 @@ def replay_response_before_acknowledgement(
                 "CX323 AHM evidence differs: "
                 + "; ".join(maintenance_validation.errors)
             )
+        causal_decision_sequences = {
+            int(item["decision_sequence"])
+            for item in maintenance_rows
+            if int(item.get("decision_sequence", "0")) > 0
+        }
         replay = replay_cx323_maintenance_history(
-            all_decisions,
-            all_transactions,
+            [
+                row
+                for row in all_decisions
+                if int(row["decision_sequence"]) in causal_decision_sequences
+            ],
+            [
+                row
+                for row in all_transactions
+                if int(row["transaction_record_sequence"])
+                <= int(response_row["transaction_record_sequence"])
+            ],
             maintenance_rows,
             policy_path=policy_path,
             expected_run_identity=decision["run_identity"],

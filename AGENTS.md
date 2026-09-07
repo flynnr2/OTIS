@@ -227,6 +227,24 @@ or deadline expiry, not for observation latency alone.
 - Bound serial reads, writes, flushes, process shutdown, and command waits.
 - Send console output to a continuously drained file or bounded logger.
 - Keep abort independent of normal-command backpressure.
+- Treat a host-verifier, analyzer, harness, parser, replay, or orchestration
+  discrepancy as a review-required diagnostic hold, not an automatic abort.
+  While held, inhibit new SETUP/ARM authority, preserve the last confirmed
+  code and exact pending-phase identity, keep the sole serial owner and healthy
+  capture running, and surface the retained discrepancy for operator review.
+  Continue an already-issued acknowledgement only when its exact causal phase
+  remains independently verifiable; otherwise withhold that acknowledgement
+  and let firmware apply its own bounded fail-static policy without using that
+  as permission for the host to tear down capture.
+- A host or harness finding has no abort, teardown, or failed-campaign
+  authority by itself. Alert the controlling Codex turn, retain the evidence,
+  and require explicit review and approval before any such action. After
+  review, abort only when firmware evidence establishes a defect requiring a
+  code repair, the test is scientifically invalid, or the operator explicitly
+  directs it. Firmware's independent bounded fail-static behavior and an
+  explicit operator abort remain separate; loss of an already-dead capture
+  owner is an observed terminal fact, not authority for the host to invent a
+  scientific failure.
 - Treat abort submission and abort delivery as distinct events. On an aborting
   terminal, keep the sole serial owner alive until capture records the priority
   abort as sent (or records a bounded delivery failure); never race capture

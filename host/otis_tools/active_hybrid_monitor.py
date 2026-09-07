@@ -48,6 +48,10 @@ CAPTURE_MAX_AGE_S = 15.0
 EVIDENCE_MAX_AGE_S = 15.0
 EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
 PREWRITE_QUALIFICATION_DEADLINE_S = 660.0
+QUALIFIED_D14_ENDPOINT_CONTRACT = "qualified_D14_D8_aperture_count_v2"
+QUALIFIED_D14_MILESTONE_APERTURES = 21_600
+UINT32_MODULUS = 1 << 32
+UINT32_MAXIMUM_FORWARD_DELTA = (1 << 31) - 1
 
 _AT2_NON_JOIN_FIELDS = frozenset(
     {
@@ -352,6 +356,171 @@ def _maintenance_evidence_progress(
     }
 
 
+def _qualified_d14_aperture_progress(
+    supervisor: dict[str, Any] | None,
+    *,
+    programme: ActiveHybridProgramme,
+) -> dict[str, Any]:
+    """Project the retained CX323 qualification frontier without wall time."""
+
+    target = programme.qualified_d14_aperture_count
+    if target is None:
+        return {"required": False}
+    reserve = programme.correction_response_reserve_d14_apertures
+    if (
+        type(target) is not int
+        or target <= 0
+        or type(reserve) is not int
+        or not 0 < reserve < target
+    ):
+        raise ValueError("qualified D14 endpoint descriptor is malformed")
+    admission_close = target - reserve
+    result: dict[str, Any] = {
+        "required": True,
+        "endpoint_contract": QUALIFIED_D14_ENDPOINT_CONTRACT,
+        "progress_domain": "accepted_D14_D8_apertures",
+        "accepted_apertures": None,
+        "target_apertures": target,
+        "remaining_apertures": target,
+        "milestones": {
+            "interval_apertures": QUALIFIED_D14_MILESTONE_APERTURES,
+            "nominal_interval_s": QUALIFIED_D14_MILESTONE_APERTURES,
+            "nominal_interval_h": 6,
+            "completed_apertures": [],
+            "next_apertures": QUALIFIED_D14_MILESTONE_APERTURES,
+        },
+        "correction_admission": {
+            "close_apertures": admission_close,
+            "response_reserve_apertures": reserve,
+            "close_reached": False,
+            "closed_utc": (
+                None
+                if supervisor is None
+                else supervisor.get("response_horizon_closed_utc")
+            ),
+        },
+        "target_reached": False,
+        "reference_identity": {
+            "counter_domain": "uint32_modulo",
+            "origin": None,
+            "current": None,
+            "endpoint": None,
+        },
+        "state": "awaiting_qualified_origin",
+    }
+    if supervisor is None:
+        return result
+
+    accepted_origin = supervisor.get("qualified_d14_accepted_window_origin")
+    reference_origin = supervisor.get("qualified_d14_reference_sequence_origin")
+    accepted_apertures = supervisor.get("qualified_d14_accepted_apertures")
+    reference_current = supervisor.get(
+        "qualified_d14_reference_sequence_endpoint"
+    )
+    retained = (
+        accepted_origin,
+        reference_origin,
+        accepted_apertures,
+        reference_current,
+    )
+    if all(value is None for value in retained):
+        return result
+    for name, value in (
+        ("qualified accepted-window origin", accepted_origin),
+        ("qualified D14 reference origin", reference_origin),
+    ):
+        if type(value) is not int or not 0 <= value < UINT32_MODULUS:
+            raise ValueError(f"{name} is malformed")
+
+    result["reference_identity"]["origin"] = {
+        "accepted_window_count": accepted_origin,
+        "boundary_reference_sequence": reference_origin,
+    }
+    result["reference_identity"]["endpoint"] = {
+        "accepted_window_count": (accepted_origin + target) % UINT32_MODULUS,
+        "boundary_reference_sequence": (
+            reference_origin + target
+        ) % UINT32_MODULUS,
+    }
+    if accepted_apertures is None and reference_current is None:
+        result["state"] = "qualified_origin_established_awaiting_progress"
+        return result
+    if (
+        type(accepted_apertures) is not int
+        or not 0 <= accepted_apertures <= UINT32_MAXIMUM_FORWARD_DELTA
+    ):
+        raise ValueError("qualified accepted-aperture progress is malformed")
+    if (
+        type(reference_current) is not int
+        or not 0 <= reference_current < UINT32_MODULUS
+    ):
+        raise ValueError("qualified current D14 reference is malformed")
+
+    expected_reference_current = (
+        reference_origin + accepted_apertures
+    ) % UINT32_MODULUS
+    if reference_current != expected_reference_current:
+        raise ValueError(
+            "qualified current D14 reference differs from accepted-aperture progress"
+        )
+    accepted_current = (
+        accepted_origin + accepted_apertures
+    ) % UINT32_MODULUS
+    completed_count = min(accepted_apertures, target) // (
+        QUALIFIED_D14_MILESTONE_APERTURES
+    )
+    completed = [
+        QUALIFIED_D14_MILESTONE_APERTURES * index
+        for index in range(1, completed_count + 1)
+    ]
+    next_milestone = (
+        None
+        if completed and completed[-1] >= target
+        else QUALIFIED_D14_MILESTONE_APERTURES * (completed_count + 1)
+    )
+    if next_milestone is not None and next_milestone > target:
+        next_milestone = target
+    admission_reached = accepted_apertures >= admission_close
+    closed_utc = supervisor.get("response_horizon_closed_utc")
+    if closed_utc is not None and not admission_reached:
+        raise ValueError(
+            "correction admission is recorded closed before its exact aperture boundary"
+        )
+
+    result.update(
+        {
+            "accepted_apertures": accepted_apertures,
+            "remaining_apertures": max(0, target - accepted_apertures),
+            "milestones": {
+                "interval_apertures": QUALIFIED_D14_MILESTONE_APERTURES,
+                "nominal_interval_s": QUALIFIED_D14_MILESTONE_APERTURES,
+                "nominal_interval_h": 6,
+                "completed_apertures": completed,
+                "next_apertures": next_milestone,
+            },
+            "correction_admission": {
+                "close_apertures": admission_close,
+                "response_reserve_apertures": reserve,
+                "close_reached": admission_reached,
+                "closed_utc": closed_utc,
+            },
+            "target_reached": accepted_apertures >= target,
+            "state": (
+                "qualified_target_reached"
+                if accepted_apertures >= target
+                else "correction_admission_closed"
+                if admission_reached
+                else "qualification_in_progress"
+            ),
+        }
+    )
+    result["reference_identity"]["current"] = {
+        "accepted_window_count": accepted_current,
+        "boundary_reference_sequence": reference_current,
+    }
+    return result
+
+
 def _pid_alive(value: object) -> bool:
     try:
         pid = int(value)
@@ -398,6 +567,19 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
     integrity_faults: list[str] = []
     exact_timing: dict[str, Any] | None = None
     maintenance: dict[str, Any] | None = None
+    try:
+        qualified_apertures = _qualified_d14_aperture_progress(
+            supervisor,
+            programme=programme,
+        )
+    except (TypeError, ValueError) as exc:
+        qualified_apertures = {
+            "required": True,
+            "endpoint_contract": QUALIFIED_D14_ENDPOINT_CONTRACT,
+            "unavailable": True,
+            "mismatches": [str(exc)],
+        }
+        integrity_faults.append("qualified_d14_aperture_progress_invalid")
     if programme.integrated_long_run:
         try:
             exact_timing = _exact_lifecycle_timing_progress(run_dir, now=now)
@@ -616,6 +798,7 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "estimates": estimates,
             "active_transactions": transactions,
             "active_hybrid_decisions": hybrid,
+            "qualified_d14_apertures": qualified_apertures,
             "exact_timing_sidecars": exact_timing,
             "maintenance_evidence": maintenance,
             "plant_sign_qualification": plant_sign,

@@ -521,6 +521,12 @@ def test_cx323_long_run_monitor_requires_exact_maintenance_evidence(
     assert maintenance["record_type"] == "AHM"
     assert maintenance["rows"] == 1
     assert maintenance["mismatches"] == []
+    aperture_progress = running["progress"]["qualified_d14_apertures"]
+    assert aperture_progress["required"] is True
+    assert aperture_progress["endpoint_contract"] == (
+        "qualified_D14_D8_aperture_count_v2"
+    )
+    assert aperture_progress["state"] == "awaiting_qualified_origin"
 
     maintenance_path = run_dir / "csv/active_hybrid_maintenance_v1.csv"
     # AHM is causal transition evidence, not a periodic heartbeat. Legal
@@ -562,6 +568,136 @@ def test_cx323_long_run_monitor_requires_exact_maintenance_evidence(
 
     assert missing["status"] == "fault"
     assert "maintenance_evidence_unavailable" in missing["integrity_faults"]
+
+
+def test_cx323_monitor_reports_exact_aperture_milestones_and_reference_identity(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir, now = _campaign18_fixture(
+        tmp_path, monkeypatch, programme=CX323_D9_D6_72H_PROGRAMME
+    )
+    state_path = run_dir / monitor.SUPERVISOR_STATE
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    accepted_origin = 0xFFFFFFF0
+    reference_origin = 0xFFFF0000
+    state.update(
+        {
+            "qualified_d14_accepted_window_origin": accepted_origin,
+            "qualified_d14_reference_sequence_origin": reference_origin,
+            "qualified_d14_accepted_apertures": 43_201,
+            "qualified_d14_reference_sequence_endpoint": (
+                reference_origin + 43_201
+            ) & 0xFFFFFFFF,
+            "response_horizon_closed_utc": None,
+        }
+    )
+    _write_json(state_path, state)
+
+    in_progress = monitor.snapshot(run_dir, now=now)
+
+    assert in_progress["status"] == "running"
+    progress = in_progress["progress"]["qualified_d14_apertures"]
+    assert progress["progress_domain"] == "accepted_D14_D8_apertures"
+    assert progress["accepted_apertures"] == 43_201
+    assert progress["target_apertures"] == 259_200
+    assert progress["remaining_apertures"] == 215_999
+    assert progress["milestones"] == {
+        "interval_apertures": 21_600,
+        "nominal_interval_s": 21_600,
+        "nominal_interval_h": 6,
+        "completed_apertures": [21_600, 43_200],
+        "next_apertures": 64_800,
+    }
+    assert progress["correction_admission"] == {
+        "close_apertures": 257_689,
+        "response_reserve_apertures": 1_511,
+        "close_reached": False,
+        "closed_utc": None,
+    }
+    assert progress["reference_identity"] == {
+        "counter_domain": "uint32_modulo",
+        "origin": {
+            "accepted_window_count": accepted_origin,
+            "boundary_reference_sequence": reference_origin,
+        },
+        "current": {
+            "accepted_window_count": (accepted_origin + 43_201) & 0xFFFFFFFF,
+            "boundary_reference_sequence": (
+                reference_origin + 43_201
+            ) & 0xFFFFFFFF,
+        },
+        "endpoint": {
+            "accepted_window_count": (accepted_origin + 259_200) & 0xFFFFFFFF,
+            "boundary_reference_sequence": (
+                reference_origin + 259_200
+            ) & 0xFFFFFFFF,
+        },
+    }
+
+    state.update(
+        {
+            "qualified_d14_accepted_apertures": 257_689,
+            "qualified_d14_reference_sequence_endpoint": (
+                reference_origin + 257_689
+            ) & 0xFFFFFFFF,
+            "response_horizon_closed_utc": "2033-05-18T03:33:20Z",
+        }
+    )
+    _write_json(state_path, state)
+    admission_closed = monitor.snapshot(run_dir, now=now)["progress"][
+        "qualified_d14_apertures"
+    ]
+    assert admission_closed["state"] == "correction_admission_closed"
+    assert admission_closed["correction_admission"]["close_reached"] is True
+    assert admission_closed["milestones"]["next_apertures"] == 259_200
+
+    state.update(
+        {
+            "qualified_d14_accepted_apertures": 259_200,
+            "qualified_d14_reference_sequence_endpoint": (
+                reference_origin + 259_200
+            ) & 0xFFFFFFFF,
+        }
+    )
+    _write_json(state_path, state)
+    target = monitor.snapshot(run_dir, now=now)["progress"][
+        "qualified_d14_apertures"
+    ]
+    assert target["state"] == "qualified_target_reached"
+    assert target["target_reached"] is True
+    assert target["remaining_apertures"] == 0
+    assert target["milestones"]["completed_apertures"][-1] == 259_200
+    assert target["milestones"]["next_apertures"] is None
+
+
+def test_cx323_monitor_faults_on_contradictory_aperture_reference_frontier(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_dir, now = _campaign18_fixture(
+        tmp_path, monkeypatch, programme=CX323_D9_D6_72H_PROGRAMME
+    )
+    state_path = run_dir / monitor.SUPERVISOR_STATE
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state.update(
+        {
+            "qualified_d14_accepted_window_origin": 100,
+            "qualified_d14_reference_sequence_origin": 200,
+            "qualified_d14_accepted_apertures": 21_600,
+            "qualified_d14_reference_sequence_endpoint": 21_801,
+            "response_horizon_closed_utc": None,
+        }
+    )
+    _write_json(state_path, state)
+
+    result = monitor.snapshot(run_dir, now=now)
+
+    assert result["status"] == "fault"
+    assert "qualified_d14_aperture_progress_invalid" in result[
+        "integrity_faults"
+    ]
+    assert result["progress"]["qualified_d14_apertures"]["mismatches"] == [
+        "qualified current D14 reference differs from accepted-aperture progress"
+    ]
 
 
 def test_cx323_monitor_accepts_only_the_expected_pre_setup_ahm_header(

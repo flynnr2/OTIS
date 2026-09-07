@@ -191,6 +191,16 @@ phase. Firmware does not release later hybrid authority until that response is
 healthy, support and applied epoch are exact, and frequency re-enters
 `TIGHT_INSIDE`.
 
+Each response attestation is evaluated against the causally closed evidence
+prefix that ends at its matching response record. For CX323 this comprises ACT
+through that response, AHM through the exact matching `response_complete`, and
+every AHY decision referenced by that AHM prefix. The complete retained files
+remain independently validated, but later evidence cannot retroactively change
+an already-completed checkpoint. CX323 candidate-total replay uses the
+decision-effective committed debt carried by the controller decision; a
+transition such as `zero_containing_interval` may deliberately clear the debt
+that was present before the decision.
+
 ## Decision evidence
 
 `active_hybrid_decisions_v1` (`AHY`) is the canonical per-decision record. It

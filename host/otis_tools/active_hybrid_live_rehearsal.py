@@ -39,6 +39,7 @@ from .active_hybrid_live_supervisor import (
     QUERY_PERIOD_S,
     RP2040_TIMER0_TICKS_PER_SECOND,
     ActiveHybridLiveSupervisor,
+    _authoritative_capture_counters,
     forwarded_output_integration_prewrite_evidence,
     load_active_hybrid_spec,
 )
@@ -164,6 +165,7 @@ REHEARSAL_COVERAGE = (
     "post_abort_complete_active_snapshot",
     "logical_evidence_rotation",
     "analysis_seal_registration",
+    "unattended_analysis_seal_registration_without_model_participation",
 )
 CAMPAIGN18_REHEARSAL_COVERAGE = (
     "campaign18_exact_AT2_AH2_capture",
@@ -641,6 +643,8 @@ def _forwarded_integration_health_fixture(
             ("pps_gate", "fifo_continuity"): "continuous",
             ("pps_gate", "association_state"): "clean",
             ("pps_gate", "snapshot_session"): "1",
+            ("pps_gate", "accepted_window_count"): "3",
+            ("pps_gate", "boundary_reference_sequence"): "3",
             ("pps_gate", "rejected_window_count"): "0",
             ("pps_gate", "physical_aperture_incomplete_count"): "1",
             ("pps_gate", "association_loss_count"): "0",
@@ -667,6 +671,13 @@ def _forwarded_integration_health_fixture(
             ("forwarded_clock_monitor", "program_length"): "3",
         }
     )
+    # The PTY wire producer must carry the same complete irreversible capture
+    # baseline that the real CX323 supervisor consumes at qualification.  The
+    # predecessor ignores the additional fields, so one fixture can exercise
+    # both historical V1 and current V2 process topologies without weakening
+    # either contract.
+    for key in _authoritative_capture_counters(CX323_D9_D6_72H_PROGRAMME):
+        health.setdefault(("pps_gate", key), "0")
     return health
 
 
@@ -2399,6 +2410,21 @@ def _create_rehearsal_run_manifest(
             },
             "qualification": {
                 "qualified_duration_s": programme.qualified_duration_s,
+                **(
+                    {
+                        "qualified_endpoint_contract": (
+                            "qualified_D14_D8_aperture_count_v2"
+                        ),
+                        "qualified_d14_aperture_count": (
+                            programme.qualified_d14_aperture_count
+                        ),
+                        "correction_response_reserve_d14_apertures": (
+                            programme.correction_response_reserve_d14_apertures
+                        ),
+                    }
+                    if programme.qualified_d14_aperture_count is not None
+                    else {}
+                ),
                 "absolute_wall_clock_limit_s": (
                     programme.authorized_absolute_wall_limit_s
                 ),
@@ -2657,6 +2683,8 @@ def _prewrite_boundary_supervisor(
             ("cx317_active", "frequency_only_application_count"): "0",
         }
     )
+    for key in _authoritative_capture_counters(supervisor.programme):
+        health.setdefault(("pps_gate", key), "0")
     if supervisor.programme.forwarded_output_integration:
         health.update(
             _forwarded_integration_health_fixture(local_monitor_fault=True)
@@ -2965,6 +2993,22 @@ def _exercise_qualified_device_time_boundaries(
         }
     )
 
+    accepted_window_origin: int | None = None
+    boundary_reference_sequence_origin: int | None = None
+    if programme.qualified_d14_aperture_count is not None:
+        # Start close enough to uint32 rollover that the accelerated rehearsal
+        # also proves the declared counter-domain projection.  These are raw
+        # producer counters; only their equal modular deltas are qualified
+        # D14/D8 aperture progress.
+        accepted_window_origin = 0xFFFFFF00
+        boundary_reference_sequence_origin = 0xFFFFFE00
+        health[("pps_gate", "accepted_window_count")] = str(
+            accepted_window_origin
+        )
+        health[("pps_gate", "boundary_reference_sequence")] = str(
+            boundary_reference_sequence_origin
+        )
+
     health[("cx317_active", "uptime_s")] = str(origin_uptime_s)
     if programme.integrated_long_run:
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)] = (
@@ -2988,6 +3032,17 @@ def _exercise_qualified_device_time_boundaries(
         == "est:cx317:selected600:device_clock_rehearsal"
         and supervisor.state["qualified_origin_timestamp_ticks"] == origin_ticks
         and supervisor.state["qualified_origin_session_id"] == 1
+        and (
+            programme.qualified_d14_aperture_count is None
+            or (
+                supervisor.state["qualified_d14_accepted_window_origin"]
+                == accepted_window_origin
+                and supervisor.state[
+                    "qualified_d14_reference_sequence_origin"
+                ]
+                == boundary_reference_sequence_origin
+            )
+        )
     )
 
     if programme.terminal_after_first_response:
@@ -3029,6 +3084,143 @@ def _exercise_qualified_device_time_boundaries(
             raise RuntimeError(
                 "integrated first-response device-clock rehearsal failed"
             )
+        return result
+
+    if programme.qualified_d14_aperture_count is not None:
+        target = programme.qualified_d14_aperture_count
+        reserve = programme.correction_response_reserve_d14_apertures
+        if (
+            reserve is None
+            or accepted_window_origin is None
+            or boundary_reference_sequence_origin is None
+        ):
+            raise RuntimeError("CX323 D14 aperture rehearsal contract is incomplete")
+        admission_close = target - reserve
+        timer0_ticks = int(
+            health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
+        )
+
+        def set_aperture_progress(progress: int) -> None:
+            health[("pps_gate", "accepted_window_count")] = str(
+                (accepted_window_origin + progress) & 0xFFFFFFFF
+            )
+            health[("pps_gate", "boundary_reference_sequence")] = str(
+                (boundary_reference_sequence_origin + progress) & 0xFFFFFFFF
+            )
+
+        def boundary_observation(
+            progress: int, *, response_horizon_closed: bool
+        ) -> dict[str, Any]:
+            return {
+                "qualified_d14_d8_apertures": progress,
+                "accepted_window_count": int(
+                    health[("pps_gate", "accepted_window_count")]
+                ),
+                "boundary_reference_sequence": int(
+                    health[("pps_gate", "boundary_reference_sequence")]
+                ),
+                "rp2040_timer0_ticks": int(
+                    health[(
+                        LIVE_FRONTIER_COMPONENT,
+                        LIVE_FRONTIER_TICKS_KEY,
+                    )]
+                ),
+                "response_horizon_closed": response_horizon_closed,
+                "terminal_reached": supervisor.state["terminal"] is not None,
+            }
+
+        set_aperture_progress(admission_close - 1)
+        admission_open = not supervisor._close_response_horizon_if_required(
+            health
+        )
+        admission_open_observation = boundary_observation(
+            admission_close - 1,
+            response_horizon_closed=not admission_open,
+        )
+
+        set_aperture_progress(admission_close)
+        admission_closed = supervisor._close_response_horizon_if_required(
+            health
+        )
+        admission_closed_observation = boundary_observation(
+            admission_close,
+            response_horizon_closed=admission_closed,
+        )
+
+        wall_origin_epoch = datetime.fromisoformat(
+            supervisor.envelope.wall_origin_utc.replace("Z", "+00:00")
+        ).timestamp()
+        set_aperture_progress(target - 1)
+        supervisor._maybe_finish(health, wall_origin_epoch + 50_000, 0.0)
+        endpoint_open = supervisor.state["terminal"] is None
+        endpoint_open_observation = boundary_observation(
+            target - 1,
+            response_horizon_closed=True,
+        )
+
+        set_aperture_progress(target)
+        supervisor._maybe_finish(health, wall_origin_epoch - 1_000, 0.0)
+        endpoint_closed = (
+            (supervisor.state.get("terminal") or {}).get("reason")
+            == supervisor.programme.qualified_endpoint_reason
+        )
+        endpoint_closed_observation = boundary_observation(
+            target,
+            response_horizon_closed=True,
+        )
+        observations = {
+            "admission_open": admission_open_observation,
+            "admission_closed": admission_closed_observation,
+            "endpoint_open": endpoint_open_observation,
+            "endpoint_closed": endpoint_closed_observation,
+        }
+        timer0_held_constant = all(
+            item["rp2040_timer0_ticks"] == timer0_ticks
+            for item in observations.values()
+        )
+        result = {
+            "time_domain": "qualified_D14_D8_aperture_count_v2",
+            "supporting_local_ordering_domain": "rp2040_timer0",
+            "capture_session": 1,
+            "qualified_origin_subsecond_ticks": origin_subsecond_ticks,
+            "fractional_origin_deferred_until_lower_bound": (
+                fractional_origin_deferred
+            ),
+            "exact_fractional_origin_established": exact_origin_established,
+            "accepted_window_count_origin": accepted_window_origin,
+            "boundary_reference_sequence_origin": (
+                boundary_reference_sequence_origin
+            ),
+            "qualified_endpoint_d14_d8_apertures": target,
+            "correction_response_reserve_d14_apertures": reserve,
+            "correction_admission_close_d14_d8_apertures": admission_close,
+            "boundary_observations": observations,
+            "admission_open_before_exact_aperture_boundary": admission_open,
+            "admission_closed_at_exact_aperture_boundary": admission_closed,
+            "endpoint_open_before_exact_aperture_boundary": endpoint_open,
+            "endpoint_closed_at_exact_aperture_boundary": endpoint_closed,
+            "rp2040_timer0_held_constant_across_aperture_boundaries": (
+                timer0_held_constant
+            ),
+            "forward_host_utc_step_did_not_close_early": endpoint_open,
+            "backward_host_utc_step_did_not_delay_endpoint": endpoint_closed,
+            "physical_actions_performed": 0,
+        }
+        if not all(
+            result[key]
+            for key in (
+                "fractional_origin_deferred_until_lower_bound",
+                "exact_fractional_origin_established",
+                "admission_open_before_exact_aperture_boundary",
+                "admission_closed_at_exact_aperture_boundary",
+                "endpoint_open_before_exact_aperture_boundary",
+                "endpoint_closed_at_exact_aperture_boundary",
+                "rp2040_timer0_held_constant_across_aperture_boundaries",
+                "forward_host_utc_step_did_not_close_early",
+                "backward_host_utc_step_did_not_delay_endpoint",
+            )
+        ):
+            raise RuntimeError("CX323 qualified D14 aperture rehearsal failed")
         return result
 
     qualified_duration_s = supervisor.programme.qualified_duration_s
@@ -3770,8 +3962,7 @@ def _cx323_maintenance_transaction_fixture(
                     ),
                     "candidate_total_demand_picocodes": str(
                         decision.raw_combined_picocodes
-                        + int(before["committed_fll_debt_before_picocodes"])
-                        + int(before["committed_pll_debt_before_picocodes"])
+                        + decision.committed_debt_picocodes
                     ),
                     "safe_cap_codes": str(decision.safe_cap_codes),
                     "requested_delta_codes": str(
@@ -4771,6 +4962,23 @@ def _exercise_cx322_real_transaction_path(
         with write_lock:
             _write_all_fd(master, payload)
 
+    def retained_request_frontier(request_sequence: int) -> bool:
+        """Return whether the live reducer retained this request's snapshot."""
+
+        live = read_live_health_state(run_dir / LIVE_STATE_PATH)
+        health = live.health
+        return (
+            live.state == "complete"
+            and health.get(("cx317_active", "evidence_request_sequence"))
+            == str(request_sequence)
+            and health.get(("cx317_active", "evidence_phase"))
+            == "acceptance_pending"
+            and health.get((LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY))
+            == str(request_frontier_ticks[request_sequence])
+            and health.get((LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY))
+            == "rp2040_timer0"
+        )
+
     def emulate_firmware() -> None:
         buffered = b""
         try:
@@ -4820,20 +5028,11 @@ def _exercise_cx322_real_transaction_path(
                             # service the PTY command loop needed to produce
                             # that snapshot; a synchronous phase-1 wait would
                             # deadlock the emulator against its own query.
-                            retained_frontier = _read_object(
-                                run_dir
-                                / "reports/cx317_active_supervisor_state.json"
-                            ).get("qualified_frontier_raw_ticks")
-                            expected_frontier = request_frontier_ticks[
-                                request_sequence
-                            ]
-                            if retained_frontier != expected_frontier:
+                            if not retained_request_frontier(request_sequence):
                                 raise RuntimeError(
                                     "Campaign18 request frontier was not "
                                     "consumed before phase 2: "
-                                    f"request={request_sequence}, "
-                                    f"retained={retained_frontier}, "
-                                    f"expected={expected_frontier}"
+                                    f"request={request_sequence}"
                                 )
                         state["evidence_phase"] = {
                             1: "acceptance_pending",
@@ -4865,17 +5064,23 @@ def _exercise_cx322_real_transaction_path(
                                     "applied_code" if key == "requested_code" else key
                                 )
                                 state[target] = int(application[key])
+                            if (
+                                programme.sustained_regulation
+                                or programme.integrated_long_run
+                            ):
+                                # A real later application resets the current
+                                # response checkpoint until that transaction's
+                                # response completes.  The supervisor retains
+                                # the earlier authority release separately.
+                                state["checkpoint_passed"] = False
                         if phase == 4:
                             if programme.integrated_long_run:
                                 state["frontier_timestamp_ticks"] = (
                                     response_frontier_ticks[request_sequence]
                                 )
                             if (
-                                request_sequence == 1
-                                and (
-                                    programme.sustained_regulation
-                                    or programme.integrated_long_run
-                                )
+                                programme.sustained_regulation
+                                or programme.integrated_long_run
                             ):
                                 state["checkpoint_passed"] = True
                             if (
@@ -5130,8 +5335,37 @@ def _exercise_cx322_real_transaction_path(
                     )
                 )
             if payload:
-                with write_lock:
-                    _write_all_fd(master, bytes(payload))
+                def publish_payload() -> None:
+                    with write_lock:
+                        _write_all_fd(master, bytes(payload))
+
+                if phase == 1 and programme.integrated_long_run:
+                    # ACTIVE EVIDENCE phase 1 causes the fixture to publish
+                    # the request's exact raw frontier.  Do not release the
+                    # core0-accepted producer until the live supervisor has
+                    # retained that frontier: otherwise it may immediately
+                    # submit phase 2 while its durable state still names the
+                    # preceding request.  Wait on a separate thread so the
+                    # emulator can continue answering ACTIVE SNAPSHOT queries.
+                    def publish_after_retained_frontier() -> None:
+                        try:
+                            _wait_until(
+                                lambda: retained_request_frontier(request_sequence),
+                                10.0,
+                                "CX323 retained request frontier before "
+                                f"request {request_sequence} core0 acceptance",
+                            )
+                            publish_payload()
+                        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                            errors.append(str(exc))
+                            phase4_observed.set()
+
+                    threading.Thread(
+                        target=publish_after_retained_frontier,
+                        daemon=True,
+                    ).start()
+                else:
+                    publish_payload()
 
         causal_phase_release = release_cx323_phase
 
@@ -6080,8 +6314,44 @@ def _run_real_process_topology(
                         },
                     ),
                 )
+                _wait_until(
+                    lambda: (
+                        supervisor.poll() is None
+                        and _read_object(supervisor_state_path).get("terminal")
+                        is None
+                        and isinstance(
+                            _read_object(supervisor_state_path).get(
+                                "host_verification_hold"
+                            ),
+                            dict,
+                        )
+                    ),
+                    10.0,
+                    f"{endpoint_label} capture-fault review hold",
+                )
+                held_state = _read_object(supervisor_state_path)
+                hold = held_state.get("host_verification_hold") or {}
+                pre_abort_commands = _read_until_quiet(master)
+                if (
+                    supervisor.poll() is not None
+                    or held_state.get("terminal") is not None
+                    or hold.get("source") != "authoritative_capture_observer"
+                    or hold.get("review_status") != "operator_review_required"
+                    or hold.get("new_authority") is not False
+                    or b"ACTIVE ABORT\n" in pre_abort_commands
+                    or _serial_owner_pids(device) != {capture.pid}
+                ):
+                    raise RuntimeError(
+                        f"{endpoint_label} capture-fault did not preserve the "
+                        f"review hold and sole owner: hold={hold!r}"
+                    )
+                # The fault is only an alert. Exercise the independent abort
+                # path as an explicit operator action after reviewing it.
+                send_abort(host_abort)
                 supervisor.wait(timeout=10)
-                observed_commands = _read_until(master, b"ACTIVE ABORT\n")
+                observed_commands = pre_abort_commands + _read_until(
+                    master, b"ACTIVE ABORT\n"
+                )
                 _wait_until(
                     lambda: int(
                         _read_object(
@@ -6106,38 +6376,52 @@ def _run_real_process_topology(
                     "physical_aperture_incomplete_count_changed:1->2,"
                     "association_loss_count_changed:0->1"
                 )
+                expected_capture_baseline = {
+                    key: 0
+                    for key in _authoritative_capture_counters(programme)
+                }
+                expected_capture_baseline[
+                    "physical_aperture_incomplete_count"
+                ] = 1
+                expected_capture_observed = dict(expected_capture_baseline)
+                expected_capture_observed.update(
+                    {
+                        "rejected_window_count": 1,
+                        "physical_aperture_incomplete_count": 2,
+                        "association_loss_count": 1,
+                    }
+                )
+                expected_operator_decision = next(
+                    decision
+                    for decision in programme.terminal_decisions
+                    if decision.endswith("operator_abort")
+                )
                 expected_fault_detail = {
                     "reason": expected_fault_reason,
                     "qualified_origin_session_id": 1,
                     "observed_capture_session_id": 2,
-                    "authoritative_capture_baseline": {
-                        "rejected_window_count": 0,
-                        "physical_aperture_incomplete_count": 1,
-                        "association_loss_count": 0,
-                    },
-                    "observed_authoritative_capture_counters": {
-                        "rejected_window_count": 1,
-                        "physical_aperture_incomplete_count": 2,
-                        "association_loss_count": 1,
-                    },
+                    "authoritative_capture_baseline": expected_capture_baseline,
+                    "observed_authoritative_capture_counters": (
+                        expected_capture_observed
+                    ),
                     "last_confirmed_code": int(
                         real_transaction_path["applied_code"]
                     ),
                     "new_control_authority": False,
                 }
                 if (
-                    supervisor.returncode != 2
+                    supervisor.returncode != 3
                     or terminal.get("result") != "aborted"
-                    or terminal.get("reason") != expected_fault_reason
+                    or terminal.get("reason") != "independent_host_abort_fifo"
                     or terminal.get("primary_decision")
-                    != f"{programme.key}_D14_D8_authority_or_capture_fault"
+                    != expected_operator_decision
                     or terminal.get("last_confirmed_code")
                     != int(real_transaction_path["applied_code"])
                     or terminal_state.get("authoritative_capture_terminal_detail")
                     != expected_fault_detail
                 ):
                     raise RuntimeError(
-                        f"{endpoint_label} capture-fault terminal was not exact: "
+                        f"{endpoint_label} reviewed operator terminal was not exact: "
                         f"exit={supervisor.returncode}; terminal={terminal!r}"
                     )
                 _write_all_fd(
@@ -6301,6 +6585,9 @@ def _run_real_process_topology(
                     "supervisor_terminal_detail": terminal_state.get(
                         "authoritative_capture_terminal_detail"
                     ),
+                    "host_verification_hold": hold,
+                    "review_hold_observed_before_operator_abort": True,
+                    "capture_and_serial_owner_retained_during_hold": True,
                     "post_abort_complete_active_snapshot": post_abort_snapshot,
                     "post_fault_authority_commands": list(forbidden),
                     "retained_row_counts_before_fault": retained_before,
@@ -6928,6 +7215,7 @@ def run(
                 "shared_fail_static_fault",
                 "transport_obstruction",
                 "analysis_seal_registration",
+                "unattended_analysis_seal_registration_without_model_participation",
             ],
         },
         "unexercised_physical_boundaries": [

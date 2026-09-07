@@ -53,6 +53,28 @@ superseding Attempt 8 and Attempt 9 registrations, bounded repair and no-retry
 boundary are recorded in
 [`11_HYBRID_72H_ATTEMPT9_EXACT_RESPONSE_TIMING_TERMINAL.md`](11_HYBRID_72H_ATTEMPT9_EXACT_RESPONSE_TIMING_TERMINAL.md).
 
+Attempt 10 then retained 89,710 supervisor-qualified apertures and two
+applications before a host latched-checkpoint invariant rejected a legitimate
+second transaction. Attempt 11 exercised eleven applications and continued
+capture for more than 72 wall-clock hours, but its host verifier compared
+pre-decision correction debt against a firmware decision that had correctly
+cleared that debt. The resulting zero-authority hold prevented the supervised
+72-hour endpoint and clean terminal. A causal-prefix superseding replay over
+the unchanged Attempt 11 snapshot reproduces all 448 decisions and all eleven
+responses exactly; it does not convert the incomplete endpoint into a pass.
+See
+[`12_HYBRID_72H_ATTEMPT10_LATCHED_CHECKPOINT_TERMINAL.md`](12_HYBRID_72H_ATTEMPT10_LATCHED_CHECKPOINT_TERMINAL.md)
+and
+[`13_HYBRID_72H_ATTEMPT11_HOST_REPLAY_HOLD.md`](13_HYBRID_72H_ATTEMPT11_HOST_REPLAY_HOLD.md).
+
+Attempt 12 passed all offline and accelerated operational-path gates, then
+stopped at firmware entry when a detached macOS service context was denied
+access to the mounted RP2040 UF2 bootloader volume. The board reset, but no UF2
+copy, setup, DAC write, capture or qualification followed. This is a retained
+platform launch-mechanism terminal with no scientific result and no automatic
+retry authority. See
+[`14_HYBRID_72H_ATTEMPT12_FIRMWARE_ENTRY_TERMINAL.md`](14_HYBRID_72H_ATTEMPT12_FIRMWARE_ENTRY_TERMINAL.md).
+
 This authority supersedes the original Gate B waveform dependency and the
 Prompt 04 stop boundary only for these explicitly identified engineering
 acquisitions. It does not change the Prompt 02 waveform terminal, qualify the

@@ -175,8 +175,7 @@ def _exact_cx323_lifecycle() -> tuple[
                 "raw_pll_demand_picocodes": str(decision.raw_pll_picocodes),
                 "candidate_total_demand_picocodes": str(
                     decision.raw_combined_picocodes
-                    + int(before["committed_fll_debt_before_picocodes"])
-                    + int(before["committed_pll_debt_before_picocodes"])
+                    + decision.committed_debt_picocodes
                 ),
                 "reason": decision.reason,
             }
@@ -379,6 +378,151 @@ def _exact_cx323_lifecycle() -> tuple[
         )
         maintenance.append(row)
 
+    # Reproduce Attempt 11's causal shape at a minimal scale: a maintenance
+    # request leaves bounded debt, its response completes, and the next
+    # zero-containing interval clears that debt before its decision payload is
+    # recorded.
+    _observation, _decision, row = decide(
+        timestamp=3600,
+        opening=2701,
+        closing=3301,
+        counts=1,
+        tight="TIGHT_INSIDE",
+    )
+    maintenance.append(row)
+    debt_observation, debt_request, debt_request_ahm = decide(
+        timestamp=4200,
+        opening=3301,
+        closing=3901,
+        counts=1,
+        tight="TIGHT_INSIDE",
+    )
+    assert debt_request.maintenance_request is True
+    request_record = len(transactions) + 1
+    transactions.append(
+        {
+            "transaction_record_sequence": str(request_record),
+            "event": "request_created",
+            "decision_sequence": str(debt_request.decision_sequence),
+            "request_sequence": "3",
+        }
+    )
+    debt_request_ahm.update(
+        {
+            "transaction_record_sequence": str(request_record),
+            "transaction_event": "request_created",
+            "request_sequence": "3",
+        }
+    )
+    maintenance.append(debt_request_ahm)
+    transactions.append(
+        {
+            "transaction_record_sequence": str(request_record + 1),
+            "event": "core0_accepted",
+            "decision_sequence": str(debt_request.decision_sequence),
+            "request_sequence": "3",
+        }
+    )
+    before = _snapshot(controller, "before")
+    controller.confirm_application(
+        debt_request,
+        applied_code=debt_request.requested_code,
+        dac_epoch=controller.dac_epoch + 1,
+        first_consumer_exact=True,
+    )
+    transactions.append(
+        {
+            "transaction_record_sequence": str(request_record + 2),
+            "event": "application",
+            "decision_sequence": str(debt_request.decision_sequence),
+            "request_sequence": "3",
+            "applied_code": str(debt_request.requested_code),
+            "dac_epoch": str(controller.dac_epoch),
+        }
+    )
+    application = base(
+        "application_first_consumer", before, _snapshot(controller, "after")
+    )
+    application.update(
+        {
+            "hybrid_record_sequence": str(len(decisions)),
+            "decision_sequence": str(debt_request.decision_sequence),
+            "source_first_sequence": str(debt_observation.source_first_sequence),
+            "source_last_sequence": str(debt_observation.source_last_sequence),
+            "transaction_record_sequence": str(request_record + 2),
+            "transaction_event": "application",
+            "request_sequence": "3",
+            "actual_applied_code": str(debt_request.requested_code),
+            "actual_dac_epoch": str(controller.dac_epoch),
+            "downstream_epoch_exact": "true",
+            "requested_delta_codes": str(debt_request.requested_delta_codes),
+            "requested_code": str(debt_request.requested_code),
+            "safe_cap_codes": str(debt_request.safe_cap_codes),
+            "raw_fll_demand_picocodes": str(debt_request.raw_fll_picocodes),
+            "raw_pll_demand_picocodes": str(debt_request.raw_pll_picocodes),
+            "candidate_total_demand_picocodes": str(
+                debt_request.raw_combined_picocodes
+                + debt_request.committed_debt_picocodes
+            ),
+        }
+    )
+    maintenance.append(application)
+    assert controller.debt.total_picocodes != 0
+    before = _snapshot(controller, "before")
+    controller.complete_response(fresh_exact=True)
+    response_record = request_record + 3
+    transactions.append(
+        {
+            "transaction_record_sequence": str(response_record),
+            "event": "response",
+            "decision_sequence": str(debt_request.decision_sequence),
+            "request_sequence": "3",
+            "applied_code": str(debt_request.requested_code),
+            "dac_epoch": str(controller.dac_epoch),
+            "requested_delta_codes": str(debt_request.requested_delta_codes),
+            "observed_response_hz": "0.000000000",
+            "response_class": "healthy_indeterminate_near_resolution",
+        }
+    )
+    response = base("response_complete", before, _snapshot(controller, "after"))
+    response.update(
+        {
+            "hybrid_record_sequence": str(len(decisions)),
+            "decision_sequence": str(debt_request.decision_sequence),
+            "source_first_sequence": str(debt_observation.source_first_sequence),
+            "source_last_sequence": str(debt_observation.source_last_sequence),
+            "transaction_record_sequence": str(response_record),
+            "transaction_event": "response",
+            "request_sequence": "3",
+            "actual_applied_code": str(debt_request.requested_code),
+            "actual_dac_epoch": str(controller.dac_epoch),
+            "downstream_epoch_exact": "true",
+            "requested_delta_codes": str(debt_request.requested_delta_codes),
+            "requested_code": str(debt_request.requested_code),
+            "safe_cap_codes": str(debt_request.safe_cap_codes),
+            "raw_fll_demand_picocodes": str(debt_request.raw_fll_picocodes),
+            "raw_pll_demand_picocodes": str(debt_request.raw_pll_picocodes),
+            "candidate_total_demand_picocodes": str(
+                debt_request.raw_combined_picocodes
+                + debt_request.committed_debt_picocodes
+            ),
+        }
+    )
+    maintenance.append(response)
+    debt_before_clear = controller.debt.total_picocodes
+    _observation, cleared, cleared_ahm = decide(
+        timestamp=4800,
+        opening=3901,
+        closing=4501,
+        counts=0,
+        tight="TIGHT_INSIDE",
+    )
+    assert cleared.reason == "zero_containing_interval"
+    assert cleared.committed_debt_picocodes == 0
+    assert debt_before_clear != 0
+    assert cleared_ahm["candidate_total_demand_picocodes"] == "0"
+    maintenance.append(cleared_ahm)
+
     for transaction in transactions:
         transaction.update(identity)
 
@@ -401,7 +545,7 @@ def test_cx323_ahm_oracle_replays_rejection_and_two_window_gnss_requalification(
 
     assert replay["exact"] is True
     assert replay["replay_mode"] == "cx323_phase_priority_oracle_with_AHM_v1"
-    assert [row["event"] for row in maintenance] == [
+    assert [row["event"] for row in maintenance[:10]] == [
         "policy_activation",
         "decision",
         "application_first_consumer",
@@ -413,12 +557,34 @@ def test_cx323_ahm_oracle_replays_rejection_and_two_window_gnss_requalification(
         "decision",
         "decision",
     ]
-    assert maintenance[-2]["metadata_hold_after"] == "true"
-    assert maintenance[-2]["requalification_window_count_after"] == "1"
-    assert maintenance[-1]["metadata_hold_after"] == "false"
-    assert maintenance[-1]["requalification_window_count_after"] == "2"
-    assert maintenance[-3]["source_last_sequence"] == "1201"
-    assert maintenance[-3]["requalification_d14_d8_observation_sequence"] == "1501"
+    assert maintenance[8]["metadata_hold_after"] == "true"
+    assert maintenance[8]["requalification_window_count_after"] == "1"
+    assert maintenance[9]["metadata_hold_after"] == "false"
+    assert maintenance[9]["requalification_window_count_after"] == "2"
+    assert maintenance[7]["source_last_sequence"] == "1201"
+    assert maintenance[7]["requalification_d14_d8_observation_sequence"] == "1501"
+    assert maintenance[-1]["reason"] == "zero_containing_interval"
+    assert maintenance[-1]["committed_fll_debt_before_picocodes"] != "0"
+    assert maintenance[-1]["candidate_total_demand_picocodes"] == "0"
+
+    maintenance[-1]["candidate_total_demand_picocodes"] = maintenance[-1][
+        "committed_fll_debt_before_picocodes"
+    ]
+    corrupted = replay_cx323_maintenance_history(
+        decisions,
+        transactions,
+        maintenance,
+        policy_path=programme.policy_path,
+        expected_run_identity=programme.runtime_run_identity,
+        expected_build_identity="a" * 64 + ":" + "b" * 64,
+        expected_profile_identity=programme.profile_id,
+    )
+    assert corrupted["exact"] is False
+    assert [
+        item["maintenance_record_sequence"]
+        for item in corrupted["comparisons"]
+        if not item["exact"]
+    ] == [maintenance[-1]["maintenance_record_sequence"]]
 
 
 def test_cx323_ahm_oracle_uses_explicit_requalification_frontier() -> None:
@@ -455,6 +621,11 @@ def test_cx323_phase4_response_attestation_waits_for_and_replays_ahm(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     decisions, transactions, maintenance = _exact_cx323_lifecycle()
+    # A later mismatch is outside response 1's causal checkpoint and must not
+    # retroactively invalidate its retained pre-acknowledgement attestation.
+    maintenance[-1]["candidate_total_demand_picocodes"] = maintenance[-1][
+        "committed_fll_debt_before_picocodes"
+    ]
     programme = CX323_D9_D6_72H_PROGRAMME
     ahy_path = tmp_path / "active_hybrid_decisions_v1.csv"
     act_path = tmp_path / "active_transactions_v1.csv"
