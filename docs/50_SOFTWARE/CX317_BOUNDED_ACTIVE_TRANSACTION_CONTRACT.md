@@ -195,6 +195,15 @@ causally later exact D14/D8 observation bound to that retained actuator
 identity. An ambiguous or platform-originated rejection remains fail-static;
 only the explicit pre-acceptance metadata-hold withdrawal is nonterminal.
 
+Requalification is published only from a timestamped health update. An
+ordinary service poll with otherwise sufficient fresh evidence but no event
+timestamp must defer the transition; timestamp unavailability alone is not an
+identity contradiction and must not latch `FAULT`. If a transaction does
+become `FAULT` or `ABORTED` while a metadata-hold flag remains set, externally
+reported state and reason must expose the terminal transaction first. A stale
+mode flag must never mask a terminal, invent recoverability or suppress the
+cause needed for deterministic diagnosis.
+
 ## Fail-static behavior
 
 Duplicate, stale, reordered, expired, mismatched, clamped, ambiguous, missing,
