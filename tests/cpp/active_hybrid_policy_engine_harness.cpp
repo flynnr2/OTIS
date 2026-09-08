@@ -250,7 +250,7 @@ int main() {
     decide_and_emit("epoch_fault", 1u, &engine, &input, &decision);
   }
   {
-    constexpr uint64_t kTicksPerSecond = 16000000ull;
+    constexpr uint64_t kTicksPerSecond = 1000000ull;
     constexpr uint64_t kSetupTicks = 611ull * kTicksPerSecond + 12345ull;
     OtisActiveHybridEngine engine;
     otis_active_hybrid_engine_init_at_ticks(&engine, kSetupTicks);
@@ -268,7 +268,7 @@ int main() {
     assert(!decision.cadence_limited);
   }
   {
-    constexpr uint64_t kTicksPerSecond = 16000000ull;
+    constexpr uint64_t kTicksPerSecond = 1000000ull;
     constexpr uint64_t kSetupTicks = 613ull * kTicksPerSecond + 12345ull;
     constexpr uint64_t kPhaseEntryTicks =
         3001ull * kTicksPerSecond + 45678ull;

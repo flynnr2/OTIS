@@ -11,7 +11,7 @@
     },
     "inherited_active_policy_root": {
       "path": "profiles/discipline/cx317_bounded_active_v2.json",
-      "sha256": "9fb037a5f435361928d36a2a6bc7a010b74100588cd83692051d6a093da9f27f"
+      "sha256": "1953349ec5eef069b6bc8d79eb0b885c8599bbaecc79f4b8cfeb50b46669d702"
     },
     "current_contract_authority": {
       "path": "docs/50_SOFTWARE/CURRENT_CONTRACT_AND_POLICY_AUTHORITY.md",
@@ -23,23 +23,23 @@
     },
     "selected_frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
-      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+      "sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+      "sha256": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92"
     },
     "response_policy": {
       "path": "profiles/discipline/cx317_response_classification_v2.json",
-      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+      "sha256": "aa327a6571f5f49bce6bd54c4b01090a626a08cb86933d568a96e0909e0e1827"
     },
     "selected_relative_phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
-      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+      "sha256": "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792"
     },
     "selected_hybrid_preview": {
       "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
-      "sha256": "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76"
+      "sha256": "6f1e0a8d7b9b2a66dc148768208d21bafe252ab37a9e3341762eda64c72d3b37"
     }
   },
   "authority": {

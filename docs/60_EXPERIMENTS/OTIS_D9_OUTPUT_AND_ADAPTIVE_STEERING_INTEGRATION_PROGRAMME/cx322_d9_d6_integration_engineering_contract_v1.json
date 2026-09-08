@@ -11,7 +11,7 @@
   "semantic_parents": {
     "d9_d6_readiness_contract_semantic_sha256": "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d",
     "prompt02_controller_decision_semantic_sha256": "3ab6a0a004788e5856eabe27b45956160ec2b66d05a8a42237c7cf4325bda82f",
-    "cx322_policy_sha256": "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48",
+    "cx322_policy_sha256": "038199406591d4e810690563baf75fa227d9c05d7126280b4e7260fa43f5a130",
     "prompt03_non_effective_semantics_status": "reference_only_not_selected_by_this_baseline_integration"
   },
   "firmware_profile": {
@@ -117,5 +117,5 @@
       "general_D9_waveform_qualification"
     ]
   },
-  "contract_semantic_sha256": "b21b94db83dd5f583f960ebf2339653134604ffd3cf9b902eb3731febaaf52b9"
+  "contract_semantic_sha256": "b631e299cad005b654a6291b6f80b7d063c8c65fe05579283fa1be85ec49b8aa"
 }

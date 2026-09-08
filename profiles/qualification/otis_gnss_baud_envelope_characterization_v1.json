@@ -88,9 +88,8 @@
     "ring_capacity_entries": 1024,
     "entry_fields": ["data_u8", "uart_error_flags", "loss_before"],
     "consumer_byte_budget_per_call": 128,
-    "consumer_counter_budget_ticks": 4000,
-    "consumer_counter_budget_us_nominal": 250,
-    "consumer_counter_domain": "rp2040_timer0",
+    "consumer_service_budget_us": 250,
+    "consumer_counter_domain": "rp2040_monotonic_us32",
     "factor_of_two_observed_margin_max_high_water_entries": 512,
     "maximum_line_bytes": 96,
     "maximum_discovery_line_bytes": 256,
@@ -145,14 +144,14 @@
   },
   "counter_domains": {
     "raw_device": {
-      "name": "rp2040_timer0",
-      "nominal_hz": 16000000,
+      "name": "rp2040_monotonic_us32",
+      "nominal_hz": 1000000,
       "width_bits": 32,
       "rollover": "wrapping_unsigned_forward_only_with_half_range_ambiguity_limit"
     },
     "derived_device": {
-      "name": "rp2040_timer0_extended",
-      "nominal_hz": 16000000,
+      "name": "rp2040_monotonic_us64",
+      "nominal_hz": 1000000,
       "width_bits": 64,
       "rollover": "non_wrapping_session_bound_D14_boundary_reconstruction"
     },
@@ -163,7 +162,7 @@
       "rollover": "non_wrapping_for_programme_duration",
       "decision_authority": "deadline_and_evidence_freshness_only_not_capture_timestamp_truth"
     },
-    "confirmed_online_duration": "derive exact deltas in rp2040_timer0_extended from snapshots whose phase is ordinary_online, peak_status, or clean_requalification and whose confirmed baud/epoch/metadata frontier remain causal"
+    "confirmed_online_duration": "derive exact deltas in rp2040_monotonic_us64 from snapshots whose phase is ordinary_online, peak_status, or clean_requalification and whose confirmed baud/epoch/metadata frontier remain causal"
   },
   "phase_attribution": [
     "ordinary_online", "peak_status", "clean_requalification",

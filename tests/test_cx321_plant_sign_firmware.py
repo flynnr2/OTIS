@@ -150,7 +150,7 @@ def test_compiled_psq_formatter_capture_and_exact_replay(tmp_path: Path) -> None
         CsvValidationContext(
             "plant_sign_qualification_v1",
             frozenset(),
-            frozenset({"rp2040_timer0_extended"}),
+            frozenset({"rp2040_monotonic_us64"}),
         ),
     )
     assert validation.ok, validation.errors
@@ -168,7 +168,7 @@ def test_stateful_live_timer_extension_across_real_lifecycle(
             "-Wextra",
             "-Werror",
             str(ROOT / "tests/cpp/cx321_live_extension_harness.cpp"),
-            str(FIRMWARE / "otis_timer0_extension.cpp"),
+            str(FIRMWARE / "otis_monotonic_us_extension.cpp"),
             str(FIRMWARE / "otis_cx321_plant_sign.cpp"),
             str(FIRMWARE / "otis_cx321_plant_sign_format.cpp"),
             str(FIRMWARE / "otis_active_hybrid_policy_engine.cpp"),

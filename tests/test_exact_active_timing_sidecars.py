@@ -22,7 +22,7 @@ from host.otis_tools.run_paths import (
 
 ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
-EXACT_DOMAIN = "rp2040_timer0_extended"
+EXACT_DOMAIN = "rp2040_monotonic_us64"
 
 
 @pytest.fixture(scope="session")
@@ -124,17 +124,17 @@ def test_exact_sidecar_contract_rejects_coarse_or_unknown_time_domain(
         cwd=ROOT,
     ).stdout
     path = tmp_path / "active_transactions_v2.csv"
-    path.write_text(output.replace(EXACT_DOMAIN, "rp2040_timer0"), encoding="utf-8")
+    path.write_text(output.replace(EXACT_DOMAIN, "rp2040_monotonic_us32"), encoding="utf-8")
     result = validate_csv(
         path,
         CsvValidationContext(
             "active_transactions_v2",
             frozenset(),
-            frozenset({"rp2040_timer0", EXACT_DOMAIN}),
+            frozenset({"rp2040_monotonic_us32", EXACT_DOMAIN}),
         ),
     )
     assert not result.ok
-    assert "requires rp2040_timer0_extended" in " ".join(result.errors)
+    assert "requires rp2040_monotonic_us64" in " ".join(result.errors)
 
 
 def test_long_run_inventory_adds_v2_without_mutating_v1_paths() -> None:

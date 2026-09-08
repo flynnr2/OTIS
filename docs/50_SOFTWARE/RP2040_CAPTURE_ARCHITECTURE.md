@@ -171,7 +171,7 @@ The experimental backend is `OTIS_CAPTURE_BACKEND_PIO_FIFO`, which emits
 
 The PIO program proves that selected GPIO edges are observed by PIO, but it does
 not yet latch final event timestamps in hardware. Firmware reads the FIFO in the
-main loop and attaches an `rp2040_timer0` timestamp at drain time. Records
+main loop and attaches an `rp2040_monotonic_us32` timestamp at drain time. Records
 therefore keep `TIMESTAMP_RECONSTRUCTED`, and reports must treat them as
 PIO-detected but CPU-timestamped.
 

@@ -186,7 +186,7 @@ def _control_row(
         "control_seq": str(sequence),
         "decision_id": f"fixture:{sequence}",
         "decision_timestamp_ticks": str(sequence * endurance.TIMER_HZ),
-        "time_domain": "rp2040_timer0",
+        "time_domain": "rp2040_monotonic_us32",
         "control_state": "ACTIVE",
         "preview_eligibility": "true" if limited_delta else "false",
         "limited_delta_codes": str(limited_delta),
@@ -288,12 +288,12 @@ def _write_analyzer_fixture(
         ["component", "status_key", "status_value"],
         health_rows,
     )
-    timer0_modulus = (1 << 32) * 16
+    monotonic_us_modulus = 1 << 32
     raw_rows: list[dict[str, str]] = []
     snapshot_rows: list[dict[str, str]] = []
     count_rows: list[dict[str, str]] = []
     for sequence in range(interval_count + 1):
-        ticks = (100 + sequence * endurance.TIMER_HZ) % timer0_modulus
+        ticks = (100 + sequence * endurance.TIMER_HZ) % monotonic_us_modulus
         down_counter = (3_000_000_000 - sequence * 10_000_000) % (1 << 32)
         raw_rows.append(
             {
@@ -303,7 +303,7 @@ def _write_analyzer_fixture(
                 "channel_id": "1",
                 "edge": "R",
                 "timestamp_ticks": str(ticks),
-                "capture_domain": "rp2040_timer0",
+                "capture_domain": "rp2040_monotonic_us32",
                 "flags": "0",
             }
         )
@@ -329,10 +329,10 @@ def _write_analyzer_fixture(
                     "channel_id": "2",
                     "gate_open_ticks": str(
                         (100 + (sequence - 1) * endurance.TIMER_HZ)
-                        % timer0_modulus
+                        % monotonic_us_modulus
                     ),
                     "gate_close_ticks": str(ticks),
-                    "gate_domain": "rp2040_timer0",
+                    "gate_domain": "rp2040_monotonic_us32",
                     "counted_edges": "10000000",
                     "source_edge": "R",
                     "source_domain": "h1_cx317_ocxo_10mhz",
@@ -532,7 +532,7 @@ def test_candidate_bundle_is_non_effective_until_exact_reports_activate_it(
     assert capture_contract["contracts"]["active_hybrid_decisions_v2"] == 2
     assert {
         item["name"] for item in capture_contract["domains"]
-    } >= {"rp2040_timer0", endurance.EXACT_LIFECYCLE_TIME_DOMAIN}
+    } >= {"rp2040_monotonic_us32", endurance.EXACT_LIFECYCLE_TIME_DOMAIN}
 
     tampered_activation = deepcopy(checked_activation)
     tampered_activation["capture_evidence_contract"]["contracts"][
@@ -1203,8 +1203,8 @@ def test_canonical_qualified_interval_joins_d14_ref_snp_and_d8_cnt(tmp_path: Pat
         run_dir / "csv/raw_events.csv",
         ["record_type", "schema_version", "event_seq", "channel_id", "edge", "timestamp_ticks", "capture_domain", "flags"],
         [
-            {"record_type": "REF", "schema_version": "1", "event_seq": "1", "channel_id": "1", "edge": "R", "timestamp_ticks": "100", "capture_domain": "rp2040_timer0", "flags": "0"},
-            {"record_type": "REF", "schema_version": "1", "event_seq": "2", "channel_id": "1", "edge": "R", "timestamp_ticks": str(100 + endurance.TIMER_HZ), "capture_domain": "rp2040_timer0", "flags": "0"},
+            {"record_type": "REF", "schema_version": "1", "event_seq": "1", "channel_id": "1", "edge": "R", "timestamp_ticks": "100", "capture_domain": "rp2040_monotonic_us32", "flags": "0"},
+            {"record_type": "REF", "schema_version": "1", "event_seq": "2", "channel_id": "1", "edge": "R", "timestamp_ticks": str(100 + endurance.TIMER_HZ), "capture_domain": "rp2040_monotonic_us32", "flags": "0"},
         ],
     )
     endurance._write_csv_rows(
@@ -1218,7 +1218,7 @@ def test_canonical_qualified_interval_joins_d14_ref_snp_and_d8_cnt(tmp_path: Pat
     endurance._write_csv_rows(
         run_dir / "csv/count_observations.csv",
         ["record_type", "schema_version", "count_seq", "channel_id", "gate_open_ticks", "gate_close_ticks", "gate_domain", "counted_edges", "source_edge", "source_domain", "flags"],
-        [{"record_type": "CNT", "schema_version": "1", "count_seq": "1", "channel_id": "2", "gate_open_ticks": "100", "gate_close_ticks": str(100 + endurance.TIMER_HZ), "gate_domain": "rp2040_timer0", "counted_edges": "10000000", "source_edge": "R", "source_domain": "h1_cx317_ocxo_10mhz", "flags": "0"}],
+        [{"record_type": "CNT", "schema_version": "1", "count_seq": "1", "channel_id": "2", "gate_open_ticks": "100", "gate_close_ticks": str(100 + endurance.TIMER_HZ), "gate_domain": "rp2040_monotonic_us32", "counted_edges": "10000000", "source_edge": "R", "source_domain": "h1_cx317_ocxo_10mhz", "flags": "0"}],
     )
     rows = endurance.canonical_d14_d8_intervals(run_dir)
     assert len(rows) == 1
@@ -1832,7 +1832,7 @@ def test_candidate_fll_frequency_uses_d14_not_rp2040_timer_as_reference() -> Non
     assert candidate["windows"][0]["frequency_reference_domain"] == (
         "D14_reference_intervals"
     )
-    assert result["aperture_diagnostic_domain"] == "rp2040_timer0"
+    assert result["aperture_diagnostic_domain"] == "rp2040_monotonic_us32"
 
 
 def test_candidate_fll_windows_never_straddle_session_code_or_epoch() -> None:

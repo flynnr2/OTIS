@@ -8,11 +8,11 @@
 
 namespace {
 
-constexpr uint64_t kReferenceTicksPerSecond = 16000000ull;
+constexpr uint64_t kReferenceTicksPerSecond = 1000000ull;
 constexpr uint64_t kReferenceTimestampModulus =
     kReferenceTicksPerSecond * (1ull << 32) / 1000000ull;
-constexpr uint64_t kMinimumReferenceTicks = 12800000ull;
-constexpr uint64_t kMaximumReferenceTicks = 19200000ull;
+constexpr uint64_t kMinimumReferenceTicks = 800000ull;
+constexpr uint64_t kMaximumReferenceTicks = 1200000ull;
 constexpr uint64_t kCounterModulus = 1ull << 32;
 constexpr int64_t kNominalEdges = 10000000ll;
 constexpr double kGainHzPerCode = 0.00017008467693813145;

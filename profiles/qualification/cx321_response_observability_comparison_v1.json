@@ -15,7 +15,7 @@
   },
   "selected_estimator": {
     "path": "profiles/estimators/cx321_plant_sign_1500_v1.json",
-    "sha256": "cf5ea727615ea79a7e23258b674798a3215b0f996ac1a4a454eb39afe0d737b1"
+    "sha256": "ec048c6b698dab0d542da51b8c1781c554c18383e4b514adfc54c233390b06f7"
   },
   "fixed_code_null_evidence": {
     "run_id": "stage3_fixed_code_20260801T121709Z",

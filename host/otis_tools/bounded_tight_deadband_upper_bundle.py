@@ -176,7 +176,7 @@ def create_proposal(
                 "setup_opens_new_dac_epoch": True,
             },
             "timing": {
-                "status_clock_domain": "rp2040_timer0",
+                "status_clock_domain": "rp2040_monotonic_us32",
                 "measurement_reference": "gnss_raw_pps",
             },
             "gnss_pps": {

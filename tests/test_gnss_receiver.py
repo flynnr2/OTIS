@@ -292,7 +292,7 @@ def test_gnss_service_is_statically_bounded_and_capture_first() -> None:
     assert "kOtisGnssMaximumLineBytes = 96u" in header
     assert "kOtisGnssDiscoveryMaximumLineBytes = 256u" in header
     assert "kOtisGnssUartRxConsumerByteBudget = 128u" in ring_header
-    assert "kOtisGnssUartRxConsumerTickBudget = 4000u" in ring_header
+    assert "kOtisGnssUartRxConsumerBudgetUs = 250u" in ring_header
     assert "kOtisGnssUartRxTransitionHardwareDiscardBudget = 32u" in ring_header
     assert ring_header.count("uint64_t consumer_service_call_count;") == 2
     assert '"consumer_service_call_count_width_bits", 64u' in sketch
@@ -435,7 +435,7 @@ def test_startup_attachment_telemetry_and_local_request_invariants() -> None:
         "pmtk605_last_peripheral_complete_ticks_domain",
     ):
         assert f'"{key}"' in status
-    assert '"rp2040_timer0_extended"' in status
+    assert '"rp2040_monotonic_us64"' in status
 
     request = receiver[
         receiver.index("OtisGnssRequestDisposition otis_gnss_receiver_request_baud_transition") :
@@ -569,10 +569,10 @@ def test_characterization_snapshot_counter_is_d14_session_bound() -> None:
         sketch.index("void note_gnss_d14_snapshot_boundary") :
         sketch.index("#endif", sketch.index("void note_gnss_d14_snapshot_boundary"))
     ]
-    assert "otis_timer0_extension_advance_boundary" in boundary
+    assert "otis_monotonic_us_extension_advance_boundary" in boundary
     assert "capture_session" in boundary
     assert "reference_sequence" in boundary
-    assert "kGnssSnapshotProjectionMaximumDistanceTicks = 19200000ull" in sketch
-    assert "otis_timer0_extension_project_nearest" in sketch
+    assert "kGnssSnapshotProjectionMaximumDistanceUs = 1200000ull" in sketch
+    assert "otis_monotonic_us_extension_project_nearest" in sketch
     assert '"snapshot_counter_domain"' in sketch
-    assert '"rp2040_timer0_extended"' in sketch
+    assert '"rp2040_monotonic_us64"' in sketch

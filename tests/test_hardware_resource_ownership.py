@@ -163,7 +163,7 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
     )
     emit_body = sketch_source[emit_start:emit_end]
     assert "otis_count_observation_on_pps_boundary(" in emit_body
-    assert "otis_capture_ticks_now()" not in emit_body
+    assert "otis_monotonic_us32_now()" not in emit_body
 
     drain_start = sketch_source.index("void drain_pps_count_boundary_ring(")
     drain_end = sketch_source.index("void emit_common_boot_status(", drain_start)
@@ -219,7 +219,7 @@ def test_irq_constructs_one_captured_event_for_diagnostics_and_ref() -> None:
         "void handle_tcxo_observation_edge(void)", handler_start
     )
     handler = irq_source[handler_start:handler_end]
-    assert handler.count("otis_capture_ticks_now_from_isr()") == 1
+    assert handler.count("otis_monotonic_us32_now_from_isr()") == 1
     assert handler.count("gpio_get(capture_gpio)") == 1
     assert "const OtisCapturedEdge captured_event" in handler
     assert "pps_count_boundary_handler" not in handler
@@ -234,7 +234,7 @@ def test_irq_constructs_one_captured_event_for_diagnostics_and_ref() -> None:
     foreground = irq_source[foreground_start:]
     assert "d14_last_raw_timestamp = record.timestamp_ticks" in foreground
     assert "d14_last_accepted_timestamp = record.timestamp_ticks" in foreground
-    assert "otis_capture_ticks_now()" not in ring_source
+    assert "otis_monotonic_us32_now()" not in ring_source
 
 
 def test_all_requested_resource_classes_have_diagnostics() -> None:

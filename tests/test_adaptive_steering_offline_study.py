@@ -44,7 +44,7 @@ def _interval(sequence: int, ticks: int) -> Interval:
         closing_reference_sequence=sequence,
         opening_reference_timestamp_ticks=ticks - 1,
         closing_reference_timestamp_ticks=ticks,
-        timer_domain="rp2040_timer0",
+        timer_domain="rp2040_monotonic_us32",
         capture_backend="pio_wait_cumulative_snapshot_dma_v1",
         counted_edges=10_000_000,
         edge_error_cycles=0,
@@ -86,7 +86,7 @@ def _source(intervals: list[Interval], environment: list[dict[str, str]]) -> Sou
             "source_id": "fixture",
             "consumed_files": hashes,
             "package_identity": {"content_sha256": "a" * 64},
-            "historical_identity": {"timer_domain": "rp2040_timer0"},
+            "historical_identity": {"timer_domain": "rp2040_monotonic_us32"},
         },
         root=Path("/fixture"),
         manifest={},
@@ -203,37 +203,37 @@ def test_persistence_uses_count_quantization_interval_not_display_value() -> Non
 
 
 def test_modular_environment_join_preserves_role_and_wrap() -> None:
-    modulus = (1 << 32) * 16
+    modulus = 1 << 32
     source = _source(
         [_interval(1, modulus - 10), _interval(2, 10)],
         [
             {
                 "env_seq": "1", "timestamp_ticks": str(modulus - 20),
-                "observation_domain": "rp2040_timer0", "source": "sht4x",
+                "observation_domain": "rp2040_monotonic_us32", "source": "sht4x",
                 "role": "vcocxo_near", "temperature_c": "20",
                 "relative_humidity_pct": "40", "pressure_pa": "", "flags": "0",
             },
             {
                 "env_seq": "2", "timestamp_ticks": str(modulus - 19),
-                "observation_domain": "rp2040_timer0", "source": "bmp280",
+                "observation_domain": "rp2040_monotonic_us32", "source": "bmp280",
                 "role": "pressure_reference", "temperature_c": "21",
                 "relative_humidity_pct": "", "pressure_pa": "100000", "flags": "0",
             },
             {
                 "env_seq": "3", "timestamp_ticks": "4",
-                "observation_domain": "rp2040_timer0", "source": "bmp280",
+                "observation_domain": "rp2040_monotonic_us32", "source": "bmp280",
                 "role": "wrong_role", "temperature_c": "21",
                 "relative_humidity_pct": "", "pressure_pa": "100000", "flags": "0",
             },
             {
                 "env_seq": "4", "timestamp_ticks": "5",
-                "observation_domain": "rp2040_timer0", "source": "sht4x",
+                "observation_domain": "rp2040_monotonic_us32", "source": "sht4x",
                 "role": "vcocxo_near", "temperature_c": "22",
                 "relative_humidity_pct": "41", "pressure_pa": "", "flags": "0",
             },
             {
                 "env_seq": "5", "timestamp_ticks": "5",
-                "observation_domain": "rp2040_timer0", "source": "bmp280",
+                "observation_domain": "rp2040_monotonic_us32", "source": "bmp280",
                 "role": "pressure_reference", "temperature_c": "23",
                 "relative_humidity_pct": "", "pressure_pa": "100001", "flags": "0",
             },
@@ -252,7 +252,7 @@ def test_modular_environment_join_preserves_role_and_wrap() -> None:
     assert rows[0]["temperature_c"] == 22.0
     assert rows[0]["bmp280_role"] == "pressure_reference"
     assert rows[0]["bmp280_pressure_pa"] == 100001.0
-    assert _unwrap_domain_ticks([modulus - 10, 10], "rp2040_timer0") == [
+    assert _unwrap_domain_ticks([modulus - 10, 10], "rp2040_monotonic_us32") == [
         modulus - 10,
         modulus + 10,
     ]
@@ -298,10 +298,10 @@ def test_strict_interval_join_rejects_gate_endpoint_mismatch() -> None:
     raw = [
         {"record_type": "REF", "schema_version": "1", "event_seq": "1",
          "channel_id": "1", "edge": "R", "timestamp_ticks": "100",
-         "capture_domain": "rp2040_timer0", "flags": "16"},
+         "capture_domain": "rp2040_monotonic_us32", "flags": "16"},
         {"record_type": "REF", "schema_version": "1", "event_seq": "2",
          "channel_id": "1", "edge": "R", "timestamp_ticks": "16000100",
-         "capture_domain": "rp2040_timer0", "flags": "16"},
+         "capture_domain": "rp2040_monotonic_us32", "flags": "16"},
     ]
     snapshots = [
         {"record_type": "SNP", "schema_version": "1", "session": "1",
@@ -315,7 +315,7 @@ def test_strict_interval_join_rejects_gate_endpoint_mismatch() -> None:
     ]
     count = {"record_type": "CNT", "schema_version": "1", "count_seq": "1",
              "channel_id": "2", "gate_open_ticks": "100",
-             "gate_close_ticks": "16000100", "gate_domain": "rp2040_timer0",
+             "gate_close_ticks": "16000100", "gate_domain": "rp2040_monotonic_us32",
              "counted_edges": "10000000", "source_edge": "R",
              "source_domain": "fixture_oscillator", "flags": "16"}
     transactions = [{"event": "manual_start", "applied_code": "43000", "dac_epoch": "0"}]
@@ -329,7 +329,7 @@ def test_strict_interval_join_rejects_gate_endpoint_mismatch() -> None:
     assert rows[0].opening_d14_flags == 16
     assert rows[0].closing_d14_flags == 16
     assert rows[0].count_flags == 16
-    assert rows[0].count_gate_domain == "rp2040_timer0"
+    assert rows[0].count_gate_domain == "rp2040_monotonic_us32"
     assert rows[0].count_source_domain == "fixture_oscillator"
     assert rows[0].opening_snapshot_status == 0
     assert rows[0].closing_snapshot_status == 0
@@ -346,7 +346,7 @@ def test_selected_frequency_support_is_independent_of_phase_availability() -> No
     binding = _source([], []).binding
     intervals = [
         replace(
-            _interval(sequence, sequence * 16_000_000),
+            _interval(sequence, sequence * 1_000_000),
             phase_available=False,
             relative_phase_cycles=None,
             phase_exclusion_reason="fixture_phase_unavailable",
@@ -356,8 +356,8 @@ def test_selected_frequency_support_is_independent_of_phase_availability() -> No
     estimate = {
         "record_type": "EST", "schema_version": "2", "estimate_seq": "0",
         "estimate_id": "fixture-selected", "estimator_version":
-        "cx317_selected_600s_nonoverlap_v1", "time_domain": "rp2040_timer0",
-        "config_hash": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+        "cx317_selected_600s_nonoverlap_v1", "time_domain": "rp2040_monotonic_us32",
+        "config_hash": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
         "accepted_sample_count": "600", "source_reference_first_seq": "0",
         "source_reference_last_seq": "600", "source_count_seq": "600",
         "source_count_ref": "live:CNT:600", "observation_validity": "valid",

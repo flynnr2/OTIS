@@ -31,7 +31,7 @@ def _row(
         "schema_version": "1",
         "status_seq": str(sequence),
         "timestamp_ticks": str(sequence * 1600),
-        "status_domain": "rp2040_timer0",
+        "status_domain": "rp2040_monotonic_us32",
         "component": component,
         "status_key": key,
         "status_value": value,

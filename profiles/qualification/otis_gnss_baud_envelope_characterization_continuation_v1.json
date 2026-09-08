@@ -77,7 +77,7 @@
     "first_hint_permitted_transmit": "PMTK605_identity_query_only",
     "pmtk251_before_fresh_identity_permitted": false,
     "causal_telemetry_component": "gnss_receiver",
-    "pmtk605_peripheral_complete_counter_domain": "rp2040_timer0_extended",
+    "pmtk605_peripheral_complete_counter_domain": "rp2040_monotonic_us64",
     "required_causal_telemetry": [
       "startup_hint_attempted",
       "startup_hint_baud",
@@ -197,8 +197,8 @@
     "independent_operator_stop"
   ],
   "counter_domains": {
-    "raw_device": {"name": "rp2040_timer0", "nominal_hz": 16000000, "width_bits": 32, "rollover": "wrapping_unsigned_forward_only_with_half_range_ambiguity_limit"},
-    "derived_device": {"name": "rp2040_timer0_extended", "nominal_hz": 16000000, "width_bits": 64, "rollover": "non_wrapping_within_each_source_capture_only"},
+    "raw_device": {"name": "rp2040_monotonic_us32", "nominal_hz": 1000000, "width_bits": 32, "rollover": "wrapping_unsigned_forward_only_with_half_range_ambiguity_limit"},
+    "derived_device": {"name": "rp2040_monotonic_us64", "nominal_hz": 1000000, "width_bits": 64, "rollover": "non_wrapping_within_each_source_capture_only"},
     "host_supervision": {"name": "host_monotonic_ns", "nominal_hz": 1000000000, "width_bits": 64, "rollover": "non_wrapping_for_continuation_duration"}
   },
   "schedule": {

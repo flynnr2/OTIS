@@ -862,7 +862,7 @@ def _validate_continuation_source(
         source["source_contract_sha256"] != source[source_contract_field]
         or source["original_contract_sha256"]
         != contract_lineage["original_contract_sha256"]
-        or source["counter_domain"] != "rp2040_timer0_extended"
+        or source["counter_domain"] != "rp2040_monotonic_us64"
     ):
         raise ValueError("continuation source contract/domain lineage differs")
     if any(event.get("run_id") != source["source_run_id"] for event in events):
@@ -1438,7 +1438,7 @@ def derive_source_bindings(
             if contract.get("contract_id") == CONTINUATION_CONTRACT_ID
             else str(prefix.get("continuation_contract_file_sha256", ""))
         ),
-        "counter_domain": "rp2040_timer0_extended",
+        "counter_domain": "rp2040_monotonic_us64",
         "source_counter_baseline_id": f"{run_id}:capture-baseline:1",
     }
     if contract.get("contract_id") == RESUME_CONTRACT_ID:

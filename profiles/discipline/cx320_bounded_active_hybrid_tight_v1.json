@@ -16,27 +16,27 @@
     },
     "frequency_policy_predecessor": {
       "path": "profiles/discipline/cx319_stabilized_tight_deadband_v1.json",
-      "sha256": "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a"
+      "sha256": "c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87"
     },
     "observational_hybrid_predecessor": {
       "path": "profiles/discipline/cx319_conditional_part_b_hybrid_observation_v1.json",
-      "sha256": "68ba4b1b915424104fb9e8331273e52d89c7957b19e973ce650cd93056ce015d"
+      "sha256": "dbeaaeeea164e7d8c29c3470f28b73a2145ea6cb84c266bc5e45d78dc498473c"
     },
     "frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
-      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+      "sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
     },
     "phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
-      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+      "sha256": "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+      "sha256": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92"
     },
     "response_policy": {
       "path": "profiles/discipline/cx317_response_classification_v2.json",
-      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+      "sha256": "aa327a6571f5f49bce6bd54c4b01090a626a08cb86933d568a96e0909e0e1827"
     }
   },
   "topology": {

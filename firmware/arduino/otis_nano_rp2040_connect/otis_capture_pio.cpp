@@ -130,7 +130,7 @@ void otis_capture_pio_service(void) {
         pio_fifo_drained_event_count,
         pio_capture_reference_record,
         'R',
-        otis_capture_ticks_now(),
+        otis_monotonic_us32_now(),
         OTIS_FLAG_TIMESTAMP_RECONSTRUCTED,
         true,
     };

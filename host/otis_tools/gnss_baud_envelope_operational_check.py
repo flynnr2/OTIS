@@ -243,7 +243,7 @@ def _fixture_driver() -> int:
             start_device = device_ticks
             start_counters = dict(counters)
             host_ticks += max(1, duration) * 1_000_000_000
-            device_ticks += duration * 16_000_000
+            device_ticks += duration * 1_000_000
             counters["bytes_observed"] += duration * 500
             counters["rx_irq_count"] += duration * 4
             counters["service_call_count"] += duration * 8
@@ -387,7 +387,7 @@ class FixtureProcessTransport(ProgrammeTransport):
         return PhaseStart(
             start_ticks=self._now_ticks,
             online_counter_ticks=int(value["start_device_ticks"]),
-            online_counter_domain="rp2040_timer0_extended",
+            online_counter_domain="rp2040_monotonic_us64",
             start_counters=dict(value["start_counters"]),
             metrics=dict(value["metrics"]),
         )
@@ -477,7 +477,7 @@ def _capture_manifest(run_dir: Path, *, device: str, contract_path: Path) -> Non
             "sole_serial_owner": True,
         },
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
+            {"name": "rp2040_monotonic_us32", "nominal_hz": 1_000_000},
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],
         "channels": [
@@ -634,14 +634,14 @@ def _exercise_recovery_branches(contract: Mapping[str, Any], root: Path) -> dict
     recovery.start_phase(
         timestamp_ticks=4,
         online_counter_ticks=0,
-        online_counter_domain="rp2040_timer0_extended",
+        online_counter_domain="rp2040_monotonic_us64",
         counters=counters,
     )
     end = dict(counters)
     end["bytes_observed"] = 1
     recovery.complete_phase(
         timestamp_ticks=5,
-        online_counter_ticks=phase.duration_s * 16_000_000,
+        online_counter_ticks=phase.duration_s * 1_000_000,
         counters=end,
     )
     second = recovery.next_transition_request(timestamp_ticks=6)
@@ -864,12 +864,12 @@ def run(*, contract_path: Path, output_dir: Path) -> dict[str, Any]:
                 if resume_mode
                 else contract_file_sha256
             ),
-            "counter_domain": "rp2040_timer0_extended",
+            "counter_domain": "rp2040_monotonic_us64",
             "source_counter_baseline_id": canonical_sha256(
                 {
                     "run_id": run_dir.name,
                     "artifact": event_sha256,
-                    "domain": "rp2040_timer0_extended",
+                    "domain": "rp2040_monotonic_us64",
                 }
             ),
         }

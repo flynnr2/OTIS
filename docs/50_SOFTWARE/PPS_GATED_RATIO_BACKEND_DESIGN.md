@@ -63,7 +63,7 @@ The raw `SNP` snapshot plus its associated
 - a session and modulo-\(2^{32}\) hardware snapshot sequence;
 - the wrapping 32-bit cumulative PIO down-counter value;
 - the independent D14 source sequence;
-- the PPS event's reconstructed `rp2040_timer0` timestamp;
+- the PPS event's reconstructed `rp2040_monotonic_us32` timestamp;
 - the adjacent modulo difference used as the interval edge count;
 - capture flags;
 - physical-aperture flags.

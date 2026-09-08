@@ -9,7 +9,7 @@
   "bindings": {
     "frequency_control_policy": {
       "path": "profiles/discipline/cx319_stabilized_tight_deadband_v1.json",
-      "sha256": "936d92a1421b7a8f3db620cd0add2c1ecd1a73dbd9aad4581beb8d8c0b8e1698"
+      "sha256": "c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87"
     },
     "operator_decision_record": {
       "path": "docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/16_Q1_Q3_SEQUENCE_AUTHORITY.md",
@@ -17,7 +17,7 @@
     },
     "qualification_plan": {
       "path": "docs/10_REFERENCE_ARCHITECTURE/OTIS_ADVERSARIAL_ARCHITECTURE_REVIEW.md",
-      "sha256": "fa45c50158d7282788b03334e5bd4a5bd01bf884dd62106255bbfced452c5d49"
+      "sha256": "e1fe92b87f0cb9cb9fb6bf5b1d954c29b7e59bd8b8c210ea8e09505428f74edf"
     }
   },
   "authority_model": {

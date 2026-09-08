@@ -13,7 +13,7 @@ int main() {
   first.session = 7u;
   first.sequence = 1u;
   first.reference_sequence = 101u;
-  first.pps_timestamp_ticks = 16000000ull;
+  first.pps_timestamp_ticks = 1000000ull;
   first.cumulative_down_counter = 0xF0000000u;
   otis_phase_preview_live_on_boundary(&first, 0u, 0u, false, true, false);
   OtisPhasePreviewRecordMessage record = {};
@@ -31,7 +31,7 @@ int main() {
   OtisPpsCountBoundaryObservation second = first;
   second.sequence = 2u;
   second.reference_sequence = 102u;
-  second.pps_timestamp_ticks += 16000000ull;
+  second.pps_timestamp_ticks += 1000000ull;
   second.cumulative_down_counter -= 10000001u;
   otis_phase_preview_live_on_boundary(&second, 0u, 10000001u, true, true,
                                       false);
@@ -55,7 +55,7 @@ int main() {
   for (uint32_t sequence = 3u; sequence <= 601u; ++sequence) {
     rolling.sequence = sequence;
     rolling.reference_sequence = 100u + sequence;
-    rolling.pps_timestamp_ticks += 16000000ull;
+    rolling.pps_timestamp_ticks += 1000000ull;
     rolling.cumulative_down_counter -= 10000000u;
     otis_phase_preview_live_on_boundary(&rolling, 0u, 10000000u, true, true,
                                         false);
@@ -69,7 +69,7 @@ int main() {
 
   rolling.sequence = 602u;
   rolling.reference_sequence = 702u;
-  rolling.pps_timestamp_ticks += 16000000ull;
+  rolling.pps_timestamp_ticks += 1000000ull;
   rolling.cumulative_down_counter -= 10000000u;
   otis_phase_preview_live_on_boundary(&rolling, 0u, 10000000u, true, true,
                                       false);
@@ -89,7 +89,7 @@ int main() {
 
   rolling.sequence = 603u;
   rolling.reference_sequence = 703u;
-  rolling.pps_timestamp_ticks += 16000000ull;
+  rolling.pps_timestamp_ticks += 1000000ull;
   rolling.cumulative_down_counter -= 10000000u;
   otis_phase_preview_live_on_boundary(&rolling, 0u, 10000000u, true, true,
                                       false);

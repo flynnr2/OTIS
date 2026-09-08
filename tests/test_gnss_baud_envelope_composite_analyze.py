@@ -35,7 +35,7 @@ def _source(
         "source_firmware_config_sha256": config,
         "original_contract_sha256": ORIGINAL_CONTRACT,
         "continuation_contract_sha256": CONTINUATION_CONTRACT,
-        "counter_domain": "rp2040_timer0_extended",
+        "counter_domain": "rp2040_monotonic_us64",
         "source_counter_baseline_id": baseline,
     }
 

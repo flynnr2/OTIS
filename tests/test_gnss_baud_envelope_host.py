@@ -143,7 +143,7 @@ def _runtime_identity() -> dict[tuple[str, str], str]:
         (CHARACTERIZATION_COMPONENT, "programme_id"):
             "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1",
         (CHARACTERIZATION_COMPONENT, "contract_sha256"):
-            "08308e05ecc4b169a46ace1eb339b93a778abe04070278fcc3c47519666b0550",
+            "bf15a07b8f2c22e026f17bae733c4794cbfd11a707f05e855d8066772c37c641",
         (CHARACTERIZATION_COMPONENT, "command_table_id"): COMMAND_TABLE_ID,
         ("build", "profile_id"):
             "otis_gnss_baud_envelope_characterization_v1",
@@ -203,9 +203,9 @@ def _snapshot(
     fields[(CHARACTERIZATION_COMPONENT, "extended_counter_ticks")] = str(ticks)
     fields[(CHARACTERIZATION_COMPONENT, "snapshot_extended_ticks_available")] = "true"
     fields[(CHARACTERIZATION_COMPONENT, "snapshot_counter_domain")] = (
-        "rp2040_timer0_extended"
+        "rp2040_monotonic_us64"
     )
-    fields[(CHARACTERIZATION_COMPONENT, "snapshot_tick_rate_hz")] = "16000000"
+    fields[(CHARACTERIZATION_COMPONENT, "snapshot_tick_rate_hz")] = "1000000"
     fields[(CHARACTERIZATION_COMPONENT, "snapshot_capture_session")] = "7"
     fields[(CHARACTERIZATION_COMPONENT, "snapshot_reference_sequence")] = str(
         generation if reference_sequence is None else reference_sequence
@@ -264,7 +264,7 @@ def _csv_bytes(
                 "1",
                 str(sequence),
                 str(snapshot.end_timestamp_ticks),
-                "rp2040_timer0",
+                "rp2040_monotonic_us32",
                 component,
                 key,
                 value,
@@ -302,7 +302,7 @@ def _csv_bytes(
 
 def test_incremental_reducer_requires_in_envelope_platform_and_partial_row(tmp_path: Path) -> None:
     path = tmp_path / "health.csv"
-    encoded = _csv_bytes(_snapshot(1, 160_000_000))
+    encoded = _csv_bytes(_snapshot(1, 10_000_000))
     split = len(encoded) - 13
     path.write_bytes(encoded[:split])
     reducer = HealthSnapshotReducer(path)
@@ -325,7 +325,7 @@ def test_reducer_does_not_inherit_omitted_counter_from_prior_snapshot(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "health.csv"
-    first = _csv_bytes(_snapshot(1, 16_000_000))
+    first = _csv_bytes(_snapshot(1, 1_000_000))
     second = _csv_bytes(
         _snapshot(2, 32_000_000), omit_identity=("capture", "dropped_count")
     ).split(b"\n", 1)[1]
@@ -353,7 +353,7 @@ def test_incremental_reducer_projected_twelve_hours_is_linear(tmp_path: Path) ->
     reducer = HealthSnapshotReducer(path, retention=4)
     payload = b""
     for generation in range(1, 121):
-        block = _csv_bytes(_snapshot(generation, generation * 16_000_000))
+        block = _csv_bytes(_snapshot(generation, generation * 1_000_000))
         if generation > 1:
             block = block.split(b"\n", 1)[1]
         payload += block
@@ -371,8 +371,8 @@ def test_full_ordinary_phase_completes_with_stable_transition_frontier(
     contract = load_contract(CONTRACT_PATH)
     snapshots = [
         _snapshot(1, 0, reference_sequence=100, frontier=10),
-        _snapshot(2, 160_000_000, reference_sequence=101, frontier=10),
-        _snapshot(3, 320_000_000, reference_sequence=102, frontier=10),
+        _snapshot(2, 10_000_000, reference_sequence=101, frontier=10),
+        _snapshot(3, 20_000_000, reference_sequence=102, frontier=10),
     ]
     transport = CaptureDeviceTransport(
         contract=contract,
@@ -391,7 +391,7 @@ def test_full_ordinary_phase_completes_with_stable_transition_frontier(
     start = PhaseStart(
         start_ticks=1,
         online_counter_ticks=0,
-        online_counter_domain="rp2040_timer0_extended",
+        online_counter_domain="rp2040_monotonic_us64",
         start_counters=counters,
         metrics=snapshot_metrics(first, ring_capacity=1024),
     )
@@ -404,7 +404,7 @@ def test_full_ordinary_phase_completes_with_stable_transition_frontier(
         start=start,
         status_command=lambda _sequence: "unused",
     )
-    assert outcome.online_counter_ticks == 320_000_000
+    assert outcome.online_counter_ticks == 20_000_000
     assert outcome.evidence_continuous is True
 
 
@@ -420,7 +420,7 @@ def test_unavailable_pps_gate_mirror_retries_before_platform_baseline(
     tmp_path: Path,
 ) -> None:
     contract = load_contract(CONTRACT_PATH)
-    snapshot = _snapshot(1, 16_000_000)
+    snapshot = _snapshot(1, 1_000_000)
     fields = dict(snapshot.fields)
     fields[("pps_gate", "characterization_mirror_available")] = "false"
     fields[("pps_gate", "characterization_mirror_generation")] = "0"
@@ -455,7 +455,7 @@ def test_unavailable_pps_gate_mirror_retries_before_platform_baseline(
 
 def test_running_firmware_identity_mismatch_is_terminal(tmp_path: Path) -> None:
     contract = load_contract(CONTRACT_PATH)
-    snapshot = _snapshot(1, 16_000_000)
+    snapshot = _snapshot(1, 1_000_000)
     fields = dict(snapshot.fields)
     fields[("build", "source_sha256")] = "f" * 64
     mismatch = RetainedSnapshot(
@@ -1003,7 +1003,7 @@ def _continuation_attachment_snapshot(
             "pmtk605_last_peripheral_complete_ticks_available",
         ): "true",
         (RECEIVER_COMPONENT, "pmtk605_last_peripheral_complete_ticks_domain"): (
-            "rp2040_timer0_extended"
+            "rp2040_monotonic_us64"
         ),
         (RECEIVER_COMPONENT, "metadata_fresh"): (
             "true" if metadata_fresh else "false"
@@ -1240,7 +1240,7 @@ def test_peak_challenge_requires_retained_end_marker_evidence() -> None:
     phase = PhasePlan("peak", "peak_status", 1)
     outcome = PhaseOutcome(
         end_ticks=2_000_000_000,
-        online_counter_ticks=16_000_000,
+        online_counter_ticks=1_000_000,
         end_counters={"counter": 0},
         metrics={},
         status_challenges=(
@@ -1264,7 +1264,7 @@ def _peak_outcome_with_response_duration(response_duration_ns: int) -> PhaseOutc
     completed_ticks = sent_ticks + response_duration_ns
     return PhaseOutcome(
         end_ticks=completed_ticks,
-        online_counter_ticks=16_000_000,
+        online_counter_ticks=1_000_000,
         end_counters={"counter": 0},
         metrics={},
         status_challenges=(

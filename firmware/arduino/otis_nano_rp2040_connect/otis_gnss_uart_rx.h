@@ -12,14 +12,14 @@ constexpr uint32_t kOtisGnssUartRxRingMask =
     kOtisGnssUartRxRingCapacity - 1u;
 constexpr uint32_t kOtisGnssUartRxHeadroomPassMaximum = 512u;
 constexpr uint32_t kOtisGnssUartRxConsumerByteBudget = 128u;
-constexpr uint32_t kOtisGnssUartRxConsumerTickBudget = 4000u;
+constexpr uint32_t kOtisGnssUartRxConsumerBudgetUs = 250u;
 // The RP2040 UART receive FIFO is 32 entries deep. An operational baud-epoch
 // handoff may race a continuously transmitting receiver, so the synchronous
 // discard must be bounded independently of the external RX-empty condition.
 // Any byte arriving beyond this budget is discarded by the immediately
 // following UART deinitialization.
 constexpr uint32_t kOtisGnssUartRxTransitionHardwareDiscardBudget = 32u;
-constexpr uint32_t kOtisGnssRp2040Timer0TicksPerSecond = 16000000u;
+constexpr uint32_t kOtisGnssRp2040MonotonicUsPerSecond = 1000000u;
 // Frozen retention: first occurrence plus up to fifteen subsequent distinct
 // fault-class/segment pairs. Repeated events in an already-retained pair are
 // represented by monotonic counters rather than duplicate capsules.

@@ -222,7 +222,7 @@ ppm/V = Δppm / ΔV
 ```
 
 When REF/PPS rows are present, H1 analysis must use the PPS-calibrated
-`rp2040_timer0` rate for FC0 gate duration. The nominal 16 MHz RP2040 value is
+`rp2040_monotonic_us32` rate for FC0 gate duration. The native 1 MHz RP2040 value is
 only a fallback for missing or unusable PPS evidence. The calibrated rate is a
 derived correction for legacy H1 count windows; it is not a license to treat the
 RP2040 board clock as the future event-stamping timebase.

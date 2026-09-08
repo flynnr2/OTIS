@@ -8,7 +8,7 @@
 
 namespace {
 
-constexpr uint64_t kSecond = OTIS_CX321_TIMER0_TICKS_PER_SECOND;
+constexpr uint64_t kSecond = OTIS_CX321_MONOTONIC_US_PER_SECOND;
 
 OtisCx321PlantSignEstimate window(
     OtisCx321PlantSignAccumulator *accumulator, uint64_t first_open,
@@ -127,22 +127,22 @@ OtisCx321PlantSignEngine second_pre_gate(bool sequence_contiguous,
 
 int main() {
   {
-    constexpr uint64_t modulus = (1ull << 32) * 16ull;
-    constexpr uint64_t second = 16000000ull;
+    constexpr uint64_t modulus = 1ull << 32;
+    constexpr uint64_t second = 1000000ull;
     uint64_t projected = 0u;
-    assert(otis_timer0_project_nearest_ticks(
+    assert(otis_monotonic_us32_project_nearest(
         100u * second, modulus + 100u * second, 99u * second,
         60u * second, &projected));
     assert(projected == modulus + 99u * second);
-    assert(otis_timer0_project_nearest_ticks(
+    assert(otis_monotonic_us32_project_nearest(
         modulus - second / 2u, modulus - second / 2u, second / 2u,
         60u * second, &projected));
     assert(projected == modulus + second / 2u);
-    assert(otis_timer0_project_nearest_ticks(
+    assert(otis_monotonic_us32_project_nearest(
         second / 2u, modulus + second / 2u, modulus - second / 2u,
         60u * second, &projected));
     assert(projected == modulus - second / 2u);
-    assert(!otis_timer0_project_nearest_ticks(
+    assert(!otis_monotonic_us32_project_nearest(
         100u * second, modulus + 100u * second, 161u * second,
         60u * second, &projected));
   }

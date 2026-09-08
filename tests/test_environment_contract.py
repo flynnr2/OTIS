@@ -15,7 +15,7 @@ def _context() -> CsvValidationContext:
     return CsvValidationContext(
         contract="environment_v1",
         known_channels=frozenset(),
-        known_domains=frozenset({"rp2040_timer0"}),
+        known_domains=frozenset({"rp2040_monotonic_us32"}),
     )
 
 
@@ -28,8 +28,8 @@ def test_environment_contract_accepts_sht4x_and_bmp280_rows(tmp_path: Path) -> N
     _write(
         path,
         [
-            "ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,31.250,45.000,,0",
-            "ENV,1,2,16001000,rp2040_timer0,bmp280,pressure_reference,31.500,,100812.250,0",
+            "ENV,1,1,16000000,rp2040_monotonic_us32,sht4x,vcocxo_near,31.250,45.000,,0",
+            "ENV,1,2,16001000,rp2040_monotonic_us32,bmp280,pressure_reference,31.500,,100812.250,0",
         ],
     )
 
@@ -44,8 +44,8 @@ def test_environment_contract_rejects_non_monotonic_sequence(tmp_path: Path) -> 
     _write(
         path,
         [
-            "ENV,1,2,16000000,rp2040_timer0,sht4x,vcocxo_near,31.250,45.000,,0",
-            "ENV,1,2,16001000,rp2040_timer0,sht4x,vcocxo_near,31.300,45.100,,0",
+            "ENV,1,2,16000000,rp2040_monotonic_us32,sht4x,vcocxo_near,31.250,45.000,,0",
+            "ENV,1,2,16001000,rp2040_monotonic_us32,sht4x,vcocxo_near,31.300,45.100,,0",
         ],
     )
 
@@ -56,7 +56,7 @@ def test_environment_contract_rejects_non_monotonic_sequence(tmp_path: Path) -> 
 
 def test_environment_contract_rejects_empty_measurement(tmp_path: Path) -> None:
     path = tmp_path / "environment.csv"
-    _write(path, ["ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,,,,0"])
+    _write(path, ["ENV,1,1,16000000,rp2040_monotonic_us32,sht4x,vcocxo_near,,,,0"])
 
     result = validate_csv(path, _context())
 

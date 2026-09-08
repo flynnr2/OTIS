@@ -74,11 +74,11 @@ def test_resume_runs_only_full_s10_soak_and_s11(tmp_path: Path) -> None:
         supervisor.start_phase(
             timestamp_ticks=host_ticks + 2,
             online_counter_ticks=online_ticks,
-            online_counter_domain="rp2040_timer0_extended",
+            online_counter_domain="rp2040_monotonic_us64",
             counters={"bytes_observed": counter},
             metrics={"identity_exact": True},
         )
-        duration_ticks = phase.duration_s * 16_000_000
+        duration_ticks = phase.duration_s * 1_000_000
         counter += 100
         host_ticks += phase.duration_s * 1_000_000_000
         supervisor.complete_phase(
@@ -113,7 +113,7 @@ def test_resume_runs_only_full_s10_soak_and_s11(tmp_path: Path) -> None:
         "original_contract_sha256": contract["prefix_validation"]["root_original_contract_file_sha256"],
         "continuation_contract_sha256": contract["prefix_validation"]["continuation_contract_file_sha256"],
         "resume_contract_sha256": contract_hash,
-        "counter_domain": "rp2040_timer0_extended",
+        "counter_domain": "rp2040_monotonic_us64",
         "source_counter_baseline_id": f"{run_id}:capture-baseline:1",
     }
     source["counter_baseline_provenance"] = {

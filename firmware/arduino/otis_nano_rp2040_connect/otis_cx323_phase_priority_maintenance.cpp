@@ -7,7 +7,7 @@ namespace {
 
 constexpr int64_t kPicocodesPerCode = 1000000000000ll;
 constexpr int64_t kMaximumDebtPicocodes = 500000000000ll;
-constexpr uint64_t kCaptureTicksPerSecond = 16000000ull;
+constexpr uint64_t kCaptureTicksPerSecond = 1000000ull;
 constexpr uint64_t kConversionDenominator = 4680182727ull;
 constexpr uint64_t kPlantGainNumerator = 173340101ull;
 constexpr uint64_t kLegacyGainNumerator = 7211256926616129ull;

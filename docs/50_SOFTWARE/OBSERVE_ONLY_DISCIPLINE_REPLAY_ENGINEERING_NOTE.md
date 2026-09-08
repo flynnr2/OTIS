@@ -56,7 +56,7 @@ Phase 4 generally used one closing-adjacent interval for both boundaries.
 They agree only in special cases, such as uniform PPS intervals or exactly
 aligned endpoints, and are materially different estimators.
 
-At review time H1 unwrapped `rp2040_timer0` rollover before interpolation and
+At review time H1 unwrapped `rp2040_monotonic_us32` rollover before interpolation and
 split support at cadence-rejected intervals. Phase 4 host also unwrapped input
 ticks, while live used modular gate arithmetic plus a run-wide reference epoch.
 Host/live checked reference flags, cadence, age, and monotonicity, but those

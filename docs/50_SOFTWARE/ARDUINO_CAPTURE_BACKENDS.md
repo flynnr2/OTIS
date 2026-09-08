@@ -17,7 +17,7 @@ The backend boundary is `otis_capture_backend_*` in
 | `otis_capture_pio.h/.cpp` | opt-in PIO FIFO edge observation and foreground FIFO drain |
 | `otis_capture_ring.h/.cpp` | IRQ-safe software ring for CPU-attached edge records |
 | `otis_nano_rp2040_connect.ino` | bring-up mode routing, serial/status emission, foreground service order |
-| `otis_timebase.h` | current reconstructed `rp2040_timer0` tick source |
+| `otis_timebase.h` | current reconstructed `rp2040_monotonic_us32` tick source |
 | `otis_protocol.h` | record families, domains, and provenance flags |
 
 Future DMA-backed capture should connect at this backend boundary, not inside
@@ -35,7 +35,7 @@ The IRQ handler:
 
 - determines the edge as `R` for reference records, or by reading the GPIO for
   generic event records;
-- reads `otis_capture_ticks_now()` once and constructs the authoritative
+- reads `otis_monotonic_us32_now()` once and constructs the authoritative
   `OtisCapturedEdge`;
 - updates reference diagnostics from that captured timestamp;
 - passes the complete event to `otis_capture_ring_push_from_isr()`;
@@ -105,9 +105,9 @@ Specifically:
 
 - PIO pushes an edge marker, not a hardware-latched timer value;
 - CPU foreground code drains the FIFO;
-- `otis_capture_pio_service()` attaches `otis_capture_ticks_now()` at drain
+- `otis_capture_pio_service()` attaches `otis_monotonic_us32_now()` at drain
   time;
-- emitted rows keep `capture_domain=rp2040_timer0`;
+- emitted rows keep `capture_domain=rp2040_monotonic_us32`;
 - emitted rows keep `OTIS_FLAG_TIMESTAMP_RECONSTRUCTED`;
 - boot/status rows report `capture_mode=pio_fifo_cpu_timestamped` and
   `timestamp_latch=pio_edge_detect_cpu_timestamped`.
@@ -182,7 +182,7 @@ The backend must decide and document:
 - uncertainty or overflow flags that apply near the capture.
 
 `emit_captured_edge()` currently emits every `OtisCapturedEdge` with
-`OTIS_DOMAIN_RP2040_TIMER0`. A future DMA-backed backend may continue using that
+`OTIS_DOMAIN_RP2040_MONOTONIC_US32`. A future DMA-backed backend may continue using that
 domain only if the hardware-latched value is in the same RP2040 timer-derived
 domain. If a different timer/counter is latched, the domain contract must be
 updated before changing emitted semantics.
@@ -309,7 +309,7 @@ PPS through its independent `JMP PIN` mapping. A joined RX FIFO and DMA carry
 the already-captured word to a 128-entry ring. Foreground associates D14 and
 PIO sequences and differences adjacent snapshots; it never defines the
 physical aperture. PPS-gated `CNT` rows retain reconstructed
-`rp2040_timer0` gate-time evidence, while raw `SNP` rows preserve the hardware
+`rp2040_monotonic_us32` gate-time evidence, while raw `SNP` rows preserve the hardware
 counter evidence.
 
 ## Non-Goals For This Stage

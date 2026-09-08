@@ -11,23 +11,23 @@ namespace {
 constexpr char kPhaseEstimatorId[] =
     "CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1";
 constexpr char kPhaseConfigurationSha256[] =
-    "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4";
+    "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792";
 constexpr char kFrequencyEstimatorId[] =
     "cx317_selected_600s_nonoverlap_v1";
 constexpr char kFrequencyConfigurationSha256[] =
-    "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
+    "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9";
 #if OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED
 constexpr char kCandidateId[] = "p21600_cap1_epoch_reseed_v3";
 constexpr char kHybridConfigurationSha256[] =
-    "68ba4b1b915424104fb9e8331273e52d89c7957b19e973ce650cd93056ce015d";
+    "fa1fe792cc21307ef56d4f6a936dad167d450e5a168a56d7196a4c13e1ea92be";
 #else
 constexpr char kCandidateId[] = "p21600_cap1_v2";
 constexpr char kHybridConfigurationSha256[] =
-    "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76";
+    "5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358";
 #endif
 constexpr char kSourceBackend[] = "pio_wait_cumulative_snapshot_dma_v1";
 constexpr char kRawMethodId[] = "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1";
-constexpr char kTimeDomain[] = "rp2040_timer0";
+constexpr char kTimeDomain[] = "rp2040_monotonic_us32";
 constexpr char kLiveSourceIdentity[] = "live_stream_unsealed";
 
 bool finish_format(int used, size_t output_size, size_t *length) {

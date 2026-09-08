@@ -52,9 +52,9 @@ void otis_cx317_preview_live_emit_status(OtisStatusEmitContext *context);
 void otis_cx317_preview_live_get_authority_state(
     OtisCx317PreviewAuthorityState *state);
 uint16_t otis_cx317_preview_live_plant_sign_accepted_intervals(void);
-bool otis_cx317_preview_live_extend_timer0_ticks(
+bool otis_cx317_preview_live_extend_monotonic_us(
     uint64_t raw_ticks, uint64_t *extended_ticks);
-bool otis_cx317_preview_live_project_setup_timer0_ticks(
+bool otis_cx317_preview_live_project_setup_monotonic_us(
     uint64_t raw_ticks, uint32_t capture_session, uint64_t *extended_ticks);
 
 #endif

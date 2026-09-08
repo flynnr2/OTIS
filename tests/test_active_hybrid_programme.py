@@ -68,8 +68,8 @@ def test_exact_decision_timestamps_preserve_fractional_residence_across_wrap() -
             "reference_validity": "valid",
             "count_validity": "valid",
             "source_count_seq": "2999",
-            "estimator_timestamp_ticks": "48027750112",
-            "time_domain": "rp2040_timer0",
+            "estimator_timestamp_ticks": "3001734382",
+            "time_domain": "rp2040_monotonic_us32",
         },
         {
             "estimator_version": "cx317_selected_600s_nonoverlap_v1",
@@ -77,8 +77,8 @@ def test_exact_decision_timestamps_preserve_fractional_residence_across_wrap() -
             "reference_validity": "valid",
             "count_validity": "valid",
             "source_count_seq": "4799",
-            "estimator_timestamp_ticks": "8108107616",
-            "time_domain": "rp2040_timer0",
+            "estimator_timestamp_ticks": "506756726",
+            "time_domain": "rp2040_monotonic_us32",
         },
         {
             "estimator_version": "cx317_selected_600s_nonoverlap_v1",
@@ -86,8 +86,8 @@ def test_exact_decision_timestamps_preserve_fractional_residence_across_wrap() -
             "reference_validity": "valid",
             "count_validity": "valid",
             "source_count_seq": "5399",
-            "estimator_timestamp_ticks": "17708050816",
-            "time_domain": "rp2040_timer0",
+            "estimator_timestamp_ticks": "1106753176",
+            "time_domain": "rp2040_monotonic_us32",
         },
     ]
 

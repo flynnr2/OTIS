@@ -26,7 +26,7 @@ from host.otis_tools.cx321_plant_sign_evidence_guard import (
     replay_plant_sign_windows_against_snapshots,
 )
 from host.otis_tools.run_loader import RunManifest
-from host.otis_tools.time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
+from host.otis_tools.time_domains import RP2040_MONOTONIC_US32_MODULUS
 
 
 DIGESTS = [f"{value:064x}" for value in range(1, 6)]
@@ -55,7 +55,7 @@ def _base(sequence: int, event: str) -> dict[str, str]:
         "identification_estimator_sha256": CONTEXT.identification_estimator_sha256,
         "identification_estimator_config_sha256": CONTEXT.identification_estimator_config_sha256,
         "natural_frequency_estimator_sha256": CONTEXT.natural_frequency_estimator_sha256,
-        "setup_application_sequence": "1", "setup_application_timestamp_ticks": "16000000",
+        "setup_application_sequence": "1", "setup_application_timestamp_ticks": "1000000",
         "setup_applied_code": str(0xA83C), "setup_dac_epoch": "1",
         "state_before": "PLANT_SIGN_QUALIFY", "state_after": "PLANT_SIGN_QUALIFY",
         "reason": event, "actionable": "false",
@@ -66,9 +66,9 @@ def _base(sequence: int, event: str) -> dict[str, str]:
 def _window(row: dict[str, str], *, first: int, opened_s: int, total: int, epoch: int) -> None:
     close_s = opened_s + 1500
     row.update({
-        "event_timestamp_ticks": str(close_s * 16_000_000), "total_count": str(total),
+        "event_timestamp_ticks": str(close_s * 1_000_000), "total_count": str(total),
         "signed_error_counts": str(total - 15_000_000_000),
-        "open_ticks": str(opened_s * 16_000_000), "close_ticks": str(close_s * 16_000_000),
+        "open_ticks": str(opened_s * 1_000_000), "close_ticks": str(close_s * 1_000_000),
         "source_first_sequence": str(first), "source_last_sequence": str(first + 1500),
         "accepted_intervals": "1500", "dac_epoch": str(epoch), "tight_state": "TIGHT_INSIDE",
     })
@@ -98,11 +98,11 @@ def _records() -> list[dict[str, str]]:
     })
     application = _base(4, "application")
     application.update({
-        "event_timestamp_ticks": str(3902 * 16_000_000), "request_sequence": "7",
+        "event_timestamp_ticks": str(3902 * 1_000_000), "request_sequence": "7",
         "acceptance_sequence": "8", "application_sequence": "9",
         "requested_delta_codes": "-21", "requested_code": str(0xA827),
         "accepted_code": str(0xA827), "applied_code": str(0xA827),
-        "application_timestamp_ticks": str(3902 * 16_000_000), "dac_epoch": "2",
+        "application_timestamp_ticks": str(3902 * 1_000_000), "dac_epoch": "2",
         "reason": "identification_applied_response_pending",
     })
     response = _base(5, "response")
@@ -131,7 +131,7 @@ def _records() -> list[dict[str, str]]:
     ack = _base(6, "response_ack")
     ack.update(common_echo)
     ack.update({
-        "event_timestamp_ticks": str(6303 * 16_000_000), "response_counts": "-5",
+        "event_timestamp_ticks": str(6303 * 1_000_000), "response_counts": "-5",
         "response_source_last_sequence": response["response_source_last_sequence"],
         "acknowledged_response_record_sequence": "5", "host_replay_exact": "true",
         "replay_attestation_sha256": attestation["attestation_sha256"],
@@ -142,7 +142,7 @@ def _records() -> list[dict[str, str]]:
     handoff = _base(7, "handoff")
     handoff.update(common_echo)
     handoff.update({
-        "event_timestamp_ticks": str(6304 * 16_000_000), "state_after": "PHASE_QUALIFY",
+        "event_timestamp_ticks": str(6304 * 1_000_000), "state_after": "PHASE_QUALIFY",
         "response_counts": "-5", "response_source_last_sequence": response["response_source_last_sequence"],
         "acknowledged_response_record_sequence": "5", "host_replay_exact": "true",
         "replay_attestation_sha256": attestation["attestation_sha256"],
@@ -181,7 +181,7 @@ def _snapshots_for_records(rows: list[dict[str, str]]) -> list[dict[str, str]]:
                 "cumulative_down_counter": str(counter),
                 "reference_sequence": str(first),
                 "reference_timestamp_ticks": str(
-                    open_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+                    open_ticks % RP2040_MONOTONIC_US32_MODULUS
                 ),
                 "status": "0",
                 "backend": "pio_wait_cumulative_snapshot_dma_v1",
@@ -199,7 +199,7 @@ def _snapshots_for_records(rows: list[dict[str, str]]) -> list[dict[str, str]]:
                 "reference_sequence": str(sequence),
                 "reference_timestamp_ticks": str(
                     (open_ticks + offset * CONTEXT.timer_hz)
-                    % RP2040_TIMER0_MICROS_WRAP_TICKS
+                    % RP2040_MONOTONIC_US32_MODULUS
                 ),
                 "status": "0",
                 "backend": "pio_wait_cumulative_snapshot_dma_v1",
@@ -419,7 +419,7 @@ def test_raw_snapshots_reject_an_injected_whole_extended_timer_wrap() -> None:
     rows = deepcopy(_records()[:5])
     rows[-1]["close_ticks"] = str(
         int(rows[-1]["close_ticks"])
-        + RP2040_TIMER0_MICROS_WRAP_TICKS
+        + RP2040_MONOTONIC_US32_MODULUS
     )
     rows[-1]["event_timestamp_ticks"] = rows[-1]["close_ticks"]
 
@@ -435,14 +435,17 @@ def test_raw_snapshots_reject_a_whole_wrap_added_to_both_window_endpoints() -> N
     original = _records()[:5]
     rows = deepcopy(original)
     rows[-1]["open_ticks"] = str(
-        int(rows[-1]["open_ticks"]) + RP2040_TIMER0_MICROS_WRAP_TICKS
+        int(rows[-1]["open_ticks"]) + RP2040_MONOTONIC_US32_MODULUS
     )
     rows[-1]["close_ticks"] = str(
-        int(rows[-1]["close_ticks"]) + RP2040_TIMER0_MICROS_WRAP_TICKS
+        int(rows[-1]["close_ticks"]) + RP2040_MONOTONIC_US32_MODULUS
     )
     rows[-1]["event_timestamp_ticks"] = rows[-1]["close_ticks"]
 
-    with pytest.raises(PlantSignEvidenceError, match="first raw TIMER0 projection"):
+    with pytest.raises(
+        PlantSignEvidenceError,
+        match="first raw monotonic-us projection",
+    ):
         replay_plant_sign_windows_against_snapshots(
             rows,
             _snapshots_for_records(original),
@@ -685,7 +688,7 @@ def test_capture_splitter_and_contract_share_exact_psq_schema(tmp_path) -> None:
         CsvValidationContext(
             "plant_sign_qualification_v1",
             frozenset(),
-            frozenset({"rp2040_timer0_extended"}),
+            frozenset({"rp2040_monotonic_us64"}),
         ),
     )
     assert result.ok, result.errors
@@ -711,7 +714,7 @@ def test_rejects_inexact_response_ack_or_handoff(event: str, field: str, value: 
 def test_rejects_late_ack() -> None:
     rows = deepcopy(_records())
     ack = rows[5]
-    ack["event_timestamp_ticks"] = str(int(rows[4]["event_timestamp_ticks"]) + 31 * 16_000_000)
+    ack["event_timestamp_ticks"] = str(int(rows[4]["event_timestamp_ticks"]) + 31 * 1_000_000)
     rows[6]["event_timestamp_ticks"] = ack["event_timestamp_ticks"]
     with pytest.raises(PlantSignEvidenceError, match="30-second deadline"):
         replay_plant_sign_evidence(rows, CONTEXT, require_ack_handoff=True)

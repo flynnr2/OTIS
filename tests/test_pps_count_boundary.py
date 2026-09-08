@@ -177,7 +177,7 @@ inline void interrupts(void) {}
 
 static OtisPpsCountBoundaryObservation observation(uint32_t sequence) {
   return {1u, sequence, sequence,
-          (uint64_t)sequence * 16000000ull,
+          (uint64_t)sequence * 1000000ull,
           0xffffffffu - sequence, 0u, 0u, 0u};
 }
 

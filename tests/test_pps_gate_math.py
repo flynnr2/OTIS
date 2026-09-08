@@ -12,7 +12,7 @@ HELPER = Path(
     "firmware/arduino/otis_nano_rp2040_connect/otis_pps_gate_math.h"
 )
 FIRMWARE = Path("firmware/arduino/otis_nano_rp2040_connect")
-WRAP_TICKS = (1 << 32) * 16
+WRAP_TICKS = 1 << 32
 
 
 def _compile_and_run(tmp_path: Path, source: str) -> list[str]:
@@ -47,26 +47,26 @@ def test_pps_boundary_assessment_covers_rollover_duplicate_intervals_and_flags(
 
         int main(void) {{
           const uint64_t wrap = {WRAP_TICKS}ull;
-          const uint64_t duplicate_maximum = 100000ull * 16ull;
-          const uint64_t minimum = 800000ull * 16ull;
-          const uint64_t maximum = 1200000ull * 16ull;
+          const uint64_t duplicate_maximum = 100000ull;
+          const uint64_t minimum = 800000ull;
+          const uint64_t maximum = 1200000ull;
           const uint64_t opens[] = {{
-              16000000ull,
-              wrap - 4000000ull,
-              16000000ull,
-              16000000ull,
-              16000000ull,
-              16000000ull,
-              16000000ull,
+              1000000ull,
+              wrap - 250000ull,
+              1000000ull,
+              1000000ull,
+              1000000ull,
+              1000000ull,
+              1000000ull,
           }};
           const uint64_t closes[] = {{
-              32000000ull,
-              12000000ull,
-              16800000ull,
-              16000000ull,
-              26000000ull,
-              37000000ull,
-              32000000ull,
+              2000000ull,
+              750000ull,
+              1050000ull,
+              1000000ull,
+              1625000ull,
+              2312500ull,
+              2000000ull,
           }};
           const uint32_t flags[] = {{
               OTIS_FLAG_TIMESTAMP_RECONSTRUCTED,
@@ -92,13 +92,13 @@ def test_pps_boundary_assessment_covers_rollover_duplicate_intervals_and_flags(
     )
     rows = _compile_and_run(tmp_path, source)
     assert rows == [
-        "1,16000000,0",  # nominal
-        "1,16000000,0",  # nominal across timer rollover
-        "0,800000,1",  # physically injectable 50 ms duplicate
+        "1,1000000,0",  # nominal
+        "1,1000000,0",  # nominal across local-counter rollover
+        "0,50000,1",  # physically injectable 50 ms duplicate
         "0,0,1",  # identical-timestamp duplicate
-        "0,10000000,2",  # short
-        "0,21000000,3",  # long
-        "0,16000000,4",  # otherwise-nominal flagged capture
+        "0,625000,2",  # short
+        "0,1312500,3",  # long
+        "0,1000000,4",  # otherwise-nominal flagged capture
     ]
 
 
@@ -112,9 +112,9 @@ def test_observed_185us_double_edge_is_rejected_without_latching_current_eligibi
         #include "{HELPER}"
 
         int main(void) {{
-          const uint64_t duplicate_maximum = 100000ull * 16ull;
-          const uint64_t minimum = 800000ull * 16ull;
-          const uint64_t maximum = 1200000ull * 16ull;
+          const uint64_t duplicate_maximum = 100000ull;
+          const uint64_t minimum = 800000ull;
+          const uint64_t maximum = 1200000ull;
           const uint64_t intervals_us[] = {{747525ull, 185ull, 252289ull,
                                             1000000ull, 1000000ull,
                                             1000000ull, 1000000ull}};
@@ -122,7 +122,7 @@ def test_observed_185us_double_edge_is_rejected_without_latching_current_eligibi
           bool previous_boundary_inhibited = false;
           unsigned clean_windows = 0u;
           for (unsigned i = 0; i < 7; ++i) {{
-            const uint64_t closing = opening + intervals_us[i] * 16ull;
+            const uint64_t closing = opening + intervals_us[i];
             OtisPpsBoundaryAssessment raw = otis_pps_gate_assess_boundary(
                 opening, closing, 0u, duplicate_maximum, minimum, maximum);
             const bool effective_valid = raw.valid && !previous_boundary_inhibited;
@@ -201,7 +201,7 @@ def test_pps_backend_times_out_before_the_first_reference_and_preserves_raw_boun
         "      observation->pps_timestamp_ticks;"
         in reference
     )
-    assert "otis_timer0_interval_ticks(" in reference
+    assert "otis_monotonic_us32_interval(" in reference
 
 
 def test_pps_counter_boundary_is_owned_by_pio_and_inhibits_rejected_anchor() -> None:
@@ -238,7 +238,7 @@ def test_phase4_live_adapter_uses_modular_pps_boundaries_and_separate_validity()
         encoding="utf-8"
     )
     assert '#include "otis_timebase_math.h"' in source
-    assert "const uint64_t gate_ticks = otis_timer0_interval_ticks(" in source
+    assert "const uint64_t gate_ticks = otis_monotonic_us32_interval(" in source
     assert (
         "OTIS_TCXO_COUNTER_BACKEND == "
         "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"

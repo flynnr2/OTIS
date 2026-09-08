@@ -25,7 +25,7 @@ CAPTURE_TRANSPORT_STATE = Path("reports/capture_device_state.json")
 CAPTURE_TRANSPORT_STATE_MAX_AGE_S = 15
 NORMAL_COMMAND_ACK_TIMEOUT_S = 3.0
 NORMAL_COMMAND_ACK_POLL_S = 0.02
-RP2040_TIMER0_TICKS_PER_SECOND = 16_000_000
+RP2040_MONOTONIC_US_PER_SECOND = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,7 @@ def _next_selected_interval_is_cadence_eligible(
     try:
         ticks, _ = unwrap_ticks(
             [int(row["decision_timestamp_ticks"]) for row in rows],
-            domain="rp2040_timer0",
+            domain="rp2040_monotonic_us32",
         )
         eligible_index = max(
             index
@@ -82,12 +82,12 @@ def _next_selected_interval_is_cadence_eligible(
     ]
     conservative_spacing = min(
         positive_spacings,
-        default=selected_interval_s * RP2040_TIMER0_TICKS_PER_SECOND,
+        default=selected_interval_s * RP2040_MONOTONIC_US_PER_SECOND,
     )
     projected_next_s = (
         ticks[-1] + conservative_spacing
-    ) // RP2040_TIMER0_TICKS_PER_SECOND
-    last_eligible_s = ticks[eligible_index] // RP2040_TIMER0_TICKS_PER_SECOND
+    ) // RP2040_MONOTONIC_US_PER_SECOND
+    last_eligible_s = ticks[eligible_index] // RP2040_MONOTONIC_US_PER_SECOND
     return projected_next_s - last_eligible_s >= decision_cadence_s
 
 

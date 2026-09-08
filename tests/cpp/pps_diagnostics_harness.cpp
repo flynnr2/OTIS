@@ -5,8 +5,8 @@
 
 namespace {
 
-constexpr uint64_t kTicksPerSecond = 16000000ull;
-constexpr uint64_t kTimerWrapTicks = (1ull << 32) * 16ull;
+constexpr uint64_t kTicksPerSecond = 1000000ull;
+constexpr uint64_t kMonotonicUs32Modulus = 1ull << 32;
 
 OtisPpsDiagnosticsConfig config(void) {
   return {
@@ -123,12 +123,12 @@ void test_drained_and_service_progress_cannot_rearm_an_outage(void) {
 
 void test_timer_and_physical_sequence_wrap(void) {
   OtisPpsDiagnostics diagnostics;
-  const uint64_t started = kTimerWrapTicks - 2u * kTicksPerSecond;
+  const uint64_t started = kMonotonicUs32Modulus - 2u * kTicksPerSecond;
   otis_pps_diagnostics_begin(&diagnostics, config(), 11u, started);
 
   assert(otis_pps_diagnostics_note_physical_pps(
              &diagnostics, UINT32_MAX,
-             kTimerWrapTicks - kTicksPerSecond) ==
+             kMonotonicUs32Modulus - kTicksPerSecond) ==
          OtisPpsDiagnosticsTransition::None);
   assert(otis_pps_diagnostics_poll(&diagnostics, kTicksPerSecond) ==
          OtisPpsDiagnosticsTransition::None);

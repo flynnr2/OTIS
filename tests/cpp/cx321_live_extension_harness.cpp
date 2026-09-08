@@ -6,12 +6,12 @@
 
 #include "otis_cx321_plant_sign.h"
 #include "otis_cx321_plant_sign_format.h"
-#include "otis_timer0_extension.h"
+#include "otis_monotonic_us_extension.h"
 
 namespace {
 
-constexpr uint64_t kSecond = 16000000ull;
-constexpr uint64_t kModulus = (1ull << 32) * 16ull;
+constexpr uint64_t kSecond = 1000000ull;
+constexpr uint64_t kModulus = 1ull << 32;
 constexpr uint32_t kSession = 41u;
 
 uint64_t raw(uint64_t extended_ticks) {
@@ -87,12 +87,12 @@ uint64_t formatted_event_ticks(
 }  // namespace
 
 int main() {
-  // Ten seconds after a raw TIMER0 wrap: the real ~6,300 s lifecycle crosses
+  // Ten seconds after a raw microsecond wrap: the real ~6,300 s lifecycle crosses
   // exactly the next single 2^32-us wrap.
   const uint64_t setup_ticks = 10u * kSecond;
-  OtisTimer0Extension extension = {};
-  otis_timer0_extension_init(&extension);
-  assert(otis_timer0_extension_seed(&extension, setup_ticks, kSession));
+  OtisMonotonicUsExtension extension = {};
+  otis_monotonic_us_extension_init(&extension);
+  assert(otis_monotonic_us_extension_seed(&extension, setup_ticks, kSession));
 
   OtisCx321PlantSignAccumulator pre_accumulator = {};
   otis_cx321_plant_sign_accumulator_init(
@@ -119,7 +119,7 @@ int main() {
     const uint64_t boundary_raw = raw(setup_ticks + second * kSecond);
     if (boundary_raw < previous_raw) wraps++;
     uint64_t boundary_extended = 0u;
-    assert(otis_timer0_extension_advance_boundary(
+    assert(otis_monotonic_us_extension_advance_boundary(
         &extension, boundary_raw, kSession, &boundary_extended));
     assert(boundary_extended == setup_ticks + second * kSecond);
     uint32_t interval_count = OTIS_CX321_NOMINAL_COUNT_PER_INTERVAL;
@@ -153,10 +153,10 @@ int main() {
   const uint64_t application_actual = previous_extended + kSecond / 2u;
   const uint64_t next_boundary_raw = raw(previous_extended + kSecond);
   uint64_t next_boundary_extended = 0u;
-  assert(otis_timer0_extension_advance_boundary(
+  assert(otis_monotonic_us_extension_advance_boundary(
       &extension, next_boundary_raw, kSession, &next_boundary_extended));
   uint64_t application_projected = 0u;
-  assert(otis_timer0_extension_project_nearest(
+  assert(otis_monotonic_us_extension_project_nearest(
       &extension, raw(application_actual), kSession, 60u * kSecond,
       &application_projected));
   assert(application_projected == application_actual);
@@ -177,7 +177,7 @@ int main() {
     const uint64_t boundary_raw = raw(setup_ticks + second * kSecond);
     if (boundary_raw < previous_raw) wraps++;
     uint64_t boundary_extended = 0u;
-    assert(otis_timer0_extension_advance_boundary(
+    assert(otis_monotonic_us_extension_advance_boundary(
         &extension, boundary_raw, kSession, &boundary_extended));
     uint32_t interval_count = OTIS_CX321_NOMINAL_COUNT_PER_INTERVAL;
     if (post_accumulator.accepted_intervals == 0u &&
@@ -200,11 +200,11 @@ int main() {
   const uint64_t acknowledgement_actual = post.close_ticks + kSecond / 2u;
   const uint64_t after_response_boundary_raw = raw(post.close_ticks + kSecond);
   uint64_t after_response_boundary_extended = 0u;
-  assert(otis_timer0_extension_advance_boundary(
+  assert(otis_monotonic_us_extension_advance_boundary(
       &extension, after_response_boundary_raw, kSession,
       &after_response_boundary_extended));
   uint64_t acknowledgement_projected = 0u;
-  assert(otis_timer0_extension_project_nearest(
+  assert(otis_monotonic_us_extension_project_nearest(
       &extension, raw(acknowledgement_actual), kSession, 60u * kSecond,
       &acknowledgement_projected));
   assert(acknowledgement_projected == acknowledgement_actual);
@@ -221,7 +221,7 @@ int main() {
   for (uint8_t index = 1u; index < formatted_count; ++index)
     assert(formatted_ticks[index] >= formatted_ticks[index - 1u]);
   uint64_t ambiguous = 0u;
-  assert(!otis_timer0_extension_project_nearest(
+  assert(!otis_monotonic_us_extension_project_nearest(
       &extension, raw(after_response_boundary_extended + 61u * kSecond),
       kSession, 60u * kSecond, &ambiguous));
   puts("cx321_live_extension_harness_passed");

@@ -41,7 +41,7 @@ static inline OtisPpsBoundaryAssessment otis_pps_gate_assess_boundary(
     uint64_t duplicate_max_interval_ticks, uint64_t minimum_interval_ticks,
     uint64_t maximum_interval_ticks) {
   uint64_t interval_ticks =
-      otis_timer0_interval_ticks(open_ticks, close_ticks);
+      otis_monotonic_us32_interval(open_ticks, close_ticks);
   if ((boundary_flags & otis_pps_reference_invalid_flag_mask()) != 0u) {
     return {
         false,

@@ -144,12 +144,12 @@ def _create_manifest(
         },
         "domains": [
             {
-                "name": "rp2040_timer0",
-                "nominal_hz": 16_000_000,
-                "counter_width_bits": 36,
-                "modulus_ticks": 68_719_476_736,
+                "name": "rp2040_monotonic_us32",
+                "nominal_hz": 1_000_000,
+                "counter_width_bits": 32,
+                "modulus_ticks": 4_294_967_296,
                 "rollover": "modular_forward",
-                "maximum_unambiguous_forward_ticks": 34_359_738_368,
+                "maximum_unambiguous_forward_ticks": 2_147_483_648,
             },
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],

@@ -47,7 +47,7 @@ def _aperture_endpoint_fixture() -> tuple[
     d8_rows: list[dict[str, str]] = []
     for offset in range(1, 4):
         snapshot = 200 + offset
-        ticks = 1_000_000 + offset * 16_000_000
+        ticks = 1_000_000 + offset * 1_000_000
         d14_rows.append(
             {
                 "session": "7",
@@ -289,7 +289,7 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
         "schema_version": "2",
         "timing_record_sequence": "1",
         "event_timestamp_ticks": "16000001",
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
     }
     ah2 = {
         **decision,
@@ -297,7 +297,7 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
         "schema_version": "2",
         "timing_record_sequence": "2",
         "decision_timestamp_ticks": "9600000101",
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
     }
 
     exact = live_analyze.campaign18_exact_timing_sidecar_join(
@@ -325,7 +325,7 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
     for transactions, at2_rows, ah2_rows in (
         ([], [at2], [ah2]),
         ([transaction, dict(transaction)], [at2], [ah2]),
-        ([transaction], [{**at2, "time_domain": "rp2040_timer0"}], [ah2]),
+        ([transaction], [{**at2, "time_domain": "rp2040_monotonic_us32"}], [ah2]),
         ([transaction], [at2], [{**ah2, "timing_record_sequence": "1"}]),
         ([transaction], [at2], [{**ah2, "decision_timestamp_ticks": "-1"}]),
     ):
@@ -338,7 +338,8 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
         assert observed["exact"] is False
         assert observed["mismatches"]
 
-    # Exact TIMER0 extension is scoped to the capture session. A recoverable
+    # Exact native-microsecond reconstruction is scoped to the capture session.
+    # A recoverable
     # association reset can therefore begin a lower counter epoch without
     # weakening ordering or the one-to-one V1/V2 identity join.
     decision_session_2 = {
@@ -356,7 +357,7 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
         "schema_version": "2",
         "timing_record_sequence": "3",
         "decision_timestamp_ticks": "1000",
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
     }
     session_reset = live_analyze.campaign18_exact_timing_sidecar_join(
         transactions=[transaction],
@@ -379,7 +380,7 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
         "schema_version": "2",
         "timing_record_sequence": "4",
         "decision_timestamp_ticks": "999",
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
     }
     within_session_backward = live_analyze.campaign18_exact_timing_sidecar_join(
         transactions=[transaction],
@@ -411,13 +412,13 @@ def test_campaign18_exact_join_rejects_empty_duplicate_and_invalid_sidecars() ->
     ("application_ticks", "response_ticks", "expected_exact"),
     (
         # Attempt 8 completed 766.593 ms before the frozen exact horizon.
-        (153_791_624_736, 177_779_359_248, False),
+        (9_611_976_546, 11_111_209_953, False),
         # Attempt 9 completed 60.146 ms before the frozen exact horizon.
-        (259_311_385_072, 283_310_422_736, False),
+        (16_206_961_567, 17_706_901_421, False),
         # The exact 1,500-second counter boundary is admissible.
         (
-            259_311_385_072,
-            259_311_385_072 + 1_500 * 16_000_000,
+            16_206_961_567,
+            16_206_961_567 + 1_500 * 1_000_000,
             True,
         ),
     ),
@@ -460,7 +461,7 @@ def test_cx323_exact_response_timing_rejects_sub_1500_second_completion(
             "schema_version": "2",
             "timing_record_sequence": "1",
             "event_timestamp_ticks": str(application_ticks),
-            "time_domain": "rp2040_timer0_extended",
+            "time_domain": "rp2040_monotonic_us64",
         },
         {
             **response,
@@ -468,7 +469,7 @@ def test_cx323_exact_response_timing_rejects_sub_1500_second_completion(
             "schema_version": "2",
             "timing_record_sequence": "2",
             "event_timestamp_ticks": str(response_ticks),
-            "time_domain": "rp2040_timer0_extended",
+            "time_domain": "rp2040_monotonic_us64",
         },
     ]
 
@@ -477,7 +478,7 @@ def test_cx323_exact_response_timing_rejects_sub_1500_second_completion(
         decisions=[],
         transaction_timings=timings,
         decision_timings=[],
-        minimum_response_elapsed_ticks=1_500 * 16_000_000,
+        minimum_response_elapsed_ticks=1_500 * 1_000_000,
     )
 
     assert result["exact"] is expected_exact
@@ -487,7 +488,7 @@ def test_cx323_exact_response_timing_rejects_sub_1500_second_completion(
         assert result["mismatches"][-1] == (
             "AT2 response elapsed ticks are below the exact minimum "
             f"request_sequence=1 elapsed_ticks={elapsed_ticks} "
-            "minimum_ticks=24000000000"
+                "minimum_ticks=1500000000"
         )
 
 
@@ -523,7 +524,7 @@ def _cx323_maintenance_stream() -> tuple[
         "schema_version": "2",
         "timing_record_sequence": "1",
         "decision_timestamp_ticks": "28800000000",
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
     }
     transaction = {
         "transaction_record_sequence": "1",
@@ -541,14 +542,14 @@ def _cx323_maintenance_stream() -> tuple[
         "schema_version": "2",
         "timing_record_sequence": "2",
         "event_timestamp_ticks": "28800000001",
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
     }
     activation = {
         "record_type": "AHM",
         "maintenance_record_sequence": "1",
         "event": "policy_activation",
         "event_timestamp_ticks": "1",
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
         "policy_id": programme.policy_id,
         "active_policy_sha256": active_policy_sha256,
         "hybrid_record_sequence": "0",
@@ -569,7 +570,7 @@ def _cx323_maintenance_stream() -> tuple[
         "maintenance_record_sequence": "2",
         "event": "decision",
         "event_timestamp_ticks": "28800000002",
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
         "policy_id": programme.policy_id,
         "active_policy_sha256": active_policy_sha256,
         "hybrid_record_sequence": "1",
@@ -912,7 +913,7 @@ def test_sustained_outcome_uses_exact_raw_phase_window_and_counter_time() -> Non
     )
     assert status == "passed"
     assert decision == "sustained_hybrid_regulation_demonstrated_challenge_reversal"
-    assert facts["post_reversal_ticks"] == 26_400 * 16_000_000
+    assert facts["post_reversal_ticks"] == 26_400 * 1_000_000
     assert facts["final_phase_window_row_count"] == 21_600
     assert facts["final_phase_window_contiguous"] is True
     assert facts["final_phase_OLS_slope_exact_numerator"] == 0
@@ -1724,7 +1725,7 @@ def test_cx323_final_analyzer_enters_ahm_replay_without_legacy_policy_shape(
         "manifest_sha256": "a" * 64,
         "channels": [],
         "domains": [
-            {"name": "rp2040_timer0_extended", "nominal_hz": 16_000_000}
+            {"name": "rp2040_monotonic_us64", "nominal_hz": 1_000_000}
         ],
         "contracts": {},
         "files": [

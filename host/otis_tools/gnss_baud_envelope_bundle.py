@@ -44,13 +44,13 @@ BUNDLE_TYPE = "otis_gnss_baud_envelope_candidate_bundle_v1"
 ACTIVATION_TYPE = "otis_gnss_baud_envelope_live_activation_v1"
 TOOL_ID = "otis_gnss_baud_envelope_bundle_v1"
 ORIGINAL_CONTRACT_SHA256 = (
-    "08308e05ecc4b169a46ace1eb339b93a778abe04070278fcc3c47519666b0550"
+    "bf15a07b8f2c22e026f17bae733c4794cbfd11a707f05e855d8066772c37c641"
 )
 CONTINUATION_CONTRACT_SHA256 = (
-    "7f029d106b684ac96623c5d3be28f3ebc6b69a3cd38e2641561ed04a2d204a22"
+    "b99409ab4db40ee427ede96489e4a430fddb34237777afa7f042ec96445722d2"
 )
 RESUME_CONTRACT_SHA256 = (
-    "a91b095fb155292e979a84424c22141f88285ba6db065ffba7c167d9179c67c9"
+    "c91c9c796e8dfc40f2731d24101643368c2d2d2f417219b7ec806fecf461c07b"
 )
 # Retained export for callers that specifically consume the continuation bundle.
 EXPECTED_CONTRACT_SHA256 = CONTINUATION_CONTRACT_SHA256
@@ -301,7 +301,7 @@ def _startup_discovery(contract: Mapping[str, Any]) -> dict[str, Any]:
         or value.get("basis_classification") != "observed_serial_baud"
         or value.get("causal_telemetry_component") != "gnss_receiver"
         or value.get("pmtk605_peripheral_complete_counter_domain")
-        != "rp2040_timer0_extended"
+        != "rp2040_monotonic_us64"
         or value.get("required_causal_telemetry")
         != list(STARTUP_DISCOVERY_TELEMETRY_KEYS)
         or not isinstance(sealed, Mapping)
@@ -607,7 +607,7 @@ def _validate_historical_continuation_source(
     }
 
     def validate_phase(event: Mapping[str, Any], segment: Mapping[str, Any], phase: Mapping[str, Any]) -> Mapping[str, Any]:
-        required_ticks = int(phase["duration_s"]) * 16_000_000
+        required_ticks = int(phase["duration_s"]) * 1_000_000
         deltas = event.get("counter_deltas")
         metrics = event.get("metrics")
         started = by_sequence.get(int(event.get("event_sequence", -1)) - 1, {})
@@ -1206,8 +1206,8 @@ def _run_manifest_template(
             "priority_abort_ingress": "independent_fifo",
         },
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": 16000000},
-            {"name": "rp2040_timer0_extended", "nominal_hz": 16000000},
+            {"name": "rp2040_monotonic_us32", "nominal_hz": 1000000},
+            {"name": "rp2040_monotonic_us64", "nominal_hz": 1000000},
             {"name": "host_monotonic_ns", "nominal_hz": 1000000000},
         ],
         "channels": [

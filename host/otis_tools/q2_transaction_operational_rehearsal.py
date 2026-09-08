@@ -40,7 +40,7 @@ def _health_row(component: str, key: str, value: str, sequence: int) -> dict[str
             "schema_version": "1",
             "status_seq": str(sequence),
             "timestamp_ticks": str(sequence * 16000),
-            "status_domain": "rp2040_timer0",
+            "status_domain": "rp2040_monotonic_us32",
             "component": component,
             "status_key": key,
             "status_value": value,

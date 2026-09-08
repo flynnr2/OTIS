@@ -24,7 +24,7 @@ def _row(sequence: int, event: str = "decision") -> dict[str, str]:
             "maintenance_record_sequence": str(sequence),
             "event": event,
             "event_timestamp_ticks": str(1_000_000 * sequence),
-            "time_domain": "rp2040_timer0_extended",
+            "time_domain": "rp2040_monotonic_us64",
             "run_identity": "cx323_d9_d6_72h_adaptive_hybrid:1",
             "build_identity": f"{SHA256}:{SHA256}",
             "profile_identity": "cx323_d9_d6_72h_adaptive_hybrid",
@@ -116,7 +116,7 @@ def _context() -> CsvValidationContext:
     return CsvValidationContext(
         "active_hybrid_maintenance_v1",
         frozenset(),
-        frozenset({"rp2040_timer0_extended"}),
+        frozenset({"rp2040_monotonic_us64"}),
     )
 
 

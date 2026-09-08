@@ -268,7 +268,7 @@ def test_live_runtime_monitor_fails_on_stale_state_or_post_gate_health_fault(
 
     def write_health(rows: list[tuple[str, str, str]]) -> None:
         body = "".join(
-            f"STS,1,{sequence},{sequence},rp2040_timer0,{component},{key},{value},INFO,0\n"
+            f"STS,1,{sequence},{sequence},rp2040_monotonic_us32,{component},{key},{value},INFO,0\n"
             for sequence, (component, key, value) in enumerate(rows, start=1)
         )
         (csv_dir / "health.csv").write_text(health_header + body, encoding="utf-8")
@@ -412,7 +412,7 @@ def test_continuation_prewrite_requires_both_preserved_state_consumers(
     (csv_dir / "health.csv").write_text(
         health_header
         + "".join(
-            f"STS,1,{index},{index},rp2040_timer0,{component},{key},{value},INFO,0\n"
+            f"STS,1,{index},{index},rp2040_monotonic_us32,{component},{key},{value},INFO,0\n"
             for index, (component, key, value) in enumerate(health_values, start=1)
         ),
         encoding="utf-8",

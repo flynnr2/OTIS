@@ -58,7 +58,7 @@ def _rates(manifest: dict[str, Any], nominal_override: str | None = None) -> tup
     nominal = oscillator.get("nominal_frequency_hz")
     domains = manifest.get("domains") or []
     timer = next(
-        (item.get("nominal_hz") for item in domains if item.get("name") == "rp2040_timer0"),
+        (item.get("nominal_hz") for item in domains if item.get("name") == "rp2040_monotonic_us32"),
         None,
     )
     if nominal is None and nominal_override is not None:
@@ -307,7 +307,7 @@ def _host_outputs(
         timer_ticks_per_second=timer_hz,
         period_ns_per_cycle=period_ns,
         configuration_sha256=phase_configuration_sha256,
-        reference_timestamp_domain="rp2040_timer0",
+        reference_timestamp_domain="rp2040_monotonic_us32",
         reference_interval_minimum_s=float(phase_profile["validity"]["reference_interval_minimum_s"]),
         reference_interval_maximum_s=float(phase_profile["validity"]["reference_interval_maximum_s"]),
     )
@@ -452,10 +452,10 @@ def compare_engine_output(
 
 
 def _static_firmware_eligibility(nominal_edges: int, timer_hz: int, period_ns: float) -> str | None:
-    if nominal_edges != 10_000_000 or timer_hz != 16_000_000 or period_ns != 100.0:
+    if nominal_edges != 10_000_000 or timer_hz != 1_000_000 or period_ns != 100.0:
         return (
             "selected firmware engine has a fixed CX317 10 MHz / RP2040 "
-            "16 MHz / 100 ns contract"
+            "1 MHz native-microsecond / 100 ns oscillator-period contract"
         )
     return None
 

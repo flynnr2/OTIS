@@ -2,15 +2,15 @@
   "schema_version": 1,
   "policy": {
     "max_oscillator_hz": 10000000.0,
-    "timestamp_ticks_per_second": 16000000.0,
-    "timestamp_domain": "rp2040_timer0"
+    "timestamp_ticks_per_second": 1000000.0,
+    "timestamp_domain": "rp2040_monotonic_us32"
   },
   "cases": [
     {
       "id": "ordinary_adjacent_snapshots",
       "observations": [
-        {"sequence": 10, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 16000000},
-        {"sequence": 11, "session_id": "s1", "raw_counter_value": 900, "reference_timestamp_ticks": 32000000}
+        {"sequence": 10, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 1000000},
+        {"sequence": 11, "session_id": "s1", "raw_counter_value": 900, "reference_timestamp_ticks": 2000000}
       ],
       "expected_states": ["anchor", "valid"],
       "expected_counts": [null, 100]
@@ -18,8 +18,8 @@
     {
       "id": "down_counter_and_sequence_wrap",
       "observations": [
-        {"sequence": 4294967295, "session_id": "s1", "raw_counter_value": 5, "reference_timestamp_ticks": 16000000},
-        {"sequence": 0, "session_id": "s1", "raw_counter_value": 4294967285, "reference_timestamp_ticks": 32000000}
+        {"sequence": 4294967295, "session_id": "s1", "raw_counter_value": 5, "reference_timestamp_ticks": 1000000},
+        {"sequence": 0, "session_id": "s1", "raw_counter_value": 4294967285, "reference_timestamp_ticks": 2000000}
       ],
       "expected_states": ["anchor", "valid"],
       "expected_counts": [null, 16]
@@ -27,9 +27,9 @@
     {
       "id": "sequence_loss_reanchors_on_current_snapshot",
       "observations": [
-        {"sequence": 20, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 16000000},
-        {"sequence": 22, "session_id": "s1", "raw_counter_value": 800, "reference_timestamp_ticks": 48000000},
-        {"sequence": 23, "session_id": "s1", "raw_counter_value": 700, "reference_timestamp_ticks": 64000000}
+        {"sequence": 20, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 1000000},
+        {"sequence": 22, "session_id": "s1", "raw_counter_value": 800, "reference_timestamp_ticks": 3000000},
+        {"sequence": 23, "session_id": "s1", "raw_counter_value": 700, "reference_timestamp_ticks": 4000000}
       ],
       "expected_states": ["anchor", "invalid", "valid"],
       "expected_counts": [null, null, 100],
@@ -38,10 +38,10 @@
     {
       "id": "capture_fault_requires_fresh_anchor_and_pair",
       "observations": [
-        {"sequence": 30, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 16000000},
-        {"sequence": 31, "session_id": "s1", "raw_counter_value": 900, "reference_timestamp_ticks": 32000000, "capture_valid": false, "capture_faults": ["dma_error"]},
-        {"sequence": 32, "session_id": "s1", "raw_counter_value": 800, "reference_timestamp_ticks": 48000000},
-        {"sequence": 33, "session_id": "s1", "raw_counter_value": 700, "reference_timestamp_ticks": 64000000}
+        {"sequence": 30, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 1000000},
+        {"sequence": 31, "session_id": "s1", "raw_counter_value": 900, "reference_timestamp_ticks": 2000000, "capture_valid": false, "capture_faults": ["dma_error"]},
+        {"sequence": 32, "session_id": "s1", "raw_counter_value": 800, "reference_timestamp_ticks": 3000000},
+        {"sequence": 33, "session_id": "s1", "raw_counter_value": 700, "reference_timestamp_ticks": 4000000}
       ],
       "expected_states": ["anchor", "invalid", "anchor", "valid"],
       "expected_counts": [null, null, null, 100],
@@ -50,10 +50,10 @@
     {
       "id": "session_boundary_never_bridges_counts",
       "observations": [
-        {"sequence": 40, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 16000000},
-        {"sequence": 41, "session_id": "s1", "raw_counter_value": 900, "reference_timestamp_ticks": 32000000},
-        {"sequence": 0, "session_id": "s2", "raw_counter_value": 4294967295, "reference_timestamp_ticks": 48000000},
-        {"sequence": 1, "session_id": "s2", "raw_counter_value": 4294967195, "reference_timestamp_ticks": 64000000}
+        {"sequence": 40, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 1000000},
+        {"sequence": 41, "session_id": "s1", "raw_counter_value": 900, "reference_timestamp_ticks": 2000000},
+        {"sequence": 0, "session_id": "s2", "raw_counter_value": 4294967295, "reference_timestamp_ticks": 3000000},
+        {"sequence": 1, "session_id": "s2", "raw_counter_value": 4294967195, "reference_timestamp_ticks": 4000000}
       ],
       "expected_states": ["anchor", "valid", "anchor", "valid"],
       "expected_counts": [null, 100, null, 100],
@@ -63,7 +63,7 @@
       "id": "full_counter_wrap_cannot_be_excluded",
       "observations": [
         {"sequence": 50, "session_id": "s1", "raw_counter_value": 1000, "reference_timestamp_ticks": 0},
-        {"sequence": 51, "session_id": "s1", "raw_counter_value": 900, "reference_timestamp_ticks": 8000000000}
+        {"sequence": 51, "session_id": "s1", "raw_counter_value": 900, "reference_timestamp_ticks": 500000000}
       ],
       "expected_states": ["anchor", "invalid"],
       "expected_counts": [null, null],

@@ -32,8 +32,7 @@ CX323_POLICY_ID = "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
 CX323_POLICY_PATH = (
     REPO_ROOT / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json"
 )
-CX323_POLICY_SHA256 = "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
-CX323_LEGACY_POLICY_SHA256 = "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
+CX323_POLICY_SHA256 = "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5"
 TOOL_ID = "cx320_active_hybrid_policy_reference_v1"
 
 
@@ -1109,7 +1108,7 @@ def decision_dict(decision: HybridDecision) -> dict[str, Any]:
 # state, fixed-point arithmetic, or metadata semantics by accident.
 _CX323_PICO = 1_000_000_000_000
 _CX323_DEBT_LIMIT = 500_000_000_000
-_CX323_TICKS_PER_SECOND = 16_000_000
+_CX323_TICKS_PER_SECOND = 1_000_000
 _CX323_NUMERATOR = 625_000_000_000_000_000_000
 _CX323_DENOMINATOR = 4_680_182_727
 _CX323_GAIN = Fraction("2884.5027706464516")
@@ -1139,11 +1138,8 @@ def load_cx323_policy(path: Path = CX323_POLICY_PATH) -> CX323Policy:
     value = _read_object(path)
     observed_sha256 = _sha256_file(path)
     if (
-        (value.get("schema_version"), observed_sha256)
-        not in {
-            (2, CX323_POLICY_SHA256),
-            (1, CX323_LEGACY_POLICY_SHA256),
-        }
+        value.get("schema_version") != 2
+        or observed_sha256 != CX323_POLICY_SHA256
         or value.get("policy_id") != CX323_POLICY_ID
         or value.get("candidate_id")
         != "cx323_phase_priority_persistent_cap_tagged_debt_v1"
@@ -1226,7 +1222,7 @@ class CX323Observation:
     settled: bool = True
     cadence_eligible: bool = True
     metadata_qualified: bool = True
-    # Exact extended rp2040_timer0 counter.  None is retained only for
+    # Exact extended rp2040_monotonic_us32 counter.  None is retained only for
     # historical/offline fixtures, where timestamp_s is projected exactly.
     timestamp_ticks: int | None = None
 

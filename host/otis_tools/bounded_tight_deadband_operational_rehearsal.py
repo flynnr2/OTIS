@@ -89,8 +89,8 @@ def _tdb_row(
         "schema_version": "1",
         "decision_sequence": str(sequence),
         "estimate_id": f"est:cx317:selected600:{estimate:06d}",
-        "decision_timestamp_ticks": str((2400 + sequence * 600) * 16_000_000),
-        "time_domain": "rp2040_timer0",
+        "decision_timestamp_ticks": str((2400 + sequence * 600) * 1_000_000),
+        "time_domain": "rp2040_monotonic_us32",
         "capture_session": "1",
         "dac_epoch": str(epoch),
         "integer_edge_error_counts": str(error),
@@ -135,11 +135,11 @@ def _write_arm_fixture(run_dir: Path, selected: BoundedTightDeadbandLeg) -> None
     (run_dir / "csv/control_previews_v1.csv").write_text(
         "decision_timestamp_ticks,preview_available,decision_reason_code,"
         "est_input_ref,decision_id,limited_delta_codes,control_state\n"
-        "38427843600,true,preview_available_observe_only,"
+        "2401740225,true,preview_available_observe_only,"
         f"est:cx317:selected600:000001,ctl:1,{21 * selected.required_sign},LOCKED_PREVIEW\n"
-        "48027796864,false,decision_cadence_hold,"
+        "3001737304,false,decision_cadence_hold,"
         "est:cx317:selected600:000002,ctl:2,,LOCKED_PREVIEW\n"
-        "57627748416,false,decision_cadence_hold,"
+        "3601734276,false,decision_cadence_hold,"
         "est:cx317:selected600:000003,ctl:3,,LOCKED_PREVIEW\n",
         encoding="utf-8",
     )
@@ -421,8 +421,8 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
                 "record_type": "STS",
                 "schema_version": "1",
                 "status_seq": "1",
-                "timestamp_ticks": "480000000",
-                "status_domain": "rp2040_timer0",
+                "timestamp_ticks": "30000000",
+                "status_domain": "rp2040_monotonic_us32",
                 "component": "cx317_active",
                 "status_key": "uptime_s",
                 "status_value": "30",
@@ -434,8 +434,8 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
                     "record_type": "STS",
                     "schema_version": "1",
                     "status_seq": str(sequence),
-                    "timestamp_ticks": str(sequence * 160_000_000),
-                    "status_domain": "rp2040_timer0",
+                    "timestamp_ticks": str(sequence * 10_000_000),
+                    "status_domain": "rp2040_monotonic_us32",
                     "component": "dual_core",
                     "status_key": "telemetry_dropped",
                     "status_value": "3",
@@ -480,7 +480,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             {
                 **telemetry_rows[0],
                 "status_seq": "4",
-                "timestamp_ticks": str(612 * 16_000_000),
+                "timestamp_ticks": str(612 * 1_000_000),
                 "status_value": "612",
             }
         )
@@ -534,7 +534,7 @@ def run(*, proposal_path: Path, output_dir: Path) -> dict[str, Any]:
             {
                 **telemetry_rows[1],
                 "status_seq": "5",
-                "timestamp_ticks": str(613 * 16_000_000),
+                "timestamp_ticks": str(613 * 1_000_000),
                 "status_value": "4",
             }
         )

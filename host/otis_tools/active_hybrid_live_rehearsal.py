@@ -37,7 +37,7 @@ from .active_hybrid_live_supervisor import (
     FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH,
     PLANT_SIGN_PREARM_MIN_ACCEPTED_INTERVALS,
     QUERY_PERIOD_S,
-    RP2040_TIMER0_TICKS_PER_SECOND,
+    RP2040_MONOTONIC_US_PER_SECOND,
     ActiveHybridLiveSupervisor,
     _authoritative_capture_counters,
     forwarded_output_integration_prewrite_evidence,
@@ -127,7 +127,7 @@ from .run_paths import (
 )
 from .serial_commands import send_timestamped_command_to_fifo
 from .time_domains import (
-    RP2040_TIMER0_MICROS_WRAP_TICKS,
+    RP2040_MONOTONIC_US32_MODULUS,
     canonical_domain_declaration,
     validate_domain_declarations,
 )
@@ -503,7 +503,7 @@ def _post_abort_active_status_wire_fixture(
         (SNAPSHOT_COMPLETE_KEY, str(generation)),
     ]
     return "".join(
-        f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
+        f"STS,1,{sequence},{sequence * 1000},rp2040_monotonic_us32,"
         f"cx317_active,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(records, start=1)
     ).encode()
@@ -529,7 +529,7 @@ def _overlapping_active_status_generation_fixture(
     )
     return "".join(
         f"STS,1,{generation * 1000 + sequence},"
-        f"{(generation * 1000 + sequence) * 16000},rp2040_timer0,"
+        f"{(generation * 1000 + sequence) * 1000},rp2040_monotonic_us32,"
         f"cx317_active,{SNAPSHOT_BEGIN_KEY},{generation},INFO,0\r\n"
         for generation, sequence in records
     ).encode()
@@ -559,10 +559,10 @@ def _campaign18_exact_timing_sidecar_row(
             "decision_sequence": row["decision_sequence"],
             "decision_timestamp_ticks": str(
                 int(row["decision_timestamp_s"])
-                * RP2040_TIMER0_TICKS_PER_SECOND
+                * RP2040_MONOTONIC_US_PER_SECOND
                 + 101
             ),
-            "time_domain": "rp2040_timer0_extended",
+            "time_domain": "rp2040_monotonic_us64",
             **{
                 field: row[field]
                 for field in (
@@ -598,9 +598,9 @@ def _campaign18_exact_timing_sidecar_row(
         "transaction_record_sequence": row["transaction_record_sequence"],
         "event": event,
         "event_timestamp_ticks": str(
-            event_s * RP2040_TIMER0_TICKS_PER_SECOND + offset
+            event_s * RP2040_MONOTONIC_US_PER_SECOND + offset
         ),
-        "time_domain": "rp2040_timer0_extended",
+        "time_domain": "rp2040_monotonic_us64",
         **{
             field: row[field]
             for field in (
@@ -630,7 +630,7 @@ def _forwarded_integration_health_fixture(
     """Return CONFIG?-derived D9 exactness and zero-authority D6 status."""
 
     health = dict(FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH)
-    health[("forwarded_clock_output", "first_valid_ticks")] = "16000000"
+    health[("forwarded_clock_output", "first_valid_ticks")] = "1000000"
     health.update(
         {
             ("pps_gate", "valid"): "true",
@@ -683,8 +683,8 @@ def _forwarded_integration_health_fixture(
 
 def _gnss_operational_complete_wire_fixture() -> bytes:
     return "".join(
-        f"STS,1,{500 + sequence},{(500 + sequence) * 16000},"
-        f"rp2040_timer0,{component},{key},{value},INFO,0\r\n"
+        f"STS,1,{500 + sequence},{(500 + sequence) * 1000},"
+        f"rp2040_monotonic_us32,{component},{key},{value},INFO,0\r\n"
         for sequence, ((component, key), value) in enumerate(
             sorted(GNSS_OPERATIONAL_PREWRITE_EXACT.items()), start=1
         )
@@ -702,7 +702,7 @@ def _forwarded_integration_wire_fixture(
     for (component, key), value in sorted(healthy.items()):
         sequence += 1
         lines.append(
-            f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
+            f"STS,1,{sequence},{sequence * 1000},rp2040_monotonic_us32,"
             f"{component},{key},{value},INFO,0"
         )
     for boundary in range(1, 4):
@@ -710,13 +710,13 @@ def _forwarded_integration_wire_fixture(
         lines.extend(
             (
                 f"SNP,1,1,{boundary},{down_counter},{boundary},"
-                f"{boundary * 16_000_000},0,"
+                f"{boundary * 1_000_000},0,"
                 "pio_wait_cumulative_snapshot_dma_v1",
-                f"CNT,1,{boundary},2,{(boundary - 1) * 16_000_000},"
-                f"{boundary * 16_000_000},rp2040_timer0,10000000,R,"
+                f"CNT,1,{boundary},2,{(boundary - 1) * 1_000_000},"
+                f"{boundary * 1_000_000},rp2040_monotonic_us32,10000000,R,"
                 "h1_cx317_ocxo_10mhz,0",
                 f"MNS,1,1,1,{boundary},{down_counter},{boundary},"
-                f"{boundary * 16_000_000},0,"
+                f"{boundary * 1_000_000},0,"
                 "pio_wait_cumulative_snapshot_cpu_v1,3",
             )
         )
@@ -727,7 +727,7 @@ def _forwarded_integration_wire_fixture(
     for key in FORWARDED_MONITOR_OBSERVABILITY_KEYS:
         sequence += 1
         lines.append(
-            f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
+            f"STS,1,{sequence},{sequence * 1000},rp2040_monotonic_us32,"
             f"{key[0]},{key[1]},{degraded[key]},WARN,8"
         )
     for key, value in (
@@ -737,7 +737,7 @@ def _forwarded_integration_wire_fixture(
     ):
         sequence += 1
         lines.append(
-            f"STS,1,{sequence},{sequence * 16000},rp2040_timer0,"
+            f"STS,1,{sequence},{sequence * 1000},rp2040_monotonic_us32,"
             f"gnss_receiver,{key},{value},INFO,0"
         )
     payload = ("\r\n".join(lines) + "\r\n").encode("ascii")
@@ -987,7 +987,7 @@ def _cx321_plant_sign_fixture(
                 "cumulative_down_counter": str(counter),
                 "reference_sequence": str(first),
                 "reference_timestamp_ticks": str(
-                    opened % RP2040_TIMER0_MICROS_WRAP_TICKS
+                    opened % RP2040_MONOTONIC_US32_MODULUS
                 ),
                 "status": "0",
                 "backend": "pio_wait_cumulative_snapshot_dma_v1",
@@ -1005,7 +1005,7 @@ def _cx321_plant_sign_fixture(
                 "reference_sequence": str(sequence),
                 "reference_timestamp_ticks": str(
                     (opened + offset * context.timer_hz)
-                    % RP2040_TIMER0_MICROS_WRAP_TICKS
+                    % RP2040_MONOTONIC_US32_MODULUS
                 ),
                 "status": "0",
                 "backend": "pio_wait_cumulative_snapshot_dma_v1",
@@ -1685,7 +1685,8 @@ def _sustained_multi_transaction_fixture(
             ),
         }
 
-    # Keep the declared wrapping TIMER0 domain causally reconstructable while
+    # Keep the declared wrapping native-microsecond domain causally
+    # reconstructable while
     # accelerating across the natural-reversal window.  These are ordinary
     # zero-code decisions, and the first also consumes request 2's retained
     # response identity through the real downstream replay path.
@@ -1826,11 +1827,11 @@ def _cx322_selected_estimate_fixture(
                 "estimator_timestamp_ticks": str(
                     (
                         int(decision["decision_timestamp_s"])
-                        * RP2040_TIMER0_TICKS_PER_SECOND
+                        * RP2040_MONOTONIC_US_PER_SECOND
                     )
-                    % RP2040_TIMER0_MICROS_WRAP_TICKS
+                    % RP2040_MONOTONIC_US32_MODULUS
                 ),
-                "time_domain": "rp2040_timer0",
+                "time_domain": "rp2040_monotonic_us32",
                 "source_count_seq": decision["source_last_sequence"],
                 "source_count_ref": f"live:CNT:{decision['source_last_sequence']}",
                 "source_reference_first_seq": decision["source_first_sequence"],
@@ -2038,15 +2039,15 @@ def _cx322_active_status_wire_fixture(
     ]
     def record_timestamp_ticks(sequence: int) -> int:
         if frontier_timestamp_ticks is None:
-            return (generation * 1000 + sequence) * 16000
+            return (generation * 1000 + sequence) * 1000
         remaining_records = len(records) - sequence
         return (
-            frontier_timestamp_ticks - remaining_records * 16000
-        ) % RP2040_TIMER0_MICROS_WRAP_TICKS
+            frontier_timestamp_ticks - remaining_records * 1000
+        ) % RP2040_MONOTONIC_US32_MODULUS
 
     active_wire = "".join(
         f"STS,1,{generation * 1000 + sequence},"
-        f"{record_timestamp_ticks(sequence)},rp2040_timer0,"
+        f"{record_timestamp_ticks(sequence)},rp2040_monotonic_us32,"
         f"cx317_active,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(records, start=1)
     ).encode()
@@ -2066,15 +2067,15 @@ def _cx322_active_status_wire_fixture(
 
     def capture_timestamp_ticks(sequence: int) -> int:
         if frontier_timestamp_ticks is None:
-            return (generation * 1000 - 100 + sequence) * 16000
+            return (generation * 1000 - 100 + sequence) * 1000
         remaining_records = len(records) + len(capture_records) - sequence + 1
         return (
-            frontier_timestamp_ticks - remaining_records * 16000
-        ) % RP2040_TIMER0_MICROS_WRAP_TICKS
+            frontier_timestamp_ticks - remaining_records * 1000
+        ) % RP2040_MONOTONIC_US32_MODULUS
 
     capture_wire = "".join(
         f"STS,1,{generation * 1000 - 100 + sequence},"
-        f"{capture_timestamp_ticks(sequence)},rp2040_timer0,"
+        f"{capture_timestamp_ticks(sequence)},rp2040_monotonic_us32,"
         f"pps_gate,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(capture_records, start=1)
     ).encode()
@@ -2181,7 +2182,7 @@ def _cx321_active_status_wire_fixture(
     ]
     return "".join(
         f"STS,1,{generation * 1000 + sequence},"
-        f"{(generation * 1000 + sequence) * 16000},rp2040_timer0,"
+        f"{(generation * 1000 + sequence) * 1000},rp2040_monotonic_us32,"
         f"cx317_active,{key},{value},INFO,0\r\n"
         for sequence, (key, value) in enumerate(records, start=1)
     ).encode()
@@ -2254,7 +2255,7 @@ def _cx321_ack_handoff_fixture(
         return row
 
     ack = base(6, "response_ack")
-    ack["event_timestamp_ticks"] = str(int(response["close_ticks"]) + 16_000_000)
+    ack["event_timestamp_ticks"] = str(int(response["close_ticks"]) + 1_000_000)
     handoff = base(7, "handoff")
     handoff.update(
         {
@@ -2432,7 +2433,7 @@ def _create_rehearsal_run_manifest(
             },
         },
         "domains": [
-            canonical_domain_declaration("rp2040_timer0"),
+            canonical_domain_declaration("rp2040_monotonic_us32"),
             canonical_domain_declaration("h1_cx317_ocxo_10mhz"),
         ],
         "channels": [
@@ -2502,7 +2503,7 @@ def _create_rehearsal_run_manifest(
         programme.identification_required or programme.integrated_long_run
     ):
         value["domains"].append(
-            canonical_domain_declaration("rp2040_timer0_extended")
+            canonical_domain_declaration("rp2040_monotonic_us64")
         )
     if programme.identification_required:
         value["programme_policy"] = bundle["programme_policy"]
@@ -2724,8 +2725,8 @@ def _reduce_complete_active_health(
             "record_type": "STS",
             "schema_version": "1",
             "status_seq": str(sequence),
-            "timestamp_ticks": str(sequence * 16_000),
-            "status_domain": "rp2040_timer0",
+            "timestamp_ticks": str(sequence * 1_000),
+            "status_domain": "rp2040_monotonic_us32",
             "component": component,
             "status_key": key,
             "status_value": value,
@@ -2925,13 +2926,13 @@ def _exercise_qualified_device_time_boundaries(
     # Preserve the non-zero subsecond phase that escaped the attempt-8 host
     # validator.  Scientific boundaries are measured from this exact device
     # timestamp, while integer uptime remains a conservative lower bound.
-    origin_subsecond_ticks = 13_602_864
+    origin_subsecond_ticks = 850_179
     origin_ticks = (
-        origin_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
+        origin_uptime_s * RP2040_MONOTONIC_US_PER_SECOND
         + origin_subsecond_ticks
     )
     if programme.integrated_long_run:
-        origin_ticks %= RP2040_TIMER0_MICROS_WRAP_TICKS
+        origin_ticks %= RP2040_MONOTONIC_US32_MODULUS
     estimate_path = supervisor.run_dir / "csv/estimates_v2.csv"
     estimate = {field: "" for field in CONTRACT_FIELDS["estimates_v2"]}
     estimate.update(
@@ -2941,7 +2942,7 @@ def _exercise_qualified_device_time_boundaries(
             "estimate_seq": "541",
             "estimate_id": "est:cx317:selected600:device_clock_rehearsal",
             "estimator_timestamp_ticks": str(origin_ticks),
-            "time_domain": "rp2040_timer0",
+            "time_domain": "rp2040_monotonic_us32",
             "source_count_ref": "live:CNT:2400",
             "source_dac_ref": "live:DAC:1",
             "estimator_version": "cx317_selected_600s_nonoverlap_v1",
@@ -3012,10 +3013,10 @@ def _exercise_qualified_device_time_boundaries(
     health[("cx317_active", "uptime_s")] = str(origin_uptime_s)
     if programme.integrated_long_run:
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)] = (
-            "rp2040_timer0"
+            "rp2040_monotonic_us32"
         )
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
-            (origin_ticks - 1) % RP2040_TIMER0_MICROS_WRAP_TICKS
+            (origin_ticks - 1) % RP2040_MONOTONIC_US32_MODULUS
         )
     supervisor._maybe_qualify(health)
     fractional_origin_deferred = (
@@ -3056,7 +3057,7 @@ def _exercise_qualified_device_time_boundaries(
         )
         terminal = supervisor.state.get("terminal") or {}
         result = {
-            "time_domain": "rp2040_timer0",
+            "time_domain": "rp2040_monotonic_us32",
             "capture_session": 1,
             "qualified_origin_subsecond_ticks": origin_subsecond_ticks,
             "fractional_origin_deferred_until_lower_bound": (
@@ -3096,7 +3097,7 @@ def _exercise_qualified_device_time_boundaries(
         ):
             raise RuntimeError("CX323 D14 aperture rehearsal contract is incomplete")
         admission_close = target - reserve
-        timer0_ticks = int(
+        monotonic_us32_ticks = int(
             health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
         )
 
@@ -3119,7 +3120,7 @@ def _exercise_qualified_device_time_boundaries(
                 "boundary_reference_sequence": int(
                     health[("pps_gate", "boundary_reference_sequence")]
                 ),
-                "rp2040_timer0_ticks": int(
+                "rp2040_monotonic_us32_ticks": int(
                     health[(
                         LIVE_FRONTIER_COMPONENT,
                         LIVE_FRONTIER_TICKS_KEY,
@@ -3174,13 +3175,13 @@ def _exercise_qualified_device_time_boundaries(
             "endpoint_open": endpoint_open_observation,
             "endpoint_closed": endpoint_closed_observation,
         }
-        timer0_held_constant = all(
-            item["rp2040_timer0_ticks"] == timer0_ticks
+        monotonic_us32_held_constant = all(
+            item["rp2040_monotonic_us32_ticks"] == monotonic_us32_ticks
             for item in observations.values()
         )
         result = {
             "time_domain": "qualified_D14_D8_aperture_count_v2",
-            "supporting_local_ordering_domain": "rp2040_timer0",
+            "supporting_local_ordering_domain": "rp2040_monotonic_us32",
             "capture_session": 1,
             "qualified_origin_subsecond_ticks": origin_subsecond_ticks,
             "fractional_origin_deferred_until_lower_bound": (
@@ -3199,8 +3200,8 @@ def _exercise_qualified_device_time_boundaries(
             "admission_closed_at_exact_aperture_boundary": admission_closed,
             "endpoint_open_before_exact_aperture_boundary": endpoint_open,
             "endpoint_closed_at_exact_aperture_boundary": endpoint_closed,
-            "rp2040_timer0_held_constant_across_aperture_boundaries": (
-                timer0_held_constant
+            "rp2040_monotonic_us32_held_constant_across_aperture_boundaries": (
+                monotonic_us32_held_constant
             ),
             "forward_host_utc_step_did_not_close_early": endpoint_open,
             "backward_host_utc_step_did_not_delay_endpoint": endpoint_closed,
@@ -3215,7 +3216,7 @@ def _exercise_qualified_device_time_boundaries(
                 "admission_closed_at_exact_aperture_boundary",
                 "endpoint_open_before_exact_aperture_boundary",
                 "endpoint_closed_at_exact_aperture_boundary",
-                "rp2040_timer0_held_constant_across_aperture_boundaries",
+                "rp2040_monotonic_us32_held_constant_across_aperture_boundaries",
                 "forward_host_utc_step_did_not_close_early",
                 "backward_host_utc_step_did_not_delay_endpoint",
             )
@@ -3230,17 +3231,17 @@ def _exercise_qualified_device_time_boundaries(
     if programme.integrated_long_run:
         admission_before_ticks = (
             origin_ticks
-            + admission_elapsed_s * RP2040_TIMER0_TICKS_PER_SECOND
+            + admission_elapsed_s * RP2040_MONOTONIC_US_PER_SECOND
             - 1
         )
         supervisor.state["qualified_frontier_raw_ticks"] = (
-            admission_before_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+            admission_before_ticks % RP2040_MONOTONIC_US32_MODULUS
         )
         supervisor.state["qualified_frontier_extended_ticks"] = (
             admission_before_ticks
         )
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
-            admission_before_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+            admission_before_ticks % RP2040_MONOTONIC_US32_MODULUS
         )
     else:
         health[("cx317_active", "uptime_s")] = str(
@@ -3255,7 +3256,7 @@ def _exercise_qualified_device_time_boundaries(
                 int(health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)])
                 + 1
             )
-            % RP2040_TIMER0_MICROS_WRAP_TICKS
+            % RP2040_MONOTONIC_US32_MODULUS
         )
     else:
         health[("cx317_active", "uptime_s")] = str(
@@ -3271,17 +3272,17 @@ def _exercise_qualified_device_time_boundaries(
     if programme.integrated_long_run:
         endpoint_before_ticks = (
             origin_ticks
-            + qualified_duration_s * RP2040_TIMER0_TICKS_PER_SECOND
+            + qualified_duration_s * RP2040_MONOTONIC_US_PER_SECOND
             - 1
         )
         supervisor.state["qualified_frontier_raw_ticks"] = (
-            endpoint_before_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+            endpoint_before_ticks % RP2040_MONOTONIC_US32_MODULUS
         )
         supervisor.state["qualified_frontier_extended_ticks"] = (
             endpoint_before_ticks
         )
         health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)] = str(
-            endpoint_before_ticks % RP2040_TIMER0_MICROS_WRAP_TICKS
+            endpoint_before_ticks % RP2040_MONOTONIC_US32_MODULUS
         )
     else:
         health[("cx317_active", "uptime_s")] = str(
@@ -3295,7 +3296,7 @@ def _exercise_qualified_device_time_boundaries(
                 int(health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)])
                 + 1
             )
-            % RP2040_TIMER0_MICROS_WRAP_TICKS
+            % RP2040_MONOTONIC_US32_MODULUS
         )
     else:
         health[("cx317_active", "uptime_s")] = str(
@@ -3313,7 +3314,7 @@ def _exercise_qualified_device_time_boundaries(
     )
 
     result = {
-        "time_domain": "rp2040_timer0",
+        "time_domain": "rp2040_monotonic_us32",
         "capture_session": 1,
         "qualified_origin_subsecond_ticks": origin_subsecond_ticks,
         "fractional_origin_deferred_until_lower_bound": (
@@ -3723,7 +3724,7 @@ def _exercise_cx321_real_transaction_path(
         "act_response_join": act_join,
         "raw_timer_rollover_between_application_and_response": (
             int(prefix[3]["application_timestamp_ticks"])
-            < RP2040_TIMER0_MICROS_WRAP_TICKS
+            < RP2040_MONOTONIC_US32_MODULUS
             < int(prefix[4]["open_ticks"])
         ),
         "firmware_consumption_confirmed": len(phases) == 4,
@@ -3849,9 +3850,9 @@ def _cx323_maintenance_transaction_fixture(
                 "maintenance_record_sequence": str(len(maintenance) + 1),
                 "event": event,
                 "event_timestamp_ticks": str(
-                    max(1, timestamp_s * RP2040_TIMER0_TICKS_PER_SECOND)
+                    max(1, timestamp_s * RP2040_MONOTONIC_US_PER_SECOND)
                 ),
-                "time_domain": "rp2040_timer0_extended",
+                "time_domain": "rp2040_monotonic_us64",
                 "run_identity": programme.runtime_run_identity,
                 "build_identity": str(bundle["firmware"]["build_identity"]),
                 "profile_identity": programme.profile_id,
@@ -4795,9 +4796,9 @@ def _exercise_cx322_real_transaction_path(
     response_frontier_ticks = {
         int(row["request_sequence"]): (
             int(row["decision_timestamp_s"])
-            * RP2040_TIMER0_TICKS_PER_SECOND
+            * RP2040_MONOTONIC_US_PER_SECOND
         )
-        % RP2040_TIMER0_MICROS_WRAP_TICKS
+        % RP2040_MONOTONIC_US32_MODULUS
         for row in ahy
         if row.get("authority_state") == "AWAITING_RESPONSE"
         and int(row.get("request_sequence", "0")) > 0
@@ -4805,9 +4806,9 @@ def _exercise_cx322_real_transaction_path(
     decision_frontier_ticks = {
         int(row["decision_sequence"]): (
             int(row["decision_timestamp_s"])
-            * RP2040_TIMER0_TICKS_PER_SECOND
+            * RP2040_MONOTONIC_US_PER_SECOND
         )
-        % RP2040_TIMER0_MICROS_WRAP_TICKS
+        % RP2040_MONOTONIC_US32_MODULUS
         for row in ahy
     }
     request_frontier_ticks = {
@@ -4934,7 +4935,7 @@ def _exercise_cx322_real_transaction_path(
                 else 0
             ),
             deliberate_challenge_application_ticks=(
-                43_800 * RP2040_TIMER0_TICKS_PER_SECOND
+                43_800 * RP2040_MONOTONIC_US_PER_SECOND
                 if programme.sustained_regulation
                 else 0
             ),
@@ -4976,7 +4977,7 @@ def _exercise_cx322_real_transaction_path(
             and health.get((LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY))
             == str(request_frontier_ticks[request_sequence])
             and health.get((LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY))
-            == "rp2040_timer0"
+            == "rp2040_monotonic_us32"
         )
 
     def emulate_firmware() -> None:
@@ -6273,8 +6274,8 @@ def _run_real_process_topology(
                 )
                 prior_frontier = int(before["qualified_frontier_raw_ticks"])
                 fault_frontier = (
-                    prior_frontier + RP2040_TIMER0_TICKS_PER_SECOND
-                ) % RP2040_TIMER0_MICROS_WRAP_TICKS
+                    prior_frontier + RP2040_MONOTONIC_US_PER_SECOND
+                ) % RP2040_MONOTONIC_US32_MODULUS
                 fault_generation = int(
                     real_transaction_path["last_status_generation"]
                 ) + 1

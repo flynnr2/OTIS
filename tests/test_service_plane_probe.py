@@ -70,7 +70,7 @@ def _run(
             health_rows, 1
         ):
             handle.write(
-                f"STS,1,{index},0,rp2040_timer0,{component},{status_key},{status_value},INFO,0\n"
+                f"STS,1,{index},0,rp2040_monotonic_us32,{component},{status_key},{status_value},INFO,0\n"
             )
     return run
 
@@ -181,7 +181,7 @@ def test_due_probe_rejects_nonzero_firmware_fault(tmp_path: Path) -> None:
     run = _run(tmp_path)
     with (run / "csv" / "sts.csv").open("a", encoding="utf-8") as handle:
         handle.write(
-            "STS,1,99,0,rp2040_timer0,capture,dropped_count,1,WARN,0\n"
+            "STS,1,99,0,rp2040_monotonic_us32,capture,dropped_count,1,WARN,0\n"
         )
     with pytest.raises(RuntimeError, match="health_dropped_count_nonzero"):
         execute_probe(run, sleep=lambda _seconds: None)
@@ -193,10 +193,10 @@ def test_due_probe_does_not_promote_d10_diagnostics_to_authority(
     run = _run(tmp_path)
     with (run / "csv" / "sts.csv").open("a", encoding="utf-8") as handle:
         handle.write(
-            "STS,1,99,0,rp2040_timer0,pps_dual_observer,agreement_state,MISMATCH,WARN,0\n"
+            "STS,1,99,0,rp2040_monotonic_us32,pps_dual_observer,agreement_state,MISMATCH,WARN,0\n"
         )
         handle.write(
-            "STS,1,100,0,rp2040_timer0,pps_d10,buffer_overflow_count,12,WARN,32\n"
+            "STS,1,100,0,rp2040_monotonic_us32,pps_d10,buffer_overflow_count,12,WARN,32\n"
         )
     calls: list[str] = []
 

@@ -41,7 +41,7 @@ from .range_spanning_run import (
 )
 from .run_paths import default_csv_files
 from .serial_commands import send_timestamped_command_to_fifo
-from .time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
+from .time_domains import RP2040_MONOTONIC_US32_MODULUS
 
 
 TOOL_ID = "cx319_range_spanning_operational_rehearsal_v1"
@@ -62,7 +62,7 @@ def _line(row: dict[str, str], contract: str) -> bytes:
 def _records(
     bundle: dict[str, Any], *, point_index: int = 0
 ) -> list[bytes]:
-    modulus = RP2040_TIMER0_MICROS_WRAP_TICKS
+    modulus = RP2040_MONOTONIC_US32_MODULUS
     code = int(bundle["part_a_segment"]["survey_prefix"][point_index])
     prior_epoch = int(
         bundle.get("entry", {}).get("expected_live_state", {}).get("dac_epoch", 0)
@@ -78,7 +78,7 @@ def _records(
     raw_ticks = (
         (80_000_000, 96_000_000, 112_000_000)
         if continuation
-        else (modulus - 16_000_000, 0, 16_000_000)
+        else (modulus - 1_000_000, 0, 1_000_000)
     )
     raw = [
         {
@@ -88,7 +88,7 @@ def _records(
             "channel_id": "1",
             "edge": "R",
             "timestamp_ticks": str(ticks),
-            "capture_domain": "rp2040_timer0",
+            "capture_domain": "rp2040_monotonic_us32",
             "flags": "16",
         }
         for index, ticks in enumerate(raw_ticks, start=10)
@@ -101,7 +101,7 @@ def _records(
             "channel_id": "2",
             "gate_open_ticks": str(open_ticks),
             "gate_close_ticks": str(close_ticks),
-            "gate_domain": "rp2040_timer0",
+            "gate_domain": "rp2040_monotonic_us32",
             "counted_edges": "10000000",
             "source_edge": "R",
             "source_domain": "h1_cx317_ocxo_10mhz",
@@ -111,7 +111,7 @@ def _records(
             (
                 ((64_000_000, 80_000_000), (80_000_000, 96_000_000))
                 if continuation
-                else ((modulus - 16_000_000, 0), (0, 16_000_000))
+                else ((modulus - 1_000_000, 0), (0, 1_000_000))
             ),
             start=6,
         )
@@ -122,7 +122,7 @@ def _records(
             "schema_version": "1",
             "status_seq": str(index),
             "timestamp_ticks": str(index * 1000),
-            "status_domain": "rp2040_timer0",
+            "status_domain": "rp2040_monotonic_us32",
             "component": "dual_core",
             "status_key": key,
             "status_value": value,
@@ -160,7 +160,7 @@ def _records(
             estimator_timestamp_ticks=str(
                 (32_000_000 + sequence * 9_600_000_000) % modulus
             ),
-            time_domain="rp2040_timer0",
+            time_domain="rp2040_monotonic_us32",
             source_count_seq=str(sequence),
             source_count_ref=f"rehearsal:CNT:{sequence}",
             source_reference_first_seq=str(sequence),
@@ -169,7 +169,7 @@ def _records(
             source_dac_ref=f"rehearsal:DAC:{point_index + 1}",
             manifest_ref="firmware_config:cx319_range_map_part_a",
             estimator_version="cx317_selected_600s_nonoverlap_v1",
-            config_hash="5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+            config_hash="968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
             observation_validity="valid",
             observation_reason_codes="contiguous_snapshot_span",
             reference_validity="valid",
@@ -221,7 +221,7 @@ def _records(
             decision_timestamp_ticks=str(
                 (32_000_000 + sequence * 9_600_000_000) % modulus
             ),
-            time_domain="rp2040_timer0",
+            time_domain="rp2040_monotonic_us32",
             capture_session="1",
             dac_epoch=str(epoch),
             integer_edge_error_counts=str(count),
@@ -239,7 +239,7 @@ def _records(
             historical_v2_inside="true" if abs(count) <= 3 else "false",
             symmetric_two_count_inside="true" if abs(count) <= 2 else "false",
             policy_id="CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1",
-            policy_sha256="352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a",
+            policy_sha256="c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87",
             actionable="false",
             actuation_authorized="false",
             authorization_consumed="false",
@@ -256,17 +256,17 @@ def _records(
         schema_version="1",
         preview_sequence=str(epoch),
         candidate_id="p21600_cap1_v2",
-        candidate_configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        candidate_configuration_sha256="5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358",
         phase_estimator_id="CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
-        phase_estimator_configuration_sha256="449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+        phase_estimator_configuration_sha256="2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792",
         frequency_estimator_id="cx317_selected_600s_nonoverlap_v1",
-        frequency_estimator_configuration_sha256="5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
-        configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        frequency_estimator_configuration_sha256="968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
+        configuration_sha256="5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358",
         phase_epoch="1",
         observation_sequence="1",
         dac_epoch=str(epoch),
-        decision_timestamp_ticks=("96000000" if continuation else "16000000"),
-        time_domain="rp2040_timer0",
+        decision_timestamp_ticks=("96000000" if continuation else "1000000"),
+        time_domain="rp2040_monotonic_us32",
         source_phase_estimate="PHE:1:1",
         source_frequency_estimate="unavailable",
         raw_relative_phase_cycles="0",
@@ -311,16 +311,16 @@ def _attachment_records(bundle: dict[str, Any]) -> list[bytes]:
     if entry.get("mode") != "state_preserving_running_attach":
         return []
     live = entry["expected_live_state"]
-    modulus = RP2040_TIMER0_MICROS_WRAP_TICKS
+    modulus = RP2040_MONOTONIC_US32_MODULUS
     counts = [
         {
             "record_type": "CNT",
             "schema_version": "1",
             "count_seq": str(index),
             "channel_id": "2",
-            "gate_open_ticks": str((index - 1) * 16_000_000),
-            "gate_close_ticks": str(index * 16_000_000),
-            "gate_domain": "rp2040_timer0",
+            "gate_open_ticks": str((index - 1) * 1_000_000),
+            "gate_close_ticks": str(index * 1_000_000),
+            "gate_domain": "rp2040_monotonic_us32",
             "counted_edges": "10000000",
             "source_edge": "R",
             "source_domain": "h1_cx317_ocxo_10mhz",
@@ -336,14 +336,14 @@ def _attachment_records(bundle: dict[str, Any]) -> list[bytes]:
             "channel_id": "1",
             "edge": "R",
             "timestamp_ticks": str(ticks),
-            "capture_domain": "rp2040_timer0",
+            "capture_domain": "rp2040_monotonic_us32",
             "flags": "16",
         }
         for index, ticks in enumerate(
             (
-                modulus - 16_000_000,
+                modulus - 1_000_000,
                 0,
-                16_000_000,
+                1_000_000,
                 32_000_000,
                 48_000_000,
                 64_000_000,
@@ -381,7 +381,7 @@ def _attachment_records(bundle: dict[str, Any]) -> list[bytes]:
             "schema_version": "1",
             "status_seq": str(index),
             "timestamp_ticks": str(index * 1000),
-            "status_domain": "rp2040_timer0",
+            "status_domain": "rp2040_monotonic_us32",
             "component": component,
             "status_key": key,
             "status_value": value,
@@ -397,7 +397,7 @@ def _attachment_records(bundle: dict[str, Any]) -> list[bytes]:
         decision_sequence="0",
         estimate_id="est:cx317:selected600:000000",
         decision_timestamp_ticks="64000000",
-        time_domain="rp2040_timer0",
+        time_domain="rp2040_monotonic_us32",
         capture_session="1",
         dac_epoch=str(live["dac_epoch"]),
         integer_edge_error_counts="2",
@@ -413,7 +413,7 @@ def _attachment_records(bundle: dict[str, Any]) -> list[bytes]:
         historical_v2_inside="true",
         symmetric_two_count_inside="true",
         policy_id="CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1",
-        policy_sha256="352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a",
+        policy_sha256="c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87",
         actionable="false",
         actuation_authorized="false",
         authorization_consumed="false",
@@ -427,17 +427,17 @@ def _attachment_records(bundle: dict[str, Any]) -> list[bytes]:
         schema_version="1",
         preview_sequence="1",
         candidate_id="p21600_cap1_v2",
-        candidate_configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        candidate_configuration_sha256="5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358",
         phase_estimator_id="CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
-        phase_estimator_configuration_sha256="449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+        phase_estimator_configuration_sha256="2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792",
         frequency_estimator_id="cx317_selected_600s_nonoverlap_v1",
-        frequency_estimator_configuration_sha256="5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
-        configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        frequency_estimator_configuration_sha256="968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
+        configuration_sha256="5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358",
         phase_epoch="1",
         observation_sequence="1",
         dac_epoch=str(live["dac_epoch"]),
         decision_timestamp_ticks="64000000",
-        time_domain="rp2040_timer0",
+        time_domain="rp2040_monotonic_us32",
         source_phase_estimate="PHE:1:1",
         source_frequency_estimate="unavailable",
         raw_relative_phase_cycles="0",
@@ -508,12 +508,12 @@ def _manifest(run_dir: Path, bundle_path: Path, bundle: dict[str, Any], device: 
         },
         "domains": [
             {
-                "name": "rp2040_timer0",
-                "nominal_hz": 16_000_000,
-                "counter_width_bits": 36,
-                "modulus_ticks": 68_719_476_736,
+                "name": "rp2040_monotonic_us32",
+                "nominal_hz": 1_000_000,
+                "counter_width_bits": 32,
+                "modulus_ticks": 4_294_967_296,
                 "rollover": "modular_forward",
-                "maximum_unambiguous_forward_ticks": 34_359_738_368,
+                "maximum_unambiguous_forward_ticks": 2_147_483_648,
             },
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],

@@ -39,9 +39,9 @@ derived products must remain explicit and replayable.
 
 | Backend | Gate source | Count source | Native raw value | Required provenance |
 |---|---|---|---|---|
-| `FC0_GPIN0` | firmware gate over `rp2040_timer0` | RP2040 FC0/GPIN0 on `D8` / GPIO20 | accumulated FC0 frequency samples converted to counted edges over the emitted gate | `TIMESTAMP_RECONSTRUCTED`; `fc0` status for samples and validity |
+| `FC0_GPIN0` | firmware gate over `rp2040_monotonic_us32` | RP2040 FC0/GPIN0 on `D8` / GPIO20 | accumulated FC0 frequency samples converted to counted edges over the emitted gate | `TIMESTAMP_RECONSTRUCTED`; `fc0` status for samples and validity |
 | `GPIO_IRQ` | firmware `micros()` gate | divided, interrupt-safe oscillator test input | software IRQ edge count | divided-only warning; not valid for raw MHz oscillator input |
-| `PIO_LONG_GATE` | firmware gate over `rp2040_timer0` | PIO oscillator edge counter on `D8` / GPIO20 | raw PIO-counted rising edges | `TIMESTAMP_RECONSTRUCTED`; long-gate status |
+| `PIO_LONG_GATE` | firmware gate over `rp2040_monotonic_us32` | PIO oscillator edge counter on `D8` / GPIO20 | raw PIO-counted rising edges | `TIMESTAMP_RECONSTRUCTED`; long-gate status |
 | `PPS_GATED_RATIO` | single-PIO-state-machine PPS snapshot; D14 IRQ is a separate REF observer | cumulative PIO down-counter on `D8` / GPIO20 | modulo difference of adjacent PIO-owned cumulative `SNP` values | raw `SNP`, associated D14 `REF`, `pps_gate` continuity/session status; REF time is `TIMESTAMP_RECONSTRUCTED` |
 
 The backend changes how the gate and count are produced. It does not change the
@@ -100,7 +100,7 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
 - PPS on `CH1` remains visible as `REF` rows.
 - Oscillator observation stays on `CH2` as `CNT` rows.
 - `gate_open_ticks` and `gate_close_ticks` are accepted PPS edge timestamps in
-  `rp2040_timer0`.
+  `rp2040_monotonic_us32`.
 - `counted_edges` is the oscillator rising-edge count between those PPS edges.
 - `SNP.cumulative_down_counter` is raw immutable PIO `X`; it is not an
   interval. `counted_edges = previous_X - current_X mod 2^32` for adjacent
@@ -153,7 +153,7 @@ For `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO`:
   telemetry continue; actuation remains inhibited until requalification.
 - Counter saturation increments `pps_gate/count_saturated_count` and flags the
   bounded row with `COUNT_SATURATED`.
-- Across `rp2040_timer0` rollover, emitted gate boundaries retain the exact raw
+- Across `rp2040_monotonic_us32` rollover, emitted gate boundaries retain the exact raw
   authoritative `REF` timestamp values; interval consumers apply the declared
   modular timebase arithmetic automatically from the domain contract. They do
   not depend on a caller-controlled rollover switch. See
@@ -175,7 +175,7 @@ IRQ queues only its reconstructed timestamp and compact reference event. It
 never stops, restarts, reads, or otherwise defines the PPS-gated counter
 aperture.
 
-PPS-gated `CNT` rows still carry associated reconstructed `rp2040_timer0`
+PPS-gated `CNT` rows still carry associated reconstructed `rp2040_monotonic_us32`
 timestamps. Those timestamps provide reference-cadence and gate-time evidence,
 but they do not normalize or rewrite the authoritative adjacent-snapshot count.
 The accepted latency/jitter disposition and regression invariants are recorded

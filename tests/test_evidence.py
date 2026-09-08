@@ -15,12 +15,12 @@ def _completed_run(tmp_path: Path, name: str = "run") -> Path:
     csv_dir.mkdir(parents=True)
     (csv_dir / "raw_events.csv").write_text(
         "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags\n"
-        "EVT,1,1,1,R,16000000,rp2040_timer0,0\n",
+        "EVT,1,1,1,R,16000000,rp2040_monotonic_us32,0\n",
         encoding="utf-8",
     )
     (csv_dir / "health.csv").write_text(
         "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags\n"
-        "STS,1,1,16000000,rp2040_timer0,capture,dropped_count,0,INFO,0\n",
+        "STS,1,1,16000000,rp2040_monotonic_us32,capture,dropped_count,0,INFO,0\n",
         encoding="utf-8",
     )
     (run_dir / "selected_profile.yaml").write_text(
@@ -40,7 +40,7 @@ def _completed_run(tmp_path: Path, name: str = "run") -> Path:
             "name": "otis_nano_rp2040_connect",
             "build_provenance_required": True,
         },
-        "domains": [{"name": "rp2040_timer0", "nominal_hz": 16000000}],
+        "domains": [{"name": "rp2040_monotonic_us32", "nominal_hz": 1000000}],
         "channels": [
             {"channel_id": 1, "role": "reference", "record_family": "raw_events_v1"}
         ],
@@ -116,7 +116,7 @@ def _append_build_provenance(
     with path.open("a", encoding="utf-8") as handle:
         for offset, (component, key, value) in enumerate(statuses, start=10):
             handle.write(
-                f"STS,1,{offset},{1_632_000_000 + offset},rp2040_timer0,"
+                f"STS,1,{offset},{1_632_000_000 + offset},rp2040_monotonic_us32,"
                 f"{component},{key},{value},INFO,32768\n"
             )
     return values
@@ -187,9 +187,9 @@ def test_snapshot_rejects_partial_or_malformed_build_provenance(
     run_dir = _completed_run(tmp_path)
     with (run_dir / "csv/health.csv").open("a", encoding="utf-8") as handle:
         handle.write(
-            "STS,1,10,10,rp2040_timer0,build,provenance_format,"
+            "STS,1,10,10,rp2040_monotonic_us32,build,provenance_format,"
             "otis_generated_build_v1,INFO,32768\n"
-            "STS,1,11,11,rp2040_timer0,firmware,git_commit,"
+            "STS,1,11,11,rp2040_monotonic_us32,firmware,git_commit,"
             f"{'a' * 40},INFO,32768\n"
         )
 
@@ -202,7 +202,7 @@ def test_complete_banner_cannot_mask_later_partial_boot(tmp_path: Path) -> None:
     _append_build_provenance(run_dir)
     with (run_dir / "csv/health.csv").open("a", encoding="utf-8") as handle:
         handle.write(
-            "STS,1,99,1632000099,rp2040_timer0,build,provenance_format,"
+            "STS,1,99,1632000099,rp2040_monotonic_us32,build,provenance_format,"
             "otis_generated_build_v1,INFO,32768\n"
         )
 
@@ -220,7 +220,7 @@ def test_each_health_file_ignores_legacy_rows_before_its_own_sentinel(
     (run_dir / second_name).write_text(
         header
         + "\n"
-        + "STS,1,1,10,rp2040_timer0,firmware,git_commit,"
+        + "STS,1,1,10,rp2040_monotonic_us32,firmware,git_commit,"
         + f"{'9' * 40},INFO,32768\n",
         encoding="utf-8",
     )

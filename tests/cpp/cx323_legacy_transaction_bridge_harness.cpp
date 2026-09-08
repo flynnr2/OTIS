@@ -8,9 +8,9 @@
 namespace {
 
 constexpr uint16_t kStartCode = 43085u;
-constexpr uint64_t kCaptureTicksPerSecond = 16000000ull;
-constexpr uint64_t kSetupApplicationTicks = 9937789536ull;
-constexpr uint64_t kFirstSelectedObservationTicks = 38425559872ull;
+constexpr uint64_t kCaptureTicksPerSecond = 1000000ull;
+constexpr uint64_t kSetupApplicationTicks = 621111846ull;
+constexpr uint64_t kFirstSelectedObservationTicks = 2401597492ull;
 constexpr uint64_t kCadenceBoundaryTicks =
     kSetupApplicationTicks + 1800ull * kCaptureTicksPerSecond;
 

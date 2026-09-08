@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .time_domains import (
-    RP2040_TIMER0_MICROS_WRAP_TICKS,
+    RP2040_MONOTONIC_US32_MODULUS,
     unwrap_domain_ticks,
 )
 

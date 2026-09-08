@@ -14,7 +14,7 @@ frequency are diagnostic only.
 | `snapshot_sequence` | u32 | DMA producer ordinal within the session, modulo 2^32. |
 | `cumulative_down_counter` | u32 | Raw PIO X value captured with `IN X, 32`; not an interval. |
 | `reference_sequence` | u32 | Sequence of the associated physical `REF` rising edge. |
-| `reference_timestamp_ticks` | u64 | Immutable timestamp of that `REF`, in the `rp2040_timer0` domain. |
+| `reference_timestamp_ticks` | u64 | Immutable timestamp of that `REF`, in the `rp2040_monotonic_us32` domain. |
 | `status` | u32 bitmask | Snapshot transport/capture status; zero is clean. |
 | `backend` | text | Capture implementation identity. The candidate is `pio_wait_cumulative_snapshot_dma_v1`. |
 
@@ -37,7 +37,7 @@ status bit, gap, duplicate, ambiguous full counter wrap, association loss,
 FIFO/DMA/ring fault, or session transition fails closed.  Reacquisition needs
 two new clean snapshots; late records are never paired retroactively.
 
-`reference_timestamp_ticks` inherits the canonical `rp2040_timer0` domain from
+`reference_timestamp_ticks` inherits the canonical `rp2040_monotonic_us32` domain from
 this contract. Legal modular progression is automatic; a session transition
 resets temporal reconstruction and is never treated as a timer rollover. See
 `docs/50_SOFTWARE/TIME_DOMAIN_AND_ROLLOVER_CONTRACT.md`.

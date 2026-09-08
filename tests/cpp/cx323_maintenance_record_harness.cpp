@@ -35,7 +35,7 @@ OtisCx323Observation observation(uint64_t timestamp_s, uint64_t opening,
                                  const OtisCx323Engine &engine) {
   OtisCx323Observation result = {};
   result.timestamp_s = timestamp_s;
-  result.timestamp_ticks = timestamp_s * 16000000ull;
+  result.timestamp_ticks = timestamp_s * 1000000ull;
   result.capture_session = 7u;
   result.source_first_sequence = opening;
   result.source_last_sequence = closing;
@@ -375,7 +375,7 @@ bool run_selftest() {
     return false;
   failure_engine.last_application_available = true;
   failure_engine.last_application_s = 1000u;
-  failure_engine.last_application_ticks = 1000u * 16000000ull;
+  failure_engine.last_application_ticks = 1000u * 1000000ull;
   OtisCx323Observation failure_observation =
       observation(900u, 1u, 601u, failure_engine);
   OtisCx323Engine failure_before = failure_engine;

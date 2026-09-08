@@ -45,7 +45,7 @@ struct OtisCx323Observation {
   bool settled;
   bool cadence_eligible;
   bool metadata_qualified;
-  // Authoritative extended rp2040_timer0 counter.  timestamp_s is its
+  // Authoritative extended rp2040_monotonic_us64 counter. timestamp_s is its
   // floor-divided display projection and never participates in control.
   uint64_t timestamp_ticks;
 };

@@ -60,12 +60,12 @@ QUALIFIED_PHASE_STATES = frozenset({"qualified"})
 EXPECTED_CAPTURE_BACKEND = "pio_wait_cumulative_snapshot_dma_v1"
 EXPECTED_SELECTED_ESTIMATOR = "cx317_selected_600s_nonoverlap_v1"
 EXPECTED_SELECTED_CONFIG = (
-    "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+    "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
 )
 EXPECTED_RPH_METHOD = "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1"
 EXPECTED_PHE_ESTIMATOR = "CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1"
 EXPECTED_PHASE_CONFIG = (
-    "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+    "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792"
 )
 EXPECTED_COUNT_SOURCE_DOMAINS = {
     "cx317_fll_baseline": "h0_tcxo_16mhz",
@@ -447,7 +447,7 @@ def _validated_selected_frequency_rows(
         required_fields = bool(
             estimate.get("record_type") == "EST"
             and estimate.get("schema_version") == "2"
-            and estimate.get("time_domain") == "rp2040_timer0"
+            and estimate.get("time_domain") == "rp2040_monotonic_us32"
             and estimate.get("config_hash") == EXPECTED_SELECTED_CONFIG
             and estimate.get("accepted_sample_count") == "600"
             and estimate.get("source_count_seq") == str(last)
@@ -721,7 +721,7 @@ def _build_intervals(
         and row.get("schema_version") == "1"
         and row.get("channel_id") == "1"
         and row.get("edge") == "R"
-        and row.get("capture_domain") == "rp2040_timer0"
+        and row.get("capture_domain") == "rp2040_monotonic_us32"
     ]
     d14_by_timestamp: dict[int, list[tuple[int, dict[str, str]]]] = {}
     for position, row in enumerate(d14_events):
@@ -774,7 +774,7 @@ def _build_intervals(
             reasons.append("count_record_identity_mismatch")
         if count.get("channel_id") != "2" or count.get("source_edge") != "R":
             reasons.append("d8_count_wire_identity_mismatch")
-        if count.get("gate_domain") != "rp2040_timer0":
+        if count.get("gate_domain") != "rp2040_monotonic_us32":
             reasons.append("count_gate_domain_mismatch")
         if count.get("source_domain") != expected_source_domain:
             reasons.append("count_source_domain_mismatch")
@@ -1550,7 +1550,7 @@ def environment_associations(
         if row.get("source") == "sht4x"
         and row.get("role") == "vcocxo_near"
         and int(row.get("flags", "-1")) == 0
-        and row.get("observation_domain") == "rp2040_timer0"
+        and row.get("observation_domain") == "rp2040_monotonic_us32"
     ]
     pressure = [
         row
@@ -1558,22 +1558,22 @@ def environment_associations(
         if row.get("source") == "bmp280"
         and row.get("role") == "pressure_reference"
         and int(row.get("flags", "-1")) == 0
-        and row.get("observation_domain") == "rp2040_timer0"
+        and row.get("observation_domain") == "rp2040_monotonic_us32"
     ]
     primary.sort(key=lambda row: int(row["env_seq"]))
     pressure.sort(key=lambda row: int(row["env_seq"]))
     primary_ticks = _unwrap_domain_ticks(
-        [int(row["timestamp_ticks"]) for row in primary], "rp2040_timer0"
+        [int(row["timestamp_ticks"]) for row in primary], "rp2040_monotonic_us32"
     )
     pressure_ticks = _unwrap_domain_ticks(
-        [int(row["timestamp_ticks"]) for row in pressure], "rp2040_timer0"
+        [int(row["timestamp_ticks"]) for row in pressure], "rp2040_monotonic_us32"
     )
     ordered_intervals = sorted(
         source.intervals, key=lambda row: row.closing_reference_sequence
     )
     interval_ticks = _unwrap_domain_ticks(
         [row.closing_reference_timestamp_ticks for row in ordered_intervals],
-        "rp2040_timer0",
+        "rp2040_monotonic_us32",
     )
     unwrapped_interval_tick = {
         row.closing_reference_sequence: tick
@@ -1588,7 +1588,7 @@ def environment_associations(
             index -= 1
         if index < 0:
             return None, None
-        age = (target - ticks[index]) / 16_000_000.0
+        age = (target - ticks[index]) / 1_000_000.0
         if age < 0.0 or age > maximum_age_s:
             return None, age
         return rows[index], age
@@ -1601,7 +1601,7 @@ def environment_associations(
                 raise ValueError(
                     f"environment window frontier absent from normalized intervals: {frontier}"
                 )
-            target = unwrapped_interval_tick[frontier] - lag * 16_000_000
+            target = unwrapped_interval_tick[frontier] - lag * 1_000_000
             sample, age = causal_sample(primary, primary_ticks, target)
             bmp, bmp_age = causal_sample(pressure, pressure_ticks, target)
             result.append(
@@ -1624,7 +1624,7 @@ def environment_associations(
                         int(sample["timestamp_ticks"]) if sample is not None else ""
                     ),
                     "environment_timestamp_unwrapped_ticks": (
-                        target - int(round(age * 16_000_000))
+                        target - int(round(age * 1_000_000))
                         if sample is not None and age is not None
                         else ""
                     ),

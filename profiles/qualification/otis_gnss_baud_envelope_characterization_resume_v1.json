@@ -72,7 +72,7 @@
       "pmtk605_last_peripheral_complete_ticks_available",
       "pmtk605_last_peripheral_complete_ticks_domain"
     ],
-    "pmtk605_peripheral_complete_counter_domain": "rp2040_timer0_extended"
+    "pmtk605_peripheral_complete_counter_domain": "rp2040_monotonic_us64"
   },
   "prefix_validation": {
     "source_run_id": "live_20260827T092556Z",
@@ -141,8 +141,8 @@
     "independent_operator_stop"
   ],
   "counter_domains": {
-    "raw_device": {"name": "rp2040_timer0", "nominal_hz": 16000000, "width_bits": 32, "rollover": "wrapping_unsigned_forward_only_with_half_range_ambiguity_limit"},
-    "derived_device": {"name": "rp2040_timer0_extended", "nominal_hz": 16000000, "width_bits": 64, "rollover": "non_wrapping_within_each_source_capture_only"},
+    "raw_device": {"name": "rp2040_monotonic_us32", "nominal_hz": 1000000, "width_bits": 32, "rollover": "wrapping_unsigned_forward_only_with_half_range_ambiguity_limit"},
+    "derived_device": {"name": "rp2040_monotonic_us64", "nominal_hz": 1000000, "width_bits": 64, "rollover": "non_wrapping_within_each_source_capture_only"},
     "host_supervision": {"name": "host_monotonic_ns", "nominal_hz": 1000000000, "width_bits": 64, "rollover": "non_wrapping_for_continuation_duration"}
   },
   "schedule": {

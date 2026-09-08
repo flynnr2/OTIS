@@ -57,7 +57,7 @@ def _write_telemetry_observations(
                     "schema_version": "1",
                     "status_seq": str(index),
                     "timestamp_ticks": str(index * 160_000_000),
-                    "status_domain": "rp2040_timer0",
+                    "status_domain": "rp2040_monotonic_us32",
                     "component": "dual_core",
                     "status_key": "telemetry_dropped",
                     "status_value": str(value),

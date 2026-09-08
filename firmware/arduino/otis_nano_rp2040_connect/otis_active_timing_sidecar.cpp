@@ -8,7 +8,7 @@ constexpr char kActiveTransactionTimingV2Header[] =
     "record_type,schema_version,timing_record_sequence,transaction_record_sequence,event,event_timestamp_ticks,time_domain,run_identity,build_identity,profile_identity,session_id,request_sequence,decision_sequence,source_first_sequence,source_last_sequence,authorization_sequence,nonce,accepted_code,applied_code,application_sequence,dac_epoch,reason";
 constexpr char kActiveHybridTimingV2Header[] =
     "record_type,schema_version,timing_record_sequence,hybrid_record_sequence,decision_sequence,decision_timestamp_ticks,time_domain,run_identity,build_identity,profile_identity,capture_session,source_first_sequence,source_last_sequence,reason";
-constexpr char kExtendedTimer0Domain[] = "rp2040_timer0_extended";
+constexpr char kExtendedMonotonicUsDomain[] = "rp2040_monotonic_us64";
 
 bool text_present(const char *value) {
   return value != nullptr && value[0] != '\0';
@@ -41,7 +41,7 @@ int otis_format_active_transaction_timing_v2(
       static_cast<unsigned long>(record->transaction_record_sequence),
       record->event,
       static_cast<unsigned long long>(record->event_timestamp_ticks),
-      kExtendedTimer0Domain, record->run_identity, record->build_identity,
+      kExtendedMonotonicUsDomain, record->run_identity, record->build_identity,
       record->profile_identity, static_cast<unsigned long>(record->session_id),
       static_cast<unsigned long>(record->request_sequence),
       static_cast<unsigned long>(record->decision_sequence),
@@ -71,7 +71,7 @@ int otis_format_active_hybrid_timing_v2(
       static_cast<unsigned long>(record->hybrid_record_sequence),
       static_cast<unsigned long>(record->decision_sequence),
       static_cast<unsigned long long>(record->decision_timestamp_ticks),
-      kExtendedTimer0Domain, record->run_identity, record->build_identity,
+      kExtendedMonotonicUsDomain, record->run_identity, record->build_identity,
       record->profile_identity,
       static_cast<unsigned long>(record->capture_session),
       static_cast<unsigned long>(record->source_first_sequence),

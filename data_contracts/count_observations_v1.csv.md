@@ -26,7 +26,7 @@ It exists because a 10 MHz or 16 MHz oscillator must not be represented as a raw
 
 ```csv
 record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags
-CNT,1,42,2,1600000000,1616000000,rp2040_timer0,16000000,R,h0_tcxo_16mhz,0
+CNT,1,42,2,100000000,101000000,rp2040_monotonic_us32,16000000,R,h0_tcxo_16mhz,0
 ```
 
 ## Semantics
@@ -64,9 +64,9 @@ All current count-observation backends use the same schema:
 
 | Backend | Gate source | Count source | Notes |
 |---|---|---|---|
-| `OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0` | firmware gate in `rp2040_timer0` | RP2040 FC0/GPIN0 | accumulated FC0 samples converted to counted edges over the emitted gate |
+| `OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0` | firmware gate in `rp2040_monotonic_us32` | RP2040 FC0/GPIN0 | accumulated FC0 samples converted to counted edges over the emitted gate |
 | `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ` | firmware `micros()` gate | divided, interrupt-safe test input | not valid for raw MHz oscillator input |
-| `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE` | firmware gate in `rp2040_timer0` | PIO oscillator edge counter | long raw-edge gate for H1 characterization |
+| `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE` | firmware gate in `rp2040_monotonic_us32` | PIO oscillator edge counter | long raw-edge gate for H1 characterization |
 | `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` | immediate D14 PPS GPIO IRQ boundary | PIO oscillator edge counter | ISR stop/sample/restart publishes one atomic boundary; PPS remains visible as `REF`; ratio/frequency remain host-derived |
 
 For the PPS-gated backend, a `CNT` row is emitted only when its opening and

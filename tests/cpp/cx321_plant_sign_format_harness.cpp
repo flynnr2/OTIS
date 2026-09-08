@@ -6,7 +6,7 @@
 
 namespace {
 
-constexpr uint64_t kSecond = OTIS_CX321_TIMER0_TICKS_PER_SECOND;
+constexpr uint64_t kSecond = OTIS_CX321_MONOTONIC_US_PER_SECOND;
 constexpr char kPolicy[] =
     "0000000000000000000000000000000000000000000000000000000000000001";
 constexpr char kGate[] =

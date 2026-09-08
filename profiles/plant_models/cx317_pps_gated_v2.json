@@ -172,13 +172,13 @@
         "estimator_method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
         "extrapolation_policy": "prohibited",
         "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
-        "method_definition_hash": "7664e76a8d739705bf802bea67be304f5d9b38dff217b95afcb43efee5c6f4ad",
+        "method_definition_hash": "338f7a985ae197e28935c36b041ae665f4c73526f3cc7cd7b86141eb05831d5d",
         "reference_acceptance": "snapshot_status_zero_backend_exact_contiguous_session_sequence_reference_association_and_zero_global_health_reasons",
         "reference_interval_max_s": 1.2,
         "reference_interval_min_s": 0.8,
         "reference_invalid_flag_mask": 0,
         "reference_time_mapping": "nominal_accepted_pps_interval_count_denominator_with_raw_reference_ticks_diagnostic_only",
-        "required_timing_domain": "rp2040_timer0"
+        "required_timing_domain": "rp2040_monotonic_us32"
       }
     }
   },
@@ -207,8 +207,8 @@
       "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_fresh_session_smoke_20260802T080043Z/reports/PLANT_CHARACTERIZATION.md": "5a44c54510a43ddfa8c09717ce4bc913c1fb9be9582d90abfc62612e6e9757f5",
       "runs/cx317_pps_gated_estimator_control/campaign_20260801T083104Z/stage5_preparation/physical_safety_gate_evaluation_v1.json": "28377345556e027239b8afbfbd99d3486294f6b590d7670a8580e5690c0dc401",
       "profiles/plant_campaigns/cx317_pps_gated_open_loop_v1.json": "19609f35e285d8005054f7acdf59341675ae01c1fe986a44cea296a35f95d84d",
-      "profiles/estimators/cx317_pps_gated_selected_v1.json": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
-      "profiles/estimators/pps_cumulative_snapshot_span_v1.json": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839",
+      "profiles/estimators/cx317_pps_gated_selected_v1.json": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
+      "profiles/estimators/pps_cumulative_snapshot_span_v1.json": "378b3e8da76d417af8aad0f6ac5dd13b4b3a2cc02eeb387f156d8ba02fbefe81",
       "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/evidence_manifest.json": "1a41ca8bf478c13acef4ad1365ad2215fa502e68ed29d508ad4905a275c0e72f",
       "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/reports/RAPID_STEP_CHARACTERIZATION_ANALYSIS.md": "04e4cd1065874a8699756a379ac3060c049773f1948bfa2fcd76594702e64ddf",
       "runs/cx317_bounded_closed_loop_acquisition/campaign_20260803T080615Z/stage4/rapid_step_characterization_20260803T141658Z/control/rapid_open_loop_plan.json": "cf9f9208f433174ed13b80f6e92feac48a54f934ddb6aa0d820c0fd186049fbe"

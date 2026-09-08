@@ -17,7 +17,7 @@
     },
     "selected_estimator_profile": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
-      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+      "sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
     },
     "selected_estimator_record": {
       "path": "docs/50_SOFTWARE/CX317_PPS_GATED_SELECTED_ESTIMATOR.md",
@@ -33,7 +33,7 @@
     },
     "current_plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+      "sha256": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92"
     },
     "historical_v3_part_a_bundle": {
       "path": "runs/cx319_range_spanning/conditional_fine_v3_20260815/recovery_2/conditional_part_a_bundle_v3.json",

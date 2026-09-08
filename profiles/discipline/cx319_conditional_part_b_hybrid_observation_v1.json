@@ -5,7 +5,7 @@
   "candidate_id": "p21600_cap1_epoch_reseed_v3",
   "inherits": {
     "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
-    "sha256": "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+    "sha256": "6f1e0a8d7b9b2a66dc148768208d21bafe252ab37a9e3341762eda64c72d3b37",
     "candidate_id": "p21600_cap1_v2"
   },
   "parameters": {

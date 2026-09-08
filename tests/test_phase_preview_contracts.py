@@ -91,7 +91,7 @@ def test_phase_preview_contracts_validate_and_remain_non_actionable(
             "observation_sequence": "1",
             "dac_epoch": "3",
             "decision_timestamp_ticks": "16000000",
-            "time_domain": "rp2040_timer0",
+            "time_domain": "rp2040_monotonic_us32",
             "source_phase_estimate": "PHE:1:1",
             "source_frequency_estimate": "PHE:1:1",
             "raw_relative_phase_cycles": "1",

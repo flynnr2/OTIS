@@ -10,14 +10,14 @@ import pytest
 from host.otis_tools import cx322_d9_d6_72h_engineering as programme
 from host.otis_tools import evidence_index
 from host.otis_tools.active_control_supervisor import (
-    RP2040_TIMER0_TICKS_PER_SECOND,
+    RP2040_MONOTONIC_US_PER_SECOND,
 )
 from host.otis_tools.active_hybrid_live_supervisor import (
     FORWARDED_MONITOR_OBSERVABILITY_KEYS,
     FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH,
 )
 from host.otis_tools.contracts import CONTRACT_FIELDS, CONTRACT_RECORD_TYPES
-from host.otis_tools.time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
+from host.otis_tools.time_domains import RP2040_MONOTONIC_US32_MODULUS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -306,7 +306,7 @@ def _health_rows() -> list[dict[str, str]]:
                 "health_v1",
                 sequence,
                 timestamp_ticks=str(sequence * 100),
-                status_domain="rp2040_timer0_extended",
+                status_domain="rp2040_monotonic_us64",
                 component=component,
                 status_key=key,
                 status_value=value,
@@ -397,8 +397,8 @@ def _retained_run(tmp_path: Path) -> Path:
             record_type="REF",
             channel_id="1",
             edge="R",
-            timestamp_ticks=str(number * 16_000_000),
-            capture_domain="rp2040_timer0",
+            timestamp_ticks=str(number * 1_000_000),
+            capture_domain="rp2040_monotonic_us32",
             flags="0",
         )
         for number in range(1, 4)
@@ -408,9 +408,9 @@ def _retained_run(tmp_path: Path) -> Path:
             "count_observations_v1",
             number,
             channel_id="2",
-            gate_open_ticks=str((number - 1) * 16_000_000),
-            gate_close_ticks=str(number * 16_000_000),
-            gate_domain="rp2040_timer0",
+            gate_open_ticks=str((number - 1) * 1_000_000),
+            gate_close_ticks=str(number * 1_000_000),
+            gate_domain="rp2040_monotonic_us32",
             counted_edges="10000000",
             source_edge="R",
             source_domain="h1_cx317_ocxo_10mhz",
@@ -425,7 +425,7 @@ def _retained_run(tmp_path: Path) -> Path:
             session="7",
             cumulative_down_counter=str(0xFFFFFFFF - number * 10_000_000),
             reference_sequence=str(number),
-            reference_timestamp_ticks=str(number * 16_000_000),
+            reference_timestamp_ticks=str(number * 1_000_000),
             status="0",
             backend="pio_wait_cumulative_snapshot_dma_v1",
         )
@@ -439,7 +439,7 @@ def _retained_run(tmp_path: Path) -> Path:
             reference_session="7",
             cumulative_down_counter=str(0xFFFFFFFF - number * 10_000_000),
             reference_sequence=str(number),
-            reference_timestamp_ticks=str(number * 16_000_000),
+            reference_timestamp_ticks=str(number * 1_000_000),
             status="8" if number == 2 else "0",
             backend="pio_wait_cumulative_snapshot_cpu_v1",
             channel_id="3",
@@ -451,8 +451,8 @@ def _retained_run(tmp_path: Path) -> Path:
             "reference_observations_v1",
             number,
             reference_observation_id=f"reference-{number}",
-            observation_timestamp_ticks=str(number * 16_000_000),
-            time_domain="rp2040_timer0_extended",
+            observation_timestamp_ticks=str(number * 1_000_000),
+            time_domain="rp2040_monotonic_us64",
             source_identity_epoch="1",
             metadata_freshness="stale" if number == 1 else "current",
         )
@@ -490,7 +490,7 @@ def _retained_run(tmp_path: Path) -> Path:
                 "record_type": "AT2",
                 "schema_version": "2",
                 "timing_record_sequence": str(timing_sequence),
-                "event_timestamp_ticks": str(timing_sequence * 16_000_000),
+                "event_timestamp_ticks": str(timing_sequence * 1_000_000),
                 "time_domain": programme.EXACT_LIFECYCLE_TIME_DOMAIN,
             }
         )
@@ -545,10 +545,10 @@ def _retained_run(tmp_path: Path) -> Path:
             {
                 "qualified_origin_extended_timestamp_ticks": 1_000,
                 "qualified_frontier_extended_ticks": (
-                    1_000 + 259_200 * RP2040_TIMER0_TICKS_PER_SECOND
+                    1_000 + 259_200 * RP2040_MONOTONIC_US_PER_SECOND
                 ),
                 "qualified_endpoint_extended_timestamp_ticks": (
-                    1_000 + 259_200 * RP2040_TIMER0_TICKS_PER_SECOND
+                    1_000 + 259_200 * RP2040_MONOTONIC_US_PER_SECOND
                 ),
                 "arm_pending": False,
                 "host_verification_hold": None,
@@ -616,10 +616,10 @@ def test_contract_is_exact_72h_engineering_and_non_promotional() -> None:
     assert contract["gnss_uart_policy"]["autodiscovery_permitted"] is False
     assert contract["gnss_uart_policy"]["post_bootstrap_baud_change_permitted"] is False
     assert contract["time"]["qualified_duration_s"] == 259_200
-    assert contract["time"]["source_counter_domain"] == "rp2040_timer0"
-    assert contract["time"]["counter_domain"] == "rp2040_timer0_extended"
+    assert contract["time"]["source_counter_domain"] == "rp2040_monotonic_us32"
+    assert contract["time"]["counter_domain"] == "rp2040_monotonic_us64"
     assert contract["time"]["nominal_counter_hz"] == (
-        RP2040_TIMER0_TICKS_PER_SECOND
+        RP2040_MONOTONIC_US_PER_SECOND
     )
     assert contract["time"]["qualification_deadline_s"] == 5_400
     assert contract["time"]["absolute_wall_limit_s"] == 280_800
@@ -1210,7 +1210,7 @@ def test_retained_adapter_restart_rejects_consumed_prefix_mutation(
 
 
 def test_scientific_metrics_are_derived_from_exact_joined_retained_records() -> None:
-    hz = RP2040_TIMER0_TICKS_PER_SECOND
+    hz = RP2040_MONOTONIC_US_PER_SECOND
     application_ticks = 2 * hz
     manual = _transaction_row(1, 0, "manual_start")
     manual.update(
@@ -1297,7 +1297,7 @@ def test_scientific_metrics_are_derived_from_exact_joined_retained_records() -> 
                 "schema_version": "2",
                 "timing_record_sequence": str(timing_sequence),
                 "event_timestamp_ticks": str(ticks),
-                "time_domain": "rp2040_timer0_extended",
+                "time_domain": "rp2040_monotonic_us64",
             }
         )
         transaction_timings.append(timing)
@@ -1322,7 +1322,7 @@ def test_scientific_metrics_are_derived_from_exact_joined_retained_records() -> 
                 "schema_version": "2",
                 "timing_record_sequence": str(timing_sequence),
                 "decision_timestamp_ticks": str(ticks),
-                "time_domain": "rp2040_timer0_extended",
+                "time_domain": "rp2040_monotonic_us64",
             }
         )
         decision_timings.append(timing)
@@ -1344,7 +1344,7 @@ def test_scientific_metrics_are_derived_from_exact_joined_retained_records() -> 
             channel_id="1",
             edge="R",
             timestamp_ticks=str(ticks),
-            capture_domain="rp2040_timer0_extended",
+            capture_domain="rp2040_monotonic_us64",
             flags="0",
         )
         for sequence, ticks in enumerate(boundaries, start=1)
@@ -1362,7 +1362,7 @@ def test_scientific_metrics_are_derived_from_exact_joined_retained_records() -> 
                 channel_id="2",
                 gate_open_ticks=str(opening),
                 gate_close_ticks=str(closing),
-                gate_domain="rp2040_timer0_extended",
+                gate_domain="rp2040_monotonic_us64",
                 counted_edges=str(expected_edges + sequence),
                 source_edge="R",
                 source_domain="h1_cx317_ocxo_10mhz",
@@ -1615,9 +1615,9 @@ def test_PLL_pull_in_candidates_assess_realized_phase_without_counterfactual_cla
     )
 
 
-def test_D14_D8_frequency_derivation_extends_declared_raw_timer_wrap() -> None:
-    opening = RP2040_TIMER0_MICROS_WRAP_TICKS - 8_000_000
-    closing = 8_000_000
+def test_D14_D8_frequency_derivation_extends_declared_raw_microsecond_wrap() -> None:
+    opening = RP2040_MONOTONIC_US32_MODULUS - 500_000
+    closing = 500_000
     raw = [
         _row(
             "raw_events_v1",
@@ -1626,7 +1626,7 @@ def test_D14_D8_frequency_derivation_extends_declared_raw_timer_wrap() -> None:
             channel_id="1",
             edge="R",
             timestamp_ticks=str(ticks),
-            capture_domain="rp2040_timer0",
+            capture_domain="rp2040_monotonic_us32",
             flags="0",
         )
         for sequence, ticks in enumerate((opening, closing), start=1)
@@ -1637,7 +1637,7 @@ def test_D14_D8_frequency_derivation_extends_declared_raw_timer_wrap() -> None:
         channel_id="2",
         gate_open_ticks=str(opening),
         gate_close_ticks=str(closing),
-        gate_domain="rp2040_timer0",
+        gate_domain="rp2040_monotonic_us32",
         counted_edges="10000000",
         source_edge="R",
         source_domain="h1_cx317_ocxo_10mhz",
@@ -1647,16 +1647,16 @@ def test_D14_D8_frequency_derivation_extends_declared_raw_timer_wrap() -> None:
     samples, invalid = programme._d14_relative_frequency_samples(raw, [count])
 
     assert invalid == []
-    assert samples[0]["duration_ticks"] == 16_000_000
+    assert samples[0]["duration_ticks"] == 1_000_000
     assert samples[0]["opening_ticks"] == opening
     assert samples[0]["closing_ticks"] == (
-        RP2040_TIMER0_MICROS_WRAP_TICKS + closing
+        RP2040_MONOTONIC_US32_MODULUS + closing
     )
     assert samples[0]["frequency_error_nanohz"] == 0
 
 
 def test_response_horizons_prove_next_application_and_endpoint_censoring() -> None:
-    hz = RP2040_TIMER0_TICKS_PER_SECOND
+    hz = RP2040_MONOTONIC_US_PER_SECOND
     origin = 10 * hz
     decision = _decision_consumer_row(1, 1)
     decision.update(
@@ -1681,7 +1681,7 @@ def test_response_horizons_prove_next_application_and_endpoint_censoring() -> No
             "schema_version": "2",
             "timing_record_sequence": "1",
             "decision_timestamp_ticks": str(origin),
-            "time_domain": "rp2040_timer0_extended",
+            "time_domain": "rp2040_monotonic_us64",
         }
     )
     qualification_sample = {

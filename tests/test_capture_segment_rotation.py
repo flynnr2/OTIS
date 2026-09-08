@@ -68,8 +68,9 @@ def test_same_open_serial_rotates_rehearsal_transition_live_and_only_live_can_wr
             time.sleep(0.002)
             self.sequence += 1
             return (
-                f"REF,1,{self.sequence},1,R,{self.sequence * 16000000},"
-                "rp2040_timer0,16\n"
+                f"REF,1,{self.sequence},1,R,"
+                f"{self.sequence * 1_000_000},"
+                "rp2040_monotonic_us32,16\n"
             ).encode("ascii")
 
         def write(self, data: bytes) -> int:

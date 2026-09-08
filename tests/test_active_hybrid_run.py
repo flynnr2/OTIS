@@ -235,7 +235,7 @@ def _raw_active_abort_snapshot(generation: int) -> str:
         (SNAPSHOT_COMPLETE_KEY, str(generation)),
     ]
     return "".join(
-        f"STS,1,{index},{index * 1600},rp2040_timer0,cx317_active,"
+        f"STS,1,{index},{index * 1600},rp2040_monotonic_us32,cx317_active,"
         f"{key},{value},INFO,0\n"
         for index, (key, value) in enumerate(fields, start=1)
     )
@@ -488,7 +488,7 @@ def test_abort_delivery_does_not_use_a_pre_marker_firmware_snapshot(
     raw.write_text(
         _raw_active_abort_snapshot(195)
         + '# OTIS_HOST {"event":"emergency_abort_sent"}\n'
-        + "STS,1,999,999,rp2040_timer0,cx317_active,"
+        + "STS,1,999,999,rp2040_monotonic_us32,cx317_active,"
         "snapshot_generation_begin,196,INFO,0\n",
         encoding="utf-8",
     )

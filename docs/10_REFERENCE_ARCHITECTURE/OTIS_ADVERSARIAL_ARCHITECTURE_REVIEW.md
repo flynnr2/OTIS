@@ -441,7 +441,7 @@ State crosses cores outside those queues:
   snapshot backend's mutating poll from Core 0. This is a concrete ownership and
   concurrent-access defect, not merely a missing type proof;
 - the Core 0 actuator guard receives deadlines constructed from Core 1
-  `millis()/1000` seconds multiplied by 16 MHz, but obtains `now_ticks` from
+  `millis()/1000` seconds converted to native microseconds, but obtains `now_ticks` from
   `micros()*16`. The latter wraps after 4,294.967296 seconds because the cast to
   `uint64_t` occurs after `micros()` (`otis_timebase.h:12-19`), so the two values
   cease to share one representation.

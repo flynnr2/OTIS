@@ -716,11 +716,11 @@ class CaptureDeviceTransport:
                 self._characterization(snapshot, "snapshot_extended_ticks_available")
                 != "true"
                 or self._characterization(snapshot, "snapshot_counter_domain")
-                != "rp2040_timer0_extended"
+                != "rp2040_monotonic_us64"
                 or snapshot.integer(
                     CHARACTERIZATION_COMPONENT, "snapshot_tick_rate_hz"
                 )
-                != ticks_per_second(self.contract, "rp2040_timer0_extended")
+                != ticks_per_second(self.contract, "rp2040_monotonic_us64")
             ):
                 raise ValueError("snapshot counter-domain binding is unavailable")
             if mirror_available == "false":
@@ -914,13 +914,13 @@ class CaptureDeviceTransport:
                     and self._characterization(snapshot, "snapshot_extended_ticks_available")
                     == "true"
                     and self._characterization(snapshot, "snapshot_counter_domain")
-                    == "rp2040_timer0_extended"
+                    == "rp2040_monotonic_us64"
                     and snapshot.value(
                         "pps_gate", "characterization_mirror_available"
                     )
                     == "true"
                     and snapshot.integer(CHARACTERIZATION_COMPONENT, "snapshot_tick_rate_hz")
-                    == ticks_per_second(self.contract, "rp2040_timer0_extended")
+                    == ticks_per_second(self.contract, "rp2040_monotonic_us64")
                 )
             except (KeyError, TypeError, ValueError):
                 return False
@@ -1397,7 +1397,7 @@ class CaptureDeviceTransport:
         return PhaseStart(
             start_ticks=self.now_ticks,
             online_counter_ticks=self._online_counter_ticks,
-            online_counter_domain="rp2040_timer0_extended",
+            online_counter_domain="rp2040_monotonic_us64",
             start_counters=counters,
             metrics=snapshot_metrics(
                 snapshot,
@@ -1626,7 +1626,7 @@ class CaptureDeviceTransport:
         status_command: Callable[[int], str],
     ) -> PhaseOutcome:
         required = phase.duration_s * ticks_per_second(
-            self.contract, "rp2040_timer0_extended"
+            self.contract, "rp2040_monotonic_us64"
         )
         accumulated = 0
         accepted = (
@@ -1764,7 +1764,7 @@ class CaptureDeviceTransport:
             # an online-duration clock and legitimately remains stable until
             # the next transition.  Online freshness comes from a newer
             # coherent generation/reference sequence and forward movement in
-            # the exact extended Timer0 domain.
+            # the exact reconstructed native-microsecond domain.
             prior_frontier = prior.integer(
                 CHARACTERIZATION_COMPONENT, "transition_evidence_frontier"
             )
@@ -1787,7 +1787,7 @@ class CaptureDeviceTransport:
                 prior_ticks,
                 current_ticks,
                 contract=self.contract,
-                domain_name="rp2040_timer0_extended",
+                domain_name="rp2040_monotonic_us64",
             )
             coherent_progress = (
                 current.generation > prior.generation

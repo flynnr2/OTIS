@@ -83,7 +83,7 @@ def _source_for_original(run_dir: Path, continuation_contract_sha: str) -> dict[
         "source_firmware_config_sha256": config,
         "original_contract_sha256": _file_sha(contract),
         "continuation_contract_sha256": continuation_contract_sha,
-        "counter_domain": "rp2040_timer0_extended",
+        "counter_domain": "rp2040_monotonic_us64",
         "source_counter_baseline_id": f"{run_dir.name}:capture-baseline:1",
     }
 

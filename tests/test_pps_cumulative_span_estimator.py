@@ -35,7 +35,7 @@ def _interval(
     session: str = "1",
     control_epoch: str = "static",
     settling_excluded: bool = False,
-    timer_ticks: int = 16_000_000,
+    timer_ticks: int = 1_000_000,
 ) -> IntervalEvidence:
     return IntervalEvidence(
         session_id=session,
@@ -83,7 +83,7 @@ def _write_run(
         "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
         "board": "arduino_nano_rp2040_connect",
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
+            {"name": "rp2040_monotonic_us32", "nominal_hz": 1_000_000},
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],
         "channels": [
@@ -107,9 +107,9 @@ def _write_run(
     counter = start_counter
     for index in range(len(counts) + 1):
         sequence = snapshot_sequences[index]
-        timestamp = index * 16_000_000
+        timestamp = index * 1_000_000
         reference_rows.append(
-            ["REF", 1, 1000 + index, 1, "R", timestamp, "rp2040_timer0", 16]
+            ["REF", 1, 1000 + index, 1, "R", timestamp, "rp2040_monotonic_us32", 16]
         )
         snapshot_rows.append(
             [
@@ -134,8 +134,8 @@ def _write_run(
                     closing_sequence,
                     2,
                     timestamp,
-                    timestamp + 16_000_000,
-                    "rp2040_timer0",
+                    timestamp + 1_000_000,
+                    "rp2040_monotonic_us32",
                     counts[index],
                     "R",
                     "h1_cx317_ocxo_10mhz",
@@ -210,7 +210,7 @@ def _write_run(
             "severity",
             "flags",
         ],
-        [["STS", 1, 1, 1, "rp2040_timer0", "system", health_key, health_value, "INFO", 0]],
+        [["STS", 1, 1, 1, "rp2040_monotonic_us32", "system", health_key, health_value, "INFO", 0]],
     )
     if raw_marker is not None:
         raw_dir = run_dir / "raw"

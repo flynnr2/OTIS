@@ -136,7 +136,7 @@ def test_cx322_post_abort_snapshot_preserves_confirmed_static_state() -> None:
 
 def test_campaign18_status_fixture_publishes_exact_producer_frontier() -> None:
     policy_path = CX322_D9_D6_72H_PROGRAMME.policy_path
-    frontier = (2400 * 16_000_000) % (1 << 32)
+    frontier = (2400 * 1_000_000) % (1 << 32)
     payload = rehearsal._cx322_active_status_wire_fixture(
         generation=3,
         query_nonce="77",
@@ -163,7 +163,7 @@ def test_campaign18_status_fixture_publishes_exact_producer_frontier() -> None:
 
     assert updates[-1]["state"] == "complete"
     assert updates[-1]["frontier_timestamp_ticks"] == frontier
-    assert updates[-1]["frontier_status_domain"] == "rp2040_timer0"
+    assert updates[-1]["frontier_status_domain"] == "rp2040_monotonic_us32"
 
 
 def test_cx323_pty_status_fixture_publishes_complete_capture_baseline() -> None:
@@ -182,7 +182,7 @@ def test_cx323_pty_status_fixture_publishes_complete_capture_baseline() -> None:
         },
         applied=False,
         checkpoint_passed=False,
-        frontier_timestamp_ticks=(2400 * 16_000_000) % (1 << 32),
+        frontier_timestamp_ticks=(2400 * 1_000_000) % (1 << 32),
     )
     rows = [
         dict(zip(CONTRACT_FIELDS["health_v1"], row, strict=True))
@@ -627,19 +627,19 @@ def test_campaign18_rehearsal_manifest_requires_exact_timing_sidecars(
     extended = next(
         item
         for item in observed["domains"]
-        if item["name"] == "rp2040_timer0_extended"
+        if item["name"] == "rp2040_monotonic_us64"
     )
-    assert extended["nominal_hz"] == 16_000_000
+    assert extended["nominal_hz"] == 1_000_000
     assert extended["source_counter_hz"] == 1_000_000
-    assert extended["encoding_scale"] == 16
-    assert extended["quantum_ticks"] == 16
+    assert "encoding_scale" not in extended
+    assert extended["quantum_ticks"] == 1
     assert extended["quantum_ns"] == 1_000
     assert extended["coordinate_semantics"] == (
-        "projected_local_non_metrological"
+        "reconstructed_local_non_metrological"
     )
 
 
-def test_cx323_current_rehearsal_requires_complete_timer0_semantics(
+def test_cx323_current_rehearsal_requires_complete_monotonic_us_semantics(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     bundle_path, bundle, proposal_path, proposal = _fixture(tmp_path)
@@ -664,14 +664,14 @@ def test_cx323_current_rehearsal_requires_complete_timer0_semantics(
     )
     observed = rehearsal.validate_rehearsal_run_manifest(path)
     assert all(
-        item.get("quantum_ticks") == 16 and item.get("quantum_ns") == 1_000
+        item.get("quantum_ticks") == 1 and item.get("quantum_ns") == 1_000
         for item in observed["domains"]
-        if item["name"] in {"rp2040_timer0", "rp2040_timer0_extended"}
+        if item["name"] in {"rp2040_monotonic_us32", "rp2040_monotonic_us64"}
     )
 
     changed = json.loads(path.read_text(encoding="utf-8"))
     raw = next(
-        item for item in changed["domains"] if item["name"] == "rp2040_timer0"
+        item for item in changed["domains"] if item["name"] == "rp2040_monotonic_us32"
     )
     del raw["quantum_ns"]
     unsigned = {
@@ -789,10 +789,10 @@ def test_cx321_rehearsal_manifest_declares_extended_plant_sign_time_domain(
     extended = next(
         item
         for item in observed["domains"]
-        if item["name"] == "rp2040_timer0_extended"
+        if item["name"] == "rp2040_monotonic_us64"
     )
-    assert extended["nominal_hz"] == 16_000_000
-    assert extended["quantum_ticks"] == 16
+    assert extended["nominal_hz"] == 1_000_000
+    assert extended["quantum_ticks"] == 1
     assert extended["quantum_ns"] == 1_000
     assert observed["contracts"]["plant_sign_qualification_v1"] == 1
 
@@ -1109,9 +1109,9 @@ def test_accelerated_qualified_boundaries_use_device_time(
     )
 
     assert result == {
-        "time_domain": "rp2040_timer0",
+        "time_domain": "rp2040_monotonic_us32",
         "capture_session": 1,
-        "qualified_origin_subsecond_ticks": 13_602_864,
+        "qualified_origin_subsecond_ticks": 850_179,
         "fractional_origin_deferred_until_lower_bound": True,
         "exact_fractional_origin_established": True,
         "correction_admission_close_elapsed_s": 41_400,
@@ -1163,7 +1163,7 @@ def test_cx323_accelerated_boundaries_use_exact_d14_d8_apertures(
     assert result["endpoint_open_before_exact_aperture_boundary"] is True
     assert result["endpoint_closed_at_exact_aperture_boundary"] is True
     assert result[
-        "rp2040_timer0_held_constant_across_aperture_boundaries"
+        "rp2040_monotonic_us32_held_constant_across_aperture_boundaries"
     ] is True
     observations = result["boundary_observations"]
     assert {
@@ -1179,10 +1179,10 @@ def test_cx323_accelerated_boundaries_use_exact_d14_d8_apertures(
         "endpoint_open": (259_199, True, False),
         "endpoint_closed": (259_200, True, True),
     }
-    timer0_ticks = {
-        item["rp2040_timer0_ticks"] for item in observations.values()
+    monotonic_us_ticks = {
+        item["rp2040_monotonic_us32_ticks"] for item in observations.values()
     }
-    assert len(timer0_ticks) == 1
+    assert len(monotonic_us_ticks) == 1
     accepted_origin = result["accepted_window_count_origin"]
     reference_origin = result["boundary_reference_sequence_origin"]
     assert all(

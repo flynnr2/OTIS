@@ -31,7 +31,7 @@ from typing import Any, Callable, Mapping
 from .abort_transport import AbortFifo
 from .board_identity import read_board_identity
 from .active_control_supervisor import (
-    RP2040_TIMER0_TICKS_PER_SECOND,
+    RP2040_MONOTONIC_US_PER_SECOND,
     _parse_utc_epoch,
 )
 from .adaptive_steering_offline import RequestReleaseState
@@ -96,10 +96,10 @@ from .time_domains import forward_progress
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/d9_d6_frequency_only_digital_endurance_contract_v1.json"
 TOOL_ID = "otis_d9_d6_frequency_only_digital_endurance_v1"
-# ``rp2040_timer0`` is the emitted 16 MHz-encoded local timer coordinate with
-# a 16-tick/1 us quantum. All endurance thresholds remain in this domain from
+# ``rp2040_monotonic_us32`` is the native local microsecond coordinate with a
+# 1 us quantum. All endurance thresholds remain in this domain from
 # record ingestion through analysis.
-TIMER_HZ = RP2040_TIMER0_TICKS_PER_SECOND
+TIMER_HZ = RP2040_MONOTONIC_US_PER_SECOND
 LIVE_STAGE = "OTIS_D9_D6_FREQUENCY_ONLY_DIGITAL_ENDURANCE_LIVE"
 EVIDENCE_EPOCH = "OTIS_D9_D6_FREQUENCY_ONLY_DIGITAL_ENDURANCE_EPOCH_1"
 CAPABILITY = "d9-d6-frequency-only-digital-endurance-v1"
@@ -126,7 +126,7 @@ CANDIDATE_WINDOW_MAXIMUM_GROUP_DELAY_S = 300
 APPLICATION_ADMISSION_RESERVE_S = 1500
 CAPTURE_EVIDENCE_DRAIN_MARGIN_S = 180
 D9_CONFIGURATION_SNAPSHOT_COMPLETION_TIMEOUT_S = 30.0
-EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
+EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_monotonic_us64"
 U32_MASK = (1 << 32) - 1
 QUALIFIED_INTERVAL_LEDGER_PATH = Path(
     "reports/d9_d6_frequency_only_qualified_interval_ledger_v1.jsonl"
@@ -202,7 +202,7 @@ def _exact_capture_contract() -> dict[str, object]:
             entry.pop("optional", None)
     return {
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": TIMER_HZ},
+            {"name": "rp2040_monotonic_us32", "nominal_hz": TIMER_HZ},
             {"name": EXACT_LIFECYCLE_TIME_DOMAIN, "nominal_hz": TIMER_HZ},
         ],
         "contracts": {
@@ -488,14 +488,14 @@ class EnduranceSupervisor:
         interval = forward_progress(
             opening_ticks,
             closing_ticks,
-            domain="rp2040_timer0",
+            domain="rp2040_monotonic_us32",
             allow_equal=False,
         )
         previous = self.armed_ticks if self.last_closing_ticks is None else self.last_closing_ticks
         gap = forward_progress(
             previous,
             opening_ticks,
-            domain="rp2040_timer0",
+            domain="rp2040_monotonic_us32",
             allow_equal=True,
         )
         sequence_invalid = (
@@ -1353,7 +1353,7 @@ def canonical_d14_d8_intervals(run_dir: Path) -> list[dict[str, Any]]:
             and row.get("schema_version") == "1"
             and row.get("channel_id") == "1"
             and row.get("edge") == "R"
-            and row.get("capture_domain") == "rp2040_timer0"
+            and row.get("capture_domain") == "rp2040_monotonic_us32"
         ):
             timestamp = _safe_int(row.get("timestamp_ticks"))
             if timestamp is not None:
@@ -1399,7 +1399,7 @@ def canonical_d14_d8_intervals(run_dir: Path) -> list[dict[str, Any]]:
             reasons.append("count_record_identity_mismatch")
         if count.get("channel_id") != "2" or count.get("source_edge") != "R":
             reasons.append("d8_count_wire_identity_mismatch")
-        if count.get("gate_domain") != "rp2040_timer0":
+        if count.get("gate_domain") != "rp2040_monotonic_us32":
             reasons.append("count_gate_domain_mismatch")
         if count.get("source_domain") != "h1_cx317_ocxo_10mhz":
             reasons.append("count_source_domain_mismatch")
@@ -1412,7 +1412,7 @@ def canonical_d14_d8_intervals(run_dir: Path) -> list[dict[str, Any]]:
             progress = forward_progress(
                 opening_ticks,
                 closing_ticks,
-                domain="rp2040_timer0",
+                domain="rp2040_monotonic_us32",
                 allow_equal=False,
             )
             if not progress.valid:
@@ -2065,7 +2065,7 @@ class FrequencyOnlyLiveSupervisor:
                 self.consumed_count_sequences.add(sequence)
                 exact_interval = (
                     row.get("channel_id") == "2"
-                    and row.get("gate_domain") == "rp2040_timer0"
+                    and row.get("gate_domain") == "rp2040_monotonic_us32"
                     and row.get("flags") == "0"
                     and closing > opening
                 )
@@ -2195,7 +2195,7 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
             prewrite_contract_startup_grace_s=float(contract["envelope"]["initial_qualification_deadline_s"]),
             # This inherited value controls only the legacy wall-clock response
             # horizon.  Keep it beyond the live wall ceiling; the overlay below
-            # closes admission and terminates solely in retained TIMER0 ticks.
+            # closes admission and terminates solely in retained local ticks.
             qualified_timeout_s=(
                 int(contract["envelope"]["absolute_wall_limit_s"])
                 + CORRECTION_RESPONSE_RESERVE_S
@@ -2221,7 +2221,7 @@ class D9D6FrequencyOnlyEnduranceSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("d9_exact_readback_established", False)
         self.state.setdefault("d9_exact_readback_established_utc", None)
         self.state.setdefault("exact_setup_code", "0xA808")
-        self.state.setdefault("qualified_counter_domain", "rp2040_timer0")
+        self.state.setdefault("qualified_counter_domain", "rp2040_monotonic_us32")
         self.state.setdefault("soak_armed_frontier_ticks", self.accounting.armed_ticks)
         self.state.setdefault("soak_armed_count_sequence", None)
         self.state.setdefault("d6_missing_observability", [])
@@ -3540,7 +3540,7 @@ def _candidate_fll_window_fitness(
                         "summed_counted_edges": total_edges,
                         "summed_duration_ticks": total_ticks,
                         "frequency_reference_domain": "D14_reference_intervals",
-                        "aperture_diagnostic_domain": "rp2040_timer0",
+                        "aperture_diagnostic_domain": "rp2040_monotonic_us32",
                         "stationary_segment_elapsed_end_ticks": (
                             segment_elapsed_ticks
                         ),
@@ -3699,7 +3699,7 @@ def _candidate_fll_window_fitness(
         "runtime_authority_changed": False,
         "source": "canonical_1s_D14_D8_intervals",
         "frequency_reference_domain": "D14_reference_intervals",
-        "aperture_diagnostic_domain": "rp2040_timer0",
+        "aperture_diagnostic_domain": "rp2040_monotonic_us32",
         "stationary_support": (
             "qualified_consecutive_same_session_dac_code_and_epoch_after_settling"
         ),
@@ -4771,7 +4771,7 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
             "decision_sequence": "1",
             "estimate_id": "est:cx317:selected600:000001",
             "decision_timestamp_ticks": str(600 * TIMER_HZ),
-            "time_domain": "rp2040_timer0",
+            "time_domain": "rp2040_monotonic_us32",
             "capture_session": "4",
             "dac_epoch": "1",
             "integer_edge_error_counts": "4",
@@ -4840,7 +4840,7 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
                 "channel_id": "1",
                 "edge": "R",
                 "timestamp_ticks": str(opening_ticks),
-                "capture_domain": "rp2040_timer0",
+                "capture_domain": "rp2040_monotonic_us32",
                 "flags": "0",
             },
             {
@@ -4850,7 +4850,7 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
                 "channel_id": "1",
                 "edge": "R",
                 "timestamp_ticks": str(closing_ticks),
-                "capture_domain": "rp2040_timer0",
+                "capture_domain": "rp2040_monotonic_us32",
                 "flags": "0",
             },
         ],
@@ -4894,7 +4894,7 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
                 "channel_id": "2",
                 "gate_open_ticks": str(opening_ticks),
                 "gate_close_ticks": str(closing_ticks),
-                "gate_domain": "rp2040_timer0",
+                "gate_domain": "rp2040_monotonic_us32",
                 "counted_edges": "10000000",
                 "source_edge": "R",
                 "source_domain": "h1_cx317_ocxo_10mhz",
@@ -4945,7 +4945,7 @@ def pty_operational_rehearsal(*, bundle: Mapping[str, Any], output_dir: Path) ->
                 "control_seq": str(sequence),
                 "decision_id": f"rehearsal:{sequence}",
                 "decision_timestamp_ticks": str(timestamp_s * TIMER_HZ),
-                "time_domain": "rp2040_timer0",
+                "time_domain": "rp2040_monotonic_us32",
                 "control_state": "ACTIVE",
                 "preview_eligibility": "true",
                 "limited_delta_codes": str(delta),

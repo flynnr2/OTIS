@@ -363,7 +363,7 @@ def load_programme(
         "minimum_scientific_duration_s": 34200,
         "maximum_live_wall_s": 39600,
         "scheduling_domain": "host_monotonic_only_for_minimum_elapsed_waits",
-        "decision_evidence_domain": "rp2040_timer0_with_declared_rollover_and_session_identity",
+        "decision_evidence_domain": "rp2040_monotonic_us32_with_declared_rollover_and_session_identity",
     }:
         raise ValueError("targeted timing contract differs")
 

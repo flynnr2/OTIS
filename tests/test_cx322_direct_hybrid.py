@@ -44,28 +44,28 @@ def test_cx322_compiles_the_exact_timer_projection_path() -> None:
     )
 
     assert (
-        "#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION\n"
-        "OtisTimer0Extension timer_extension = {};"
+        "#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION\n"
+        "OtisMonotonicUsExtension timer_extension = {};"
     ) in preview
     for function in (
-        "bool otis_cx317_preview_live_extend_timer0_ticks",
-        "bool otis_cx317_preview_live_project_setup_timer0_ticks",
+        "bool otis_cx317_preview_live_extend_monotonic_us",
+        "bool otis_cx317_preview_live_project_setup_monotonic_us",
     ):
         body = preview[preview.index(function) :]
-        assert body.index("#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION") < body.index(
+        assert body.index("#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION") < body.index(
             "#else"
         )
     boundary = preview[
         preview.index("void otis_cx317_preview_live_on_boundary") :
     ]
-    assert boundary.index("otis_timer0_extension_advance_boundary") < boundary.index(
+    assert boundary.index("otis_monotonic_us_extension_advance_boundary") < boundary.index(
         "#if OTIS_ENABLE_CX321_ACTIVE_HYBRID"
     )
     decision_dispatch = boundary[
         boundary.index("OtisCx317ActiveLiveOutcome local_active_outcome") :
     ]
     assert (
-        "#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION\n"
+        "#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION\n"
         "    otis_cx317_active_live_on_decision_at_ticks("
     ) in decision_dispatch
 

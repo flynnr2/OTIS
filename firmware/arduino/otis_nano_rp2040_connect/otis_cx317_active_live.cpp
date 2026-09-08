@@ -30,10 +30,10 @@ constexpr char kEstimatorHash[] =
     "54173f493cb7dc459e57e7695d98b518a2616ded914898647f459b2325c94977";
 #else
 constexpr char kEstimatorHash[] =
-    "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
+    "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9";
 #endif
 constexpr char kModelHash[] =
-    "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2";
+    "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92";
 #if OTIS_CX317_ACTIVE_CAMPAIGN == \
     OTIS_CX317_ACTIVE_CAMPAIGN_STAGE7_REHEARSAL
 constexpr char kNumericalPolicyHash[] =
@@ -42,64 +42,64 @@ constexpr char kActivePolicyHash[] =
     "d73f3d94454f319229b4a0601877cd3529d9fd8cb2a87b3a86fb2bfcdbdaf6bf";
 #elif OTIS_ENABLE_CX323_PHASE_PRIORITY_MAINTENANCE
 constexpr char kNumericalPolicyHash[] =
-    "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926";
+    "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5";
 constexpr char kActivePolicyHash[] =
-    "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926";
+    "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5";
 #elif OTIS_ENABLE_SUSTAINED_HYBRID_REGULATION
 constexpr char kNumericalPolicyHash[] =
-    "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c";
+    "bd5208865b44daa708a0adbdef148779741b279c886e7ce86dab0b2e313ffe5b";
 constexpr char kActivePolicyHash[] =
-    "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c";
+    "bd5208865b44daa708a0adbdef148779741b279c886e7ce86dab0b2e313ffe5b";
 #elif OTIS_ENABLE_CX322_DIRECT_HYBRID
 constexpr char kNumericalPolicyHash[] =
-    "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48";
+    "038199406591d4e810690563baf75fa227d9c05d7126280b4e7260fa43f5a130";
 constexpr char kActivePolicyHash[] =
-    "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48";
+    "038199406591d4e810690563baf75fa227d9c05d7126280b4e7260fa43f5a130";
 #elif OTIS_ENABLE_CX321_ACTIVE_HYBRID
 constexpr char kNumericalPolicyHash[] =
-    "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d";
+    "44975f5535eb1e8cac04aeb93d6e522cfe4a8e0bec59dac739ab63c05fd789b0";
 constexpr char kActivePolicyHash[] =
-    "c6a8ea81bd77c791428e79c5c815cf67ca49f9506e5ade57ae9b7553c3113ea4";
+    "88c30d624a32be5866d6a6d61a52d8cc9c9e41e858c0524ef2618f93964265b0";
 #elif OTIS_ENABLE_CX320_ACTIVE_HYBRID
 constexpr char kNumericalPolicyHash[] =
-    "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d";
+    "44975f5535eb1e8cac04aeb93d6e522cfe4a8e0bec59dac739ab63c05fd789b0";
 constexpr char kActivePolicyHash[] =
-    "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d";
+    "44975f5535eb1e8cac04aeb93d6e522cfe4a8e0bec59dac739ab63c05fd789b0";
 #elif OTIS_ENABLE_STABILIZED_TIGHT_DEADBAND_PREVIEW
 constexpr char kNumericalPolicyHash[] =
-    "7b90ebab300f910476b47e8cecc42276dd0c4d6e1d342e941a39cb7e931cd3c6";
+    "4e631b1c647336d34873a7252c420a3f601f366501f267022fc860cde6181446";
 constexpr char kActivePolicyHash[] =
-    "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a";
+    "c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87";
 #elif OTIS_ENABLE_CX318_STAGE5_PREVIEW
 constexpr char kNumericalPolicyHash[] =
-    "7b90ebab300f910476b47e8cecc42276dd0c4d6e1d342e941a39cb7e931cd3c6";
+    "4e631b1c647336d34873a7252c420a3f601f366501f267022fc860cde6181446";
 constexpr char kActivePolicyHash[] =
-    "a0dbe59f1b22fda35c1b760b21a03ab906ef683955368db2eeccba092d0cbbfd";
+    "f9d7f99f94e422d9b3635866bfa06dadd6c5351d4d3b1ff347ee97d9d239010d";
 #else
 constexpr char kNumericalPolicyHash[] =
-    "7b90ebab300f910476b47e8cecc42276dd0c4d6e1d342e941a39cb7e931cd3c6";
+    "4e631b1c647336d34873a7252c420a3f601f366501f267022fc860cde6181446";
 constexpr char kActivePolicyHash[] =
-    "9fb037a5f435361928d36a2a6bc7a010b74100588cd83692051d6a093da9f27f";
+    "1953349ec5eef069b6bc8d79eb0b885c8599bbaecc79f4b8cfeb50b46669d702";
 #endif
 constexpr char kResponsePolicyHash[] =
-    "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e";
+    "aa327a6571f5f49bce6bd54c4b01090a626a08cb86933d568a96e0909e0e1827";
 constexpr char kPhaseEstimatorHash[] =
-    "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4";
+    "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792";
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
 constexpr char kPlantSignGateHash[] =
-    "9bbde84471bcea646e8ceb0b732cfa6dd1d81592fa44071d4aab3bc9ddac8d62";
+    "bec81e3941b2a1bc777d9151de4778b2cad045b53b2bf03a5782ac548e80646c";
 constexpr char kIdentificationEstimatorHash[] =
-    "cf5ea727615ea79a7e23258b674798a3215b0f996ac1a4a454eb39afe0d737b1";
+    "ec048c6b698dab0d542da51b8c1781c554c18383e4b514adfc54c233390b06f7";
 constexpr char kIdentificationEstimatorConfigHash[] =
-    "8d0c0be3db287accf7c094f576d6a557cd6c60946a909eb423a7afd8865aefd8";
+    "8fb4ca991c06b433f3a46a6d01d2f2c9270933f555c27d1967ab6d2db41f5f9d";
 #endif
 constexpr uint32_t kCaptureLeaseMaximumAgeS = 30u;
 constexpr uint32_t kEvidenceAcknowledgementMaximumAgeS = 30u;
-constexpr uint64_t kCaptureTicksPerSecond = 16000000ull;
+constexpr uint64_t kCaptureTicksPerSecond = 1000000ull;
 constexpr size_t kFrameCapacity = 1536u;
 constexpr size_t kTransportChunkLimit = 192u;
 constexpr uint64_t kCx323SelectedEstimatorIdentity =
-    0x5a53b229cabb5a2cull;
+    0x968130fc809b0674ull;
 
 #if OTIS_CX317_ACTIVE_CAMPAIGN == OTIS_CX317_ACTIVE_CAMPAIGN_A
 constexpr char kRunIdentity[] = "cx317_bounded_campaign_a:3170001";
@@ -254,7 +254,7 @@ bool manual_start_timing_recorded = false;
 bool health_event_ticks_available = false;
 uint64_t health_event_timestamp_ticks = 0u;
 #endif
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
 uint64_t pending_application_timestamp_ticks = 0u;
 #endif
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
@@ -1627,7 +1627,7 @@ bool otis_cx317_active_live_begin(void) {
   health_event_ticks_available = false;
   health_event_timestamp_ticks = 0u;
 #endif
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
   pending_application_timestamp_ticks = 0u;
 #endif
 #if OTIS_ENABLE_CX320_ACTIVE_HYBRID
@@ -1758,7 +1758,7 @@ void otis_cx317_active_live_update_health_at_ticks(
 #if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
   uint64_t extended_ticks = 0u;
   health_event_ticks_available =
-      otis_cx317_preview_live_extend_timer0_ticks(event_timestamp_ticks,
+      otis_cx317_preview_live_extend_monotonic_us(event_timestamp_ticks,
                                                   &extended_ticks);
   health_event_timestamp_ticks =
       health_event_ticks_available ? extended_ticks : 0u;
@@ -2047,7 +2047,7 @@ bool otis_cx317_active_live_on_cross_core_ack(
   if (exact_metadata_rejection_context) {
 #if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
     uint64_t rejection_ticks = 0u;
-    if (!otis_cx317_preview_live_extend_timer0_ticks(
+    if (!otis_cx317_preview_live_extend_monotonic_us(
             acknowledgement->acknowledgement_ticks, &rejection_ticks)) {
       otis_cx317_active_fault(
           &transaction, "core0_rejection_timestamp_projection_failed");
@@ -2196,7 +2196,7 @@ bool otis_cx317_active_live_on_cross_core_ack(
   if (acknowledgement->kind == OtisActuatorAckKind::Accepted) {
 #if OTIS_ENABLE_EXACT_LONG_RUN_TIMING_SIDECARS
     uint64_t acceptance_ticks = 0u;
-    if (!otis_cx317_preview_live_extend_timer0_ticks(
+    if (!otis_cx317_preview_live_extend_monotonic_us(
             acknowledgement->acknowledgement_ticks, &acceptance_ticks)) {
       otis_cx317_active_fault(
           &transaction, "core0_acceptance_timestamp_projection_failed");
@@ -2237,8 +2237,8 @@ bool otis_cx317_active_live_on_cross_core_ack(
     return false;
   }
   uint64_t application_ticks = acknowledgement->acknowledgement_ticks;
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
-  if (!otis_cx317_preview_live_extend_timer0_ticks(
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
+  if (!otis_cx317_preview_live_extend_monotonic_us(
           acknowledgement->acknowledgement_ticks, &application_ticks)) {
     otis_cx317_active_fault(
         &transaction, "cross_core_application_timestamp_projection_failed");
@@ -2281,7 +2281,7 @@ bool otis_cx317_active_live_on_cross_core_ack(
   deferred_application_outcome.reason = transaction.reason;
   deferred_application_outcome_valid = true;
   last_application_acknowledged = acknowledged;
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
   pending_application_timestamp_ticks =
       application_ticks;
 #endif
@@ -3385,7 +3385,7 @@ bool otis_cx317_active_live_acknowledge_plant_sign_response(
           &transaction, "plant_sign_response_ack_identity_mismatch");
     return false;
   }
-  if (!otis_cx317_preview_live_extend_timer0_ticks(
+  if (!otis_cx317_preview_live_extend_monotonic_us(
           acknowledgement_ticks, &extended_acknowledgement_ticks)) {
     otis_cx317_active_fault(
         &transaction, "plant_sign_response_ack_timestamp_projection_failed");

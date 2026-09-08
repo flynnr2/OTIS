@@ -27,7 +27,7 @@ def _row(sequence: int, counts: int, **overrides: str) -> dict[str, str]:
         "decision_sequence": str(sequence),
         "estimate_id": f"est:cx317:selected600:{sequence:06d}",
         "decision_timestamp_ticks": str(1_000 + sequence),
-        "time_domain": "rp2040_timer0",
+        "time_domain": "rp2040_monotonic_us32",
         "capture_session": "7",
         "dac_epoch": "2",
         "integer_edge_error_counts": str(counts),
@@ -152,10 +152,10 @@ def test_tdb_replay_reports_exact_field_mismatch(tmp_path: Path) -> None:
     assert any("symmetric_two_count_inside" in error for error in replay.errors)
 
 
-def test_tdb_replay_accepts_rp2040_timer0_rollover(tmp_path: Path) -> None:
+def test_tdb_replay_accepts_rp2040_monotonic_us32_rollover(tmp_path: Path) -> None:
     path = tmp_path / "tight_deadband_decisions_v1.csv"
     rows = _exact_rows()
-    wrap_ticks = (1 << 32) * 16
+    wrap_ticks = 1 << 32
     for index, row in enumerate(rows[:4]):
         row["decision_timestamp_ticks"] = str(wrap_ticks - 4_000 + index * 1_000)
     rows[4]["decision_timestamp_ticks"] = "1000"

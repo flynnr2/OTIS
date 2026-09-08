@@ -31,7 +31,7 @@ def _observation(
 ) -> CX323Observation:
     values: dict[str, object] = {
         "timestamp_s": timestamp_s,
-        "timestamp_ticks": timestamp_s * 16_000_000,
+        "timestamp_ticks": timestamp_s * 1_000_000,
         "capture_session": 1,
         "source_first_sequence": opening,
         "source_last_sequence": closing,
@@ -66,20 +66,20 @@ def test_loads_exact_selected_profile_without_changing_legacy_loaders() -> None:
 
     assert policy.policy_id == "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
     assert policy.policy_sha256 == (
-        "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
+        "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5"
     )
     assert load_policy().policy_id == "CX320_BOUNDED_ACTIVE_HYBRID_TIGHT_V1"
     assert isinstance(ActiveHybridController(load_policy()), ActiveHybridController)
 
 
-def test_historical_cx323_policy_identity_remains_loadable() -> None:
-    legacy = load_cx323_policy(
-        Path("profiles/discipline/cx323_phase_priority_persistent_maintenance_v1.json")
-    )
-
-    assert legacy.policy_sha256 == (
-        "36e16b0553add14f5f3f1ea0cc9753af113964b039551a86d6b5564a89282e24"
-    )
+def test_historical_cx323_policy_is_not_a_current_policy_alias() -> None:
+    with pytest.raises(ValueError, match="policy profile identity differs"):
+        load_cx323_policy(
+            Path(
+                "profiles/discipline/"
+                "cx323_phase_priority_persistent_maintenance_v1.json"
+            )
+        )
 
 
 def test_frozen_maintenance_sequences_and_legacy_path_classification() -> None:
