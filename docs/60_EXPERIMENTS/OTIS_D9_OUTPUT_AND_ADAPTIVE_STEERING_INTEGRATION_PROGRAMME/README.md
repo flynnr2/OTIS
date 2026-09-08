@@ -75,6 +75,22 @@ platform launch-mechanism terminal with no scientific result and no automatic
 retry authority. See
 [`14_HYBRID_72H_ATTEMPT12_FIRMWARE_ENTRY_TERMINAL.md`](14_HYBRID_72H_ATTEMPT12_FIRMWARE_ENTRY_TERMINAL.md).
 
+The separately authorized Attempt 12 retry 1 then completed firmware entry,
+setup, fifteen applications and a 74,741-qualified-aperture prefix. A short D14
+disturbance exposed two independent recovery defects: firmware terminalized a
+recoverable metadata hold when an ordinary service poll had no event timestamp,
+then masked the transaction fault as `GNSS_METADATA_HOLD`; the host treated the
+resulting lifetime rejected-window and interval-anomaly counters as a permanent
+hold even after current capture health recovered. The run stopped at code
+43,076, epoch 16. Abort submission and carrier write are retained, but firmware
+consumption was not confirmed before the bounded close. The acquisition and
+offline-finalization gates failed; exact prefix replay does not supply the
+missing endpoint or terminal for the original single-session claim. The
+retained prefix may contribute to a separately contracted composite corrected
+extension only if the firmware/session boundary and excluded gap remain
+explicit. See
+[`15_HYBRID_72H_ATTEMPT12_RETRY1_METADATA_HOLD_TERMINAL.md`](15_HYBRID_72H_ATTEMPT12_RETRY1_METADATA_HOLD_TERMINAL.md).
+
 This authority supersedes the original Gate B waveform dependency and the
 Prompt 04 stop boundary only for these explicitly identified engineering
 acquisitions. It does not change the Prompt 02 waveform terminal, qualify the

@@ -1439,8 +1439,14 @@ bool maybe_complete_gnss_metadata_requalification(void) {
           gnss_metadata_hold_entry_sequence ||
       latest_health.d14_d8_observation_sequence == 0u)
     return false;
-  if (!health_event_ticks_available || health_event_timestamp_ticks == 0u ||
-      latest_health.session_id != gnss_metadata_hold_session ||
+  // The ordinary service path deliberately re-evaluates reference state
+  // between timestamped health publications.  A healthy polling pass has no
+  // event timestamp and therefore cannot publish the causal requalification
+  // transition yet; it is not an identity contradiction and must remain in
+  // the recoverable hold until the next timestamped health update.
+  if (!health_event_ticks_available || health_event_timestamp_ticks == 0u)
+    return false;
+  if (latest_health.session_id != gnss_metadata_hold_session ||
       !latest_health.applied_code_confirmed ||
       latest_health.applied_code != gnss_metadata_hold_applied_code ||
       transaction.applied_code != gnss_metadata_hold_applied_code ||
@@ -3970,17 +3976,26 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
       evidence_phase == EvidencePhase::None &&
       otis_cx317_active_arm_eligibility_valid(&current_eligibility);
 #endif
-  status->state = gnss_metadata_hold_active
-                      ? "GNSS_METADATA_HOLD"
-                      : (transaction_bound
-                             ? otis_cx317_active_state_name(transaction.state)
-                             : "UNBOUND");
-  status->reason = gnss_metadata_hold_active
-                       ? (gnss_metadata_hold_transaction_pending
-                              ? "gnss_metadata_hold_transaction_resolution_pending"
-                              : "gnss_metadata_unqualified_hold")
-                       : (transaction_bound ? transaction.reason
-                                            : "session_unbound");
+  const bool transaction_terminal =
+      transaction_bound &&
+      (transaction.state == OtisCx317ActiveState::Fault ||
+       transaction.state == OtisCx317ActiveState::Aborted);
+  status->state = transaction_terminal
+                      ? otis_cx317_active_state_name(transaction.state)
+                      : (gnss_metadata_hold_active
+                             ? "GNSS_METADATA_HOLD"
+                             : (transaction_bound
+                                    ? otis_cx317_active_state_name(
+                                          transaction.state)
+                                    : "UNBOUND"));
+  status->reason = transaction_terminal
+                       ? transaction.reason
+                       : (gnss_metadata_hold_active
+                              ? (gnss_metadata_hold_transaction_pending
+                                     ? "gnss_metadata_hold_transaction_resolution_pending"
+                                     : "gnss_metadata_unqualified_hold")
+                              : (transaction_bound ? transaction.reason
+                                                   : "session_unbound"));
   status->evidence_state = evidence_state_name();
   status->session_id = transaction_bound
                            ? transaction.expected_binding.session_id
@@ -4046,7 +4061,10 @@ void otis_cx317_active_live_get_status(OtisCx317ActiveLiveStatus *status,
               "prospective_repeated_alternation") == 0 ||
        strcmp(cx323_engine.fail_static_reason,
               "prospective_low_efficiency_path") == 0);
-  if (!cx323_engine_ready) {
+  if (transaction_terminal) {
+    status->hybrid_state = otis_cx317_active_state_name(transaction.state);
+    status->hybrid_reason = transaction.reason;
+  } else if (!cx323_engine_ready) {
     status->hybrid_state = "SETUP_PENDING";
     status->hybrid_reason = "setup_consumers_pending";
   } else if (gnss_metadata_hold_active) {

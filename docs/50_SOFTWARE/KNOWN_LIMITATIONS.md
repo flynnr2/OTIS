@@ -117,6 +117,22 @@
   implementation is bound only by each run's separate effective activation.
   It does not retroactively make the Prompt 03 oracle effective or grant that
   historical contract DAC, arm, flash, serial, or trial authority.
+- Campaign19 Attempt 12 retry 1 retained 74,741 supervisor-qualified D14/D8
+  apertures and fifteen applications, ending at code 43,076 (`0xA844`), DAC
+  epoch 16. A firmware defect treated a timestamp-less ordinary service poll
+  during metadata requalification as an identity contradiction, latched a
+  terminal transaction fault and then masked it as `GNSS_METADATA_HOLD` in
+  status. The frozen host also treated two rejected-window and one
+  interval-anomaly lifetime-counter increments as a permanent hold after
+  current capture health recovered. Abort submission and one carrier write are
+  recorded, but firmware consumption was not confirmed before bounded close.
+  The retained prefix remains physical evidence and its active-hybrid
+  transaction replay is exact; acquisition and offline finalization failed,
+  and corrected replay or segmented accepted-aperture accounting cannot supply
+  the missing endpoint, terminal acknowledgement or scientific acceptance
+  within the original single-session claim. A distinct composite recovery
+  contract may bind the validated prefix and a corrected-firmware continuation
+  while declaring the firmware/session boundary and excluded gap.
 - Prompt 04 verified the complete current Release matrix, three exact separated
   build manifests, the unchanged CX322 policy, the non-effective Prompt 03
   contract, and the retained sealed D9/D6 PTY operational path. It deliberately

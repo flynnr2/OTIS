@@ -1520,8 +1520,15 @@ def test_cx323_qualified_origin_baselines_every_irreversible_capture_counter(
     assert supervisor.state["qualified_d14_reference_sequence_origin"] == 0
 
 
-@pytest.mark.parametrize("counter", CX323_ADDITIONAL_AUTHORITATIVE_CAPTURE_COUNTERS)
-def test_cx323_recovered_capture_gap_remains_fail_closed(
+@pytest.mark.parametrize(
+    "counter",
+    tuple(
+        counter
+        for counter in CX323_ADDITIONAL_AUTHORITATIVE_CAPTURE_COUNTERS
+        if counter != "pps_interval_anomaly_count"
+    ),
+)
+def test_cx323_unrecoverable_capture_gap_remains_fail_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, counter: str
 ) -> None:
     supervisor = _supervisor(tmp_path)
@@ -1553,6 +1560,272 @@ def test_cx323_recovered_capture_gap_remains_fail_closed(
     assert supervisor.state["host_verification_hold"]["source"] == (
         "authoritative_capture_observer"
     )
+
+
+def test_cx323_clean_rejected_windows_start_provenance_bound_extension(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    health = _health(
+        supervisor,
+        confirmed_applied_code="43076",
+        dac_epoch="16",
+        correction_count="15",
+        cumulative_movement_codes="25",
+    )
+    baseline = {
+        key: int(health[("pps_gate", key)])
+        for key in live._authoritative_capture_counters(supervisor.programme)
+    }
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_origin_timestamp_ticks": 1_000_000,
+            "qualified_authoritative_capture_baseline": baseline,
+            "qualified_d14_accepted_window_origin": 100,
+            "qualified_d14_reference_sequence_origin": 200,
+            "qualified_d14_completed_apertures_before_segment": 0,
+            "qualified_d14_segment_accepted_window_origin": 100,
+            "qualified_d14_segment_reference_sequence_origin": 200,
+            "terminal_static_code": 43076,
+        }
+    )
+    health.update(
+        {
+            ("pps_gate", "accepted_window_count"): "150",
+            ("pps_gate", "boundary_reference_sequence"): "252",
+            ("pps_gate", "rejected_window_count"): "2",
+            ("pps_gate", "pps_interval_anomaly_count"): "1",
+        }
+    )
+
+    assert not supervisor._abort_on_authoritative_capture_discontinuity(health)
+    assert supervisor.state["host_verification_hold"] is None
+    assert supervisor.state["authoritative_capture_terminal_detail"] is None
+    assert supervisor.state["qualified_d14_accepted_apertures"] == 50
+    assert supervisor.state["qualified_d14_completed_apertures_before_segment"] == 50
+    assert supervisor.state["qualified_d14_segment_accepted_window_origin"] == 150
+    assert supervisor.state["qualified_d14_segment_reference_sequence_origin"] == 252
+    assert supervisor.state["qualified_authoritative_capture_baseline"][
+        "rejected_window_count"
+    ] == 2
+    assert supervisor.state["qualified_authoritative_capture_baseline"][
+        "pps_interval_anomaly_count"
+    ] == 1
+
+    intervention = supervisor.state["authoritative_capture_interventions"][-1]
+    assert intervention["counter_deltas"] == {
+        "pps_interval_anomaly_count": 1,
+        "rejected_window_count": 2,
+    }
+    assert intervention["accepted_apertures_in_segment"] == 50
+    assert intervention["excluded_reference_boundaries_in_segment"] == 2
+    assert intervention["qualified_accepted_apertures_after_segment"] == 50
+    assert intervention["current_capture_gates_clean"] is True
+    assert intervention["new_control_authority"] is False
+    assert intervention["control_identity_at_recovery"] == {
+        "applied_code": 43076,
+        "dac_epoch": 16,
+        "correction_count": 15,
+        "cumulative_movement_codes": 25,
+    }
+
+    continued = dict(health)
+    continued[("pps_gate", "accepted_window_count")] = "170"
+    continued[("pps_gate", "boundary_reference_sequence")] = "272"
+    assert supervisor._qualified_d14_apertures(continued) == 70
+
+
+def test_cx323_corrected_extension_waits_for_current_capture_gates(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    health = _health(supervisor)
+    baseline = {
+        key: int(health[("pps_gate", key)])
+        for key in live._authoritative_capture_counters(supervisor.programme)
+    }
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_origin_timestamp_ticks": 1_000_000,
+            "qualified_authoritative_capture_baseline": baseline,
+            "qualified_d14_accepted_window_origin": 100,
+            "qualified_d14_reference_sequence_origin": 200,
+            "qualified_d14_segment_accepted_window_origin": 100,
+            "qualified_d14_segment_reference_sequence_origin": 200,
+            "terminal_static_code": live.SETUP_CODE,
+        }
+    )
+    health.update(
+        {
+            ("pps_gate", "accepted_window_count"): "150",
+            ("pps_gate", "boundary_reference_sequence"): "252",
+            ("pps_gate", "rejected_window_count"): "2",
+            ("pps_gate", "pps_interval_anomaly_count"): "1",
+            ("pps_gate", "control_eligible"): "false",
+        }
+    )
+
+    assert supervisor._abort_on_authoritative_capture_discontinuity(health)
+    assert supervisor.state["host_verification_hold"]["source"] == (
+        "authoritative_capture_observer"
+    )
+    assert supervisor.state["authoritative_capture_interventions"] == []
+
+    health[("pps_gate", "control_eligible")] = "true"
+    supervisor.state["host_verification_hold"].update(
+        {
+            "applied_code": live.SETUP_CODE,
+            "dac_epoch": 1,
+            "correction_count": 0,
+            "cumulative_movement_codes": 0,
+        }
+    )
+    health[("pps_gate", "boundary_reference_sequence")] = "253"
+    assert supervisor._abort_on_authoritative_capture_discontinuity(health)
+    assert supervisor.state["authoritative_capture_interventions"] == []
+
+    health[("pps_gate", "boundary_reference_sequence")] = "252"
+    assert not supervisor._abort_on_authoritative_capture_discontinuity(health)
+    assert supervisor.state["host_verification_hold"] is None
+    intervention = supervisor.state["authoritative_capture_interventions"][-1]
+    assert intervention["superseded_host_verification_hold"]["source"] == (
+        "authoritative_capture_observer"
+    )
+
+
+def test_cx323_attempt12_retained_frontier_recovers_without_counting_rejections(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    health = _health(
+        supervisor,
+        state="GNSS_METADATA_HOLD",
+        hybrid_state="GNSS_METADATA_HOLD",
+        hybrid_reason="metadata_hold",
+        fail_static="false",
+        gnss_metadata_hold_active="true",
+        confirmed_applied_code="43076",
+        dac_epoch="16",
+        correction_count="15",
+        cumulative_movement_codes="25",
+    )
+    baseline = {
+        key: int(health[("pps_gate", key)])
+        for key in live._authoritative_capture_counters(supervisor.programme)
+    }
+    reason = (
+        "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault:"
+        "rejected_window_count_changed:0->2,"
+        "pps_interval_anomaly_count_changed:0->1"
+    )
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_origin_timestamp_ticks": 38_416_228_496,
+            "qualified_authoritative_capture_baseline": baseline,
+            "qualified_d14_accepted_window_origin": 2399,
+            "qualified_d14_reference_sequence_origin": 2399,
+            "qualified_d14_accepted_apertures": 74_741,
+            "terminal_static_code": 43076,
+            "host_verification_hold": {
+                "source": "authoritative_capture_observer",
+                "error": reason,
+                "applied_code": 43076,
+                "dac_epoch": 16,
+                "correction_count": 15,
+                "cumulative_movement_codes": 25,
+            },
+        }
+    )
+    health.update(
+        {
+            ("pps_gate", "accepted_window_count"): "94187",
+            ("pps_gate", "boundary_reference_sequence"): "94189",
+            ("pps_gate", "rejected_window_count"): "2",
+            ("pps_gate", "pps_interval_anomaly_count"): "1",
+        }
+    )
+
+    assert not supervisor._abort_on_authoritative_capture_discontinuity(health)
+
+    # 94,187 - 2,399 accepted windows count; the two rejected reference
+    # boundaries extend wall duration but never enter qualified duration.
+    assert supervisor.state["qualified_d14_accepted_apertures"] == 91_788
+    intervention = supervisor.state["authoritative_capture_interventions"][-1]
+    assert intervention["qualified_accepted_apertures_after_segment"] == 91_788
+    assert intervention["excluded_reference_boundaries_in_segment"] == 2
+    assert intervention["superseded_host_verification_hold"]["error"] == reason
+
+
+def test_cx323_corrected_extension_never_clears_hold_after_actuation_change(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    health = _health(supervisor, confirmed_applied_code="43076", dac_epoch="16")
+    baseline = {
+        key: int(health[("pps_gate", key)])
+        for key in live._authoritative_capture_counters(supervisor.programme)
+    }
+    reason = (
+        "cx323_d9_d6_72h_D14_D8_authority_or_capture_fault:"
+        "rejected_window_count_changed:0->1"
+    )
+    supervisor.state.update(
+        {
+            "qualified_origin_session_id": 1,
+            "qualified_authoritative_capture_baseline": baseline,
+            "qualified_d14_accepted_window_origin": 100,
+            "qualified_d14_reference_sequence_origin": 100,
+            "terminal_static_code": 43076,
+            "host_verification_hold": {
+                "source": "authoritative_capture_observer",
+                "error": reason,
+                "applied_code": 43077,
+                "dac_epoch": 15,
+                "correction_count": 14,
+                "cumulative_movement_codes": 24,
+            },
+        }
+    )
+    health[("pps_gate", "accepted_window_count")] = "200"
+    health[("pps_gate", "boundary_reference_sequence")] = "201"
+    health[("pps_gate", "rejected_window_count")] = "1"
+
+    assert supervisor._abort_on_authoritative_capture_discontinuity(health)
+    assert supervisor.state["host_verification_hold"] is not None
+    assert supervisor.state["authoritative_capture_interventions"] == []
+
+
+def test_cx323_metadata_hold_cannot_mask_terminal_fail_static(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    supervisor.programme = CX323_D9_D6_72H_PROGRAMME
+    supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
+    health = _health(
+        supervisor,
+        state="GNSS_METADATA_HOLD",
+        hybrid_state="GNSS_METADATA_HOLD",
+        hybrid_reason="metadata_hold",
+        fail_static="true",
+        gnss_metadata_hold_active="true",
+        gnss_metadata_hold_transaction_pending="false",
+        gnss_metadata_hold_entry_sequence="200",
+        gnss_metadata_requalification_sequence="0",
+        gnss_metadata_qualification_frontier="0",
+        d14_d8_observation_sequence="500",
+    )
+
+    with pytest.raises(ValueError, match="live active_fail_static asserted"):
+        supervisor._check_fail_static_health(health)
+
+    assert supervisor.state["terminal"] is None
 
 
 @pytest.mark.parametrize(

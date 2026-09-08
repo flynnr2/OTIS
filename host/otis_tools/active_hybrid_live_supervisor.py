@@ -667,6 +667,9 @@ _CX323_AUTHORITATIVE_CAPTURE_COUNTERS = _AUTHORITATIVE_CAPTURE_COUNTERS + (
     "snapshot_dma_stopped_count",
     "physical_pps_missing_count",
 )
+_CX323_RECOVERABLE_APERTURE_COUNTERS = frozenset(
+    {"rejected_window_count", "pps_interval_anomaly_count"}
+)
 _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH = {
     "valid": "true",
     "control_eligible": "true",
@@ -786,6 +789,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         self.state.setdefault("qualified_d14_accepted_apertures", None)
         self.state.setdefault("qualified_d14_reference_sequence_endpoint", None)
         self.state.setdefault("qualified_authoritative_capture_baseline", None)
+        self.state.setdefault("qualified_d14_completed_apertures_before_segment", 0)
+        self.state.setdefault("qualified_d14_segment_accepted_window_origin", None)
+        self.state.setdefault("qualified_d14_segment_reference_sequence_origin", None)
+        self.state.setdefault("authoritative_capture_interventions", [])
         self.state.setdefault("latest_hybrid_state", None)
         self.state.setdefault("first_phase_checkpoint_passed", False)
         self.state.setdefault("first_phase_observation_checkpoint_exact", False)
@@ -1345,6 +1352,10 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 self.state["arm_sent_at_utc"] = None
                 self._abort(decision)
                 return
+        metadata_hold_active = (
+            health.get(("cx317_active", "state")) == "GNSS_METADATA_HOLD"
+            and _truth(health, "gnss_metadata_hold_active")
+        )
         platform_health = health
         if (
             prospective_controller_inhibit
@@ -1416,10 +1427,6 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         if setup_established and not self._identity_ready(health):
             raise ValueError("CX320 exact runtime identity became unavailable")
         if setup_established:
-            metadata_hold_active = (
-                health.get(("cx317_active", "state")) == "GNSS_METADATA_HOLD"
-                and _truth(health, "gnss_metadata_hold_active")
-            )
             required_true = (
                 "capture_lease_live",
                 "setup_reference_eligible",
@@ -1826,6 +1833,13 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             if self.programme.qualified_d14_aperture_count is not None:
                 self.state["qualified_d14_accepted_window_origin"] = accepted_origin
                 self.state["qualified_d14_reference_sequence_origin"] = reference_origin
+                self.state["qualified_d14_completed_apertures_before_segment"] = 0
+                self.state["qualified_d14_segment_accepted_window_origin"] = (
+                    accepted_origin
+                )
+                self.state["qualified_d14_segment_reference_sequence_origin"] = (
+                    reference_origin
+                )
         self.state["qualified_authoritative_capture_baseline"] = (
             authoritative_capture_baseline
         )
@@ -1884,6 +1898,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             baseline = {}
             faults.append("qualified_authoritative_capture_baseline_unavailable")
         observed_counters: dict[str, int | str | None] = {}
+        changed_counters: dict[str, tuple[int, int]] = {}
         for key in _authoritative_capture_counters(self.programme):
             try:
                 expected = int(baseline[key])
@@ -1895,7 +1910,19 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             observed_counters[key] = observed
             if observed != expected:
                 faults.append(f"{key}_changed:{expected}->{observed}")
+                changed_counters[key] = (expected, observed)
         if not faults:
+            return False
+
+        if self._recover_cx323_aperture_extension(
+            health=health,
+            origin_session=origin_session,
+            current_session=current_session,
+            baseline=baseline,
+            observed_counters=observed_counters,
+            changed_counters=changed_counters,
+            faults=faults,
+        ):
             return False
 
         self.state["arm_pending"] = False
@@ -1924,6 +1951,165 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         except OSError:
             # The retained hold and detail are decision-bearing; this
             # supplementary event must never delay continued acquisition.
+            pass
+        return True
+
+    def _recover_cx323_aperture_extension(
+        self,
+        *,
+        health: dict[tuple[str, str], str],
+        origin_session: int,
+        current_session: int,
+        baseline: dict[str, Any],
+        observed_counters: dict[str, int | str | None],
+        changed_counters: dict[str, tuple[int, int]],
+        faults: list[str],
+    ) -> bool:
+        """Rebase a bounded CX323 rejected-aperture interval after recovery.
+
+        The lifetime counters remain immutable provenance.  Only the two
+        counters which describe rejected D14/D8 windows may advance, and only
+        after every instantaneous capture gate has returned clean in the same
+        session.  Qualified duration remains a sum of accepted apertures; the
+        rejected reference boundaries never enter that sum.
+        """
+
+        if (
+            self.programme.qualified_d14_aperture_count is None
+            or current_session != origin_session
+            or not changed_counters
+            or not set(changed_counters) <= _CX323_RECOVERABLE_APERTURE_COUNTERS
+            or _authoritative_capture_health_faults(health)
+        ):
+            return False
+        expected_faults = {
+            f"{key}_changed:{before}->{after}"
+            for key, (before, after) in changed_counters.items()
+        }
+        if set(faults) != expected_faults or any(
+            after <= before for before, after in changed_counters.values()
+        ):
+            return False
+        if any(type(value) is not int for value in observed_counters.values()):
+            return False
+
+        try:
+            current_identity = {
+                "applied_code": int(
+                    health[("cx317_active", "confirmed_applied_code")], 0
+                ),
+                "dac_epoch": int(health[("cx317_active", "dac_epoch")]),
+                "correction_count": int(
+                    health[("cx317_active", "correction_count")]
+                ),
+                "cumulative_movement_codes": int(
+                    health[("cx317_active", "cumulative_movement_codes")]
+                ),
+            }
+        except (KeyError, TypeError, ValueError):
+            return False
+        if (
+            not _truth(health, "confirmed_applied_code_known")
+            or current_identity["applied_code"]
+            != self.state.get("terminal_static_code")
+        ):
+            return False
+
+        hold = self.state.get("host_verification_hold")
+        if isinstance(hold, dict):
+            reason_prefix = f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
+            if (
+                hold.get("source") != "authoritative_capture_observer"
+                or not str(hold.get("error", "")).startswith(reason_prefix)
+            ):
+                return False
+            if any(hold.get(key) != value for key, value in current_identity.items()):
+                return False
+
+        try:
+            accepted_now = int(health[("pps_gate", "accepted_window_count")])
+            reference_now = int(
+                health[("pps_gate", "boundary_reference_sequence")]
+            )
+            completed = self._qualified_d14_apertures(health)
+        except (KeyError, TypeError, ValueError):
+            return False
+        if completed is None:
+            return False
+
+        accepted_segment_origin = self.state.get(
+            "qualified_d14_segment_accepted_window_origin"
+        )
+        reference_segment_origin = self.state.get(
+            "qualified_d14_segment_reference_sequence_origin"
+        )
+        if type(accepted_segment_origin) is not int:
+            accepted_segment_origin = self.state.get(
+                "qualified_d14_accepted_window_origin"
+            )
+        if type(reference_segment_origin) is not int:
+            reference_segment_origin = self.state.get(
+                "qualified_d14_reference_sequence_origin"
+            )
+        if type(accepted_segment_origin) is not int or type(reference_segment_origin) is not int:
+            return False
+        accepted_in_segment = (accepted_now - accepted_segment_origin) & 0xFFFFFFFF
+        references_in_segment = (reference_now - reference_segment_origin) & 0xFFFFFFFF
+        excluded_reference_boundaries = references_in_segment - accepted_in_segment
+        rejected_window_delta = changed_counters.get(
+            "rejected_window_count", (0, 0)
+        )
+        if (
+            references_in_segment < accepted_in_segment
+            or excluded_reference_boundaries
+            != rejected_window_delta[1] - rejected_window_delta[0]
+        ):
+            return False
+
+        interventions = self.state.get("authoritative_capture_interventions")
+        if not isinstance(interventions, list):
+            return False
+        intervention = {
+            "intervention_sequence": len(interventions) + 1,
+            "recorded_utc": _utc_now(),
+            "reason": "recovered_rejected_aperture_interval",
+            "capture_session": current_session,
+            "baseline_before": dict(baseline),
+            "baseline_after": dict(observed_counters),
+            "counter_deltas": {
+                key: after - before
+                for key, (before, after) in sorted(changed_counters.items())
+            },
+            "segment_accepted_window_origin": accepted_segment_origin,
+            "segment_reference_sequence_origin": reference_segment_origin,
+            "accepted_window_count_at_recovery": accepted_now,
+            "boundary_reference_sequence_at_recovery": reference_now,
+            "accepted_apertures_in_segment": accepted_in_segment,
+            "excluded_reference_boundaries_in_segment": excluded_reference_boundaries,
+            "qualified_accepted_apertures_after_segment": completed,
+            "current_capture_gates_clean": True,
+            "new_control_authority": False,
+            "control_identity_at_recovery": current_identity,
+            "superseded_host_verification_hold": hold,
+        }
+        interventions.append(intervention)
+        self.state["qualified_authoritative_capture_baseline"] = dict(
+            observed_counters
+        )
+        self.state["qualified_d14_completed_apertures_before_segment"] = completed
+        self.state["qualified_d14_segment_accepted_window_origin"] = accepted_now
+        self.state["qualified_d14_segment_reference_sequence_origin"] = reference_now
+        self.state["authoritative_capture_terminal_detail"] = None
+        if isinstance(hold, dict):
+            self.state["host_verification_hold"] = None
+        self.state["arm_pending"] = False
+        self.state["arm_sent_at_utc"] = None
+        self._save()
+        try:
+            self._programme_event(
+                "authoritative_capture_corrected_extension_started", **intervention
+            )
+        except OSError:
             pass
         return True
 
@@ -2007,8 +2193,18 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         target = self.programme.qualified_d14_aperture_count
         if target is None:
             return None
-        accepted_origin = self.state.get("qualified_d14_accepted_window_origin")
-        reference_origin = self.state.get("qualified_d14_reference_sequence_origin")
+        accepted_origin = self.state.get(
+            "qualified_d14_segment_accepted_window_origin"
+        )
+        reference_origin = self.state.get(
+            "qualified_d14_segment_reference_sequence_origin"
+        )
+        if type(accepted_origin) is not int:
+            accepted_origin = self.state.get("qualified_d14_accepted_window_origin")
+        if type(reference_origin) is not int:
+            reference_origin = self.state.get(
+                "qualified_d14_reference_sequence_origin"
+            )
         if type(accepted_origin) is not int or type(reference_origin) is not int:
             return None
         try:
@@ -2022,13 +2218,19 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         reference_delta = (reference_now - reference_origin) & 0xFFFFFFFF
         if accepted_delta > 0x7FFFFFFF or reference_delta > 0x7FFFFFFF:
             raise ValueError("CX323 qualified D14 aperture counter moved backward")
-        if accepted_delta != reference_delta:
+        if accepted_delta > reference_delta:
             raise ValueError(
-                "CX323 accepted-window and D14 reference progress differ"
+                "CX323 accepted-window progress exceeds D14 reference progress"
             )
-        self.state["qualified_d14_accepted_apertures"] = accepted_delta
+        completed_before = self.state.get(
+            "qualified_d14_completed_apertures_before_segment", 0
+        )
+        if type(completed_before) is not int or completed_before < 0:
+            raise ValueError("CX323 retained segmented aperture progress is malformed")
+        accepted_total = completed_before + accepted_delta
+        self.state["qualified_d14_accepted_apertures"] = accepted_total
         self.state["qualified_d14_reference_sequence_endpoint"] = reference_now
-        return accepted_delta
+        return accepted_total
 
     def _close_response_horizon_if_required(
         self, health: dict[tuple[str, str], str]

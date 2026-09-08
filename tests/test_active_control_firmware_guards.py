@@ -897,6 +897,13 @@ def test_cx323_gnss_hold_preserves_reference_and_requires_two_later_windows() ->
     assert "transaction.last_confirmed_applied_code" not in unhealthy
     assert "otis_cx323_engine_requalify_metadata" in fresh
     assert "OtisCx323MaintenanceEvent::GnssMetadataRequalified" in fresh
+    missing_ticks = fresh.index(
+        "if (!health_event_ticks_available || health_event_timestamp_ticks == 0u)"
+    )
+    identity_contradiction = fresh.index(
+        '"cx323_metadata_requalification_identity_or_tick_contradiction"'
+    )
+    assert "return false;" in fresh[missing_ticks:identity_contradiction]
     assert (
         "record.requalification_d14_d8_observation_sequence !=\n"
         "           engine_after.requalification_frontier"
@@ -904,3 +911,27 @@ def test_cx323_gnss_hold_preserves_reference_and_requires_two_later_windows() ->
     assert "engine_before.requalification_window_count != 1u" in decision
     assert "engine_after.requalification_window_count != 2u" in decision
     assert "gnss_metadata_hold_active = false" in decision
+
+
+def test_cx323_terminal_transaction_is_not_masked_by_metadata_hold_status() -> None:
+    source = (FIRMWARE / "otis_cx317_active_live.cpp").read_text(
+        encoding="utf-8"
+    )
+    start = source.index("void otis_cx317_active_live_get_status")
+    status = source[
+        start : source.index(
+            "void otis_cx317_active_live_set_status_query_nonce", start
+        )
+    ]
+
+    terminal = status.index("const bool transaction_terminal")
+    state = status.index("status->state = transaction_terminal")
+    reason = status.index("status->reason = transaction_terminal")
+    assert terminal < state < reason
+    assert "? transaction.reason" in status[reason:]
+    assert "if (transaction_terminal)" in status[reason:]
+    assert (
+        "status->hybrid_state = otis_cx317_active_state_name(transaction.state);"
+        in status[reason:]
+    )
+    assert "status->hybrid_reason = transaction.reason;" in status[reason:]
