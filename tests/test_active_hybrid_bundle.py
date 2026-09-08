@@ -111,7 +111,7 @@ def test_cx323_successor_binding_freezes_policy_ahm_and_live_identities() -> Non
             "cx323_phase_priority_persistent_maintenance_v2.json"
         ),
         "sha256": (
-            "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
+            "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5"
         ),
     }
     assert binding["selection_and_native_boundary"] == {
@@ -150,7 +150,7 @@ def test_cx323_successor_binding_freezes_policy_ahm_and_live_identities() -> Non
             "CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md"
         ),
         "normative_contract_sha256": (
-            "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
+            "263b6c185ec3305eb59cfd9033ec7bc804f9bbb89eaa7b41ffae25248dceeee4"
         ),
     }
 
@@ -208,10 +208,10 @@ def test_cx323_engineering_contract_is_exact_and_available() -> None:
 
     assert binding["contract_id"] == bundle.CX323_ENGINEERING_CONTRACT_ID
     assert binding["contract_semantic_sha256"] == (
-        "80b10a612d7404d96a38f63cbbf3175422ebb1f46ebd070b0e7630be8e3e2b9f"
+        "b272659661b5ce11382d43b23c33379ff999d32a66e1f9016ae5635c5919bff1"
     )
     assert binding["sha256"] == (
-        "374daa65eb4ad56e615a0df7f988d8942b6bf39769b758dd74ea480c883b2060"
+        "b42ded1ae4dd1a18114715d865d38214135edf74b6ebb5be9e4dec5651492d3f"
     )
     assert binding["persistent_maintenance"] == (
         bundle._cx323_successor_binding(programme)

@@ -14,7 +14,7 @@ from .pps_cumulative_span_estimator import (
 )
 
 
-TICKS_PER_SECOND = 16_000_000
+TICKS_PER_SECOND = 1_000_000
 SERIALIZED_12_DECIMAL_HALF_UNIT = 5e-13
 EXPECTED_BACKEND = "pio_wait_cumulative_snapshot_dma_v1"
 EXPECTED_DIAGNOSTIC_VERSION = "cx317_diagnostic_60s_overlap_v1"

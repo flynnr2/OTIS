@@ -124,8 +124,8 @@ def _write_tight_entry(supervisor: FrequencyControlSupervisor) -> None:
     common = {
         "record_type": "TDB",
         "schema_version": "1",
-        "decision_timestamp_ticks": "16000000000",
-        "time_domain": "rp2040_timer0",
+        "decision_timestamp_ticks": "1000000000",
+        "time_domain": "rp2040_monotonic_us32",
         "capture_session": "1",
         "dac_epoch": "1",
         "absolute_edge_error_counts": "2",
@@ -186,8 +186,8 @@ def _write_outside_cadence_hold(supervisor: FrequencyControlSupervisor) -> None:
                 "schema_version": "1",
                 "decision_sequence": "0",
                 "estimate_id": "est:cx317:selected600:000003",
-                "decision_timestamp_ticks": "57627748416",
-                "time_domain": "rp2040_timer0",
+                "decision_timestamp_ticks": "3601734276",
+                "time_domain": "rp2040_monotonic_us32",
                 "capture_session": "1",
                 "dac_epoch": "1",
                 "integer_edge_error_counts": "-4",
@@ -214,13 +214,13 @@ def _write_outside_cadence_hold(supervisor: FrequencyControlSupervisor) -> None:
     controls.write_text(
         "decision_timestamp_ticks,preview_available,decision_reason_code,"
         "est_input_ref,decision_id,limited_delta_codes,control_state\n"
-        "38427843600,true,preview_available_observe_only,"
+        "2401740225,true,preview_available_observe_only,"
         "est:cx317:selected600:000001,ctl:1,21,"
         "LOCKED_PREVIEW\n"
-        "48027796864,false,decision_cadence_hold,"
+        "3001737304,false,decision_cadence_hold,"
         "est:cx317:selected600:000002,ctl:2,,"
         "LOCKED_PREVIEW\n"
-        "57627748416,false,decision_cadence_hold,"
+        "3601734276,false,decision_cadence_hold,"
         "est:cx317:selected600:000003,ctl:3,,"
         "LOCKED_PREVIEW\n",
         encoding="utf-8",

@@ -39,7 +39,7 @@ consumer before accepting point evidence.
 ## Time-domain boundary
 
 Current validators and consumers derive rollover behavior from the declared or
-contract-inherited domain. `rp2040_timer0` modular handling is automatic; a
+contract-inherited domain. `rp2040_monotonic_us32` modular handling is automatic; a
 caller cannot enable it with an optional switch. Unknown, absent,
 contradictory, backward, cross-session, or ambiguous progression fails closed.
 The normative rules are in

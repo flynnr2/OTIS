@@ -36,7 +36,7 @@ constexpr char kPlantModelEstimatorVersion[] =
 constexpr char kPlantModelEstimatorMethodHash[] =
     "af4afcb01f9f22b2f1102d278cf17a80d15f37f72da4016666d4278e4fb37e3b";
 constexpr char kPlantModelEstimatorTimingDomain[] =
-    "rp2040_timer0";
+    "rp2040_monotonic_us32";
 constexpr char kPlantModelEstimatorExtrapolationPolicy[] =
     "prohibited";
 constexpr double kPlantModelReferenceIntervalMinS =

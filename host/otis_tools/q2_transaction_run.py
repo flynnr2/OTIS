@@ -111,7 +111,7 @@ def _create_manifest(run_dir: Path, bundle: dict[str, Any]) -> None:
             "git_commit": bundle["firmware"]["git_commit"],
             "build_provenance_required": True,
         },
-        "domains": [{"name": "rp2040_timer0", "nominal_hz": 16000000}],
+        "domains": [{"name": "rp2040_monotonic_us32", "nominal_hz": 1000000}],
         "channels": [
             {"channel_id": 0, "role": "generic_pulse", "record_family": "raw_events_v1"},
             {"channel_id": 1, "role": "pps_reference", "record_family": "raw_events_v1"},

@@ -19,7 +19,7 @@ def _context() -> CsvValidationContext:
     return CsvValidationContext(
         contract="diagnostics_v1",
         known_channels=frozenset(),
-        known_domains=frozenset({"rp2040_timer0"}),
+        known_domains=frozenset({"rp2040_monotonic_us32"}),
     )
 
 
@@ -33,7 +33,7 @@ def test_diagnostics_contract_accepts_unknown_confidence_without_zeroing(tmp_pat
         path,
         [
             "DIAG,1,1,diag.plant.unknown_gain,episode-1,actuator,WARN,active,"
-            "raised,unknown,plant_model_unknown_gain,,100,100,rp2040_timer0,1,"
+            "raised,unknown,plant_model_unknown_gain,,100,100,rp2040_monotonic_us32,1,"
             "confirmed,profiles/plant_models:missing,profiles/plant_models:missing,"
             f"plant_diag_v1,{'a' * 64},none,none,mark_unavailable,inhibit",
         ],
@@ -50,7 +50,7 @@ def test_diagnostics_contract_rejects_collapsed_or_unstable_finding(tmp_path: Pa
         path,
         [
             "DIAG,1,1,diag.bad,episode-1,reference,WARN,active,raised,1.200,,"
-            ",100,90,rp2040_timer0,1,confirmed,,,diag_v1,"
+            ",100,90,rp2040_monotonic_us32,1,confirmed,,,diag_v1,"
             f"{'b' * 64},invalidate,invalidate,unknown,inhibit",
         ],
     )
@@ -70,7 +70,7 @@ def test_diagnostics_contract_rejects_service_plane_as_timing_truth(tmp_path: Pa
         path,
         [
             "DIAG,1,1,diag.service.drop,episode-1,service_plane,DEGRADED,active,"
-            "raised,0.800,service_plane_telemetry_drop,,100,100,rp2040_timer0,1,"
+            "raised,0.800,service_plane_telemetry_drop,,100,100,rp2040_monotonic_us32,1,"
             "confirmed,health.csv:STS:drop_count,health.csv:STS:drop_count,"
             f"service_diag_v1,{'c' * 64},reduce_trust,invalidate,none,inhibit",
         ],
@@ -88,7 +88,7 @@ def test_retired_draft_contract_is_not_accepted(tmp_path: Path) -> None:
     context = CsvValidationContext(
         contract="diagnostics_draft_v0",
         known_channels=frozenset(),
-        known_domains=frozenset({"rp2040_timer0"}),
+        known_domains=frozenset({"rp2040_monotonic_us32"}),
     )
     result = validate_csv(path, context)
 

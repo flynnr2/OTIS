@@ -90,7 +90,7 @@ with one average tick rate.
 The H1 host analysis preserves the legacy run-wide estimate but prefers
 `LOCAL_PPS_BOUNDARY_INTERPOLATED_V1` when both count-gate boundaries are bracketed by
 accepted REF/PPS observations. The mapper is piecewise linear between adjacent
-accepted PPS observations in the same `rp2040_timer0` domain. Rejected PPS
+accepted PPS observations in the same `rp2040_monotonic_us32` domain. Rejected PPS
 intervals remain diagnostic evidence and are not used for interpolation.
 
 Each boundary is mapped independently, so a long gate may use one local PPS

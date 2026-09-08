@@ -166,7 +166,7 @@ def _synthetic_source(tmp_path: Path) -> Path:
             (
                 "kOtisGnssUartRxRingCapacity = 1024u",
                 "kOtisGnssUartRxConsumerByteBudget = 128u",
-                "kOtisGnssUartRxConsumerTickBudget = 4000u",
+                "kOtisGnssUartRxConsumerBudgetUs = 250u",
                 "phase_window_maximum_interrupt_residence_ticks",
                 "last_consumer_service_gap_ticks",
             )

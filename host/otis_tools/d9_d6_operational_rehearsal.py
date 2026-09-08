@@ -128,7 +128,7 @@ def _write_all(master: int, payload: bytes) -> None:
 
 def _status(sequence: int, component: str, key: str, value: str, *, flags: int = 0) -> str:
     return (
-        f"STS,1,{sequence},{sequence * 16_000_000},rp2040_timer0,"
+        f"STS,1,{sequence},{sequence * 1_000_000},rp2040_monotonic_us32,"
         f"{component},{key},{value},INFO,{flags}"
     )
 
@@ -138,7 +138,7 @@ def _monitor_snapshot(
 ) -> str:
     return (
         f"MNS,1,1,1,{sequence},{down_counter},{reference_sequence},"
-        f"{reference_sequence * 16_000_000},{status},"
+        f"{reference_sequence * 1_000_000},{status},"
         "pio_wait_cumulative_snapshot_cpu_v1,3"
     )
 
@@ -146,14 +146,14 @@ def _monitor_snapshot(
 def _authoritative_snapshot(sequence: int, down_counter: int) -> str:
     return (
         f"SNP,1,1,{sequence},{down_counter},{sequence},"
-        f"{sequence * 16_000_000},0,pio_wait_cumulative_snapshot_dma_v1"
+        f"{sequence * 1_000_000},0,pio_wait_cumulative_snapshot_dma_v1"
     )
 
 
 def _count(sequence: int) -> str:
     return (
-        f"CNT,1,{sequence},2,{(sequence - 1) * 16_000_000},"
-        f"{sequence * 16_000_000},rp2040_timer0,10000000,R,"
+        f"CNT,1,{sequence},2,{(sequence - 1) * 1_000_000},"
+        f"{sequence * 1_000_000},rp2040_monotonic_us32,10000000,R,"
         "h1_cx317_ocxo_10mhz,0"
     )
 
@@ -202,7 +202,7 @@ def deterministic_wire_transcript(
         ("slew_rate", "slow"),
         ("readback_valid", "true"),
         ("nominal_frequency_hz", "10000000"),
-        ("first_valid_ticks", "16000000"),
+        ("first_valid_ticks", "1000000"),
     ):
         lines.append(_status(sequence, "forwarded_clock_output", key, value))
         sequence += 1
@@ -287,7 +287,7 @@ def _create_manifest(
             "capture_tool": "host.otis_tools.capture_device",
         },
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
+            {"name": "rp2040_monotonic_us32", "nominal_hz": 1_000_000},
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
             {"name": "d9_forwarded_10mhz", "nominal_hz": 10_000_000},
         ],
@@ -538,7 +538,7 @@ def run(*, bundle_path: Path, output_dir: Path) -> dict[str, Any]:
         writer.writerow(
             {
                 "record_type": "STS", "schema_version": "1", "status_seq": "1",
-                "timestamp_ticks": "0", "status_domain": "rp2040_timer0",
+                "timestamp_ticks": "0", "status_domain": "rp2040_monotonic_us32",
                 "component": "d9_d6_operational_rehearsal", "status_key": "state",
                 "status_value": "complete_no_hardware", "severity": "INFO", "flags": "0",
             }

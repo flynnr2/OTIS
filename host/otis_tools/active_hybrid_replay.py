@@ -26,7 +26,7 @@ from .range_spanning_bundle import sha256_file
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TICKS_PER_SECOND = 16_000_000
+TICKS_PER_SECOND = 1_000_000
 TOOL_ID = "cx320_active_hybrid_frozen_evidence_replay_v1"
 
 

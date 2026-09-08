@@ -31,7 +31,7 @@ import tempfile
 import time
 from typing import Any, Mapping
 
-from .active_control_supervisor import RP2040_TIMER0_TICKS_PER_SECOND
+from .active_control_supervisor import RP2040_MONOTONIC_US_PER_SECOND
 from .active_hybrid_bundle import FRESH_SERIAL_AUTO_DETECT
 from .capture_segment_rotation import prepare_transition, request_rotation
 from .contracts import (
@@ -68,7 +68,7 @@ from .serial_commands import (
     send_command_to_fifo,
     send_timestamped_command_to_fifo,
 )
-from .time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS, forward_progress
+from .time_domains import RP2040_MONOTONIC_US32_MODULUS, forward_progress
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -96,7 +96,7 @@ PTY_TOKEN_ENV = "OTIS_CX322_D9_D6_72H_PTY_TOKEN"
 LIVE_ACTIVATION_TYPE = "otis_cx322_d9_d6_72h_live_activation_v1"
 LIVE_ADAPTER_STATE_TYPE = "otis_cx322_d9_d6_72h_live_adapter_state_v1"
 LIVE_ADAPTER_REPORT_TYPE = "otis_cx322_d9_d6_72h_live_adapter_report_v1"
-EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_timer0_extended"
+EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_monotonic_us64"
 CAMPAIGN18_PROGRAMME_ID = "OTIS_CX322_D9_D6_72H_INTEGRATED_ENGINEERING_V1"
 CAMPAIGN18_RUN_IDENTITY = "cx322_d9_d6_72h_sustained_engineering:1"
 FREQUENCY_ONLY_PREDECESSOR_PRODUCT_TYPE = (
@@ -481,9 +481,20 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
 
     timing = contract["time"]
     if timing != {
-        "source_counter_domain": "rp2040_timer0",
-        "counter_domain": "rp2040_timer0_extended",
-        "nominal_counter_hz": RP2040_TIMER0_TICKS_PER_SECOND,
+        "source_counter_domain": "rp2040_monotonic_us32",
+        "counter_domain": "rp2040_monotonic_us64",
+        "nominal_counter_hz": RP2040_MONOTONIC_US_PER_SECOND,
+        "coordinate_units_per_second": RP2040_MONOTONIC_US_PER_SECOND,
+        "source_counter_hz": RP2040_MONOTONIC_US_PER_SECOND,
+        "quantum_ticks": 1,
+        "quantum_ns": 1_000,
+        "coordinate_semantics": "reconstructed_local_non_metrological",
+        "provenance": (
+            "session_bound_wrap_reconstruction_of_rp2040_monotonic_us32"
+        ),
+        "local_counter_role": (
+            "ordering_telemetry_and_safety_deadlines_not_D14_D8_metrology"
+        ),
         "qualified_duration_s": 259_200,
         "qualification_deadline_s": 5_400,
         "absolute_wall_limit_s": 280_800,
@@ -1543,7 +1554,7 @@ def _d14_relative_frequency_samples(
         if previous_raw_close is None:
             extended_closing = (
                 raw_closing
-                + progress.rollover_count * RP2040_TIMER0_MICROS_WRAP_TICKS
+                + progress.rollover_count * RP2040_MONOTONIC_US32_MODULUS
             )
         else:
             between = forward_progress(
@@ -1566,7 +1577,7 @@ def _d14_relative_frequency_samples(
         counted = int(row["counted_edges"])
         error_nanohz = Fraction(
             (
-                counted * RP2040_TIMER0_TICKS_PER_SECOND
+                counted * RP2040_MONOTONIC_US_PER_SECOND
                 - 10_000_000 * duration
             )
             * 1_000_000_000,
@@ -1662,7 +1673,7 @@ def _stationary_epoch_metrics(
                 drift = (
                     slope_nanohz_per_tick
                     * 3600
-                    * RP2040_TIMER0_TICKS_PER_SECOND
+                    * RP2040_MONOTONIC_US_PER_SECOND
                 )
         output.append(
             {
@@ -1952,7 +1963,7 @@ def _candidate_window_fitness_from_epochs(
 
     candidates: list[dict[str, object]] = []
     for window_s in candidate_windows_s:
-        target_ticks = window_s * RP2040_TIMER0_TICKS_PER_SECOND
+        target_ticks = window_s * RP2040_MONOTONIC_US_PER_SECOND
         all_means: list[Fraction] = []
         all_residuals: list[Fraction] = []
         all_drifts: list[Fraction] = []
@@ -2001,7 +2012,7 @@ def _candidate_window_fitness_from_epochs(
                         epoch_drifts.append(
                             (mean - prior_mean)
                             * 3600
-                            * RP2040_TIMER0_TICKS_PER_SECOND
+                            * RP2040_MONOTONIC_US_PER_SECOND
                             / delta_ticks
                         )
             closes = [item[0] for item in window_points]
@@ -2186,7 +2197,7 @@ def _response_and_chatter_metrics(
         ]
         pre = preceding[-1] if preceding else None
         for horizon_s in horizons_s:
-            target = application_ticks + horizon_s * RP2040_TIMER0_TICKS_PER_SECOND
+            target = application_ticks + horizon_s * RP2040_MONOTONIC_US_PER_SECOND
             if next_application_ticks is not None and next_application_ticks <= target:
                 status = "right_censored_by_next_application"
                 post = None
@@ -2273,7 +2284,7 @@ def _response_and_chatter_metrics(
             ),
             "minimum_cadence_violation_count": sum(
                 separation
-                < 1800 * RP2040_TIMER0_TICKS_PER_SECOND
+                < 1800 * RP2040_MONOTONIC_US_PER_SECOND
                 for separation in application_separations
             ),
         },
@@ -2307,7 +2318,7 @@ def _qualification_boundary_ticks(
     if not candidates:
         return None, None
     origin = min(candidates)
-    remaining = 259_200 * RP2040_TIMER0_TICKS_PER_SECOND
+    remaining = 259_200 * RP2040_MONOTONIC_US_PER_SECOND
     for sample in sorted(samples, key=lambda item: item["closing_ticks"]):
         opening = max(int(sample["opening_ticks"]), origin)
         closing = int(sample["closing_ticks"])
@@ -2855,7 +2866,7 @@ def _retained_campaign18_endpoint(
         frontier = 0
         endpoint = 0
         blockers.append("campaign18_exact_qualified_endpoint_ticks_absent")
-    target = 259_200 * RP2040_TIMER0_TICKS_PER_SECOND
+    target = 259_200 * RP2040_MONOTONIC_US_PER_SECOND
     elapsed = frontier - origin
     if elapsed < target:
         blockers.append("campaign18_qualified_endpoint_short_or_right_censored")
@@ -4143,8 +4154,8 @@ def _read_until(master: int, expected: bytes, *, timeout_s: float = 5.0) -> byte
 
 def _status(sequence: int, component: str, key: str, value: str) -> bytes:
     return (
-        f"STS,1,{sequence},{sequence * RP2040_TIMER0_TICKS_PER_SECOND},"
-        "rp2040_timer0,"
+        f"STS,1,{sequence},{sequence * RP2040_MONOTONIC_US_PER_SECOND},"
+        "rp2040_monotonic_us32,"
         f"{component},{key},{value},INFO,0\r\n"
     ).encode("ascii")
 
@@ -4427,8 +4438,8 @@ def pty_operational_rehearsal(
             },
             "domains": [
                 {
-                    "name": "rp2040_timer0",
-                    "nominal_hz": RP2040_TIMER0_TICKS_PER_SECOND,
+                    "name": "rp2040_monotonic_us32",
+                    "nominal_hz": RP2040_MONOTONIC_US_PER_SECOND,
                 }
             ],
             "channels": [
@@ -4659,7 +4670,7 @@ def pty_operational_rehearsal(
         "tool": TOOL_ID,
         "status": "passed",
         "hardware_operations": False,
-        "mode": "PTY_fixture_with_accelerated_rp2040_timer0_evidence",
+        "mode": "PTY_fixture_with_accelerated_rp2040_monotonic_us32_evidence",
         "bundle_sha256": checked["bundle_sha256"],
         "profile_id": checked["profile_id"],
         "firmware_profile_matrix_integrated": checked[

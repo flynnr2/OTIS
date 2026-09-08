@@ -194,7 +194,7 @@ int main() {
       std::cin >> available >> engine.last_application_s;
       engine.last_application_available = available != 0;
       engine.last_application_ticks =
-          engine.last_application_s * 16000000ull;
+          engine.last_application_s * 1000000ull;
       engine.last_reason = "test_last_application_set";
       emit("SET_LAST_APPLICATION", true, &engine, nullptr);
     } else if (command == "SET_LAST_APPLICATION_TICKS") {

@@ -22,7 +22,7 @@
     "selected_policy": {
       "policy_id": "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
       "path": "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json",
-      "sha256": "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
+      "sha256": "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5"
     },
     "selection_and_native_boundary": {
       "v2_selection": {
@@ -40,14 +40,14 @@
       "record_type": "AHM",
       "record_contract": "active_hybrid_maintenance_v1",
       "normative_contract_path": "docs/50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md",
-      "normative_contract_sha256": "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
+      "normative_contract_sha256": "263b6c185ec3305eb59cfd9033ec7bc804f9bbb89eaa7b41ffae25248dceeee4"
     }
   },
   "firmware": {
     "profile_id": "cx323_d9_d6_72h_adaptive_hybrid",
     "campaign_macro": "OTIS_CX317_ACTIVE_CAMPAIGN_CX323_D9_D6_72H_ADAPTIVE_HYBRID",
     "selected_policy_id": "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1",
-    "selected_policy_file_sha256": "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926",
+    "selected_policy_file_sha256": "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5",
     "native_fixed_point_boundary_semantic_sha256": "32a7f47330404e1cf7ea724517643deff078e74d3e1aa50127c378bced5f4d53",
     "profile_matrix_status": "exact_compile_and_release_gate_required_before_activation",
     "deliberate_reversal_challenge_enabled": false
@@ -63,15 +63,15 @@
     "independent_abort_delivery_required": true
   },
   "time": {
-    "source_counter_domain": "rp2040_timer0",
-    "counter_domain": "rp2040_timer0_extended",
-    "nominal_counter_hz": 16000000,
-    "coordinate_units_per_second": 16000000,
+    "source_counter_domain": "rp2040_monotonic_us32",
+    "counter_domain": "rp2040_monotonic_us64",
+    "nominal_counter_hz": 1000000,
+    "coordinate_units_per_second": 1000000,
     "source_counter_hz": 1000000,
-    "encoding_scale": 16,
-    "quantum_ticks": 16,
+    "quantum_ticks": 1,
     "quantum_ns": 1000,
-    "projected_from": "rp2040_timerawl_or_micros",
+    "coordinate_semantics": "native_local_non_metrological",
+    "provenance": "rp2040_timerawl_or_arduino_micros_1mhz_native_us",
     "local_counter_role": "ordering_telemetry_and_safety_deadlines_not_72h_metrological_terminal",
     "qualified_duration_s": 259200,
     "qualified_endpoint_contract": "qualified_D14_D8_aperture_count_v2",
@@ -285,5 +285,5 @@
     "oscilloscope_required_for_this_run": false,
     "oscilloscope_waveform_qualification_deferred": true
   },
-  "contract_semantic_sha256": "80b10a612d7404d96a38f63cbbf3175422ebb1f46ebd070b0e7630be8e3e2b9f"
+  "contract_semantic_sha256": "b272659661b5ce11382d43b23c33379ff999d32a66e1f9016ae5635c5919bff1"
 }

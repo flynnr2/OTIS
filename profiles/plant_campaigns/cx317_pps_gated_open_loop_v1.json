@@ -6,7 +6,7 @@
   "firmware_uf2_sha256": "d3484d05d3a2d75c90a84426d8487c9371aa0ff6b43876c8bee37947a2d10459",
   "measurement_backend": "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO",
   "estimator_method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
-  "selected_estimator_config_sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+  "selected_estimator_config_sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
   "selected_authoritative_span_s": 600,
   "initial_warmup_s": 1800,
   "dwell_s": 2400,

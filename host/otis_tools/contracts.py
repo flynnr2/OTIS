@@ -830,11 +830,11 @@ DOMAIN_FIELDS = {
 }
 
 CONTRACT_IMPLICIT_TIME_DOMAINS = {
-    "pps_snapshots_v1": "rp2040_timer0",
-    "forwarded_monitor_snapshots_v1": "rp2040_timer0",
-    "association_loss_decisions_v1": "rp2040_timer0",
+    "pps_snapshots_v1": "rp2040_monotonic_us32",
+    "forwarded_monitor_snapshots_v1": "rp2040_monotonic_us32",
+    "association_loss_decisions_v1": "rp2040_monotonic_us32",
     "dac_steps_v1": "host_elapsed_ms",
-    "plant_sign_qualification_v1": "rp2040_timer0_extended",
+    "plant_sign_qualification_v1": "rp2040_monotonic_us64",
 }
 
 SESSION_FIELDS = {
@@ -978,7 +978,7 @@ VALID_TIGHT_DEADBAND_REQUALIFICATION_REASONS = {
     "dac_epoch_changed_requalify",
 }
 TIGHT_DEADBAND_POLICY_ID = "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1"
-TIGHT_DEADBAND_POLICY_SHA256 = "a0dbe59f1b22fda35c1b760b21a03ab906ef683955368db2eeccba092d0cbbfd"
+TIGHT_DEADBAND_POLICY_SHA256 = "f9d7f99f94e422d9b3635866bfa06dadd6c5351d4d3b1ff347ee97d9d239010d"
 
 VALID_ACTIVE_TRANSACTION_EVENTS = {
     "manual_start",
@@ -2126,10 +2126,10 @@ def _check_active_transaction_v2(
             f"row {row_number}: event must be one of "
             f"{sorted(VALID_ACTIVE_TRANSACTION_EVENTS)}"
         )
-    if row.get("time_domain") != "rp2040_timer0_extended":
+    if row.get("time_domain") != "rp2040_monotonic_us64":
         errors.append(
             f"row {row_number}: active timing sidecar requires "
-            "rp2040_timer0_extended"
+            "rp2040_monotonic_us64"
         )
     parsed = {
         field_name: _parse_non_negative_int(
@@ -2194,10 +2194,10 @@ def _check_active_hybrid_decision_v2(
             "reason",
         ),
     )
-    if row.get("time_domain") != "rp2040_timer0_extended":
+    if row.get("time_domain") != "rp2040_monotonic_us64":
         errors.append(
             f"row {row_number}: hybrid timing sidecar requires "
-            "rp2040_timer0_extended"
+            "rp2040_monotonic_us64"
         )
     for field_name in (
         "timing_record_sequence",
@@ -2406,10 +2406,10 @@ def _check_active_hybrid_maintenance_v1(
             f"row {row_number}: event must be one of "
             f"{sorted(VALID_ACTIVE_HYBRID_MAINTENANCE_EVENTS)}"
         )
-    if row.get("time_domain") != "rp2040_timer0_extended":
+    if row.get("time_domain") != "rp2040_monotonic_us64":
         errors.append(
             f"row {row_number}: AHM event timing requires "
-            "rp2040_timer0_extended"
+            "rp2040_monotonic_us64"
         )
     if row.get("policy_id") != CX323_MAINTENANCE_POLICY_ID:
         errors.append(

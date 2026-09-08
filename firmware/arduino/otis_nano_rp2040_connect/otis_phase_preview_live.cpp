@@ -9,7 +9,7 @@
 
 namespace {
 
-constexpr uint64_t kReferenceTicksPerSecond = 16000000ull;
+constexpr uint64_t kReferenceTicksPerSecond = 1000000ull;
 constexpr uint64_t kReferenceTimestampModulus =
     kReferenceTicksPerSecond * (1ull << 32) / 1000000ull;
 constexpr uint16_t kMinimumCharacterizedCode = 0xA800u;

@@ -7,28 +7,28 @@
   "bindings": {
     "cx320_policy": {
       "path": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
-      "sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
+      "sha256": "44975f5535eb1e8cac04aeb93d6e522cfe4a8e0bec59dac739ab63c05fd789b0",
       "disposition": "sealed_bounded_nonpass_natural_controller_semantics_reused_without_reinterpreting_result"
     },
     "plant_sign_gate": {
       "path": "profiles/qualification/cx321_bounded_response_observability_v1.json",
-      "sha256": "84fdfd50e6dc050a625abd14cec3756b55bbd4309bafb0fd388bde5333438dd7"
+      "sha256": "13fb950aaa290bbf1d32e456cee7b345787d0fc48d3cf3ed455f99b6cb8ec8fd"
     },
     "frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
-      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+      "sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
     },
     "phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
-      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+      "sha256": "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+      "sha256": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92"
     },
     "response_classifier": {
       "path": "profiles/discipline/cx317_response_classification_v2.json",
-      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+      "sha256": "aa327a6571f5f49bce6bd54c4b01090a626a08cb86933d568a96e0909e0e1827"
     }
   },
   "topology": {
@@ -154,7 +154,7 @@
     "minimum_natural_material_phase_applications": 2
   },
   "finite_timing": {
-    "timing_domain": "rp2040_timer0_exact_recorded_ticks",
+    "timing_domain": "rp2040_monotonic_us32_exact_recorded_ticks",
     "qualified_duration_s": 43200,
     "qualified_origin": "first_complete_fresh_authoritative_600s_estimate_after_exact_setup_support_and_common_health_qualification",
     "absolute_wall_clock_limit_s": 57600,

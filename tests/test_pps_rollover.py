@@ -11,25 +11,24 @@ SKETCH = Path(
 )
 
 
-def test_timer0_source_and_quantum_are_explicit_in_firmware_status() -> None:
+def test_native_microsecond_source_and_quantum_are_explicit_in_firmware_status() -> None:
     helper = HELPER.read_text()
     sketch = SKETCH.read_text()
 
-    assert "OTIS_RP2040_TIMER0_SOURCE_COUNTER_HZ 1000000ul" in helper
-    assert "OTIS_RP2040_TIMER0_TIMESTAMP_QUANTUM_TICKS 16ul" in helper
-    assert "OTIS_RP2040_TIMER0_TIMESTAMP_QUANTUM_NS 1000ul" in helper
+    assert "OTIS_RP2040_MONOTONIC_US_PER_SECOND 1000000ul" in helper
+    assert "OTIS_RP2040_MONOTONIC_TIMESTAMP_QUANTUM_US 1ul" in helper
+    assert "OTIS_RP2040_MONOTONIC_TIMESTAMP_QUANTUM_NS 1000ul" in helper
     assert '"timestamp_source_counter_hz"' in sketch
-    assert '"timestamp_encoding_scale"' in sketch
-    assert '"timestamp_quantum_ticks"' in sketch
+    assert '"timestamp_coordinate_hz"' in sketch
     assert '"timestamp_quantum_ns"' in sketch
-    assert '"projected_local_non_metrological"' in sketch
+    assert '"native_local_non_metrological"' in sketch
     assert (
-        '"rp2040_timerawl_or_arduino_micros_1mhz_encoded_x16"' in sketch
+        '"rp2040_timerawl_or_arduino_micros_1mhz_native_us"' in sketch
     )
-WRAP_TICKS = (1 << 32) * 16
-NOMINAL_PPS_TICKS = 16_000_000
-SHORT_THRESHOLD_TICKS = 8_000_000
-LONG_THRESHOLD_TICKS = 19_200_000
+WRAP_TICKS = 1 << 32
+NOMINAL_PPS_TICKS = 1_000_000
+SHORT_THRESHOLD_TICKS = 800_000
+LONG_THRESHOLD_TICKS = 1_200_000
 
 
 def _compile_and_run(tmp_path: Path, source: str) -> str:
@@ -63,21 +62,21 @@ def test_firmware_pps_interval_helper_is_rollover_safe(tmp_path: Path) -> None:
           const uint64_t short_threshold = {SHORT_THRESHOLD_TICKS}ull;
           const uint64_t long_threshold = {LONG_THRESHOLD_TICKS}ull;
           const uint64_t intervals[] = {{
-              otis_timer0_interval_ticks(32000000ull, 48000000ull),
-              otis_timer0_interval_ticks(wrap - 4000000ull, 12000000ull),
-              otis_timer0_interval_ticks(wrap - 32000000ull, wrap - 16000000ull),
-              otis_timer0_interval_ticks(wrap - 16000000ull, 0ull),
-              otis_timer0_interval_ticks(0ull, 16000000ull),
-              otis_timer0_interval_ticks(64000000ull, 84000000ull),
-              otis_timer0_interval_ticks(wrap - 4000000ull, 18000000ull),
-              otis_timer0_interval_ticks(123456ull, 123456ull),
+              otis_monotonic_us32_interval(2000000ull, 3000000ull),
+              otis_monotonic_us32_interval(wrap - 250000ull, 750000ull),
+              otis_monotonic_us32_interval(wrap - 2000000ull, wrap - 1000000ull),
+              otis_monotonic_us32_interval(wrap - 1000000ull, 0ull),
+              otis_monotonic_us32_interval(0ull, 1000000ull),
+              otis_monotonic_us32_interval(4000000ull, 5250000ull),
+              otis_monotonic_us32_interval(wrap - 250000ull, 1125000ull),
+              otis_monotonic_us32_interval(123456ull, 123456ull),
               short_threshold,
               long_threshold,
           }};
           for (unsigned i = 0; i < sizeof(intervals) / sizeof(intervals[0]); ++i) {{
             printf("%llu,%d\\n",
                    (unsigned long long)intervals[i],
-                   (int)otis_classify_pps_interval_ticks(
+                   (int)otis_classify_pps_interval_us(
                        intervals[i], short_threshold, long_threshold));
           }}
           (void)nominal;
@@ -96,8 +95,8 @@ def test_firmware_pps_interval_helper_is_rollover_safe(tmp_path: Path) -> None:
         NOMINAL_PPS_TICKS,
         NOMINAL_PPS_TICKS,
         NOMINAL_PPS_TICKS,
-        20_000_000,
-        22_000_000,
+        1_250_000,
+        1_375_000,
         0,
         SHORT_THRESHOLD_TICKS,
         LONG_THRESHOLD_TICKS,

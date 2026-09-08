@@ -5,7 +5,7 @@
 
 namespace {
 
-constexpr uint64_t kHz = 16000000ull;
+constexpr uint64_t kHz = 1000000ull;
 
 OtisActiveHybridObservation observation(uint32_t timestamp_s, uint16_t code,
                                         uint32_t dac_epoch,

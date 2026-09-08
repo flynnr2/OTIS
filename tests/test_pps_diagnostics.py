@@ -55,7 +55,7 @@ def test_pps_diagnostics_core_has_no_service_plane_dependencies() -> None:
     ):
         assert prohibited not in source
 
-    assert "otis_timer0_interval_ticks" in source
+    assert "otis_monotonic_us32_interval" in source
     assert "latest_physical_pps" in source
     assert "latest_snapshot_produced" in source
     assert "latest_snapshot_drained" in source
@@ -76,7 +76,7 @@ def test_pps_watchdog_samples_now_after_copying_irq_mailbox() -> None:
 
     mailbox_copy = backend.index("otis_capture_irq_get_reference_stats")
     mailbox_note = backend.index("otis_pps_diagnostics_note_physical_pps")
-    now_sample = backend.index("uint64_t now_ticks = otis_capture_ticks_now();")
+    now_sample = backend.index("uint64_t now_ticks = otis_monotonic_us32_now();")
     watchdog_poll = backend.index("otis_pps_diagnostics_poll")
 
     assert mailbox_copy < mailbox_note < now_sample < watchdog_poll

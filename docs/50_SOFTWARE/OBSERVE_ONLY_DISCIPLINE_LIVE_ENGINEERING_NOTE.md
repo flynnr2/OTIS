@@ -230,7 +230,7 @@ measurement backend.
 
 The Phase 5 PPS audit found two narrow cross-phase defects in the checked-in
 adapter semantics. Live frequency derivation now uses the shared modular
-`rp2040_timer0` interval helper when raw PPS-gated `CNT` boundaries cross
+`rp2040_monotonic_us32` interval helper when raw PPS-gated `CNT` boundaries cross
 rollover. Live and host replay also keep a `REFERENCE_VALIDITY_SUSPECT` count
 row on the reference side instead of marking an otherwise nonzero,
 unsaturated oscillator count invalid solely because the same row carries

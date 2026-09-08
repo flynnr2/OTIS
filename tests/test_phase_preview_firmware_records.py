@@ -104,7 +104,7 @@ def test_core0_formatted_phase_preview_records_validate(
         CsvValidationContext(
             contract=contract,
             known_channels=frozenset(),
-            known_domains=frozenset({"rp2040_timer0"}),
+            known_domains=frozenset({"rp2040_monotonic_us32"}),
         ),
     )
     assert validation.ok, validation.errors
@@ -152,7 +152,7 @@ def test_cx319_generated_profile_reaches_hybrid_formatter_translation_unit(
 
     assert row["candidate_id"] == "p21600_cap1_epoch_reseed_v3"
     assert row["candidate_configuration_sha256"] == (
-        "68ba4b1b915424104fb9e8331273e52d89c7957b19e973ce650cd93056ce015d"
+        "fa1fe792cc21307ef56d4f6a936dad167d450e5a168a56d7196a4c13e1ea92be"
     )
 
 

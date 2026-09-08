@@ -5,7 +5,7 @@
   "semantic_parent": {
     "contract_id": "OTIS_CX322_D9_D6_INTEGRATION_ENGINEERING_CONTRACT_V1",
     "contract_file": "cx322_d9_d6_integration_engineering_contract_v1.json",
-    "contract_semantic_sha256": "b21b94db83dd5f583f960ebf2339653134604ffd3cf9b902eb3731febaaf52b9"
+    "contract_semantic_sha256": "b631e299cad005b654a6291b6f80b7d063c8c65fe05579283fa1be85ec49b8aa"
   },
   "firmware": {
     "profile_id": "cx322_d9_d6_72h_sustained_engineering",
@@ -49,9 +49,16 @@
     "post_bootstrap_promotion_retry_permitted": false
   },
   "time": {
-    "source_counter_domain": "rp2040_timer0",
-    "counter_domain": "rp2040_timer0_extended",
-    "nominal_counter_hz": 16000000,
+    "source_counter_domain": "rp2040_monotonic_us32",
+    "counter_domain": "rp2040_monotonic_us64",
+    "nominal_counter_hz": 1000000,
+    "coordinate_units_per_second": 1000000,
+    "source_counter_hz": 1000000,
+    "quantum_ticks": 1,
+    "quantum_ns": 1000,
+    "coordinate_semantics": "reconstructed_local_non_metrological",
+    "provenance": "session_bound_wrap_reconstruction_of_rp2040_monotonic_us32",
+    "local_counter_role": "ordering_telemetry_and_safety_deadlines_not_D14_D8_metrology",
     "qualified_duration_s": 259200,
     "qualification_deadline_s": 5400,
     "absolute_wall_limit_s": 280800,
@@ -214,5 +221,5 @@
     "host_programme_record_replay_and_finalization_rehearsal_status": "implemented",
     "remaining_live_status": "live_capture_adapter_integration_and_exact_physical_activation_required"
   },
-  "contract_semantic_sha256": "ea727c32798d6eb719ca63840486ebc38395dc05cc8a494ddea29887c134af0c"
+  "contract_semantic_sha256": "439aabf67dd791a9c45892fb04d8741a8cf831849590cf6f0a899b1bb7d4bd2a"
 }

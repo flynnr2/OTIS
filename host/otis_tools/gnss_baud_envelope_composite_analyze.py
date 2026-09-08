@@ -104,7 +104,7 @@ def _source(value: object, label: str) -> dict[str, str]:
     ):
         _sha256(result[field], f"{label}.{field}")
     if result["counter_domain"] not in {
-        "rp2040_timer0_extended",
+        "rp2040_monotonic_us64",
         "host_monotonic_ns",
     }:
         raise ValueError(f"{label} counter domain is unsupported")

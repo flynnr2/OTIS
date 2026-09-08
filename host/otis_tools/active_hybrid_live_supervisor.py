@@ -37,7 +37,7 @@ from .active_status_live_state import (
 )
 from .active_control_supervisor import (
     ESTIMATES_CSV,
-    RP2040_TIMER0_TICKS_PER_SECOND,
+    RP2040_MONOTONIC_US_PER_SECOND,
     ControlSupervisorBase,
     _parse_utc_epoch,
 )
@@ -1711,8 +1711,8 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         )
         if estimate is None:
             return
-        if estimate.get("time_domain") != "rp2040_timer0":
-            raise ValueError("CX320 qualified origin is not in rp2040_timer0")
+        if estimate.get("time_domain") != "rp2040_monotonic_us32":
+            raise ValueError("CX320 qualified origin is not in rp2040_monotonic_us32")
         try:
             origin_ticks = int(estimate["estimator_timestamp_ticks"])
             current_uptime_s = int(health[("cx317_active", "uptime_s")])
@@ -1738,25 +1738,25 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 raise ValueError(
                     "campaign18 exact retained producer frontier is absent"
                 ) from exc
-            if frontier_domain != "rp2040_timer0":
+            if frontier_domain != "rp2040_monotonic_us32":
                 raise ValueError(
                     "campaign18 retained producer frontier domain differs"
                 )
             forward = forward_progress(
                 origin_ticks,
                 frontier_ticks,
-                domain="rp2040_timer0",
+                domain="rp2040_monotonic_us32",
                 allow_equal=True,
             )
             reverse = forward_progress(
                 frontier_ticks,
                 origin_ticks,
-                domain="rp2040_timer0",
+                domain="rp2040_monotonic_us32",
                 allow_equal=True,
             )
             maximum_lead_ticks = (
                 QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
-                * RP2040_TIMER0_TICKS_PER_SECOND
+                * RP2040_MONOTONIC_US_PER_SECOND
             )
             if forward.valid and forward.distance_ticks is not None and (
                 forward.distance_ticks <= maximum_lead_ticks
@@ -1799,11 +1799,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                     raise ValueError("CX323 qualified D14 aperture origin is malformed")
         else:
             current_uptime_lower_bound_ticks = (
-                current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND
+                current_uptime_s * RP2040_MONOTONIC_US_PER_SECOND
             )
             maximum_coherent_origin_ticks = (
                 current_uptime_s + QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
-            ) * RP2040_TIMER0_TICKS_PER_SECOND
+            ) * RP2040_MONOTONIC_US_PER_SECOND
             if (
                 origin_ticks <= 0
                 or session_id <= 0
@@ -1848,7 +1848,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             "qualified_origin_established",
             estimate_id=estimate["estimate_id"],
             estimator_timestamp_ticks=origin_ticks,
-            time_domain="rp2040_timer0",
+            time_domain="rp2040_monotonic_us32",
             capture_session=session_id,
             source_count_ref=estimate["source_count_ref"],
             source_dac_ref=estimate["source_dac_ref"],
@@ -2159,14 +2159,14 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
                 raise ValueError(
                     "campaign18 exact retained qualified clock is incomplete"
                 ) from exc
-            if frontier_domain != "rp2040_timer0":
+            if frontier_domain != "rp2040_monotonic_us32":
                 raise ValueError(
                     "campaign18 retained producer frontier domain differs"
                 )
             progress = forward_progress(
                 prior_raw_ticks,
                 current_raw_ticks,
-                domain="rp2040_timer0",
+                domain="rp2040_monotonic_us32",
                 allow_equal=True,
             )
             if not progress.valid or progress.distance_ticks is None:
@@ -2182,7 +2182,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             if elapsed < 0:
                 raise ValueError("CX320 device clock moved behind qualified origin")
             return elapsed
-        elapsed = current_uptime_s * RP2040_TIMER0_TICKS_PER_SECOND - origin
+        elapsed = current_uptime_s * RP2040_MONOTONIC_US_PER_SECOND - origin
         if elapsed < 0:
             raise ValueError("CX320 device clock moved behind qualified origin")
         return elapsed
@@ -2258,7 +2258,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
         admission_ticks = (
             self.programme.qualified_duration_s
             - self.programme.correction_response_reserve_s
-        ) * RP2040_TIMER0_TICKS_PER_SECOND
+        ) * RP2040_MONOTONIC_US_PER_SECOND
         if elapsed_ticks < admission_ticks:
             return False
         if self.state["response_horizon_closed_utc"] is None:
@@ -2267,11 +2267,11 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             self._programme_event(
                 "correction_admission_closed_for_response_horizon",
                 elapsed_qualified_device_ticks=elapsed_ticks,
-                time_domain="rp2040_timer0",
+                time_domain="rp2040_monotonic_us32",
                 remaining_qualified_s=max(
                     0,
                     self.programme.qualified_duration_s
-                    - elapsed_ticks // RP2040_TIMER0_TICKS_PER_SECOND,
+                    - elapsed_ticks // RP2040_MONOTONIC_US_PER_SECOND,
                 ),
                 required_response_reserve_s=(
                     self.programme.correction_response_reserve_s
@@ -2642,7 +2642,7 @@ class ActiveHybridLiveSupervisor(FrequencyControlSupervisor):
             qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
             qualified_target_ticks = (
                 self.programme.qualified_duration_s
-                * RP2040_TIMER0_TICKS_PER_SECOND
+                * RP2040_MONOTONIC_US_PER_SECOND
             )
             endpoint_reached = (
                 qualified_elapsed_ticks is not None

@@ -1511,7 +1511,7 @@ void otis_gnss_receiver_note_collector_loss(
   otis_gnss_receiver_note_collector_loss_at_ticks(
       receiver, now_ms,
       static_cast<uint64_t>(now_ms) *
-          (kOtisGnssRp2040Timer0TicksPerSecond / 1000u),
+          (kOtisGnssRp2040MonotonicUsPerSecond / 1000u),
       fault_class);
 }
 
@@ -1532,7 +1532,7 @@ void otis_gnss_receiver_feed(OtisGnssReceiver *receiver, char byte,
   otis_gnss_receiver_feed_at_ticks(
       receiver, byte, now_ms,
       static_cast<uint64_t>(now_ms) *
-          (kOtisGnssRp2040Timer0TicksPerSecond / 1000u));
+          (kOtisGnssRp2040MonotonicUsPerSecond / 1000u));
 }
 
 void otis_gnss_receiver_feed_at_ticks(OtisGnssReceiver *receiver, char byte,
@@ -1583,7 +1583,7 @@ void otis_gnss_receiver_note_time(OtisGnssReceiver *receiver, uint32_t now_ms,
   otis_gnss_receiver_note_time_at_ticks(
       receiver, now_ms,
       static_cast<uint64_t>(now_ms) *
-          (kOtisGnssRp2040Timer0TicksPerSecond / 1000u),
+          (kOtisGnssRp2040MonotonicUsPerSecond / 1000u),
       reconnect_gap_ms);
 }
 
@@ -1661,11 +1661,11 @@ void otis_gnss_receiver_snapshot(const OtisGnssReceiver *receiver,
     snapshot->metadata_hold_cumulative_ms += active_duration;
     if (active_duration > snapshot->metadata_hold_longest_ms)
       snapshot->metadata_hold_longest_ms = active_duration;
-    // Host-test callers use the exact 16 MHz projection of now_ms. Live
-    // callers finish active-duration accounting from the service extension.
+    // Host-test callers convert now_ms into native microseconds. Live callers
+    // finish active-duration accounting from the service extension.
     const uint64_t snapshot_ticks =
         static_cast<uint64_t>(now_ms) *
-        (kOtisGnssRp2040Timer0TicksPerSecond / 1000u);
+        (kOtisGnssRp2040MonotonicUsPerSecond / 1000u);
     if (snapshot_ticks >= receiver->metadata_hold_started_ticks) {
       const uint64_t active_ticks =
           snapshot_ticks - receiver->metadata_hold_started_ticks;
@@ -2031,9 +2031,9 @@ struct LiveGnssCharacterization {
 };
 
 LiveGnssCharacterization live_characterization = {};
-uint64_t live_service_timer0_raw_ticks = 0u;
-uint64_t live_service_timer0_extended_ticks = 0u;
-bool live_service_timer0_extension_available = false;
+uint64_t live_service_raw_us = 0u;
+uint64_t live_service_extended_us = 0u;
+bool live_service_extension_available = false;
 
 struct LiveGnssTransmit {
   bool active;
@@ -2281,30 +2281,27 @@ void service_characterization_transaction(uint32_t now_ms) {
 #endif
 }
 
-static inline uint32_t live_timer0_ticks_from_register() {
-  return static_cast<uint32_t>(timer_hw->timerawl *
-                               OTIS_RP2040_TIMER0_TICKS_PER_US);
+static inline uint32_t live_monotonic_us32_from_register() {
+  return timer_hw->timerawl;
 }
 
-uint64_t update_live_service_timer0_extension() {
-  const uint64_t raw_ticks =
-      static_cast<uint64_t>(timer_hw->timerawl) *
-      OTIS_RP2040_TIMER0_TICKS_PER_US;
-  if (!live_service_timer0_extension_available) {
-    live_service_timer0_raw_ticks = raw_ticks;
-    live_service_timer0_extended_ticks = raw_ticks;
-    live_service_timer0_extension_available = true;
+uint64_t update_live_service_monotonic_us_extension() {
+  const uint64_t raw_ticks = static_cast<uint64_t>(timer_hw->timerawl);
+  if (!live_service_extension_available) {
+    live_service_raw_us = raw_ticks;
+    live_service_extended_us = raw_ticks;
+    live_service_extension_available = true;
   } else {
-    live_service_timer0_extended_ticks += otis_timer0_interval_ticks(
-        live_service_timer0_raw_ticks, raw_ticks);
-    live_service_timer0_raw_ticks = raw_ticks;
+    live_service_extended_us += otis_monotonic_us32_interval(
+        live_service_raw_us, raw_ticks);
+    live_service_raw_us = raw_ticks;
   }
-  return live_service_timer0_extended_ticks;
+  return live_service_extended_us;
 }
 
 void __not_in_flash_func(drain_live_uart0_fifo_to_ring)(
     bool record_interrupt_statistics) {
-  const uint32_t entry_ticks = live_timer0_ticks_from_register();
+  const uint32_t entry_ticks = live_monotonic_us32_from_register();
   uint32_t drained = 0u;
   uart_hw_t *const hardware = uart_get_hw(uart0);
   while ((hardware->fr & UART_UARTFR_RXFE_BITS) == 0u) {
@@ -2314,7 +2311,7 @@ void __not_in_flash_func(drain_live_uart0_fifo_to_ring)(
     otis_gnss_uart_rx_ring_push_from_isr(&live_uart_rx_ring, observation);
     drained++;
   }
-  const uint32_t exit_ticks = live_timer0_ticks_from_register();
+  const uint32_t exit_ticks = live_monotonic_us32_from_register();
   if (record_interrupt_statistics)
     otis_gnss_uart_rx_ring_note_interrupt_from_isr(
         &live_uart_rx_ring, entry_ticks, exit_ticks, drained);
@@ -2394,7 +2391,7 @@ void configure_live_uart(uint32_t baud, bool opening_baud_epoch) {
 }
 
 void service_live_uart_rx_ring(uint32_t now_ms) {
-  const uint32_t entry_ticks = live_timer0_ticks_from_register();
+  const uint32_t entry_ticks = live_monotonic_us32_from_register();
   otis_gnss_uart_rx_ring_note_consumer_start(&live_uart_rx_ring, entry_ticks);
 
   OtisGnssUartRxStats uart_stats = {};
@@ -2437,7 +2434,7 @@ void service_live_uart_rx_ring(uint32_t now_ms) {
       otis_gnss_link_note_collector_loss(&live_link);
       if (metadata_path_open)
         otis_gnss_receiver_note_collector_loss_at_ticks(
-            &live_receiver, now_ms, live_service_timer0_extended_ticks,
+            &live_receiver, now_ms, live_service_extended_us,
             OtisGnssParserFaultClass::RawAcquisitionLoss);
     }
     if ((observation.flags &
@@ -2449,11 +2446,11 @@ void service_live_uart_rx_ring(uint32_t now_ms) {
     otis_gnss_link_feed(&live_link, byte, now_ms);
     if (metadata_path_open)
       otis_gnss_receiver_feed_at_ticks(
-          &live_receiver, byte, now_ms, live_service_timer0_extended_ticks);
+          &live_receiver, byte, now_ms, live_service_extended_us);
     drained++;
-    if (static_cast<uint32_t>(live_timer0_ticks_from_register() -
+    if (static_cast<uint32_t>(live_monotonic_us32_from_register() -
                               entry_ticks) >=
-        kOtisGnssUartRxConsumerTickBudget) {
+        kOtisGnssUartRxConsumerBudgetUs) {
       time_budget_hit = true;
       break;
     }
@@ -2475,9 +2472,9 @@ void complete_live_transmit_if_drained(uint32_t now_ms) {
   if (identity_query_completed) {
     live_pmtk605_peripheral_complete_count++;
     live_pmtk605_last_peripheral_complete_ticks =
-        live_service_timer0_extended_ticks;
+        live_service_extended_us;
     live_pmtk605_last_peripheral_complete_ticks_available =
-        live_service_timer0_extension_available;
+        live_service_extension_available;
   }
   live_transmit = {};
   otis_gnss_link_complete_action(&live_link, true, now_ms);
@@ -2575,9 +2572,9 @@ bool otis_gnss_receiver_begin(void) {
   live_characterization.last_request_disposition =
       OtisGnssRequestDisposition::RejectedDisabled;
   live_characterization.baud_epoch = 1u;
-  live_service_timer0_raw_ticks = 0u;
-  live_service_timer0_extended_ticks = 0u;
-  live_service_timer0_extension_available = false;
+  live_service_raw_us = 0u;
+  live_service_extended_us = 0u;
+  live_service_extension_available = false;
   live_pmtk605_peripheral_complete_count = 0u;
   live_pmtk605_last_peripheral_complete_ticks = 0u;
   live_pmtk605_last_peripheral_complete_ticks_available = false;
@@ -2608,7 +2605,7 @@ void otis_gnss_receiver_service(uint32_t now_ms) {
   // its call sites so a future indirect Core 1 call cannot race them.
   if (get_core_num() != 0u) return;
   if (!live_receiver_started) return;
-  update_live_service_timer0_extension();
+  update_live_service_monotonic_us_extension();
   // Commit a physically completed query before parsing bytes already retained
   // from its response.  Otherwise a prompt response can be consumed while the
   // link still says TransmitIdentityQuery and be discarded as non-causal.
@@ -2619,7 +2616,7 @@ void otis_gnss_receiver_service(uint32_t now_ms) {
   // Preserve the existing bounded writer after acquisition service.
   progress_live_transmit(now_ms);
   otis_gnss_receiver_note_time_at_ticks(
-      &live_receiver, now_ms, live_service_timer0_extended_ticks,
+      &live_receiver, now_ms, live_service_extended_us,
       OTIS_GNSS_RECONNECT_GAP_MS);
   // Ordinary response deadlines cannot advance past bytes already accepted by
   // the ISR for the current candidate. The fixed operational settle is the
@@ -2641,11 +2638,11 @@ void otis_gnss_receiver_get_snapshot(uint32_t now_ms,
   otis_gnss_receiver_snapshot(&live_receiver, now_ms,
                               OTIS_GNSS_METADATA_MAX_AGE_MS, snapshot);
   if (live_receiver.metadata_hold_active &&
-      live_service_timer0_extension_available &&
-      live_service_timer0_extended_ticks >=
+      live_service_extension_available &&
+      live_service_extended_us >=
           live_receiver.metadata_hold_started_ticks) {
     const uint64_t active_ticks =
-        live_service_timer0_extended_ticks -
+        live_service_extended_us -
         live_receiver.metadata_hold_started_ticks;
     snapshot->metadata_hold_cumulative_ticks =
         live_receiver.metadata_hold_cumulative_ticks + active_ticks;

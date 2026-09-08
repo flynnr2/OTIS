@@ -46,7 +46,7 @@ CX323_POLICY_RELATIVE_PATH = Path(
     "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json"
 )
 CX323_POLICY_SHA256 = (
-    "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
+    "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5"
 )
 CX323_V2_CONTRACT_RELATIVE_PATH = Path(
     "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/"
@@ -72,7 +72,7 @@ CX323_AHM_CONTRACT_RELATIVE_PATH = Path(
     "docs/50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md"
 )
 CX323_AHM_CONTRACT_SHA256 = (
-    "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
+    "263b6c185ec3305eb59cfd9033ec7bc804f9bbb89eaa7b41ffae25248dceeee4"
 )
 CX323_ENGINEERING_CONTRACT_ID = (
     "OTIS_CX323_D9_D6_72H_ADAPTIVE_HYBRID_ENGINEERING_CONTRACT_V2"
@@ -391,15 +391,17 @@ def _engineering_contract_binding(
             != programme.qualified_duration_s
             or timing.get("absolute_wall_limit_s")
             != programme.authorized_absolute_wall_limit_s
-            or timing.get("source_counter_domain") != "rp2040_timer0"
-            or timing.get("counter_domain") != "rp2040_timer0_extended"
-            or timing.get("nominal_counter_hz") != 16_000_000
-            or timing.get("coordinate_units_per_second") != 16_000_000
+            or timing.get("source_counter_domain") != "rp2040_monotonic_us32"
+            or timing.get("counter_domain") != "rp2040_monotonic_us64"
+            or timing.get("nominal_counter_hz") != 1_000_000
+            or timing.get("coordinate_units_per_second") != 1_000_000
             or timing.get("source_counter_hz") != 1_000_000
-            or timing.get("encoding_scale") != 16
-            or timing.get("quantum_ticks") != 16
+            or timing.get("quantum_ticks") != 1
             or timing.get("quantum_ns") != 1_000
-            or timing.get("projected_from") != "rp2040_timerawl_or_micros"
+            or timing.get("coordinate_semantics")
+            != "native_local_non_metrological"
+            or timing.get("provenance")
+            != "rp2040_timerawl_or_arduino_micros_1mhz_native_us"
             or timing.get("qualified_endpoint_contract")
             != "qualified_D14_D8_aperture_count_v2"
             or timing.get("qualified_d14_aperture_count")
@@ -506,7 +508,7 @@ def _engineering_contract_binding(
             != programme.qualified_duration_s
             or timing.get("absolute_wall_limit_s")
             != programme.authorized_absolute_wall_limit_s
-            or timing.get("counter_domain") != "rp2040_timer0_extended"
+            or timing.get("counter_domain") != "rp2040_monotonic_us64"
             or envelope.get("automatic_application_limit")
             != programme.authorized_maximum_applications
             or envelope.get("automatic_cumulative_movement_limit_codes")

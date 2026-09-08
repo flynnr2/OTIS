@@ -6,12 +6,12 @@
   "method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
   "base_estimator": {
     "path": "profiles/estimators/pps_cumulative_snapshot_span_v1.json",
-    "sha256": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839"
+    "sha256": "378b3e8da76d417af8aad0f6ac5dd13b4b3a2cc02eeb387f156d8ba02fbefe81"
   },
   "runtime_config": {
     "path": "profiles/estimators/cx321_plant_sign_1500_config_v1.json",
-    "file_sha256": "8d0c0be3db287accf7c094f576d6a557cd6c60946a909eb423a7afd8865aefd8",
-    "canonical_config_hash": "da9d0851abacccecf7c866abbefc2d6ff2e917186fed43c192a29c3d08b77c7a",
+    "file_sha256": "8fb4ca991c06b433f3a46a6d01d2f2c9270933f555c27d1967ab6d2db41f5f9d",
+    "canonical_config_hash": "febd0319a1018b629d30c2036f3b8aca2b10c60422f3321588230fc4c9f6052c",
     "strict_loader": "host.otis_tools.pps_cumulative_span_estimator.SpanEstimatorConfig.from_mapping"
   },
   "expected_snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1",
@@ -19,8 +19,8 @@
   "counter_width_bits": 32,
   "accumulator_width_bits": 64,
   "nominal_reference_interval_s": 1.0,
-  "timer_domain": "rp2040_timer0",
-  "timer_nominal_hz": 16000000,
+  "timer_domain": "rp2040_monotonic_us32",
+  "timer_nominal_hz": 1000000,
   "maximum_captured_edge_rate_hz": 133000000,
   "authoritative_denominator": "exactly_1500_accepted_nominal_D14_PPS_intervals",
   "authoritative_policy": {

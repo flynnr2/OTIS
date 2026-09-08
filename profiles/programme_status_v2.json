@@ -22,7 +22,7 @@
       "design_report": "docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_REGULATION_V1/README.md",
       "selected_policy": {
         "path": "profiles/discipline/otis_sustained_hybrid_regulation_v1.json",
-        "file_sha256": "015c133d5898e9c5f21dd3de10612cf8d09ff025c1f9f89345bd8fcc3a0d485c",
+        "file_sha256": "bd5208865b44daa708a0adbdef148779741b279c886e7ce86dab0b2e313ffe5b",
         "natural_control_law_mathematics_change_from_cx322": "none",
         "response_checkpoint_mode": "observational_non_terminal",
         "characterization_is_an_entry_or_terminal_failure_gate": false,
@@ -1001,7 +1001,7 @@
       "design_report": "docs/60_EXPERIMENTS/CX322_BOUNDED_HYBRID_FACT_GATHERING/README.md",
       "selected_policy": {
         "path": "profiles/discipline/cx322_bounded_hybrid_fact_gathering_v1.json",
-        "file_sha256": "b131a6a96796d6a8ad854fd707e1b531462ce42b50f91650c1103c16289f1c48",
+        "file_sha256": "038199406591d4e810690563baf75fa227d9c05d7126280b4e7260fa43f5a130",
         "natural_control_law_mathematics_change_from_cx320": "none",
         "response_checkpoint_mode": "observational_non_terminal",
         "phase_response_sign_magnitude_or_materiality_are_acquisition_gates": false
@@ -1344,11 +1344,11 @@
       "design_report": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/README.md",
       "plant_sign_gate": {
         "path": "profiles/qualification/cx321_bounded_response_observability_v2.json",
-        "file_sha256": "9bbde84471bcea646e8ceb0b732cfa6dd1d81592fa44071d4aab3bc9ddac8d62",
+        "file_sha256": "bec81e3941b2a1bc777d9151de4778b2cad045b53b2bf03a5782ac548e80646c",
         "identification_estimator": "profiles/estimators/cx321_plant_sign_1500_v1.json",
-        "identification_estimator_file_sha256": "cf5ea727615ea79a7e23258b674798a3215b0f996ac1a4a454eb39afe0d737b1",
+        "identification_estimator_file_sha256": "ec048c6b698dab0d542da51b8c1781c554c18383e4b514adfc54c233390b06f7",
         "identification_estimator_config": "profiles/estimators/cx321_plant_sign_1500_config_v1.json",
-        "identification_estimator_config_file_sha256": "8d0c0be3db287accf7c094f576d6a557cd6c60946a909eb423a7afd8865aefd8",
+        "identification_estimator_config_file_sha256": "8fb4ca991c06b433f3a46a6d01d2f2c9270933f555c27d1967ab6d2db41f5f9d",
         "identification_estimator_config_hash": "da9d0851abacccecf7c866abbefc2d6ff2e917186fed43c192a29c3d08b77c7a",
         "plant_parity_reconstruction": "profiles/qualification/cx321_plant_parity_1500_reconstruction_v1.json",
         "plant_parity_reconstruction_file_sha256": "3c73a1de1a828ab947f0148e6ee589055d491602ac1eb086fe902fe3aee3903e",
@@ -1363,7 +1363,7 @@
       },
       "selected_policy": {
         "path": "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v2.json",
-        "file_sha256": "c6a8ea81bd77c791428e79c5c815cf67ca49f9506e5ade57ae9b7553c3113ea4",
+        "file_sha256": "88c30d624a32be5866d6a6d61a52d8cc9c9e41e858c0524ef2618f93964265b0",
         "natural_control_law_mathematics_change_from_cx320": "none",
         "identification_natural_history_separation_required": true,
         "identification_consumes_application_count": 1,
@@ -2813,7 +2813,7 @@
       "selected_controller": {
         "profile_id": "cx323_phase_priority_persistent_cap_tagged_debt_v1",
         "path": "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json",
-        "file_sha256": "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
+        "file_sha256": "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5"
       },
       "serial": {
         "baud": 115200,

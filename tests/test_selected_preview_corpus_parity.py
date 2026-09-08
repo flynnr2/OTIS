@@ -13,7 +13,7 @@ def _write_fixture(tmp_path: Path, *, nominal_hz: int = 10_000_000) -> Path:
         json.dumps(
             {
                 "oscillator": {"nominal_frequency_hz": nominal_hz},
-                "domains": [{"name": "rp2040_timer0", "nominal_hz": 16_000_000}],
+                "domains": [{"name": "rp2040_monotonic_us32", "nominal_hz": 1_000_000}],
                 "active_campaign": {"start_code": 43088},
             }
         ),
@@ -91,7 +91,7 @@ def test_declared_fixture_runs_selected_firmware_parity_and_cli_report(tmp_path:
 
 
 def test_incompatible_static_firmware_rate_is_explicitly_not_eligible(tmp_path: Path) -> None:
-    corpus = _write_fixture(tmp_path, nominal_hz=16_000_000)
+    corpus = _write_fixture(tmp_path, nominal_hz=1_000_000)
     harness = parity.compile_harness(tmp_path / "selected_preview")
 
     report = parity.run_corpus(corpus, repo_root=tmp_path, harness=harness)

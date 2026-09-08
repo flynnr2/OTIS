@@ -28,7 +28,7 @@ bool d14_have_processed_timestamp = false;
 uint64_t d14_last_processed_timestamp = 0u;
 
 void handle_capture_edge(void) {
-  uint64_t timestamp = otis_capture_ticks_now_from_isr();
+  uint64_t timestamp = otis_monotonic_us32_now_from_isr();
   constexpr uint32_t kCaptureFlags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
   bool sampled_high = gpio_get(capture_gpio);
   char edge =
@@ -88,12 +88,12 @@ void otis_capture_irq_process_reference_foreground(
   }
   if (d14_have_processed_timestamp) {
     uint64_t interval =
-        otis_timer0_interval_ticks(d14_last_processed_timestamp,
+        otis_monotonic_us32_interval(d14_last_processed_timestamp,
                                    record.timestamp_ticks);
     d14_last_raw_interval = interval;
-    switch (otis_classify_pps_interval_ticks(
-        interval, OTIS_PPS_REFERENCE_SHORT_INTERVAL_TICKS,
-        OTIS_PPS_REFERENCE_LONG_INTERVAL_TICKS)) {
+    switch (otis_classify_pps_interval_us(
+        interval, OTIS_PPS_REFERENCE_SHORT_INTERVAL_US,
+        OTIS_PPS_REFERENCE_LONG_INTERVAL_US)) {
       case OTIS_PPS_INTERVAL_SHORT:
         if (d14_rejected_short_count != UINT32_MAX) {
           d14_rejected_short_count++;

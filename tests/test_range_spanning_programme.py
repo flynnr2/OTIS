@@ -110,7 +110,7 @@ def test_rollover_callers_have_no_optional_enable_switch() -> None:
         path.read_text(encoding="utf-8")
         for path in sorted((ROOT / "host/otis_tools").glob("*.py"))
     )
-    assert "allow_rp2040_timer0_wrap" not in host_source
+    assert "allow_rp2040_monotonic_us32_wrap" not in host_source
     assert "reference_timestamp_modulus_ticks" not in host_source
     assert "timestamp_modulus: int | None" not in host_source
 

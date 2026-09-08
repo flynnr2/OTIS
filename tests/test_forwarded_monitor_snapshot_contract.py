@@ -21,7 +21,7 @@ def _validate(path: Path, *, known_channels: frozenset[int] = frozenset({3})):
         CsvValidationContext(
             contract=CONTRACT,
             known_channels=known_channels,
-            known_domains=frozenset({"rp2040_timer0"}),
+            known_domains=frozenset({"rp2040_monotonic_us32"}),
         ),
     )
 

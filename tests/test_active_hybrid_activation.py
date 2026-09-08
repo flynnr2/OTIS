@@ -137,7 +137,7 @@ def test_campaign18_activation_accepts_only_exact_shared_rehearsal_receipt(
                 },
             ],
             "domains": [
-                {"name": "rp2040_timer0_extended", "nominal_hz": 16_000_000}
+                {"name": "rp2040_monotonic_us64", "nominal_hz": 1_000_000}
             ],
         },
     )
@@ -202,14 +202,14 @@ def test_cx323_activation_requires_exact_v2_d14_aperture_boundaries(
                 reference_origin + progress
             )
             & 0xFFFFFFFF,
-            "rp2040_timer0_ticks": 4_000_013_602_864,
+            "rp2040_monotonic_us32_ticks": 4_000_850_179,
             "response_horizon_closed": response_closed,
             "terminal_reached": terminal_reached,
         }
 
     clock = {
         "time_domain": "qualified_D14_D8_aperture_count_v2",
-        "supporting_local_ordering_domain": "rp2040_timer0",
+        "supporting_local_ordering_domain": "rp2040_monotonic_us32",
         "accepted_window_count_origin": accepted_origin,
         "boundary_reference_sequence_origin": reference_origin,
         "qualified_endpoint_d14_d8_apertures": 259_200,
@@ -241,7 +241,7 @@ def test_cx323_activation_requires_exact_v2_d14_aperture_boundaries(
         "admission_closed_at_exact_aperture_boundary": True,
         "endpoint_open_before_exact_aperture_boundary": True,
         "endpoint_closed_at_exact_aperture_boundary": True,
-        "rp2040_timer0_held_constant_across_aperture_boundaries": True,
+        "rp2040_monotonic_us32_held_constant_across_aperture_boundaries": True,
         "forward_host_utc_step_did_not_close_early": True,
         "backward_host_utc_step_did_not_delay_endpoint": True,
     }
@@ -305,8 +305,8 @@ def test_cx323_activation_requires_exact_v2_d14_aperture_boundaries(
             ],
             "domains": [
                 {
-                    "name": "rp2040_timer0_extended",
-                    "nominal_hz": 16_000_000,
+                    "name": "rp2040_monotonic_us64",
+                    "nominal_hz": 1_000_000,
                 }
             ],
         },

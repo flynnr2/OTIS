@@ -7,7 +7,7 @@ namespace {
 
 constexpr char kPolicyId[] =
     "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1";
-constexpr char kTimeDomain[] = "rp2040_timer0_extended";
+constexpr char kTimeDomain[] = "rp2040_monotonic_us64";
 constexpr int64_t kMaximumDebtPicocodes = 500000000000LL;
 constexpr uint32_t kMinimumCode = 0xA800u;
 constexpr uint32_t kMaximumCode = 0xAB00u;

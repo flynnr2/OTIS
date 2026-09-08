@@ -67,7 +67,7 @@ remembering which defaults or `-D` overrides were active.
 | `OTIS_SW1_MODE_H1_OCXO_OBSERVE` (`H1_OCXO_OBSERVE_OPEN_LOOP`) | manual H1 OCXO lab observation with optional AD5693R DAC commands and explicit open-loop sweeps | selected count-observation backend emits `CNT` on `CH2`, `REF` on `CH1`, DAC `STS`/`DAC` telemetry |
 
 The live GPIO/PPS paths are first bring-up interrupt captures. Their emitted
-timestamps use `rp2040_timer0` and carry `TIMESTAMP_RECONSTRUCTED`; they are not
+timestamps use `rp2040_monotonic_us32` and carry `TIMESTAMP_RECONSTRUCTED`; they are not
 yet the later PIO/DMA hardware-latched path. TCXO observe uses the RP2040
 frequency counter on `GPIN0` by default so a raw 16 MHz signal does not create a
 GPIO interrupt storm. The alternate `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ`

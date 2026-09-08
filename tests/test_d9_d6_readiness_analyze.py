@@ -11,7 +11,7 @@ from host.otis_tools.d9_d6_readiness_analyze import (
     analyze,
     seal,
 )
-from host.otis_tools.time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
+from host.otis_tools.time_domains import RP2040_MONOTONIC_US32_MODULUS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,13 +54,13 @@ def _status(profile: str, *, enabled: bool) -> list[list[object]]:
         "first_valid_ticks": "1",
     }
     rows = [
-        ["STS", 1, 1, 0, "rp2040_timer0", "build", "profile_id", profile, "INFO", 0],
+        ["STS", 1, 1, 0, "rp2040_monotonic_us32", "build", "profile_id", profile, "INFO", 0],
         [
             "STS",
             1,
             2,
             0,
-            "rp2040_timer0",
+            "rp2040_monotonic_us32",
             "boot_capabilities",
             "selected_profile",
             "H1_OCXO_OBSERVE_OPEN_LOOP",
@@ -69,7 +69,7 @@ def _status(profile: str, *, enabled: bool) -> list[list[object]]:
         ],
     ]
     for sequence, (key, value) in enumerate(values.items(), start=2):
-        rows.append(["STS", 1, sequence, sequence, "rp2040_timer0", "forwarded_clock_output", key, value, "INFO", 0])
+        rows.append(["STS", 1, sequence, sequence, "rp2040_monotonic_us32", "forwarded_clock_output", key, value, "INFO", 0])
     return rows
 
 
@@ -116,7 +116,7 @@ def _stratum(
         ["record_type", "schema_version", "session", "snapshot_sequence", "cumulative_down_counter", "reference_sequence", "reference_timestamp_ticks", "status", "backend"],
         [
             ["SNP", 1, 7, 0, 3_000_000_000, 10, 0, 0, "pio_wait_cumulative_snapshot_dma_v1"],
-            ["SNP", 1, 7, 1, 2_990_000_000, 11, 16_000_000, 0, "pio_wait_cumulative_snapshot_dma_v1"],
+            ["SNP", 1, 7, 1, 2_990_000_000, 11, 1_000_000, 0, "pio_wait_cumulative_snapshot_dma_v1"],
             ["SNP", 1, 7, 2, 2_980_000_000, 12, 32_000_000, 0, "pio_wait_cumulative_snapshot_dma_v1"],
         ],
     )
@@ -126,7 +126,7 @@ def _stratum(
             ["record_type", "schema_version", "session", "reference_session", "snapshot_sequence", "cumulative_down_counter", "reference_sequence", "reference_timestamp_ticks", "status", "backend", "channel_id"],
             [
                 ["MNS", 1, 3, reference_sessions[0], 0, 3_000_000_000, 10, 0, 0, "pio_wait_cumulative_snapshot_cpu_v1", 3],
-                ["MNS", 1, 3, reference_sessions[1], 1, 2_990_000_000 - d6_offset, 11, 16_000_000, 0, "pio_wait_cumulative_snapshot_cpu_v1", 3],
+                ["MNS", 1, 3, reference_sessions[1], 1, 2_990_000_000 - d6_offset, 11, 1_000_000, 0, "pio_wait_cumulative_snapshot_cpu_v1", 3],
                 ["MNS", 1, 3, reference_sessions[2], 2, 2_980_000_000 - 2 * d6_offset, 12, 32_000_000, 0, "pio_wait_cumulative_snapshot_cpu_v1", 3],
             ],
         )
@@ -207,7 +207,7 @@ def test_snapshot_and_timer_rollover_are_derived_from_declared_domains(
         rows[1]["reference_sequence"] = "0"
         rows[2]["reference_sequence"] = "1"
         rows[0]["reference_timestamp_ticks"] = str(
-            RP2040_TIMER0_MICROS_WRAP_TICKS - 16_000_000
+            RP2040_MONOTONIC_US32_MODULUS - 1_000_000
         )
         rows[1]["reference_timestamp_ticks"] = "0"
         rows[2]["reference_timestamp_ticks"] = "16000000"
@@ -220,8 +220,8 @@ def test_snapshot_and_timer_rollover_are_derived_from_declared_domains(
         row["snapshot_sequence"] = str(((1 << 32) - 1 + index) & ((1 << 32) - 1))
         row["reference_sequence"] = str(((1 << 32) - 1 + index) & ((1 << 32) - 1))
         row["reference_timestamp_ticks"] = str(
-            (RP2040_TIMER0_MICROS_WRAP_TICKS - 16_000_000 + index * 16_000_000)
-            % RP2040_TIMER0_MICROS_WRAP_TICKS
+            (RP2040_MONOTONIC_US32_MODULUS - 1_000_000 + index * 1_000_000)
+            % RP2040_MONOTONIC_US32_MODULUS
         )
     _csv(
         monitor_path,

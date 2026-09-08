@@ -38,8 +38,8 @@ void otis_status_emit(OtisStatusEmitContext *context,
     return;
   }
   if (context->status_seq == nullptr) return;
-  otis_emit_health((*context->status_seq)++, otis_capture_ticks_now(),
-                   OTIS_DOMAIN_RP2040_TIMER0, component, key, value, severity,
+  otis_emit_health((*context->status_seq)++, otis_monotonic_us32_now(),
+                   OTIS_DOMAIN_RP2040_MONOTONIC_US32, component, key, value, severity,
                    flags);
 #if OTIS_ENABLE_GNSS_RECEIVER
   // Synchronous periodic and CONFIG? status bursts must not overflow UART0's

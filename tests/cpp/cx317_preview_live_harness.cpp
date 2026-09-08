@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
   const bool fractional_exact_response_window_mode =
       argc == 2 &&
       std::string(argv[1]) == "fractional_exact_response_window";
-  constexpr uint64_t kTicksPerSecond = 16000000ull;
+  constexpr uint64_t kTicksPerSecond = 1000000ull;
   otis_cx317_preview_live_begin(0u);
   otis_cx317_preview_live_emit_headers();
   otis_cx317_preview_live_on_temperature(true, 29.0f, 0u);

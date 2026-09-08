@@ -10,7 +10,7 @@
   "bindings": {
     "predecessor_72h_contract": {
       "path": "docs/60_EXPERIMENTS/OTIS_D9_OUTPUT_AND_ADAPTIVE_STEERING_INTEGRATION_PROGRAMME/cx322_d9_d6_72h_integrated_engineering_contract_v1.json",
-      "sha256": "715e111b61fb25129cb4e0ee1fe421f5512448290b7b6f017f10030cec556a20"
+      "sha256": "d0f396c5879eed8d1775e4b790a5166999dfe7f127f570a1dad04cb4ab37d434"
     },
     "successor_study_contract_v1": {
       "path": "docs/60_EXPERIMENTS/OTIS_CX323_SUSTAINED_HYBRID_SUCCESSOR_STUDY/study_contract_v1.json",
@@ -39,23 +39,23 @@
     },
     "maintenance_evidence_contract": {
       "path": "docs/50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md",
-      "sha256": "08826ada2caaca2dda624fcd2e67415978b9a21ccc3c947a9461918a5583389d"
+      "sha256": "263b6c185ec3305eb59cfd9033ec7bc804f9bbb89eaa7b41ffae25248dceeee4"
     },
     "frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
-      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+      "sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
     },
     "phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
-      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+      "sha256": "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+      "sha256": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92"
     },
     "response_policy": {
       "path": "profiles/discipline/cx317_response_classification_v2.json",
-      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+      "sha256": "aa327a6571f5f49bce6bd54c4b01090a626a08cb86933d568a96e0909e0e1827"
     }
   },
   "identities": {
@@ -182,7 +182,7 @@
     "qualified_clock": "accepted_D14_D8_apertures_in_one_capture_session",
     "aperture_origin": "accepted_window_count_and_boundary_reference_sequence_at_live_qualified_baseline",
     "aperture_validity": "every_counted_aperture_is_an_accepted_D14_gated_D8_interval_with_unchanged_authoritative_capture_fault_counters",
-    "rp2040_timer0_role": "projected_local_ordering_telemetry_and_safety_deadlines_not_72h_metrological_terminal",
+    "rp2040_monotonic_us32_role": "native_microsecond_local_ordering_telemetry_and_safety_deadlines_not_72h_metrological_terminal",
     "qualification_deadline_s": 5400,
     "wall_clock_limit_s": 280800,
     "milestone_interval_qualified_s": 21600,

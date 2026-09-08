@@ -11,19 +11,19 @@
     },
     "stage1_contract": {
       "path": "profiles/discipline/cx318_stage1_contracts_v1.json",
-      "sha256": "f59234cd7732da8a71c2d3ef0d0e6b2e07488353f5b97400c58db21640851aff"
+      "sha256": "5912408c81e4f32e9db57127936e2c97e849da79f82d57bc998f83dcbfd2a61e"
     },
     "selected_phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
-      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+      "sha256": "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+      "sha256": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92"
     },
     "frequency_preview_policy": {
       "path": "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json",
-      "sha256": "7b90ebab300f910476b47e8cecc42276dd0c4d6e1d342e941a39cb7e931cd3c6"
+      "sha256": "4e631b1c647336d34873a7252c420a3f601f366501f267022fc860cde6181446"
     },
     "replay_corpus": {
       "path": "profiles/replay/cx318_stage2_replay_corpus_v1.json",

@@ -41,7 +41,7 @@ def test_d6_monitor_interval_reconstruction_is_local_and_deterministic(
 
             int main(void) {{
               OtisForwardedClockMonitorIntervalReconstructor r = {{}};
-              auto first = snapshot(7u, 10u, 0xffffffffu, 12u, 20u, 16000000ull);
+              auto first = snapshot(7u, 10u, 0xffffffffu, 12u, 20u, 1000000ull);
               auto anchor = otis_forwarded_clock_monitor_interval_observe(&r, &first);
               assert(anchor.state == OtisForwardedClockMonitorIntervalState::Anchor);
               auto second = snapshot(7u, 11u, 0xff67697fu, 12u, 21u, 32000000ull);
@@ -49,12 +49,12 @@ def test_d6_monitor_interval_reconstruction_is_local_and_deterministic(
               assert(valid.state == OtisForwardedClockMonitorIntervalState::ValidInterval);
               assert(valid.interval_valid && valid.interval_count == 10000000u);
               assert(!valid.counter_wrap_handled);
-              assert(valid.opening_reference_timestamp_ticks == 16000000ull);
+              assert(valid.opening_reference_timestamp_ticks == 1000000ull);
               assert(valid.closing_reference_timestamp_ticks == 32000000ull);
 
               otis_forwarded_clock_monitor_interval_reset(&r);
               auto wrap_open = snapshot(1u, 0xffffffffu, 5u, 1u, 0xffffffffu, 0ull);
-              auto wrap_close = snapshot(1u, 0u, 0xfffffff5u, 1u, 0u, 16000000ull);
+              auto wrap_close = snapshot(1u, 0u, 0xfffffff5u, 1u, 0u, 1000000ull);
               assert(otis_forwarded_clock_monitor_interval_observe(&r, &wrap_open).state ==
                      OtisForwardedClockMonitorIntervalState::Anchor);
               auto wrapped = otis_forwarded_clock_monitor_interval_observe(&r, &wrap_close);
@@ -85,7 +85,7 @@ def test_d6_monitor_interval_reconstruction_is_local_and_deterministic(
 
               otis_forwarded_clock_monitor_interval_reset(&r);
               auto status_a = snapshot(4u, 1u, 20000000u, 9u, 1u, 0ull);
-              auto bad = snapshot(4u, 2u, 10000000u, 9u, 2u, 16000000ull, 1u);
+              auto bad = snapshot(4u, 2u, 10000000u, 9u, 2u, 1000000ull, 1u);
               auto after_bad = snapshot(4u, 3u, 10000000u, 9u, 3u, 32000000ull);
               assert(otis_forwarded_clock_monitor_interval_observe(&r, &status_a).state ==
                      OtisForwardedClockMonitorIntervalState::Anchor);

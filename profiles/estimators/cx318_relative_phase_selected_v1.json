@@ -7,11 +7,11 @@
   "bindings": {
     "stage1_contract": {
       "path": "profiles/discipline/cx318_stage1_contracts_v1.json",
-      "sha256": "f59234cd7732da8a71c2d3ef0d0e6b2e07488353f5b97400c58db21640851aff"
+      "sha256": "5912408c81e4f32e9db57127936e2c97e849da79f82d57bc998f83dcbfd2a61e"
     },
     "candidate_profile": {
       "path": "profiles/estimators/cx318_relative_phase_candidates_v1.json",
-      "sha256": "aa199580ebd1ba98231f0ab805e9b5e7187727fffa5734c8863c4ee20747dabb"
+      "sha256": "223c4710c71f16ecb6ab4e19f17299c3bcfff62990151d1f8d4d4d9805d4fe34"
     },
     "replay_corpus": {
       "path": "profiles/replay/cx318_stage2_replay_corpus_v1.json",
@@ -23,7 +23,7 @@
     },
     "existing_frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
-      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+      "sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
     }
   },
   "selection": {

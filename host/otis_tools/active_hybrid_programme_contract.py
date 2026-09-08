@@ -673,7 +673,7 @@ CX323_D9_D6_72H_PROGRAMME = ActiveHybridProgramme(
     # TDB is advisory for CX323, but its retained rows still bind and replay
     # against this exact, source-frozen policy artifact identity.
     tight_deadband_policy_sha256=(
-        "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a"
+        "c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87"
     ),
 )
 

@@ -41,7 +41,7 @@ SELECTED_PROFILE = (
     / "profiles/discipline/cx323_phase_priority_persistent_maintenance_v2.json"
 )
 SELECTED_PROFILE_FILE_SHA256 = (
-    "24ec5210b897b3ea9dd64aa5946c69e02e277c09922f5a5208f3476d6eaba926"
+    "f251958de48db64779d84858a8e78fd72029e0114f35ecb5327f3964e4e552d5"
 )
 
 
@@ -106,7 +106,7 @@ def _observation(
 ) -> CX323Observation:
     values: dict[str, object] = {
         "timestamp_s": timestamp_s,
-        "timestamp_ticks": timestamp_s * 16_000_000,
+        "timestamp_ticks": timestamp_s * 1_000_000,
         "capture_session": 1,
         "source_first_sequence": opening,
         "source_last_sequence": closing,
@@ -889,7 +889,7 @@ def test_exact_tick_cadence_does_not_round_through_display_seconds(
 ) -> None:
     controller = _controller()
     controller.last_application_s = 600
-    controller.last_application_ticks = 600 * 16_000_000 + 4_000_000
+    controller.last_application_ticks = 600 * 1_000_000 + 250_000
 
     early = _observation(
         controller,
@@ -899,7 +899,7 @@ def test_exact_tick_cadence_does_not_round_through_display_seconds(
         counts=2,
         phase=0,
         tight_state="OUTSIDE",
-        timestamp_ticks=2400 * 16_000_000,
+        timestamp_ticks=2400 * 1_000_000,
     )
     boundary = _observation(
         controller,
@@ -909,7 +909,7 @@ def test_exact_tick_cadence_does_not_round_through_display_seconds(
         counts=2,
         phase=0,
         tight_state="OUTSIDE",
-        timestamp_ticks=2400 * 16_000_000 + 4_000_000,
+        timestamp_ticks=2400 * 1_000_000 + 250_000,
     )
     early_decision = controller.decide(early)
     boundary_decision = controller.decide(boundary)
@@ -922,7 +922,7 @@ def test_exact_tick_cadence_does_not_round_through_display_seconds(
         cx323_native_harness,
         [
             "INIT 43085 1",
-            "SET_LAST_APPLICATION_TICKS 1 600 9604000000",
+            "SET_LAST_APPLICATION_TICKS 1 600 600250000",
             _decide_command(early),
             _decide_command(boundary),
         ],
@@ -932,7 +932,7 @@ def test_exact_tick_cadence_does_not_round_through_display_seconds(
     assert rows[2]["decision_timestamp_ticks"] == str(early.timestamp_ticks)
     assert rows[3]["reason"] == boundary_decision.reason
     assert rows[3]["cadence_limited"] == "0"
-    assert rows[3]["last_application_ticks"] == "9604000000"
+    assert rows[3]["last_application_ticks"] == "600250000"
 
 
 def test_explicit_tick_display_domain_mismatch_fails_static_identically(
@@ -940,7 +940,7 @@ def test_explicit_tick_display_domain_mismatch_fails_static_identically(
 ) -> None:
     controller = _controller()
     mismatch = _observation(
-        controller, 1, 0, 600, timestamp_ticks=16_000_000 - 1
+        controller, 1, 0, 600, timestamp_ticks=1_000_000 - 1
     )
     expected = controller.decide(mismatch)
     rows = _run(

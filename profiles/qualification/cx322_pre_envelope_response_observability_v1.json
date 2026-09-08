@@ -5,7 +5,7 @@
   "question": "Can the CX321 plant-sign entry admit the observed one-count movement between two healthy 1500-second pre-stimulus estimates without weakening the three-count response floor or changing the natural hybrid controller?",
   "supersedes": {
     "path": "profiles/qualification/cx321_bounded_response_observability_v2.json",
-    "sha256": "9bbde84471bcea646e8ceb0b732cfa6dd1d81592fa44071d4aab3bc9ddac8d62"
+    "sha256": "ea706717d72ae95005f987289f275038b298be995488810d0e8824d23296d4f1"
   },
   "trigger_evidence": {
     "path": "docs/60_EXPERIMENTS/CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR/04_STAGE5_ATTEMPT3_PLANT_SIGN_ENTRY_TERMINAL.md",
@@ -20,7 +20,7 @@
   "bindings": {
     "cx321_comparison": {
       "path": "profiles/qualification/cx321_response_observability_comparison_v1.json",
-      "sha256": "3a2e345ac9ba66129de3f3400d86dddadc1c2abb86c517090747e6f604a552b6"
+      "sha256": "5bbd9463bbb938dd0b922b3f0c5760223964522bb7a7121fc1ff00ad913eb252"
     },
     "fixed_code_fixture": {
       "path": "tests/fixtures/cx321_stage3_stable_interval_counts_v1.json",
@@ -32,7 +32,7 @@
     },
     "unchanged_natural_controller": {
       "path": "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v2.json",
-      "sha256": "c6a8ea81bd77c791428e79c5c815cf67ca49f9506e5ade57ae9b7553c3113ea4"
+      "sha256": "88c30d624a32be5866d6a6d61a52d8cc9c9e41e858c0524ef2618f93964265b0"
     }
   },
   "selected_pre_stimulus_gate": {

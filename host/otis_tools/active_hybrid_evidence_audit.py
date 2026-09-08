@@ -33,11 +33,11 @@ PROFILE_BINDINGS = (
     REPO_ROOT / "profiles/discipline/cx319_conditional_part_b_hybrid_observation_v1.json",
 )
 EXPECTED_PROFILE_SHA256 = {
-    "profiles/estimators/cx317_pps_gated_selected_v1.json": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
-    "profiles/estimators/cx318_relative_phase_selected_v1.json": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
-    "profiles/plant_models/cx317_pps_gated_v2.json": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2",
-    "profiles/discipline/cx319_stabilized_tight_deadband_v1.json": "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a",
-    "profiles/discipline/cx319_conditional_part_b_hybrid_observation_v1.json": "68ba4b1b915424104fb9e8331273e52d89c7957b19e973ce650cd93056ce015d",
+    "profiles/estimators/cx317_pps_gated_selected_v1.json": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
+    "profiles/estimators/cx318_relative_phase_selected_v1.json": "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792",
+    "profiles/plant_models/cx317_pps_gated_v2.json": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92",
+    "profiles/discipline/cx319_stabilized_tight_deadband_v1.json": "c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87",
+    "profiles/discipline/cx319_conditional_part_b_hybrid_observation_v1.json": "fa1fe792cc21307ef56d4f6a936dad167d450e5a168a56d7196a4c13e1ea92be",
 }
 EXPECTED_SUMMARY = {
     "zero_authority_hybrid_records": 38_993,

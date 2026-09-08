@@ -27,9 +27,9 @@ Use the `STS` record family for device and pipeline state.
 
 ```csv
 record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags
-STS,1,7,1600000000,rp2040_timer0,capture,ring_fill_pct,12,INFO,0
-STS,1,8,1600100000,rp2040_timer0,pps,reference_valid,true,INFO,0
-STS,1,9,1600200000,rp2040_timer0,system,restart_reason,brownout,WARN,32
+STS,1,7,100000000,rp2040_monotonic_us32,capture,ring_fill_pct,12,INFO,0
+STS,1,8,100006250,rp2040_monotonic_us32,pps,reference_valid,true,INFO,0
+STS,1,9,1600200000,rp2040_monotonic_us32,system,restart_reason,brownout,WARN,32
 ```
 
 ## Design Rule
@@ -184,7 +184,7 @@ The compile-time D9 output emits component `forwarded_clock_output` with its
 exact contract ID and semantic SHA-256, selected/configured/readback state,
 source/destination GPIOs and functions, requested and applied AUXSRC/divider,
 inversion, drive strength, slew rate, nominal frequency, first-valid
-`rp2040_timer0` tick, and explicit validity reason. Before physical waveform
+`rp2040_monotonic_us32` tick, and explicit validity reason. Before physical waveform
 qualification, a successful readback is
 `configured_10mhz_forwarded_unqualified`; it is not a waveform claim.
 

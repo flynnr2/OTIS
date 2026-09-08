@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping
 
 
-RP2040_TIMER0_MICROS_WRAP_TICKS = (1 << 32) * 16
+RP2040_MONOTONIC_US32_MODULUS = 1 << 32
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,6 @@ class TimeDomain:
     modulus_ticks: int | None
     rollover: str
     source_counter_hz: int | None = None
-    encoding_scale: int | None = None
     quantum_ticks: int | None = None
     quantum_ns: int | None = None
     coordinate_semantics: str | None = None
@@ -39,35 +38,34 @@ class TimeDomain:
 
 
 TIME_DOMAINS: Mapping[str, TimeDomain] = {
-    "rp2040_timer0": TimeDomain(
-        name="rp2040_timer0",
-        nominal_hz=16_000_000,
-        counter_width_bits=36,
-        modulus_ticks=RP2040_TIMER0_MICROS_WRAP_TICKS,
+    "rp2040_monotonic_us32": TimeDomain(
+        name="rp2040_monotonic_us32",
+        nominal_hz=1_000_000,
+        counter_width_bits=32,
+        modulus_ticks=RP2040_MONOTONIC_US32_MODULUS,
         rollover="modular_forward",
         source_counter_hz=1_000_000,
-        encoding_scale=16,
-        quantum_ticks=16,
+        quantum_ticks=1,
         quantum_ns=1_000,
-        coordinate_semantics="projected_local_non_metrological",
-        provenance="rp2040_timerawl_or_arduino_micros_1mhz_encoded_x16",
+        coordinate_semantics="native_local_non_metrological",
+        provenance="rp2040_timerawl_or_arduino_micros_1mhz_native_us",
     ),
-    # CX321 plant-sign evidence carries firmware-extended TIMER0 coordinates.
+    # Decision-bearing lifecycle evidence carries firmware-extended local
+    # microseconds.
     # These values are reconstructed monotonically across the 32-bit
     # microsecond source wrap and therefore must never be reinterpreted as the
     # modular raw timer domain above.
-    "rp2040_timer0_extended": TimeDomain(
-        name="rp2040_timer0_extended",
-        nominal_hz=16_000_000,
-        counter_width_bits=None,
+    "rp2040_monotonic_us64": TimeDomain(
+        name="rp2040_monotonic_us64",
+        nominal_hz=1_000_000,
+        counter_width_bits=64,
         modulus_ticks=None,
         rollover="strict_nonwrapping",
         source_counter_hz=1_000_000,
-        encoding_scale=16,
-        quantum_ticks=16,
+        quantum_ticks=1,
         quantum_ns=1_000,
-        coordinate_semantics="projected_local_non_metrological",
-        provenance="session_bound_wrap_reconstruction_of_rp2040_timer0",
+        coordinate_semantics="reconstructed_local_non_metrological",
+        provenance="session_bound_wrap_reconstruction_of_rp2040_monotonic_us32",
     ),
     # D8 counted-edge totals are not RP2040 timer coordinates.  Current CSV
     # timestamp fields do not use this domain, but declaring its strict
@@ -134,7 +132,6 @@ def canonical_domain_declaration(name: str) -> dict[str, object]:
         "modulus_ticks",
         "rollover",
         "source_counter_hz",
-        "encoding_scale",
         "quantum_ticks",
         "quantum_ns",
         "coordinate_semantics",
@@ -153,9 +150,9 @@ def validate_domain_declarations(
 ) -> tuple[str, ...]:
     """Validate manifest declarations against canonical semantics.
 
-    Historical manifests may omit optional semantic fields.  A current
-    manifest generator can request the complete canonical declaration; any
-    field that is supplied is always checked for contradiction.
+    A current manifest generator can request the complete canonical
+    declaration; any field that is supplied is always checked for
+    contradiction.
     """
 
     if not isinstance(domains, list) or not domains:
@@ -196,7 +193,6 @@ def validate_domain_declarations(
             "modulus_ticks": semantics.modulus_ticks,
             "rollover": semantics.rollover,
             "source_counter_hz": semantics.source_counter_hz,
-            "encoding_scale": semantics.encoding_scale,
             "quantum_ticks": semantics.quantum_ticks,
             "quantum_ns": semantics.quantum_ns,
             "coordinate_semantics": semantics.coordinate_semantics,

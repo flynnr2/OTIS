@@ -23,7 +23,8 @@
 
 namespace {
 
-constexpr uint64_t kTimerWrapTicks = (1ull << 32) * 16ull;
+constexpr uint64_t kMonotonicUs32Modulus =
+    OTIS_RP2040_MONOTONIC_US32_MODULUS;
 constexpr uint32_t kReferenceInvalidFlags =
     OTIS_FLAG_CAPTURE_OVERFLOW_NEARBY | OTIS_FLAG_CAPTURE_RING_OVERRUN |
     OTIS_FLAG_EDGE_ORDER_SUSPECT | OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT |
@@ -54,7 +55,7 @@ constexpr char kPolicyVersion[] = "phase4_observe_preview_v3";
 constexpr char kUncertaintyModelRef[] =
     "phase4_uncertainty_budget_v1#sha256:"
     "bf8d6dcb244c27e341a2c59e4500184ca700cfb2913f8733a687f1d2bb7d39a7";
-constexpr char kTimeDomain[] = OTIS_DOMAIN_RP2040_TIMER0;
+constexpr char kTimeDomain[] = OTIS_DOMAIN_RP2040_MONOTONIC_US32;
 constexpr char kRuntimeApplicabilityMode[] = "observe_only";
 #if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE && \
     OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
@@ -85,11 +86,11 @@ constexpr double kRuntimeConfiguredGateDurationS = 1.0;
 #endif
 constexpr size_t kFrameCapacity = 8192u;
 constexpr size_t kTransportChunkLimit = 128u;
-constexpr double kCaptureDomainHz = 16000000.0;
+constexpr double kCaptureDomainHz = 1000000.0;
 constexpr uint64_t kMinimumReferenceIntervalTicks =
-    (uint64_t)OTIS_PPS_GATE_MIN_INTERVAL_US * 16ull;
+    (uint64_t)OTIS_PPS_GATE_MIN_INTERVAL_US;
 constexpr uint64_t kMaximumReferenceIntervalTicks =
-    (uint64_t)OTIS_PPS_GATE_MAX_INTERVAL_US * 16ull;
+    (uint64_t)OTIS_PPS_GATE_MAX_INTERVAL_US;
 static_assert(
     OTIS_H1_LONG_GATE_PERIOD_US / OTIS_PPS_GATE_MIN_INTERVAL_US + 4u <=
         OTIS_PPS_BOUNDARY_SUPPORT_CAPACITY,
@@ -171,10 +172,10 @@ uint64_t unwrap_ticks(uint64_t ticks) {
   // Count backends may already add one local timer epoch when a gate crosses
   // rollover. Normalize that representation before applying the adapter's
   // run-wide epoch so it cannot be counted twice.
-  const uint64_t raw_ticks = ticks % kTimerWrapTicks;
+  const uint64_t raw_ticks = ticks % kMonotonicUs32Modulus;
   if (last_raw_ticks != 0u && raw_ticks < last_raw_ticks &&
-      last_raw_ticks - raw_ticks > kTimerWrapTicks / 2u) {
-    tick_wrap_offset += kTimerWrapTicks;
+      last_raw_ticks - raw_ticks > kMonotonicUs32Modulus / 2u) {
+    tick_wrap_offset += kMonotonicUs32Modulus;
   }
   last_raw_ticks = raw_ticks;
   return raw_ticks + tick_wrap_offset;
@@ -275,7 +276,7 @@ bool observed_gate_duration_acceptable(const OtisRuntimeState *runtime_state) {
       runtime_state->tcxo.last_gate_close_ticks <=
           runtime_state->tcxo.last_gate_open_ticks)
     return false;
-  const uint64_t gate_ticks = otis_timer0_interval_ticks(
+  const uint64_t gate_ticks = otis_monotonic_us32_interval(
       runtime_state->tcxo.last_gate_open_ticks,
       runtime_state->tcxo.last_gate_close_ticks);
   const double observed_s = (double)gate_ticks / kCaptureDomainHz;
@@ -369,7 +370,8 @@ OtisObserveOnlyDisciplineModelInput model_input(
         OTIS_OBSERVE_ONLY_DISCIPLINE_MODEL_DETAIL_TEMPERATURE_UNAVAILABLE;
   } else {
     const uint64_t temperature_max_age_ticks =
-        (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_TEMPERATURE_MAX_AGE_MS * 16000ull;
+        (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_TEMPERATURE_MAX_AGE_MS *
+        1000ull;
     if (ticks - plant_temperature_ticks > temperature_max_age_ticks) {
       model.applicability_detail_mask |=
           OTIS_OBSERVE_ONLY_DISCIPLINE_MODEL_DETAIL_TEMPERATURE_STALE;
@@ -431,9 +433,9 @@ int append_reference_observation(
       last_reference_seq != 0u, last_reference_seq, last_reference_ticks,
       last_reference_flags};
   const OtisReferenceQualityConfig config = {
-      16000000ull, 3200000ull,
-      (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US * 16ull,
-      57600000000ull, kReferenceInvalidFlags};
+      1000000ull, 200000ull,
+      (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US,
+      3600000000ull, kReferenceInvalidFlags};
   const OtisReferenceQualityResult quality = otis_assess_reference_quality(
       &previous, &current, ticks, nullptr, &config);
   char reasons[384];
@@ -644,7 +646,7 @@ void format_and_enqueue(uint32_t estimate_seq, uint32_t control_seq,
   }
   if (reference_seen)
     snprintf(reference_age_text, sizeof(reference_age_text), "%.12g",
-             (double)(ticks - last_reference_ticks) / 16000000.0);
+             (double)(ticks - last_reference_ticks) / 1000000.0);
   const char *diagnostic_reasons =
       observation.diagnostic_health == OTIS_OBSERVE_ONLY_DISCIPLINE_DIAGNOSTIC_HEALTHY
           ? "diagnostic_healthy"
@@ -785,7 +787,7 @@ void evaluate(uint64_t ticks, bool new_count, uint32_t count_seq,
   OtisObserveOnlyDisciplineObservation observation = {};
   observation.timestamp_ticks = ticks;
   observation.elapsed_s =
-      ticks >= startup_ticks ? (double)(ticks - startup_ticks) / 16000000.0
+      ticks >= startup_ticks ? (double)(ticks - startup_ticks) / 1000000.0
                              : 0.0;
   observation.new_count = new_count;
   observation.reference_validity = ref_validity;
@@ -975,8 +977,8 @@ void otis_observe_only_discipline_live_on_reference(
   }
   if (reference_seen) {
     const uint64_t interval = ticks - previous_reference_ticks;
-    if (interval < (uint64_t)OTIS_PPS_GATE_MIN_INTERVAL_US * 16ull ||
-        interval > (uint64_t)OTIS_PPS_GATE_MAX_INTERVAL_US * 16ull) {
+    if (interval < (uint64_t)OTIS_PPS_GATE_MIN_INTERVAL_US ||
+        interval > (uint64_t)OTIS_PPS_GATE_MAX_INTERVAL_US) {
       reasons |= OTIS_OBSERVE_ONLY_DISCIPLINE_REASON_REFERENCE_OUTLIER;
       reference_window_reason_mask |= OTIS_OBSERVE_ONLY_DISCIPLINE_REASON_REFERENCE_OUTLIER;
     }
@@ -1046,7 +1048,7 @@ void otis_observe_only_discipline_live_on_count(
     reference_validity = OTIS_OBSERVE_ONLY_DISCIPLINE_INVALID;
     reasons |= OTIS_OBSERVE_ONLY_DISCIPLINE_REASON_REFERENCE_CONTINUITY_UNAVAILABLE;
   } else if (ticks - last_reference_ticks >
-             (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US * 16ull) {
+             (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US) {
     reference_validity = OTIS_OBSERVE_ONLY_DISCIPLINE_STALE;
     reasons |= OTIS_OBSERVE_ONLY_DISCIPLINE_REASON_REFERENCE_STALE;
   } else if (reference_window_reason_mask != OTIS_OBSERVE_ONLY_DISCIPLINE_REASON_NONE) {
@@ -1080,7 +1082,7 @@ void otis_observe_only_discipline_live_on_count(
     reasons |= OTIS_OBSERVE_ONLY_DISCIPLINE_REASON_COUNT_DISCONTINUITY;
   }
 
-  const uint64_t gate_ticks = otis_timer0_interval_ticks(
+  const uint64_t gate_ticks = otis_monotonic_us32_interval(
       runtime_state->tcxo.last_gate_open_ticks,
       runtime_state->tcxo.last_gate_close_ticks);
   const uint64_t open_ticks =
@@ -1138,7 +1140,7 @@ void otis_observe_only_discipline_live_poll(
   const uint64_t ticks = unwrap_ticks(now_ticks);
   if (pending_count.active && reference_seen &&
       ticks - last_reference_ticks >
-          (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US * 16ull) {
+          (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US) {
     last_boundary_reason = OTIS_PPS_BOUNDARY_FREQUENCY_MISSING_END_SUPPORT;
     evaluate(
         ticks, true, pending_count.seq, runtime_state, &pending_count.dac,
@@ -1150,7 +1152,7 @@ void otis_observe_only_discipline_live_poll(
   }
   if (!reference_seen && !reference_stale_reported &&
       ticks - startup_ticks >
-          (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US * 16ull) {
+          (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US) {
     reference_stale_reported = true;
     evaluate(ticks, false, previous_count_seq, runtime_state, dac,
              OTIS_OBSERVE_ONLY_DISCIPLINE_UNAVAILABLE,
@@ -1161,7 +1163,7 @@ void otis_observe_only_discipline_live_poll(
              false, 0.0);
   } else if (reference_seen && !reference_stale_reported &&
              ticks - last_reference_ticks >
-                 (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US * 16ull) {
+                 (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_REFERENCE_MAX_AGE_US) {
     reference_stale_reported = true;
     evaluate(ticks, false, previous_count_seq, runtime_state, dac,
              OTIS_OBSERVE_ONLY_DISCIPLINE_STALE,
@@ -1173,7 +1175,7 @@ void otis_observe_only_discipline_live_poll(
   }
   if (!count_seen && !count_stale_reported &&
       ticks - startup_ticks >
-          (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_COUNT_MAX_AGE_US * 16ull) {
+          (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_COUNT_MAX_AGE_US) {
     count_stale_reported = true;
     evaluate(ticks, false, 0u, runtime_state, dac,
              reference_seen && !reference_stale_reported
@@ -1186,7 +1188,7 @@ void otis_observe_only_discipline_live_poll(
              false, 0.0);
   } else if (count_seen && !count_stale_reported &&
              ticks - last_count_ticks >
-                 (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_COUNT_MAX_AGE_US * 16ull) {
+                 (uint64_t)OTIS_OBSERVE_ONLY_DISCIPLINE_COUNT_MAX_AGE_US) {
     count_stale_reported = true;
     evaluate(ticks, false, previous_count_seq, runtime_state, dac,
              reference_stale_reported ? OTIS_OBSERVE_ONLY_DISCIPLINE_STALE

@@ -187,7 +187,7 @@ The long-run D9/D6 engineering profiles encode `ACTIVE_TRANSACTION_TIMING` as
 `ACTIVE_HYBRID_DECISION_TIMING` as `AH2` in
 `active_hybrid_decisions_v2.csv`. These are not new timing observations and do
 not replace D14 `REF` or D8 `CNT`. They bind each legacy `ACT1` transaction or
-`AHY1` decision one-to-one to a monotonic `rp2040_timer0_extended` event or
+`AHY1` decision one-to-one to a monotonic `rp2040_monotonic_us64` event or
 decision timestamp and repeat the complete run, build, profile, session and
 source-frontier identity needed for causal replay.
 
@@ -207,7 +207,7 @@ observation and does not replace D14 `REF`, D8 `CNT`, `AHY`, `AH2`, `ACT`, or
 `AT2`.
 
 Every CX323 decision has exactly one AHM decision row joined to its exact AHY
-content row and AH2 `rp2040_timer0_extended` timing row. Request-producing
+content row and AH2 `rp2040_monotonic_us64` timing row. Request-producing
 decisions additionally join the exact ACT/AT2 request record. Separate AHM
 lifecycle events record unaccepted request rejection or expiry, application
 plus first-dependent-consumer propagation, response completion, recoverable
@@ -218,7 +218,7 @@ first dependent consumer cannot commit correction debt.
 AHM preserves before/after persistence, pending, metadata-hold, and signed
 integer FLL/PLL debt state. The source frontier is in PPS snapshot endpoint
 sequence space with support `(opening, closing]`; the event clock is exactly
-`rp2040_timer0_extended`. Missing, duplicate, backward, partial, or
+`rp2040_monotonic_us64`. Missing, duplicate, backward, partial, or
 identity-inconsistent records are unknown/invalid evidence, never clean or
 unchanged state.
 

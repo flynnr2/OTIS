@@ -60,9 +60,9 @@ Derived datasets may project raw captures into reconstructed, disciplined, refer
 
 ```csv
 record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags
-EVT,1,1000,0,R,1600001234,rp2040_timer0,0
-EVT,1,1001,0,F,1600001872,rp2040_timer0,0
-REF,1,1002,1,R,1600010000,rp2040_timer0,0
+EVT,1,1000,0,R,100000077,rp2040_monotonic_us32,0
+EVT,1,1001,0,F,100000117,rp2040_monotonic_us32,0
+REF,1,1002,1,R,101000000,rp2040_monotonic_us32,0
 ```
 
 A host profile might derive a pulse width from the first two rows and a phase offset versus the `REF` row, but those are derived products, not raw capture semantics.

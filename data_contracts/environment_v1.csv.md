@@ -29,8 +29,8 @@ thermal proxy for warm-up, settling, DAC sweep, and drift analysis.
 
 ```csv
 record_type,schema_version,env_seq,timestamp_ticks,observation_domain,source,role,temperature_c,relative_humidity_pct,pressure_pa,flags
-ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,31.42,44.8,,0
-ENV,1,2,16000012,rp2040_timer0,bmp280,pressure_reference,31.65,,100812.4,0
+ENV,1,1,1000000,rp2040_monotonic_us32,sht4x,vcocxo_near,31.42,44.8,,0
+ENV,1,2,1000012,rp2040_monotonic_us32,bmp280,pressure_reference,31.65,,100812.4,0
 ```
 
 ## Design Rule

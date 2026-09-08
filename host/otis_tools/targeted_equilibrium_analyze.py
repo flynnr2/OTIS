@@ -94,7 +94,7 @@ def _support_from_rows(
         row is not None
         and (
             row.get("channel_id") != "1"
-            or row.get("capture_domain") != "rp2040_timer0"
+            or row.get("capture_domain") != "rp2040_monotonic_us32"
         )
         for row in references
     ):
@@ -105,7 +105,7 @@ def _support_from_rows(
     exact_rows = [row for row in rows if row is not None]
     if any(
         row.get("channel_id") != "2"
-        or row.get("gate_domain") != "rp2040_timer0"
+        or row.get("gate_domain") != "rp2040_monotonic_us32"
         or row.get("source_domain") != "h1_cx317_ocxo_10mhz"
         for row in exact_rows
     ):

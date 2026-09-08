@@ -130,7 +130,7 @@ def test_supervisor_replay_identity_is_current_policy() -> None:
     supervisor.tight_deadband_policy_sha256 = _sha256(POLICY_PATH)
 
     assert supervisor.tight_deadband_policy_sha256 == (
-        "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a"
+        "c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87"
     )
 
 

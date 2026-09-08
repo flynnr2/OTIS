@@ -1091,7 +1091,7 @@ def create_run_manifest(
             "commands": bundle["commands"],
         },
         "domains": [
-            {"name": "rp2040_timer0", "nominal_hz": 16_000_000},
+            {"name": "rp2040_monotonic_us32", "nominal_hz": 1_000_000},
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],
         "channels": [

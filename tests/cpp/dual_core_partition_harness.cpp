@@ -13,8 +13,8 @@ OtisObservationMessage observation(uint32_t sequence) {
   OtisObservationMessage value = {};
   value.kind = OtisObservationMessageKind::CountObservation;
   value.count.sequence = sequence;
-  value.count.gate_open_ticks = static_cast<uint64_t>(sequence) * 16000000ull;
-  value.count.gate_close_ticks = value.count.gate_open_ticks + 16000000ull;
+  value.count.gate_open_ticks = static_cast<uint64_t>(sequence) * 1000000ull;
+  value.count.gate_close_ticks = value.count.gate_open_ticks + 1000000ull;
   value.count.counted_edges = 10000000ull;
   value.count.channel_id = 2u;
   strcpy(value.count.source_domain, "h0_tcxo_16mhz");
@@ -30,7 +30,7 @@ OtisMonitorObservationMessage monitor_observation(uint32_t sequence) {
   value.cumulative_down_counter = 0xffff0000u - sequence;
   value.reference_sequence = sequence - 1u;
   value.reference_timestamp_ticks =
-      static_cast<uint64_t>(sequence) * 16000000ull;
+      static_cast<uint64_t>(sequence) * 1000000ull;
   value.status = 0x30u;
   value.channel_id = 3u;
   return value;
@@ -242,20 +242,20 @@ OtisServiceMessage receiver_metadata(uint32_t sequence) {
 }
 
 void receiver_qualification_age_is_timer_rollover_safe() {
-  constexpr uint64_t kTimerWrapTicks = (1ull << 32) * 16ull;
+  constexpr uint64_t kMonotonicUs32Modulus = 1ull << 32;
   constexpr uint32_t kMaximumMetadataAgeMs = 1500u;
   OtisReceiverQualificationMessage receiver = receiver_metadata(1u).receiver;
-  receiver.published_ticks = kTimerWrapTicks - 4000000ull;
+  receiver.published_ticks = kMonotonicUs32Modulus - 250000ull;
   receiver.metadata_age_ms = 250u;
 
   assert(otis_dual_core_receiver_qualified_for_control_at(
-      &receiver, 12000000ull, kMaximumMetadataAgeMs));
+      &receiver, 750000ull, kMaximumMetadataAgeMs));
   assert(!otis_dual_core_receiver_qualified_for_control_at(
-      &receiver, 28000000ull, kMaximumMetadataAgeMs));
+      &receiver, 1750000ull, kMaximumMetadataAgeMs));
 
-  receiver.published_ticks = 32000000ull;
+  receiver.published_ticks = 2000000ull;
   assert(otis_dual_core_receiver_qualified_for_control_at(
-      &receiver, 36000000ull, kMaximumMetadataAgeMs));
+      &receiver, 2250000ull, kMaximumMetadataAgeMs));
   receiver.metadata_age_ms = kMaximumMetadataAgeMs + 1u;
   assert(!otis_dual_core_receiver_qualified_for_control_at(
       &receiver, 36000000ull, kMaximumMetadataAgeMs));
@@ -340,7 +340,7 @@ OtisCrossCoreActuatorRequest request() {
   value.decision_sequence = 19u;
   value.source_first_sequence = 1201u;
   value.source_last_sequence = 1801u;
-  value.decision_reference_ticks = 28816000000ull;
+  value.decision_reference_ticks = 2881000000ull;
   value.monotonic_deadline_s = 1831u;
   value.authorization_sequence = 3u;
   value.nonce = 0x13579bdfu;

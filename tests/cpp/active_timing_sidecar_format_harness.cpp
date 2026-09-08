@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
         3u,
         2u,
         "application",
-        57616000000ull,
+        5761000000ull,
         "d9_d6_frequency_only_endurance:1",
         "source_sha256:config_sha256",
         "d9_d6_frequency_only_lower",

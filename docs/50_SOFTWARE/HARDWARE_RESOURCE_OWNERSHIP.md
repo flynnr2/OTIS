@@ -67,7 +67,7 @@ not claimed when that feature is disabled.
 
 The timer entry names the core as owner because OTIS consumes the Arduino
 timebase; OTIS does not configure a hardware alarm, repeating timer, or private
-timer IRQ. The `rp2040_timer0` value in existing wire contracts remains a
+timer IRQ. The `rp2040_monotonic_us32` value in existing wire contracts remains a
 reconstructed OTIS timestamp domain and is not changed by this ownership work.
 
 ## Mode-selected GPIO and IRQ ownership

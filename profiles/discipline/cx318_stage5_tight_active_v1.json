@@ -15,32 +15,32 @@
     },
     "stage1_contract": {
       "path": "profiles/discipline/cx318_stage1_contracts_v1.json",
-      "sha256": "f59234cd7732da8a71c2d3ef0d0e6b2e07488353f5b97400c58db21640851aff"
+      "sha256": "5912408c81e4f32e9db57127936e2c97e849da79f82d57bc998f83dcbfd2a61e"
     },
     "selected_frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
-      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+      "sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
     },
     "inherited_frequency_controller_numerics": {
       "path": "profiles/discipline/cx317_pps_gated_i_only_preview_v2.json",
-      "sha256": "7b90ebab300f910476b47e8cecc42276dd0c4d6e1d342e941a39cb7e931cd3c6",
+      "sha256": "4e631b1c647336d34873a7252c420a3f601f366501f267022fc860cde6181446",
       "scope": "integrator_gain_rounding_step_range_and_timing_only; the historical float deadband is replaced by this policy's integer hysteretic state machine"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+      "sha256": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92"
     },
     "response_policy": {
       "path": "profiles/discipline/cx317_response_classification_v2.json",
-      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+      "sha256": "aa327a6571f5f49bce6bd54c4b01090a626a08cb86933d568a96e0909e0e1827"
     },
     "selected_relative_phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
-      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+      "sha256": "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792"
     },
     "selected_hybrid_preview": {
       "path": "profiles/discipline/cx318_hybrid_preview_selected_v1.json",
-      "sha256": "3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76"
+      "sha256": "6f1e0a8d7b9b2a66dc148768208d21bafe252ab37a9e3341762eda64c72d3b37"
     }
   },
   "prerequisites": {

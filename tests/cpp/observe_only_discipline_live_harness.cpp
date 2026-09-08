@@ -52,7 +52,7 @@ void otis_status_emit_u32(OtisStatusEmitContext *, const char *, const char *,
                           uint32_t, const char *, uint32_t) {}
 
 int main(int argc, char **argv) {
-  constexpr uint64_t kTickHz = 16000000ull;
+  constexpr uint64_t kTickHz = 1000000ull;
   constexpr uint32_t kGateSeconds = 300u;
   constexpr uint64_t kNominalGateEdges = 3000000300ull;
   const std::string scenario = argc > 1 ? argv[1] : "nominal";

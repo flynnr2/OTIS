@@ -15,7 +15,7 @@ import re
 from typing import Any, Iterable, Mapping
 
 from .time_domains import (
-    RP2040_TIMER0_MICROS_WRAP_TICKS,
+    RP2040_MONOTONIC_US32_MODULUS,
     forward_progress,
 )
 
@@ -134,7 +134,7 @@ class PlantSignReplayContext:
     identification_estimator_config_sha256: str
     natural_frequency_estimator_sha256: str
     capture_session: int
-    timer_hz: int = 16_000_000
+    timer_hz: int = 1_000_000
     nominal_frequency_hz: int = 10_000_000
     setup_code: int = 0xA83C
 
@@ -817,7 +817,7 @@ def replay_plant_sign_windows_against_snapshots(
     _require(bool(windows), "PSQ prefix has no window to bind to snapshots")
     snapshots = [dict(row) for row in snapshot_records]
     expected_backend = "pio_wait_cumulative_snapshot_dma_v1"
-    modulus = RP2040_TIMER0_MICROS_WRAP_TICKS
+    modulus = RP2040_MONOTONIC_US32_MODULUS
     proofs: list[dict[str, Any]] = []
     for window in windows:
         first = _integer(window, "source_first_sequence", minimum=1)
@@ -880,12 +880,12 @@ def replay_plant_sign_windows_against_snapshots(
             progress = forward_progress(
                 raw_ticks[index - 1],
                 raw_ticks[index],
-                domain="rp2040_timer0",
+                domain="rp2040_monotonic_us32",
                 allow_equal=False,
             )
             _require(
                 progress.valid and progress.distance_ticks is not None,
-                f"{window['event']} SNP raw TIMER0 progression differs",
+                f"{window['event']} SNP raw monotonic-us progression differs",
             )
             _require(
                 8 * context.timer_hz // 10
@@ -932,12 +932,13 @@ def replay_plant_sign_windows_against_snapshots(
             _require(
                 open_ticks == projected_open,
                 f"{window['event']} extended opening is not the first raw "
-                "TIMER0 projection at/after its exclusion deadline",
+                "monotonic-us projection at/after its exclusion deadline",
             )
         _require(
             open_ticks % modulus == raw_ticks[0]
             and close_ticks % modulus == raw_ticks[-1],
-            f"{window['event']} extended endpoints do not match raw SNP TIMER0",
+            f"{window['event']} extended endpoints do not match raw SNP "
+            "monotonic-us timestamps",
         )
         _require(
             close_ticks - open_ticks == elapsed_ticks,

@@ -20,7 +20,7 @@ ENGINE = FIRMWARE / "otis_selected_phase_frequency_preview_engine.cpp"
 HEADER = FIRMWARE / "otis_selected_phase_frequency_preview_engine.h"
 HARNESS = ROOT / "tests/cpp/selected_phase_frequency_preview_engine_harness.cpp"
 START_CODE = 0xA950
-TICKS_PER_SECOND = 16_000_000
+TICKS_PER_SECOND = 1_000_000
 TICK_MODULUS = TICKS_PER_SECOND * (1 << 32) // 1_000_000
 
 
@@ -152,7 +152,7 @@ def _run_host(inputs: list[Input], *, part_b_epoch_reseed: bool = False):
         timer_ticks_per_second=TICKS_PER_SECOND,
         period_ns_per_cycle=100,
         configuration_sha256=phase_hash,
-        reference_timestamp_domain="rp2040_timer0",
+        reference_timestamp_domain="rp2040_monotonic_us32",
         reference_interval_minimum_s=float(phase_profile["validity"]["reference_interval_minimum_s"]),
         reference_interval_maximum_s=float(phase_profile["validity"]["reference_interval_maximum_s"]),
     )

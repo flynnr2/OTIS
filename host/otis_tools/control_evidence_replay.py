@@ -225,7 +225,7 @@ def _controller_replay(
     engine = IOnlyPreviewEngine(policy)
     decision_ticks, wrap_count = unwrap_ticks(
         [int(row["decision_timestamp_ticks"]) for row in controls],
-        domain="rp2040_timer0",
+        domain="rp2040_monotonic_us32",
     )
     # The exact setup establishes the controller's initial operating point; it
     # is not an automatic correction epoch.  Replaying it through
@@ -311,7 +311,7 @@ def _controller_replay(
         maximum_delta_difference = max(maximum_delta_difference, delta_difference)
         row_exact = (
             source_valid
-            and row["time_domain"] == "rp2040_timer0"
+            and row["time_domain"] == "rp2040_monotonic_us32"
             and row["plant_model_hash"] == policy.plant_model_hash
             and row["policy_version"] == policy_id
             and row["config_hash"] == stage5_policy_sha256

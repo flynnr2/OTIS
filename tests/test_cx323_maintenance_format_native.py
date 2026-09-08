@@ -96,7 +96,7 @@ def test_native_formatter_emits_exact_header_and_host_valid_lifecycle(
         CsvValidationContext(
             "active_hybrid_maintenance_v1",
             frozenset(),
-            frozenset({"rp2040_timer0_extended"}),
+            frozenset({"rp2040_monotonic_us64"}),
         ),
     )
     assert result.row_count == 10

@@ -318,7 +318,7 @@ def _create_manifest_if_missing(
             "version": 1,
         },
         "domains": [
-            canonical_domain_declaration("rp2040_timer0")
+            canonical_domain_declaration("rp2040_monotonic_us32")
         ],
         "channels": [
             {"channel_id": 1, "role": "authoritative_pps_reference", "record_family": "raw_events_v1"},
@@ -327,7 +327,7 @@ def _create_manifest_if_missing(
                 "channel_id": 3,
                 "role": "diagnostic_forwarded_d9_clock_monitor",
                 "record_family": "forwarded_monitor_snapshots_v1",
-                "capture_domain": "rp2040_timer0",
+                "capture_domain": "rp2040_monotonic_us32",
                 "reference_channel_id": 1,
                 "reference_event": "d14_accepted_pps_boundary",
                 "authority": "diagnostic_only",

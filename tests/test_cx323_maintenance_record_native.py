@@ -142,7 +142,7 @@ def test_native_builder_emits_host_valid_exact_lifecycle(
         CsvValidationContext(
             "active_hybrid_maintenance_v1",
             frozenset(),
-            frozenset({"rp2040_timer0_extended"}),
+            frozenset({"rp2040_monotonic_us64"}),
         ),
     )
     assert result.row_count == 11

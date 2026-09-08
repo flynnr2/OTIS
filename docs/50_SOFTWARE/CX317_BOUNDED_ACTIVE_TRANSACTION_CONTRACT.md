@@ -59,7 +59,7 @@ arm binds:
 - exact generated firmware profile ID;
 - snapshot session ID;
 - estimator SHA-256
-  `5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c`;
+  `968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9`;
 - plant-model SHA-256
   `d8fbc3539759be1de60d6b4507a50f029b3eaf830952b65ddb4c9849992ef8dd`;
 - numerical-policy SHA-256
@@ -175,7 +175,7 @@ For the separately activated 24-hour D9/D6 frequency-only and 72-hour
 D9/D6/CX322 engineering programmes, every `ACT` row has a one-to-one `AT2`
 timing sidecar in `active_transactions_v2.csv`. `AT2` repeats the complete
 transaction identity and records the event boundary in the monotonic
-`rp2040_timer0_extended` domain. The 72-hour programme likewise gives every
+`rp2040_monotonic_us64` domain. The 72-hour programme likewise gives every
 `AHY1` decision a one-to-one `AH2` timing sidecar in
 `active_hybrid_decisions_v2.csv`. The legacy whole-second fields remain
 display and backward-compatibility fields; cadence, endpoint, response-reserve,

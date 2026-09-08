@@ -11,7 +11,7 @@ constexpr uint16_t kMinimumCode = 0xA800u;
 constexpr uint16_t kMaximumCode = 0xAB00u;
 constexpr int32_t kIdentificationStepCodes = 21;
 constexpr uint64_t kResponseAcknowledgementLimitTicks =
-    30ull * OTIS_CX321_TIMER0_TICKS_PER_SECOND;
+    30ull * OTIS_CX321_MONOTONIC_US_PER_SECOND;
 
 void clear_partial(OtisCx321PlantSignAccumulator *accumulator) {
   accumulator->total_count = 0u;

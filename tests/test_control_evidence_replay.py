@@ -273,7 +273,7 @@ def test_controller_replay_binds_integer_gate_and_application_delta() -> None:
         "est:cx317:selected600:000101": {"frequency_error_hz": "-0.010000000000"},
     }
     common = {
-        "time_domain": "rp2040_timer0",
+        "time_domain": "rp2040_monotonic_us32",
         "plant_model_hash": policy.plant_model_hash,
         "policy_version": "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1",
         "config_hash": stage5_hash,
@@ -289,7 +289,7 @@ def test_controller_replay_binds_integer_gate_and_application_delta() -> None:
             **common,
             "control_seq": "0",
             "decision_id": "ctl:cx317:000000",
-            "decision_timestamp_ticks": str(4200 * 16_000_000),
+            "decision_timestamp_ticks": str(4200 * 1_000_000),
             "est_input_ref": "est:cx317:selected600:000100",
             "current_dac_code": str(0xA808),
             "frequency_error_hz": "0.003333333333",
@@ -308,7 +308,7 @@ def test_controller_replay_binds_integer_gate_and_application_delta() -> None:
             **common,
             "control_seq": "1",
             "decision_id": "ctl:cx317:000001",
-            "decision_timestamp_ticks": str(6000 * 16_000_000),
+            "decision_timestamp_ticks": str(6000 * 1_000_000),
             "est_input_ref": "est:cx317:selected600:000101",
             "current_dac_code": str(0xA808),
             "frequency_error_hz": "-0.010000000000",
@@ -390,8 +390,8 @@ def test_controller_replay_preserves_startup_support_before_first_estimate() -> 
     control = {
         "control_seq": "0",
         "decision_id": "ctl:cx317:000000",
-        "decision_timestamp_ticks": str(policy.warmup_s * 16_000_000),
-        "time_domain": "rp2040_timer0",
+        "decision_timestamp_ticks": str(policy.warmup_s * 1_000_000),
+        "time_domain": "rp2040_monotonic_us32",
         "est_input_ref": "est:cx317:selected600:000000",
         "plant_model_hash": policy.plant_model_hash,
         "policy_version": "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1",

@@ -160,7 +160,7 @@ def test_complete_health_keeps_other_components_but_never_partial_active(
                     "schema_version": "1",
                     "status_seq": str(sequence),
                     "timestamp_ticks": str(sequence),
-                    "status_domain": "rp2040_timer0",
+                    "status_domain": "rp2040_monotonic_us32",
                     "severity": "INFO",
                     "flags": "0",
                 }
@@ -193,7 +193,7 @@ def test_required_query_nonce_rejects_buffered_pre_boundary_status(
             writer.writerow({
                 **row, "schema_version": "1", "status_seq": str(sequence),
                 "timestamp_ticks": str(sequence),
-                "status_domain": "rp2040_timer0", "severity": "INFO",
+                "status_domain": "rp2040_monotonic_us32", "severity": "INFO",
                 "flags": "0",
             })
 

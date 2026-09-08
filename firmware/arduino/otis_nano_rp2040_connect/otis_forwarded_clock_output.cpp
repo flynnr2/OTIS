@@ -126,7 +126,7 @@ bool otis_forwarded_clock_output_begin(void) {
         "invalid_or_transitioning_readback_mismatch");
     return false;
   }
-  output_status.first_valid_ticks = otis_capture_ticks_now();
+  output_status.first_valid_ticks = otis_monotonic_us32_now();
   output_status.reason = "configured_10mhz_forwarded_unqualified";
   return output_status.valid;
 #endif

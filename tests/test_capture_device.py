@@ -180,7 +180,7 @@ def test_line_framer_discards_oversize_continuation_to_record_boundary() -> None
     assert lines == []
     assert events == ["oversize_partial_line_dropped bytes=14"]
 
-    lines, events = framer.feed(b",16000000,rp2040_timer0,16\nSTS,1,ok\n")
+    lines, events = framer.feed(b",16000000,rp2040_monotonic_us32,16\nSTS,1,ok\n")
     assert lines == [b"STS,1,ok"]
     assert events == []
     assert framer.drop_partial() == 0
@@ -211,7 +211,7 @@ def test_flushed_health_record_updates_live_status_publisher(
         ) -> None:
             published.append((line, transport_generation))
 
-    line = b"STS,1,1,1,rp2040_timer0,system,mode,test,INFO,0"
+    line = b"STS,1,1,1,rp2040_monotonic_us32,system,mode,test,INFO,0"
     runner._process_line(  # type: ignore[arg-type]
         line,
         Splitter(),
@@ -232,12 +232,12 @@ def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
 
     serial = FakeSerial(
         [
-            b"REF,1,1000,1,R,16000000,rp2040_timer0,16\n",
-            b"CNT,1,7,2,1,16000001,rp2040_timer0,16,R,h0_tcxo_16mhz,0\n",
+            b"REF,1,1000,1,R,16000000,rp2040_monotonic_us32,16\n",
+            b"CNT,1,7,2,1,16000001,rp2040_monotonic_us32,16,R,h0_tcxo_16mhz,0\n",
             b"SNP,1,7,0,4294967295,1,16000000,0,pio_wait_cumulative_snapshot_dma_v1\n",
             b"MNS,1,7,3,0,4294967295,1,16000000,0,pio_wait_cumulative_snapshot_cpu_v1,3\n",
-            b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n",
-            b"ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,31.250,45.000,,0\n",
+            b"STS,1,1,1,rp2040_monotonic_us32,system,mode,SW1_GPS_PPS,INFO,32768\n",
+            b"ENV,1,1,16000000,rp2040_monotonic_us32,sht4x,vcocxo_near,31.250,45.000,,0\n",
             b"PGT,1,1,1,CLEAN_NOMINAL,1,0,start,marker,0,0,0,0\n",
         ],
         stop_event=stop_event,
@@ -249,8 +249,8 @@ def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
     raw = paths.raw_serial_log.read_bytes()
     assert raw.startswith(b"PREEXISTING\n")
     assert b"REF,1,1000" in raw
-    assert "REF,1,1000,1,R,16000000,rp2040_timer0,16" in paths.raw_events_csv.read_text(encoding="utf-8")
-    assert "CNT,1,7,2,1,16000001,rp2040_timer0,16,R,h0_tcxo_16mhz,0" in paths.count_observations_csv.read_text(
+    assert "REF,1,1000,1,R,16000000,rp2040_monotonic_us32,16" in paths.raw_events_csv.read_text(encoding="utf-8")
+    assert "CNT,1,7,2,1,16000001,rp2040_monotonic_us32,16,R,h0_tcxo_16mhz,0" in paths.count_observations_csv.read_text(
         encoding="utf-8"
     )
     assert "SNP,1,7,0,4294967295,1,16000000" in paths.pps_snapshots_csv.read_text(
@@ -265,8 +265,8 @@ def test_capture_device_writes_append_only_raw_and_csv(tmp_path: Path) -> None:
     assert "SNP,1,7,0,4294967295,1,16000000" not in paths.forwarded_monitor_snapshots_csv.read_text(
         encoding="utf-8"
     )
-    assert "STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768" in paths.health_csv.read_text(encoding="utf-8")
-    assert "ENV,1,1,16000000,rp2040_timer0,sht4x,vcocxo_near,31.250,45.000,,0" in paths.environment_csv.read_text(
+    assert "STS,1,1,1,rp2040_monotonic_us32,system,mode,SW1_GPS_PPS,INFO,32768" in paths.health_csv.read_text(encoding="utf-8")
+    assert "ENV,1,1,16000000,rp2040_monotonic_us32,sht4x,vcocxo_near,31.250,45.000,,0" in paths.environment_csv.read_text(
         encoding="utf-8"
     )
     assert "PGT,1,1,1,CLEAN_NOMINAL" in paths.pseudo_pps_truth_csv.read_text(
@@ -306,7 +306,7 @@ def test_capture_device_declares_and_retains_d6_monitor_evidence(
         "channel_id": 3,
         "role": "diagnostic_forwarded_d9_clock_monitor",
         "record_family": "forwarded_monitor_snapshots_v1",
-        "capture_domain": "rp2040_timer0",
+        "capture_domain": "rp2040_monotonic_us32",
         "reference_channel_id": 1,
         "reference_event": "d14_accepted_pps_boundary",
         "authority": "diagnostic_only",
@@ -339,7 +339,7 @@ def test_capture_device_reconnect_drops_partial_without_truncating(tmp_path: Pat
     config = _config(tmp_path)
     serials = [
         FakeSerial([b"REF,1,1000"], fail_after=EOFError("device disappeared")),
-        FakeSerial([b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"], stop_event=stop_event),
+        FakeSerial([b"REF,1,1001,1,R,32000000,rp2040_monotonic_us32,16\n"], stop_event=stop_event),
     ]
 
     def factory(*_args, **_kwargs):
@@ -354,7 +354,7 @@ def test_capture_device_reconnect_drops_partial_without_truncating(tmp_path: Pat
     assert b"serial_disconnected" in raw
     assert b"partial_line_dropped_bytes" in raw
     assert runner.reconnect_count == 1
-    assert "REF,1,1001,1,R,32000000,rp2040_timer0,16" in RunPaths(config.run_dir).raw_events_csv.read_text(
+    assert "REF,1,1001,1,R,32000000,rp2040_monotonic_us32,16" in RunPaths(config.run_dir).raw_events_csv.read_text(
         encoding="utf-8"
     )
 
@@ -384,9 +384,9 @@ def test_q1_intentional_detach_requires_no_actuation_manifest_and_reattaches(
     }
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     serials = [
-        FakeSerial([b"REF,1,1000,1,R,16000000,rp2040_timer0,16\n"]),
+        FakeSerial([b"REF,1,1000,1,R,16000000,rp2040_monotonic_us32,16\n"]),
         FakeSerial(
-            [b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"],
+            [b"REF,1,1001,1,R,32000000,rp2040_monotonic_us32,16\n"],
             stop_event=stop_event,
         ),
     ]
@@ -434,12 +434,12 @@ def test_q1_intentional_detach_waits_for_complete_device_record(
     serials = [
         FakeSerial(
             [
-                b"STS,1,1,1,rp2040_timer0,system,mode,",
+                b"STS,1,1,1,rp2040_monotonic_us32,system,mode,",
                 b"SW1_GPS_PPS,INFO,32768\n",
             ]
         ),
         FakeSerial(
-            [b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"],
+            [b"REF,1,1001,1,R,32000000,rp2040_monotonic_us32,16\n"],
             stop_event=stop_event,
         ),
     ]
@@ -460,7 +460,7 @@ def test_q1_intentional_detach_waits_for_complete_device_record(
 def test_capture_device_malformed_utf8_preserves_raw_bytes(tmp_path: Path) -> None:
     stop_event = threading.Event()
     config = _config(tmp_path)
-    bad_line = b"STS,1,1,1,rp2040_timer0,system,bad,\xff,INFO,0\n"
+    bad_line = b"STS,1,1,1,rp2040_monotonic_us32,system,bad,\xff,INFO,0\n"
     serial = FakeSerial([bad_line], stop_event=stop_event)
     runner = CaptureDeviceRunner(config, serial_factory=lambda *_args, **_kwargs: serial, stop_event=stop_event)
 
@@ -477,7 +477,7 @@ def test_capture_device_malformed_utf8_preserves_raw_bytes(tmp_path: Path) -> No
 def test_capture_device_preserves_malformed_frame_only_in_raw_evidence(tmp_path: Path) -> None:
     stop_event = threading.Event()
     config = _config(tmp_path)
-    malformed_known_record = b"REF,1,1000,1,R,16000000,rp2040_timer0,16,extra\n"
+    malformed_known_record = b"REF,1,1000,1,R,16000000,rp2040_monotonic_us32,16,extra\n"
     serial = FakeSerial([malformed_known_record], stop_event=stop_event)
     runner = CaptureDeviceRunner(config, serial_factory=lambda *_args, **_kwargs: serial, stop_event=stop_event)
 
@@ -485,7 +485,7 @@ def test_capture_device_preserves_malformed_frame_only_in_raw_evidence(tmp_path:
 
     paths = RunPaths(config.run_dir)
     assert malformed_known_record in paths.raw_serial_log.read_bytes()
-    assert "REF,1,1000,1,R,16000000,rp2040_timer0,16,extra" not in paths.raw_events_csv.read_text(
+    assert "REF,1,1000,1,R,16000000,rp2040_monotonic_us32,16,extra" not in paths.raw_events_csv.read_text(
         encoding="utf-8"
     )
     assert runner.parser_errors == 1
@@ -533,9 +533,9 @@ def test_sigint_shutdown_drains_exactly_one_partial_device_line(
         def __init__(self) -> None:
             super().__init__(
                 [
-                    b"STS,1,1,1,rp2040_timer0,system,mode",
+                    b"STS,1,1,1,rp2040_monotonic_us32,system,mode",
                     b",SW1_GPS_PPS,INFO,32768\n"
-                    b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n",
+                    b"REF,1,1001,1,R,32000000,rp2040_monotonic_us32,16\n",
                 ]
             )
             self.first_read = True
@@ -557,7 +557,7 @@ def test_sigint_shutdown_drains_exactly_one_partial_device_line(
 
     raw = RunPaths(config.run_dir).raw_serial_log.read_bytes()
     assert (
-        b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n"
+        b"STS,1,1,1,rp2040_monotonic_us32,system,mode,SW1_GPS_PPS,INFO,32768\n"
         in raw
     )
     assert b"REF,1,1001" not in raw
@@ -579,7 +579,7 @@ def test_sigint_shutdown_drains_active_status_generation_not_only_current_line(
                 1,
                 sequence,
                 sequence,
-                "rp2040_timer0",
+                "rp2040_monotonic_us32",
                 "cx317_active",
                 key,
                 value,
@@ -603,7 +603,7 @@ def test_sigint_shutdown_drains_active_status_generation_not_only_current_line(
             str(generation),
         ),
     ]
-    trailing = b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"
+    trailing = b"REF,1,1001,1,R,32000000,rp2040_monotonic_us32,16\n"
 
     class SignalAfterSnapshotBegin(FakeSerial):
         def __init__(self) -> None:
@@ -641,7 +641,7 @@ def test_second_sigint_bounds_a_stuck_active_status_generation(
     config = _config(tmp_path)
     runner: CaptureDeviceRunner
     begin = (
-        "STS,1,1,1,rp2040_timer0,cx317_active,"
+        "STS,1,1,1,rp2040_monotonic_us32,cx317_active,"
         f"{SNAPSHOT_BEGIN_KEY},7,INFO,0\n"
     ).encode()
 
@@ -699,9 +699,9 @@ def test_planned_duration_stops_after_completing_partial_device_line(
     )
     serial = FakeSerial(
         [
-            b"STS,1,1,1,rp2040_timer0,system,mode",
+            b"STS,1,1,1,rp2040_monotonic_us32,system,mode",
             b",SW1_GPS_PPS,INFO,32768\n"
-            b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n",
+            b"REF,1,1001,1,R,32000000,rp2040_monotonic_us32,16\n",
         ]
     )
     runner = CaptureDeviceRunner(
@@ -713,7 +713,7 @@ def test_planned_duration_stops_after_completing_partial_device_line(
 
     paths = RunPaths(config.run_dir)
     raw = paths.raw_serial_log.read_bytes()
-    assert b"STS,1,1,1,rp2040_timer0,system,mode,SW1_GPS_PPS,INFO,32768\n" in raw
+    assert b"STS,1,1,1,rp2040_monotonic_us32,system,mode,SW1_GPS_PPS,INFO,32768\n" in raw
     assert b"REF,1,1001" not in raw
     assert b"planned_duration_complete" in raw
     assert b"partial_line_dropped" not in raw
@@ -1020,9 +1020,9 @@ def test_same_owner_segment_rotation_waits_for_record_boundary_and_never_reopens
                 )
                 return b"REF,1,1000"
             if self.read_count == 2:
-                return b",1,R,16000000,rp2040_timer0,16\n"
+                return b",1,R,16000000,rp2040_monotonic_us32,16\n"
             if self.read_count == 3:
-                return b"REF,1,1001,1,R,32000000,rp2040_timer0,16\n"
+                return b"REF,1,1001,1,R,32000000,rp2040_monotonic_us32,16\n"
             stop_event.set()
             return b""
 
@@ -1107,7 +1107,7 @@ def test_segment_rotation_rejects_wrong_generation_without_touching_target(
                 (control_dir / "request.json").write_text(
                     json.dumps(request), encoding="utf-8"
                 )
-                return b"REF,1,1000,1,R,16000000,rp2040_timer0,16\n"
+                return b"REF,1,1000,1,R,16000000,rp2040_monotonic_us32,16\n"
             stop_event.set()
             return b""
 
@@ -1204,7 +1204,7 @@ def test_normal_command_reaches_serial_before_device_batch_consumers(
                 send_timestamped_command_to_fifo(
                     normal_fifo, "ACTIVE LEASE 1"
                 )
-                return b"REF,1,1000,1,R,16000000,rp2040_timer0,16\n"
+                return b"REF,1,1000,1,R,16000000,rp2040_monotonic_us32,16\n"
             stop_event.set()
             return b""
 
@@ -1286,12 +1286,12 @@ def test_raw_evidence_writer_defers_host_marker_until_partial_device_line_comple
         writer = RawEvidenceWriter(raw_handle)
         writer.write_device(b"CNT,1,2700,2,43227335024,43243335024")
         writer.write_marker("host_command_sent", command="CONFIG?", bytes_written=8)
-        writer.write_device(b",rp2040_timer0,15999997,R,h0_tcxo_16mhz,16\n")
+        writer.write_device(b",rp2040_monotonic_us32,15999997,R,h0_tcxo_16mhz,16\n")
 
     lines = path.read_bytes().splitlines()
     assert lines[0] == (
         b"CNT,1,2700,2,43227335024,43243335024,"
-        b"rp2040_timer0,15999997,R,h0_tcxo_16mhz,16"
+        b"rp2040_monotonic_us32,15999997,R,h0_tcxo_16mhz,16"
     )
     assert lines[1].startswith(b"# OTIS_HOST ")
     assert b"host_command_sent" in lines[1]

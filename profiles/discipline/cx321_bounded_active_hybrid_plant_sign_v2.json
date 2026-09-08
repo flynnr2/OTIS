@@ -5,39 +5,39 @@
   "programme_id": "CX321_BOUNDED_ACTIVE_HYBRID_SUCCESSOR_V2",
   "supersedes": {
     "path": "profiles/discipline/cx321_bounded_active_hybrid_plant_sign_v1.json",
-    "sha256": "f5675bafd51122c120c9f5d42e6fa7d73c94f38c5db7f223aa848d217f1d6f23",
+    "sha256": "14a84901e2f0144ecb93435ba9e8e92a23c53b55c25335fe45edf3c880dd9c3a",
     "reason": "the_v1_first_response_600s_gate_was_rejected_by_exhaustive_timeline_faithful_null_replay"
   },
   "question": "After the dedicated 1500-second identification path observes a same-run bounded plant-sign response, can the unchanged 600-second natural hybrid controller produce at least two material applications, improve the frozen relative-phase metric and preserve authoritative frequency performance?",
   "bindings": {
     "cx320_policy": {
       "path": "profiles/discipline/cx320_bounded_active_hybrid_tight_v1.json",
-      "sha256": "4c2642cb16335e724d2df669fa5afc188435d52f8023c388ea0a6fac3f9aba5d",
+      "sha256": "44975f5535eb1e8cac04aeb93d6e522cfe4a8e0bec59dac739ab63c05fd789b0",
       "disposition": "sealed_bounded_nonpass_natural_controller_semantics_reused_without_reinterpreting_result"
     },
     "plant_sign_gate": {
       "path": "profiles/qualification/cx321_bounded_response_observability_v2.json",
-      "sha256": "9bbde84471bcea646e8ceb0b732cfa6dd1d81592fa44071d4aab3bc9ddac8d62"
+      "sha256": "ea706717d72ae95005f987289f275038b298be995488810d0e8824d23296d4f1"
     },
     "identification_estimator": {
       "path": "profiles/estimators/cx321_plant_sign_1500_v1.json",
-      "sha256": "cf5ea727615ea79a7e23258b674798a3215b0f996ac1a4a454eb39afe0d737b1"
+      "sha256": "ec048c6b698dab0d542da51b8c1781c554c18383e4b514adfc54c233390b06f7"
     },
     "natural_frequency_estimator": {
       "path": "profiles/estimators/cx317_pps_gated_selected_v1.json",
-      "sha256": "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c"
+      "sha256": "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9"
     },
     "phase_estimator": {
       "path": "profiles/estimators/cx318_relative_phase_selected_v1.json",
-      "sha256": "449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4"
+      "sha256": "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792"
     },
     "plant_model": {
       "path": "profiles/plant_models/cx317_pps_gated_v2.json",
-      "sha256": "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2"
+      "sha256": "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92"
     },
     "natural_response_classifier": {
       "path": "profiles/discipline/cx317_response_classification_v2.json",
-      "sha256": "e1324c335fcc25d8bd7c97dcec4b77488971bdae19f78ef856204991aa83169e"
+      "sha256": "aa327a6571f5f49bce6bd54c4b01090a626a08cb86933d568a96e0909e0e1827"
     }
   },
   "topology": {
@@ -180,10 +180,10 @@
     "minimum_natural_material_phase_applications": 2
   },
   "finite_timing": {
-    "source_capture_timing_domain": "rp2040_timer0",
-    "identification_lifecycle_timing_domain": "rp2040_timer0_extended",
+    "source_capture_timing_domain": "rp2040_monotonic_us32",
+    "identification_lifecycle_timing_domain": "rp2040_monotonic_us64",
     "identification_lifecycle_domain_derivation": "session_local_monotonic_extension_of_qualified_adjacent_D14_boundary_ticks_with_bounded_unambiguous_setup_application_and_ack_projection",
-    "natural_controller_timing_domain": "rp2040_timer0",
+    "natural_controller_timing_domain": "rp2040_monotonic_us32",
     "qualified_duration_s": 43200,
     "qualified_origin": "first_complete_fresh_authoritative_600s_estimate_after_exact_setup_support_and_common_health_qualification",
     "absolute_wall_clock_limit_s": 57600,

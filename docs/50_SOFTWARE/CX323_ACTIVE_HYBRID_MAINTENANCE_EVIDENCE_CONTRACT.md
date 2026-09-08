@@ -19,7 +19,7 @@ Capture routes `AHM` to this contract through
 
 - `event_timestamp_ticks` is the firmware timestamp at which the recorded
   maintenance transition became committed.
-- `time_domain` is exactly `rp2040_timer0_extended`. It is a monotonic extended
+- `time_domain` is exactly `rp2040_monotonic_us64`. It is a monotonic extended
   counter and is never reconstructed from whole seconds or host time.
 - `maintenance_record_sequence` is non-zero and strictly increasing across one
   policy activation. It does not reset at a capture-session boundary.

@@ -17,20 +17,20 @@ constexpr uint16_t kMaximumCode = 0xAB00u;
 constexpr uint16_t kStartCode = 0xA83Cu;
 constexpr uint32_t kMinimumCadenceS = 1800u;
 constexpr uint32_t kPhaseQualificationResidenceS = 1800u;
-constexpr uint64_t kTimer0TicksPerSecond = 16000000ull;
+constexpr uint64_t kMonotonicUsPerSecond = 1000000ull;
 constexpr uint64_t kMinimumCadenceTicks =
-    static_cast<uint64_t>(kMinimumCadenceS) * kTimer0TicksPerSecond;
+    static_cast<uint64_t>(kMinimumCadenceS) * kMonotonicUsPerSecond;
 constexpr uint64_t kPhaseQualificationResidenceTicks =
     static_cast<uint64_t>(kPhaseQualificationResidenceS) *
-    kTimer0TicksPerSecond;
+    kMonotonicUsPerSecond;
 constexpr uint16_t kMaximumAutomaticApplications =
     OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS;
 constexpr uint16_t kMaximumCumulativeMovementCodes =
     OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES;
 constexpr uint64_t kNaturalReversalWindowTicks =
-    43200ull * kTimer0TicksPerSecond;
+    43200ull * kMonotonicUsPerSecond;
 constexpr uint64_t kChallengeLatestTicks =
-    50400ull * kTimer0TicksPerSecond;
+    50400ull * kMonotonicUsPerSecond;
 constexpr int32_t kChallengeStepCodes = 21;
 
 double clamp_double(double value, double lower, double upper) {
@@ -133,7 +133,7 @@ void otis_active_hybrid_engine_init_at_ticks(
   if (engine == nullptr || setup_application_ticks == 0u) return;
   otis_active_hybrid_engine_init(
       engine, static_cast<uint32_t>(setup_application_ticks /
-                                    kTimer0TicksPerSecond));
+                                    kMonotonicUsPerSecond));
   engine->exact_tick_timing_required = true;
   engine->last_application_ticks = setup_application_ticks;
 }
@@ -165,12 +165,12 @@ bool otis_active_hybrid_engine_rebase_after_plant_sign(
   engine->natural_cumulative_movement_codes = 0u;
   engine->last_application_available = true;
   engine->last_application_s = static_cast<uint32_t>(
-      identification_application_ticks / kTimer0TicksPerSecond);
+      identification_application_ticks / kMonotonicUsPerSecond);
   engine->exact_tick_timing_required = true;
   engine->last_application_ticks = identification_application_ticks;
   engine->phase_qualification_started = true;
   engine->phase_qualification_started_s = static_cast<uint32_t>(
-      response_acknowledgement_ticks / kTimer0TicksPerSecond);
+      response_acknowledgement_ticks / kMonotonicUsPerSecond);
   engine->phase_qualification_started_ticks =
       response_acknowledgement_ticks;
   return true;
@@ -509,7 +509,7 @@ bool note_application_impl(
   if (engine->exact_tick_timing_required) {
     engine->last_application_ticks = application_ticks;
     engine->last_application_s = static_cast<uint32_t>(
-        application_ticks / kTimer0TicksPerSecond);
+        application_ticks / kMonotonicUsPerSecond);
   } else {
     engine->last_application_s = decision->timestamp_s;
   }

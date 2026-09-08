@@ -113,33 +113,37 @@ Counters define local timing domains. They are not inherently synchronized to ex
 
 The wrapping unsigned 32-bit projection of the Arduino/RP2040 monotonic
 millisecond counter used only for actuator transaction expiry on both cores.
-It is not a capture timestamp, UTC, or `rp2040_timer0` evidence coordinate.
+It is not a capture timestamp, UTC, or `rp2040_monotonic_us32` evidence coordinate.
 Intervals are compared with wrap-safe signed differences and must remain below
 half the representation range.
 
-### Extended RP2040 TIMER0 ticks
+### RP2040 monotonic microseconds
 
-The non-wrapping, session-bound coordinate reconstructed by firmware from
-successive qualified D14 boundary timestamps in the wrapping raw
-`rp2040_timer0` domain. The reconstruction adds each wrap-safe adjacent
-boundary interval to the preceding extended value; setup, application and
-acknowledgement instants may be projected into that coordinate only when they
-are unambiguously close to a retained boundary.
+The RP2040-local operational coordinate used for record ordering, deadlines,
+telemetry, and non-metrological interval checks. Its raw canonical domain is
+`rp2040_monotonic_us32`: the native wrapping 32-bit `micros()`/`timerawl`
+microsecond count. One coordinate unit is exactly one microsecond; the nominal
+rate is 1,000,000 units per second and the modulus is `2^32` microseconds.
 
-Its canonical domain name is `rp2040_timer0_extended`, with a nominal encoded
-scale of 16,000,000 units per second and strict non-wrapping ordering. Both it
-and raw `rp2040_timer0` ultimately come from a 1 MHz RP2040 microsecond counter
-whose values are multiplied by 16. Their actual quantum is therefore 16
-encoded ticks, or 1 us, not 62.5 ns. Extension is derived evidence, not a wider
-hardware counter, finer resolution, or new timing authority. Raw
-`rp2040_timer0` records remain unchanged. A value in one domain must not be
-compared directly with a value in the other without the explicit session
-reconstruction or projection that relates them.
+`rp2040_monotonic_us64` is the non-wrapping, session-bound reconstruction of
+that raw coordinate. Firmware forms it from successive D14 observation
+timestamps by adding each wrap-safe adjacent interval. Nearby setup,
+application, and acknowledgement instants may be projected into it only when
+the retained session and distance make that projection unambiguous. Extension
+changes rollover behaviour, not source, resolution, accuracy, or authority.
 
-The two TIMER0 domains are projected, local, non-metrological coordinates.
-They are suitable for local ordering, telemetry, and exact integer comparisons
-at their declared quantum. They are not D8-derived capture domains and must not
-be presented as the metrological timebase for D10 events.
+Both domains come from the RP2040 timer peripheral's 1 MHz reference, derived
+from the board's RP2040 clock-generation tree. They are not derived from D8.
+The normally 133 MHz `clk_sys` CPU/PIO operating clock is a separate clock-tree
+output, not the timer's timestamp quantum; choosing native microseconds here
+changes neither clock. These domains must not be presented as the
+metrological timebase for D10 events.
+
+The metrology path is separate: D14 is the sole authoritative PPS/reference
+input, D8 is the authoritative oscillator/count input (currently the 10 MHz
+VCOCXO), and D10 is the external event input to be measured against that
+D14-disciplined D8 timebase. Local RP2040 timestamps may order or transport
+those records, but cannot substitute for the D8-derived hardware capture.
 
 ### Host written
 
@@ -166,13 +170,9 @@ The finite resolution imposed by the tick rate of the timing source.
 
 Examples:
 
-- a native 16 MHz counter implies 62.5 ns ticks;
-- 10 MHz implies 100 ns ticks;
-- 20 MHz implies 50 ns ticks.
-
-An encoded unit rate does not by itself imply the same quantum. For example,
-`rp2040_timer0` is represented in 16,000,000 units per second but can change
-only in 16-unit steps, so its quantum is 1 us.
+- the native RP2040 local coordinate has 1 us ticks;
+- the current 10 MHz D8 VCOCXO count has a 100 ns cycle;
+- a native 16 MHz counter would have 62.5 ns ticks.
 
 Quantization is distinct from accuracy, precision, jitter, stability, and drift.
 

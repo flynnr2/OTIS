@@ -39,7 +39,7 @@ from .targeted_equilibrium_run import (
     _guarded,
     _targeted_prewrite_ready,
 )
-from .time_domains import RP2040_TIMER0_MICROS_WRAP_TICKS
+from .time_domains import RP2040_MONOTONIC_US32_MODULUS
 
 
 TOOL_ID = "otis_targeted_equilibrium_operational_rehearsal_v1"
@@ -55,7 +55,7 @@ def _health_row(sequence: int, component: str, key: str, value: str) -> bytes:
             "schema_version": "1",
             "status_seq": str(sequence),
             "timestamp_ticks": str(sequence * 1000),
-            "status_domain": "rp2040_timer0",
+            "status_domain": "rp2040_monotonic_us32",
             "component": component,
             "status_key": key,
             "status_value": value,
@@ -67,7 +67,7 @@ def _health_row(sequence: int, component: str, key: str, value: str) -> bytes:
 
 
 def _prewrite_records(bundle: dict[str, Any]) -> list[bytes]:
-    modulus = RP2040_TIMER0_MICROS_WRAP_TICKS
+    modulus = RP2040_MONOTONIC_US32_MODULUS
     records: list[bytes] = []
     for sequence in range(1, 7):
         records.append(
@@ -78,8 +78,8 @@ def _prewrite_records(bundle: dict[str, Any]) -> list[bytes]:
                     "event_seq": str(sequence),
                     "channel_id": "1",
                     "edge": "R",
-                    "timestamp_ticks": str((sequence * 16_000_000) % modulus),
-                    "capture_domain": "rp2040_timer0",
+                    "timestamp_ticks": str((sequence * 1_000_000) % modulus),
+                    "capture_domain": "rp2040_monotonic_us32",
                     "flags": "16",
                 },
                 "raw_events_v1",
@@ -93,9 +93,9 @@ def _prewrite_records(bundle: dict[str, Any]) -> list[bytes]:
                     "schema_version": "1",
                     "count_seq": str(sequence),
                     "channel_id": "2",
-                    "gate_open_ticks": str(((sequence - 1) * 16_000_000) % modulus),
-                    "gate_close_ticks": str((sequence * 16_000_000) % modulus),
-                    "gate_domain": "rp2040_timer0",
+                    "gate_open_ticks": str(((sequence - 1) * 1_000_000) % modulus),
+                    "gate_close_ticks": str((sequence * 1_000_000) % modulus),
+                    "gate_domain": "rp2040_monotonic_us32",
                     "counted_edges": "10000000",
                     "source_edge": "R",
                     "source_domain": "h1_cx317_ocxo_10mhz",
@@ -155,17 +155,17 @@ def _prewrite_records(bundle: dict[str, Any]) -> list[bytes]:
         schema_version="1",
         preview_sequence="0",
         candidate_id="p21600_cap1_v2",
-        candidate_configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        candidate_configuration_sha256="5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358",
         phase_estimator_id="CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
-        phase_estimator_configuration_sha256="449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+        phase_estimator_configuration_sha256="2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792",
         frequency_estimator_id="cx317_selected_600s_nonoverlap_v1",
-        frequency_estimator_configuration_sha256="5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
-        configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        frequency_estimator_configuration_sha256="968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
+        configuration_sha256="5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358",
         phase_epoch="1",
         observation_sequence="1",
         dac_epoch="0",
         decision_timestamp_ticks="96000000",
-        time_domain="rp2040_timer0",
+        time_domain="rp2040_monotonic_us32",
         source_phase_estimate="PHE:1:1",
         source_frequency_estimate="unavailable",
         raw_relative_phase_cycles="0",
@@ -200,7 +200,7 @@ def _prewrite_records(bundle: dict[str, Any]) -> list[bytes]:
 def _dwell_records(
     *, dwell: dict[str, Any], reference_start: int, decision_start: int
 ) -> tuple[list[bytes], int, list[int]]:
-    modulus = RP2040_TIMER0_MICROS_WRAP_TICKS
+    modulus = RP2040_MONOTONIC_US32_MODULUS
     index = int(dwell["index"])
     epoch = index + 1
     code = int(dwell["code"])
@@ -227,12 +227,12 @@ def _dwell_records(
         schema_version="1",
         preview_sequence=str(epoch),
         candidate_id="p21600_cap1_v2",
-        candidate_configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        candidate_configuration_sha256="5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358",
         phase_estimator_id="CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1",
-        phase_estimator_configuration_sha256="449c828d2affeff858eb91535e81da0bc9c44840369d741dc1f917a8d662acb4",
+        phase_estimator_configuration_sha256="2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792",
         frequency_estimator_id="cx317_selected_600s_nonoverlap_v1",
-        frequency_estimator_configuration_sha256="5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
-        configuration_sha256="3f0fe4ae2806ab0c9669d8b29b0ce62af897df5e14a56ea273057904de619e76",
+        frequency_estimator_configuration_sha256="968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
+        configuration_sha256="5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358",
         phase_epoch=str(epoch),
         observation_sequence="1",
         dac_epoch=str(epoch),
@@ -240,8 +240,8 @@ def _dwell_records(
         # per dwell. Keep that synthetic HPR stream unambiguously ordered in
         # its declared wrapping domain; the full 2,700-second chronology is
         # separately exercised by the raw D14/D8 records below.
-        decision_timestamp_ticks=str(96_000_000 + epoch * 16_000_000),
-        time_domain="rp2040_timer0",
+        decision_timestamp_ticks=str(96_000_000 + epoch * 1_000_000),
+        time_domain="rp2040_monotonic_us32",
         source_phase_estimate=f"PHE:{epoch}:1",
         source_frequency_estimate="unavailable",
         raw_relative_phase_cycles="0",
@@ -284,8 +284,8 @@ def _dwell_records(
                     "event_seq": str(sequence),
                     "channel_id": "1",
                     "edge": "R",
-                    "timestamp_ticks": str((sequence * 16_000_000) % modulus),
-                    "capture_domain": "rp2040_timer0",
+                    "timestamp_ticks": str((sequence * 1_000_000) % modulus),
+                    "capture_domain": "rp2040_monotonic_us32",
                     "flags": "16",
                 },
                 "raw_events_v1",
@@ -305,9 +305,9 @@ def _dwell_records(
                     "schema_version": "1",
                     "count_seq": str(sequence),
                     "channel_id": "2",
-                    "gate_open_ticks": str(((sequence - 1) * 16_000_000) % modulus),
-                    "gate_close_ticks": str((sequence * 16_000_000) % modulus),
-                    "gate_domain": "rp2040_timer0",
+                    "gate_open_ticks": str(((sequence - 1) * 1_000_000) % modulus),
+                    "gate_close_ticks": str((sequence * 1_000_000) % modulus),
+                    "gate_domain": "rp2040_monotonic_us32",
                     "counted_edges": str(10_000_000 + edge_adjustment),
                     "source_edge": "R",
                     "source_domain": "h1_cx317_ocxo_10mhz",
@@ -329,8 +329,8 @@ def _dwell_records(
             schema_version="2",
             estimate_seq=str(decision),
             estimate_id=estimate_id,
-            estimator_timestamp_ticks=str((last * 16_000_000) % modulus),
-            time_domain="rp2040_timer0",
+            estimator_timestamp_ticks=str((last * 1_000_000) % modulus),
+            time_domain="rp2040_monotonic_us32",
             source_count_seq=str(last),
             source_count_ref=f"rehearsal:CNT:{last}",
             source_reference_first_seq=str(first),
@@ -339,7 +339,7 @@ def _dwell_records(
             source_dac_ref=f"rehearsal:DAC:{epoch}",
             manifest_ref="firmware_config:cx319_range_map_part_a",
             estimator_version="cx317_selected_600s_nonoverlap_v1",
-            config_hash="5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c",
+            config_hash="968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9",
             observation_validity="valid",
             observation_reason_codes="contiguous_snapshot_span",
             reference_validity="valid",
@@ -372,8 +372,8 @@ def _dwell_records(
             schema_version="1",
             decision_sequence=str(decision),
             estimate_id=estimate_id,
-            decision_timestamp_ticks=str((last * 16_000_000) % modulus),
-            time_domain="rp2040_timer0",
+            decision_timestamp_ticks=str((last * 1_000_000) % modulus),
+            time_domain="rp2040_monotonic_us32",
             capture_session="1",
             dac_epoch=str(epoch),
             integer_edge_error_counts=str(count_error),
@@ -391,7 +391,7 @@ def _dwell_records(
             historical_v2_inside="true" if abs(count_error) <= 3 else "false",
             symmetric_two_count_inside="true" if abs(count_error) <= 2 else "false",
             policy_id="CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1",
-            policy_sha256="352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a",
+            policy_sha256="c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87",
             actionable="false",
             actuation_authorized="false",
             authorization_consumed="false",
@@ -438,12 +438,12 @@ def _manifest(run_dir: Path, bundle_path: Path, bundle: dict[str, Any], device: 
         },
         "domains": [
             {
-                "name": "rp2040_timer0",
-                "nominal_hz": 16_000_000,
-                "counter_width_bits": 36,
-                "modulus_ticks": 68_719_476_736,
+                "name": "rp2040_monotonic_us32",
+                "nominal_hz": 1_000_000,
+                "counter_width_bits": 32,
+                "modulus_ticks": 4_294_967_296,
                 "rollover": "modular_forward",
-                "maximum_unambiguous_forward_ticks": 34_359_738_368,
+                "maximum_unambiguous_forward_ticks": 2_147_483_648,
             },
             {"name": "h1_cx317_ocxo_10mhz", "nominal_hz": 10_000_000},
         ],

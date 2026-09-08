@@ -77,7 +77,7 @@ def test_scored_event_preserves_four_evidence_concepts_separately() -> None:
     assert short.detections[0].classification == "short_interval"
     assert not short.snapshots[0].measurement_valid
     assert short.diagnostics == ()
-    assert short.detection_latency_ticks == 16
+    assert short.detection_latency_ticks == 1
     assert set(payload) >= {
         "generator_truth",
         "physical_detections",

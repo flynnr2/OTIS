@@ -30,7 +30,8 @@
 
 namespace {
 
-constexpr uint64_t kRp2040Timer0MicrosWrapTicks = (1ull << 32) * 16ull;
+constexpr uint64_t kRp2040MonotonicUs32Modulus =
+    OTIS_RP2040_MONOTONIC_US32_MODULUS;
 constexpr uint32_t kH1PioCounterInitialX = 0xffffffffu;
 constexpr uint32_t kImplausibleGateDurationMultiplier = 2u;
 
@@ -262,7 +263,7 @@ void emit_status(OtisStatusEmitContext *context, const char *component,
 #if OTIS_ENABLE_DUAL_CORE_PARTITION
   if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
     OtisTelemetryMessage message = {};
-    message.timestamp_ticks = otis_capture_ticks_now();
+    message.timestamp_ticks = otis_monotonic_us32_now();
     message.flags = flags;
     snprintf(message.component, sizeof(message.component), "%s", component);
     snprintf(message.key, sizeof(message.key), "%s", key);
@@ -940,7 +941,7 @@ void emit_count_observation(OtisRuntimeState *runtime_state,
   otis_emit_count_observation(
       runtime_state->sequences.count_seq++, OTIS_CHANNEL_OSC_OBSERVATION,
       runtime_state->tcxo.last_gate_open_ticks,
-      runtime_state->tcxo.last_gate_close_ticks, OTIS_DOMAIN_RP2040_TIMER0,
+      runtime_state->tcxo.last_gate_close_ticks, OTIS_DOMAIN_RP2040_MONOTONIC_US32,
       counted_edges, OTIS_EDGE_RISING, config->source_domain, flags);
 }
 
@@ -989,17 +990,16 @@ bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
   OtisPpsSnapshotBackendStats snapshot_stats;
   otis_pps_snapshot_backend_get_stats(&snapshot_stats);
   OtisPpsDiagnosticsConfig diagnostics_config = {
-      static_cast<uint64_t>(OTIS_PPS_GATE_MISSING_TIMEOUT_US) *
-          OTIS_RP2040_TIMER0_TICKS_PER_US,
+      static_cast<uint64_t>(OTIS_PPS_GATE_MISSING_TIMEOUT_US),
       0u,
   };
   otis_pps_diagnostics_begin(&pps_diagnostics, diagnostics_config,
                              snapshot_stats.session,
-                             otis_capture_ticks_now());
+                             otis_monotonic_us32_now());
   pps_gated_ratio.state = counter_ok ? PpsGateState::Armed
                                      : PpsGateState::Fault;
   pps_gated_ratio.initialized_ok = counter_ok;
-  pps_gated_ratio.waiting_since_ticks = otis_capture_ticks_now();
+  pps_gated_ratio.waiting_since_ticks = otis_monotonic_us32_now();
   pps_gated_ratio.previous_observation = {};
   pps_gated_ratio.have_previous_observation = false;
   pps_gated_ratio.previous_boundary_inhibited = false;
@@ -1152,7 +1152,7 @@ bool otis_count_observation_on_pps_boundary(
     return false;
   }
 
-  uint64_t boundary_service_ticks = otis_capture_ticks_now();
+  uint64_t boundary_service_ticks = otis_monotonic_us32_now();
   otis_pps_diagnostics_note_snapshot_drained(
       &pps_diagnostics, observation->session, observation->sequence,
       boundary_service_ticks);
@@ -1297,12 +1297,9 @@ bool otis_count_observation_on_pps_boundary(
   OtisPpsBoundaryAssessment raw_boundary = otis_pps_gate_assess_boundary(
       previous.pps_timestamp_ticks, observation->pps_timestamp_ticks,
       previous.capture_flags | observation->capture_flags,
-      (uint64_t)OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US *
-          OTIS_RP2040_TIMER0_TICKS_PER_US,
-      (uint64_t)OTIS_PPS_GATE_MIN_INTERVAL_US *
-          OTIS_RP2040_TIMER0_TICKS_PER_US,
-      (uint64_t)OTIS_PPS_GATE_MAX_INTERVAL_US *
-          OTIS_RP2040_TIMER0_TICKS_PER_US);
+      (uint64_t)OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US,
+      (uint64_t)OTIS_PPS_GATE_MIN_INTERVAL_US,
+      (uint64_t)OTIS_PPS_GATE_MAX_INTERVAL_US);
   OtisPpsBoundaryAssessment boundary = raw_boundary;
   if (pps_gated_ratio.previous_boundary_inhibited && raw_boundary.valid) {
     boundary.valid = false;
@@ -1320,9 +1317,8 @@ bool otis_count_observation_on_pps_boundary(
       validity.fifo_continuous;
 
   uint64_t observation_span_us =
-      otis_timer0_interval_ticks(previous.pps_timestamp_ticks,
-                                observation->pps_timestamp_ticks) /
-      OTIS_RP2040_TIMER0_TICKS_PER_US;
+      otis_monotonic_us32_interval(previous.pps_timestamp_ticks,
+                                   observation->pps_timestamp_ticks);
   uint64_t counted_edges = snapshot_delta.count;
   uint32_t measured_khz = 0u;
   if (observation_span_us > 0u) {
@@ -1492,7 +1488,7 @@ bool otis_count_observation_on_pps_boundary(
     pps_gated_ratio.association_state = "clean";
     otis_pps_diagnostics_note_measurement_reconstructed(
         &pps_diagnostics, observation->session, observation->sequence,
-        otis_capture_ticks_now());
+        otis_monotonic_us32_now());
   } else {
     pps_gated_ratio.association_state = "associated_invalid";
   }
@@ -1550,7 +1546,7 @@ void otis_count_observation_note_control_consumer(uint32_t session,
                                                   uint32_t sequence) {
 #if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   otis_pps_diagnostics_note_control_observed(
-      &pps_diagnostics, session, sequence, otis_capture_ticks_now());
+      &pps_diagnostics, session, sequence, otis_monotonic_us32_now());
 #else
   (void)session;
   (void)sequence;
@@ -1570,10 +1566,10 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   }
   runtime_state->tcxo.last_measure_ms = now_ms;
 
-  uint64_t gate_open_ticks = otis_capture_ticks_now();
+  uint64_t gate_open_ticks = otis_monotonic_us32_now();
   uint32_t measured_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLKSRC_GPIN0);
-  uint64_t gate_close_ticks = otis_capture_ticks_now();
-  uint64_t elapsed_us = (gate_close_ticks - gate_open_ticks) / 16ull;
+  uint64_t gate_close_ticks = otis_monotonic_us32_now();
+  uint64_t elapsed_us = gate_close_ticks - gate_open_ticks;
 
   if (!runtime_state->tcxo.fc0_accum_active) {
     start_fc0_accum_window(runtime_state, gate_open_ticks);
@@ -1583,7 +1579,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
 
   uint64_t emitted_gate_close_ticks = gate_close_ticks;
   if (emitted_gate_close_ticks < runtime_state->tcxo.fc0_accum_gate_open_ticks) {
-    emitted_gate_close_ticks += kRp2040Timer0MicrosWrapTicks;
+    emitted_gate_close_ticks += kRp2040MonotonicUs32Modulus;
   }
   uint64_t observation_span_us =
       (emitted_gate_close_ticks -
@@ -1654,7 +1650,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   }
 
   uint32_t now_ms = millis();
-  uint64_t now_ticks = otis_capture_ticks_now();
+  uint64_t now_ticks = otis_monotonic_us32_now();
   if (!h1_pio_long_gate.active) {
     start_h1_pio_long_gate_counter(now_ticks);
     return false;
@@ -1662,10 +1658,10 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
 
   uint64_t emitted_gate_close_ticks = now_ticks;
   if (emitted_gate_close_ticks < h1_pio_long_gate.gate_open_ticks) {
-    emitted_gate_close_ticks += kRp2040Timer0MicrosWrapTicks;
+    emitted_gate_close_ticks += kRp2040MonotonicUs32Modulus;
   }
   uint64_t observation_span_us =
-      (emitted_gate_close_ticks - h1_pio_long_gate.gate_open_ticks) / 16ull;
+      emitted_gate_close_ticks - h1_pio_long_gate.gate_open_ticks;
   if (observation_span_us < config->gate_period_us) {
     return false;
   }
@@ -1720,7 +1716,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
                                               : OTIS_SEVERITY_WARN,
       runtime_state->tcxo.last_window_flags);
 
-  start_h1_pio_long_gate_counter(otis_capture_ticks_now());
+  start_h1_pio_long_gate_counter(otis_monotonic_us32_now());
   return true;
 #elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   uint32_t now_ms = millis();
@@ -1737,7 +1733,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   // between an earlier now-sample and the mailbox copy, its timestamp is newer
   // than "now" and the modulo interval appears almost one full micros() wrap,
   // manufacturing a false physical-missing transition.
-  uint64_t now_ticks = otis_capture_ticks_now();
+  uint64_t now_ticks = otis_monotonic_us32_now();
   if (transition == OtisPpsDiagnosticsTransition::None) {
     transition = otis_pps_diagnostics_poll(&pps_diagnostics, now_ticks);
   }
@@ -1760,8 +1756,7 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
                                 ? pps_diagnostics.latest_physical_pps.observed_ticks
                                 : pps_diagnostics.monitoring_started_ticks;
     runtime_state->tcxo.last_elapsed_us = static_cast<uint32_t>(
-        otis_timer0_interval_ticks(anchor_ticks, now_ticks) /
-        OTIS_RP2040_TIMER0_TICKS_PER_US);
+        otis_monotonic_us32_interval(anchor_ticks, now_ticks));
     emit_pps_gate_fault(
         runtime_state, status_context, kWindowReasonMissingPps,
         kReferenceReasonMissingPps, kCountReasonUnavailable,
@@ -1794,8 +1789,8 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
 
   uint32_t flags = OTIS_FLAG_NONE;
   bool counted_edges_nonzero = counted_edges > 0u;
-  runtime_state->tcxo.last_gate_open_ticks = (uint64_t)gate_open_us * 16ull;
-  runtime_state->tcxo.last_gate_close_ticks = (uint64_t)now_us * 16ull;
+  runtime_state->tcxo.last_gate_open_ticks = (uint64_t)gate_open_us;
+  runtime_state->tcxo.last_gate_close_ticks = (uint64_t)now_us;
   runtime_state->tcxo.last_counted_edges = counted_edges;
   runtime_state->tcxo.last_elapsed_us = now_us - gate_open_us;
   runtime_state->tcxo.last_measured_khz = 0;

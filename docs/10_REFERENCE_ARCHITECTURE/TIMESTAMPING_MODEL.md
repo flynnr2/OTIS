@@ -1,6 +1,7 @@
 # Timestamping Model
 
-OTIS timestamps are hardware-derived observations within explicit capture domains.
+OTIS timestamp values belong to explicit clock domains. Their provenance states
+whether hardware latched the event or software merely observed and labelled it.
 
 A timestamp is not merely a number. It is a claim about:
 
@@ -76,13 +77,13 @@ Host-side analysis may construct:
 
 Those transforms should remain explicit and replayable.
 
-## RP2040 Timebase Is Not Timing Truth
+## RP2040 Local Coordinate Is Not Metrology Time
 
-The RP2040 timer domain is an implementation and transport timebase unless it is
-explicitly promoted by provenance. It may be useful for ordering records,
-measuring approximate intervals, detecting rollover, and deriving diagnostics
-from captured PPS rows, but it is not the metrological source for events of
-interest.
+`rp2040_monotonic_us32` is the native 1 MHz, wrapping microsecond coordinate
+from `micros()`/`timerawl`; `rp2040_monotonic_us64` is its session-bound
+non-wrapping reconstruction. They are RP2040-local implementation coordinates.
+They are useful for ordering records, deadlines, telemetry, rollover handling,
+and diagnostics, but they are not metrological event time.
 
 For current H1 captures, host analysis should use REF/PPS observations to
 estimate the actual RP2040 tick rate before converting RP2040-gated count
@@ -90,17 +91,20 @@ windows to seconds. Reports must preserve that as a derived calibration, not as
 raw timestamp truth.
 
 For the planned PPS-gated ratio backend, PPS edges define count-window
-boundaries but do not turn `rp2040_timer0` ticks into PPS-domain timestamps.
+boundaries but do not turn `rp2040_monotonic_us32` ticks into PPS-domain timestamps.
 Firmware should emit the raw oscillator count and the gate boundary ticks in the
 declared gate domain. Host analysis may then derive PPS-normalized ratio,
 frequency, and ppm from the visible `REF` and `CNT` streams. Those derived
 values must remain replayable products rather than replacements for raw `CNT`
 fields.
 
-The intended GPSDO/VCOCXO architecture is a parallel timing fabric: pulses of
-interest should be stamped in a timer domain derived from the GPSDO'd VCOCXO.
-The RP2040 board clock should not be used as the event-stamping timebase for
-those pulses merely because it is convenient to read in firmware.
+The metrology fabric is separate. D14 is the sole authoritative PPS/reference
+input. D8 is the sole authoritative oscillator/count input, currently the
+10 MHz VCOCXO that D14 disciplines. D10 is the external event input and must be
+hardware-captured against a versioned D8-derived domain. Environmental samples
+may retain a raw local acquisition timestamp and later be projected into that
+metrology domain with stated acquisition latency and uncertainty. Neither
+projection nor local ordering may overwrite the raw observations.
 
 ## Reference Signals
 

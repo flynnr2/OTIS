@@ -534,7 +534,7 @@ def _set_campaign18_exact_clock(
         frontier % (1 << 32)
     )
     health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
-        "rp2040_timer0"
+        "rp2040_monotonic_us32"
     )
     return health
 
@@ -546,7 +546,7 @@ def test_campaign18_exact_tick_admission_boundary_uses_1500_second_reserve(
     admission_ticks = (
         CX322_D9_D6_72H_PROGRAMME.qualified_duration_s
         - CX322_D9_D6_72H_PROGRAMME.correction_response_reserve_s
-    ) * live.RP2040_TIMER0_TICKS_PER_SECOND
+    ) * live.RP2040_MONOTONIC_US_PER_SECOND
     before = _set_campaign18_exact_clock(
         supervisor, elapsed_ticks=admission_ticks - 1
     )
@@ -569,7 +569,7 @@ def test_campaign18_exact_259200_second_endpoint_and_descriptor_name(
     supervisor = _supervisor(tmp_path)
     endpoint_ticks = (
         CX322_D9_D6_72H_PROGRAMME.qualified_duration_s
-        * live.RP2040_TIMER0_TICKS_PER_SECOND
+        * live.RP2040_MONOTONIC_US_PER_SECOND
     )
     before = _set_campaign18_exact_clock(
         supervisor, elapsed_ticks=endpoint_ticks - 1
@@ -604,7 +604,7 @@ def test_cx323_exact_endpoint_uses_successor_identity_not_campaign18(
     supervisor = _supervisor(tmp_path)
     endpoint_ticks = (
         CX323_D9_D6_72H_PROGRAMME.qualified_duration_s
-        * live.RP2040_TIMER0_TICKS_PER_SECOND
+        * live.RP2040_MONOTONIC_US_PER_SECOND
     )
     health = _set_campaign18_exact_clock(
         supervisor,
@@ -662,7 +662,7 @@ def test_cx323_exact_aperture_admission_boundary_is_257689(
     assert supervisor.state["response_horizon_closed_utc"] is not None
 
 
-def test_cx323_exact_aperture_endpoint_ignores_timer0_and_utc(
+def test_cx323_exact_aperture_endpoint_ignores_local_counter_and_utc(
     tmp_path: Path,
 ) -> None:
     wall_origin = 1_800_000_000.0
@@ -670,7 +670,7 @@ def test_cx323_exact_aperture_endpoint_ignores_timer0_and_utc(
     before_health = _set_campaign18_exact_clock(
         before,
         elapsed_ticks=(259_200 + 10_000)
-        * live.RP2040_TIMER0_TICKS_PER_SECOND,
+        * live.RP2040_MONOTONIC_US_PER_SECOND,
         programme=CX323_D9_D6_72H_PROGRAMME,
     )
     before_health[(
@@ -690,7 +690,7 @@ def test_cx323_exact_aperture_endpoint_ignores_timer0_and_utc(
         }
     )
 
-    # Even an unusable projected TIMER0 frontier and forward-stepped UTC cannot
+    # Even an unusable projected local frontier and forward-stepped UTC cannot
     # close the run while the authoritative D14/D8 aperture count is one short.
     before._maybe_finish(before_health, wall_origin + 50_000, 0.0)
     assert before.state["terminal"] is None
@@ -722,7 +722,7 @@ def test_cx323_exact_aperture_endpoint_ignores_timer0_and_utc(
         }
     )
 
-    # Neither an unusable projected TIMER0 frontier nor backward UTC prevents
+    # Neither an unusable projected local frontier nor backward UTC prevents
     # the exact 259,200-aperture endpoint.
     at_endpoint._maybe_finish(endpoint_health, wall_origin - 50_000, 0.0)
     assert at_endpoint.state["terminal"]["reason"] == (
@@ -929,7 +929,7 @@ def _write_continuously_available_control_previews(
             writer.writerow(
                 {
                     "decision_id": f"control:{sequence}",
-                    "decision_timestamp_ticks": str(timestamp_s * 16_000_000),
+                    "decision_timestamp_ticks": str(timestamp_s * 1_000_000),
                     "preview_available": "true",
                 }
             )
@@ -960,9 +960,9 @@ def _append_selected_estimate(
                     if timestamp_s is not None
                     else estimate_seq * 600
                 )
-                * live.RP2040_TIMER0_TICKS_PER_SECOND
+                * live.RP2040_MONOTONIC_US_PER_SECOND
             ),
-            "time_domain": "rp2040_timer0",
+            "time_domain": "rp2040_monotonic_us32",
             "estimator_version": "cx317_selected_600s_nonoverlap_v1",
             "source_count_ref": f"live:CNT:{estimate_seq * 600}",
             "source_dac_ref": source_dac_ref,
@@ -1432,7 +1432,7 @@ def test_qualified_clock_requires_fresh_selected_estimate_from_setup_epoch(
         "est:cx317:selected600:000002"
     )
     assert supervisor.state["qualified_origin_timestamp_ticks"] == (
-        1200 * live.RP2040_TIMER0_TICKS_PER_SECOND
+        1200 * live.RP2040_MONOTONIC_US_PER_SECOND
     )
     assert supervisor.state["qualified_origin_session_id"] == 1
     assert '"source_dac_ref": "live:DAC:1"' in (
@@ -1447,7 +1447,7 @@ def test_campaign18_qualified_origin_consumes_exact_retained_frontier(
     supervisor.programme = CX322_D9_D6_72H_PROGRAMME
     supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
     supervisor._save()
-    origin = (2400 * live.RP2040_TIMER0_TICKS_PER_SECOND) % (1 << 32)
+    origin = (2400 * live.RP2040_MONOTONIC_US_PER_SECOND) % (1 << 32)
     _append_selected_estimate(
         supervisor,
         estimate_seq=4,
@@ -1459,7 +1459,7 @@ def test_campaign18_qualified_origin_consumes_exact_retained_frontier(
         origin
     )
     health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
-        "rp2040_timer0"
+        "rp2040_monotonic_us32"
     )
 
     supervisor._maybe_qualify(health)
@@ -1485,7 +1485,7 @@ def test_cx323_qualified_origin_baselines_every_irreversible_capture_counter(
     supervisor.programme = CX323_D9_D6_72H_PROGRAMME
     supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
     supervisor._save()
-    origin = (2400 * live.RP2040_TIMER0_TICKS_PER_SECOND) % (1 << 32)
+    origin = (2400 * live.RP2040_MONOTONIC_US_PER_SECOND) % (1 << 32)
     _append_selected_estimate(
         supervisor,
         estimate_seq=4,
@@ -1501,7 +1501,7 @@ def test_cx323_qualified_origin_baselines_every_irreversible_capture_counter(
         origin
     )
     health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
-        "rp2040_timer0"
+        "rp2040_monotonic_us32"
     )
 
     supervisor._maybe_qualify(health)
@@ -2003,7 +2003,7 @@ def test_campaign18_qualification_defers_incomplete_capture_baseline_atomically(
     supervisor.programme = CX322_D9_D6_72H_PROGRAMME
     supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
     supervisor._save()
-    origin = (2400 * live.RP2040_TIMER0_TICKS_PER_SECOND) % (1 << 32)
+    origin = (2400 * live.RP2040_MONOTONIC_US_PER_SECOND) % (1 << 32)
     _append_selected_estimate(
         supervisor,
         estimate_seq=4,
@@ -2015,7 +2015,7 @@ def test_campaign18_qualification_defers_incomplete_capture_baseline_atomically(
         origin
     )
     health[(live.LIVE_FRONTIER_COMPONENT, live.LIVE_FRONTIER_DOMAIN_KEY)] = (
-        "rp2040_timer0"
+        "rp2040_monotonic_us32"
     )
     del health[("pps_gate", "association_loss_count")]
 
@@ -2042,7 +2042,7 @@ def test_qualified_clock_defers_fractional_origin_until_uptime_lower_bound(
     supervisor = _supervisor(tmp_path)
     supervisor.state["setup_confirmed_utc"] = _utc(1_800_000_611.0)
     supervisor._save()
-    attempt8_origin_ticks = 38_429_602_864  # 2401.850179 s
+    attempt8_origin_ticks = 2_401_850_179  # 2401.850179 s
     _append_selected_estimate(
         supervisor,
         estimate_seq=541,
@@ -2071,11 +2071,11 @@ def test_qualified_clock_defers_fractional_origin_until_uptime_lower_bound(
     endpoint_floor_s = 2401 + live.QUALIFIED_DURATION_S
     before = _health(supervisor, uptime_s=str(endpoint_floor_s))
     assert supervisor._qualified_elapsed_ticks(before) < (
-        live.QUALIFIED_DURATION_S * live.RP2040_TIMER0_TICKS_PER_SECOND
+        live.QUALIFIED_DURATION_S * live.RP2040_MONOTONIC_US_PER_SECOND
     )
     after = _health(supervisor, uptime_s=str(endpoint_floor_s + 1))
     assert supervisor._qualified_elapsed_ticks(after) >= (
-        live.QUALIFIED_DURATION_S * live.RP2040_TIMER0_TICKS_PER_SECOND
+        live.QUALIFIED_DURATION_S * live.RP2040_MONOTONIC_US_PER_SECOND
     )
 
 
@@ -2089,7 +2089,7 @@ def test_qualified_clock_status_lead_and_lower_bound_edges(
         at_lower,
         estimate_seq=9,
         source_dac_ref="live:DAC:1",
-        timestamp_ticks=2401 * live.RP2040_TIMER0_TICKS_PER_SECOND,
+        timestamp_ticks=2401 * live.RP2040_MONOTONIC_US_PER_SECOND,
     )
     at_lower._maybe_qualify(_health(at_lower, uptime_s="2401"))
     assert at_lower.state["qualified_origin_estimate_id"] == (
@@ -2101,7 +2101,7 @@ def test_qualified_clock_status_lead_and_lower_bound_edges(
     at_lead_limit._save()
     maximum_coherent = (
         2401 + live.QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
-    ) * live.RP2040_TIMER0_TICKS_PER_SECOND
+    ) * live.RP2040_MONOTONIC_US_PER_SECOND
     _append_selected_estimate(
         at_lead_limit,
         estimate_seq=10,
@@ -2813,7 +2813,7 @@ def test_qualified_endpoint_requires_clear_static_terminal(tmp_path: Path) -> No
     origin = 1_800_000_000.0
     supervisor.state["qualification_started_utc"] = _utc(origin)
     supervisor.state["qualified_origin_timestamp_ticks"] = (
-        4000 * live.RP2040_TIMER0_TICKS_PER_SECOND
+        4000 * live.RP2040_MONOTONIC_US_PER_SECOND
     )
     supervisor.state["qualified_origin_session_id"] = 1
     health = _health(
@@ -2843,7 +2843,7 @@ def test_host_verification_hold_reaches_review_endpoint_without_terminal(
 ) -> None:
     supervisor = _supervisor(tmp_path)
     supervisor.state["qualified_origin_timestamp_ticks"] = (
-        4000 * live.RP2040_TIMER0_TICKS_PER_SECOND
+        4000 * live.RP2040_MONOTONIC_US_PER_SECOND
     )
     supervisor.state["qualified_origin_session_id"] = 1
     supervisor.state["host_verification_hold"] = {
@@ -2880,7 +2880,7 @@ def test_qualified_boundaries_use_device_time_despite_host_utc_steps(
     supervisor = _supervisor(tmp_path, wall_origin_epoch=origin_utc)
     supervisor.state["qualification_started_utc"] = _utc(origin_utc)
     supervisor.state["qualified_origin_timestamp_ticks"] = (
-        origin_uptime_s * live.RP2040_TIMER0_TICKS_PER_SECOND
+        origin_uptime_s * live.RP2040_MONOTONIC_US_PER_SECOND
     )
     supervisor.state["qualified_origin_session_id"] = 1
     supervisor._save()
@@ -2936,7 +2936,7 @@ def test_qualified_boundaries_use_device_time_despite_host_utc_steps(
 def test_qualified_clock_rejects_capture_session_change(tmp_path: Path) -> None:
     supervisor = _supervisor(tmp_path)
     supervisor.state["qualified_origin_timestamp_ticks"] = (
-        4000 * live.RP2040_TIMER0_TICKS_PER_SECOND
+        4000 * live.RP2040_MONOTONIC_US_PER_SECOND
     )
     supervisor.state["qualified_origin_session_id"] = 1
 

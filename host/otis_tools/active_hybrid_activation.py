@@ -322,7 +322,7 @@ def _cx323_aperture_rehearsal_exact(
         or not isinstance(observations, dict)
         or clock.get("time_domain")
         != "qualified_D14_D8_aperture_count_v2"
-        or clock.get("supporting_local_ordering_domain") != "rp2040_timer0"
+        or clock.get("supporting_local_ordering_domain") != "rp2040_monotonic_us32"
         or clock.get("qualified_endpoint_d14_d8_apertures") != target
         or clock.get("correction_response_reserve_d14_apertures") != reserve
         or clock.get("correction_admission_close_d14_d8_apertures")
@@ -332,7 +332,7 @@ def _cx323_aperture_rehearsal_exact(
         or clock.get("endpoint_open_before_exact_aperture_boundary") is not True
         or clock.get("endpoint_closed_at_exact_aperture_boundary") is not True
         or clock.get(
-            "rp2040_timer0_held_constant_across_aperture_boundaries"
+            "rp2040_monotonic_us32_held_constant_across_aperture_boundaries"
         )
         is not True
         or clock.get("forward_host_utc_step_did_not_close_early") is not True
@@ -346,18 +346,18 @@ def _cx323_aperture_rehearsal_exact(
         "endpoint_open": (target - 1, True, False),
         "endpoint_closed": (target, True, True),
     }
-    timer0_ticks: int | None = None
+    monotonic_us32_ticks: int | None = None
     for name, (progress, response_closed, terminal_reached) in expected.items():
         item = observations.get(name)
         if not isinstance(item, dict):
             return False
         accepted_now = item.get("accepted_window_count")
         reference_now = item.get("boundary_reference_sequence")
-        observed_timer0_ticks = item.get("rp2040_timer0_ticks")
+        observed_monotonic_us32_ticks = item.get("rp2040_monotonic_us32_ticks")
         if (
             type(accepted_now) is not int
             or type(reference_now) is not int
-            or type(observed_timer0_ticks) is not int
+            or type(observed_monotonic_us32_ticks) is not int
             or item.get("qualified_d14_d8_apertures") != progress
             or ((accepted_now - accepted_origin) & 0xFFFFFFFF) != progress
             or ((reference_now - reference_origin) & 0xFFFFFFFF) != progress
@@ -365,9 +365,9 @@ def _cx323_aperture_rehearsal_exact(
             or item.get("terminal_reached") is not terminal_reached
         ):
             return False
-        if timer0_ticks is None:
-            timer0_ticks = observed_timer0_ticks
-        elif observed_timer0_ticks != timer0_ticks:
+        if monotonic_us32_ticks is None:
+            monotonic_us32_ticks = observed_monotonic_us32_ticks
+        elif observed_monotonic_us32_ticks != monotonic_us32_ticks:
             return False
     return True
 
@@ -580,8 +580,8 @@ def validate_operational_rehearsal(
             or domain_errors
             or not any(
                 isinstance(item, dict)
-                and item.get("name") == "rp2040_timer0_extended"
-                and item.get("nominal_hz") == 16_000_000
+                and item.get("name") == "rp2040_monotonic_us64"
+                and item.get("nominal_hz") == 1_000_000
                 for item in domains
             )
         ):
@@ -1716,7 +1716,7 @@ def create_run_manifest(
             },
         },
         "domains": [
-            canonical_domain_declaration("rp2040_timer0"),
+            canonical_domain_declaration("rp2040_monotonic_us32"),
             canonical_domain_declaration("h1_cx317_ocxo_10mhz"),
         ],
         "channels": [
@@ -1821,7 +1821,7 @@ def create_run_manifest(
         or programme.integrated_long_run
     ):
         manifest["domains"].append(
-            canonical_domain_declaration("rp2040_timer0_extended")
+            canonical_domain_declaration("rp2040_monotonic_us64")
         )
     if programme.identification_required:
         manifest["programme_policy"] = bundle["programme_policy"]

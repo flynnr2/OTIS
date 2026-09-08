@@ -227,7 +227,7 @@ bool decision_reconstructable(const OtisCx323MaintenanceBuildInput &input,
   if (observation.source_first_sequence == 0u ||
       observation.source_last_sequence <= observation.source_first_sequence ||
       observation.capture_session == 0u || observation.dac_epoch == 0u ||
-      observation.timestamp_s != observation.timestamp_ticks / 16000000ull ||
+      observation.timestamp_s != observation.timestamp_ticks / 1000000ull ||
       observation.applied_code < kMinimumWireCode ||
       observation.applied_code > kMaximumWireCode ||
       decision.decision_sequence == 0u ||

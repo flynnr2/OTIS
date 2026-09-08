@@ -92,7 +92,7 @@ def cx323_exact_live_harness(tmp_path_factory: pytest.TempPathFactory) -> Path:
             str(FIRMWARE / "otis_cx317_i_only_engine.cpp"),
             str(FIRMWARE / "otis_cx317_snapshot_estimator.cpp"),
             str(FIRMWARE / "otis_decimal_format.cpp"),
-            str(FIRMWARE / "otis_timer0_extension.cpp"),
+            str(FIRMWARE / "otis_monotonic_us_extension.cpp"),
             "-I", str(FIRMWARE), "-o", str(output),
         ],
         check=True,
@@ -179,7 +179,7 @@ def test_cpp_controller_matches_host_replay(cx317_engine_harness: Path) -> None:
             assert float(row["raw_delta_codes"]) == pytest.approx(host["raw_delta_codes"])
 
 
-def test_current_firmware_preserves_deployed_controller_wire_identity() -> None:
+def test_current_firmware_embeds_current_controller_wire_identity() -> None:
     preview = (FIRMWARE / "otis_cx317_preview_live.cpp").read_text(
         encoding="utf-8"
     )
@@ -189,7 +189,7 @@ def test_current_firmware_preserves_deployed_controller_wire_identity() -> None:
 
     assert "CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1" in preview
     assert (
-        "bd1c8c2fef6239740733316cdfc4aab34ffe14f65e6ece5f76b965d21c42cc0f"
+        "e8cbd3170957abf61cf9a4cdc19a09683d221a62d6f15c1a42a1b7f7586083a8"
         in preview
     )
     assert "0.00017072602587382669" in preview
@@ -215,8 +215,8 @@ def test_cpp_estimator_matches_host_cumulative_snapshot_method(
                 interval_counted_edges=10_000_000 + (1 if sequence % 17 == 0 else 0),
                 opening_reference_event_sequence=sequence - 1,
                 closing_reference_event_sequence=sequence,
-                opening_reference_timestamp_ticks=(sequence - 1) * 16_000_000,
-                closing_reference_timestamp_ticks=sequence * 16_000_000,
+                opening_reference_timestamp_ticks=(sequence - 1) * 1_000_000,
+                closing_reference_timestamp_ticks=sequence * 1_000_000,
                 cnt_sequence=sequence,
                 valid=not invalid,
                 reasons=() if not invalid else ("synthetic_gap",),
@@ -277,7 +277,7 @@ def test_live_wire_records_are_well_shaped_and_non_actionable(
             CsvValidationContext(
                 contract=contract,
                 known_channels=frozenset(),
-                known_domains=frozenset({"rp2040_timer0"}),
+                known_domains=frozenset({"rp2040_monotonic_us32"}),
             ),
         )
         assert result.errors == ()
@@ -323,13 +323,13 @@ def test_first_post_application_selected_estimate_closes_after_full_response_win
         application_timestamp_s
         + policy.settling_exclusion_s
         + policy.fresh_support_s
-    ) * 16_000_000
+    ) * 1_000_000
 
 
 def test_cx323_fractional_application_excludes_every_interval_before_exact_900s(
     cx323_exact_live_harness: Path,
 ) -> None:
-    application_timestamp_ticks = 2_401 * 16_000_000 + 8_000_000
+    application_timestamp_ticks = 2_401 * 1_000_000 + 500_000
     completed = subprocess.run(
         [str(cx323_exact_live_harness), "fractional_exact_response_window"],
         check=True,
@@ -354,9 +354,9 @@ def test_cx323_fractional_application_excludes_every_interval_before_exact_900s(
     assert int(response["accepted_sample_count"]) == 600
     assert int(response["source_reference_first_seq"]) == 3_302
     assert int(response["source_reference_last_seq"]) == 3_902
-    assert int(response["estimator_timestamp_ticks"]) == 3_902 * 16_000_000
+    assert int(response["estimator_timestamp_ticks"]) == 3_902 * 1_000_000
     assert int(response["estimator_timestamp_ticks"]) >= (
-        application_timestamp_ticks + 1_500 * 16_000_000
+        application_timestamp_ticks + 1_500 * 1_000_000
     )
 
 

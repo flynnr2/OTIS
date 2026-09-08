@@ -164,7 +164,7 @@ def _cx321_natural_replay_handoff(
     if len(applications) != 1:
         raise ValueError("CX321 PSQ handoff lacks one exact ACT application")
     application = applications[0]
-    timer_hz = 16_000_000
+    timer_hz = 1_000_000
     handoff_ticks = int(handoff["event_timestamp_ticks"])
     qualification_started_s = (handoff_ticks + timer_hz - 1) // timer_hz
     return {
@@ -1103,7 +1103,7 @@ def replay_response_before_acknowledgement(
             CsvValidationContext(
                 "active_hybrid_maintenance_v1",
                 frozenset(),
-                frozenset({"rp2040_timer0_extended"}),
+                frozenset({"rp2040_monotonic_us64"}),
             ),
         )
         if not maintenance_validation.ok:

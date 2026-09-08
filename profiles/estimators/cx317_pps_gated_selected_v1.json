@@ -5,7 +5,7 @@
   "method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
   "base_estimator": {
     "path": "profiles/estimators/pps_cumulative_snapshot_span_v1.json",
-    "sha256": "9546b36803398aa4d441c4a23244596f9a65091d07a25d19fd527e3c36625839"
+    "sha256": "378b3e8da76d417af8aad0f6ac5dd13b4b3a2cc02eeb387f156d8ba02fbefe81"
   },
   "expected_snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1",
   "authoritative_denominator": "nominal_accepted_pps_interval_count",

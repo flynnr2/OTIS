@@ -131,7 +131,7 @@ def _cx321_psq_act_join_rows() -> tuple[dict[str, str], dict[str, str]]:
         "accepted_code": str(0xA827),
         "applied_code": str(0xA827),
         "dac_epoch": "2",
-        "application_timestamp_ticks": str(3902 * 16_000_000 + 17),
+        "application_timestamp_ticks": str(3902 * 1_000_000 + 17),
     }
     act = {
         "transaction_record_sequence": "44",
@@ -185,7 +185,7 @@ def test_cx321_phase4_ack_rejects_each_psq_act_tuple_mismatch(
 
 def test_cx321_phase4_ack_accepts_legitimate_core0_core1_second_crossing() -> None:
     psq, act = _cx321_psq_act_join_rows()
-    psq["application_timestamp_ticks"] = str(3902 * 16_000_000 + 15_999_999)
+    psq["application_timestamp_ticks"] = str(3902 * 1_000_000 + 999_999)
     act["application_timestamp_s"] = "3903"
 
     result = _join_cx321_psq_response_to_act(
@@ -198,7 +198,7 @@ def test_cx321_phase4_ack_accepts_legitimate_core0_core1_second_crossing() -> No
 
 def test_cx321_phase4_ack_rejects_core0_tick_after_core1_consumption_second() -> None:
     psq, act = _cx321_psq_act_join_rows()
-    psq["application_timestamp_ticks"] = str(3903 * 16_000_000)
+    psq["application_timestamp_ticks"] = str(3903 * 1_000_000)
 
     with pytest.raises(ValueError, match="follows its ACT Core1"):
         _join_cx321_psq_response_to_act(

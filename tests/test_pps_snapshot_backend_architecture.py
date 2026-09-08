@@ -72,21 +72,21 @@ def test_d14_isr_only_preserves_compact_reference_events() -> None:
         "digitalRead",
         "delay(",
         "millis(",
-        "otis_capture_ticks_now()",
-        "otis_classify_pps_interval_ticks",
+        "otis_monotonic_us32_now()",
+        "otis_classify_pps_interval_us",
         "pio_sm_",
         "dma_",
         "float",
         "double",
     )
     assert not any(token in d14 for token in prohibited)
-    assert "otis_capture_ticks_now_from_isr" in d14
+    assert "otis_monotonic_us32_now_from_isr" in d14
     assert "gpio_get" in d14
     assert "otis_capture_ring_push_from_isr" in d14
     assert "d14_sampled_high_count" not in d14
     assert "d14_last_raw_timestamp" not in d14
 
-    timestamp = d14.index("otis_capture_ticks_now_from_isr()")
+    timestamp = d14.index("otis_monotonic_us32_now_from_isr()")
     sampled_level = d14.index("gpio_get(capture_gpio)")
     ring_publish = d14.index("otis_capture_ring_push_from_isr")
     assert timestamp < sampled_level < ring_publish

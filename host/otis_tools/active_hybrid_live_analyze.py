@@ -42,7 +42,7 @@ from .active_hybrid_evidence_guard import (
     replay_response_before_acknowledgement,
 )
 from .active_hybrid_policy import CX323Policy, load_policy
-from .active_control_supervisor import RP2040_TIMER0_TICKS_PER_SECOND
+from .active_control_supervisor import RP2040_MONOTONIC_US_PER_SECOND
 from .active_status_contract import latest_complete_health
 from .active_transactions import (
     ACTIVE_CSV,
@@ -321,7 +321,7 @@ def exact_lifecycle_timing_sidecar_join(
             if (
                 timing.get("record_type") != record_type
                 or timing.get("schema_version") != "2"
-                or time_domain != "rp2040_timer0_extended"
+                or time_domain != "rp2040_monotonic_us64"
                 or timing_sequence <= prior_timing_sequence
                 or timestamp < prior_timestamp
                 or timing_sequence <= 0
@@ -528,7 +528,7 @@ def require_campaign18_exact_timing_sidecars(
         ),
         minimum_response_elapsed_ticks=(
             programme.minimum_exact_response_elapsed_s
-            * RP2040_TIMER0_TICKS_PER_SECOND
+            * RP2040_MONOTONIC_US_PER_SECOND
             if programme.minimum_exact_response_elapsed_s is not None
             else None
         ),
@@ -618,7 +618,7 @@ def validate_maintenance_evidence_stream(
             mismatches.append(f"AHM row {row_number} policy_id differs")
         if row.get("active_policy_sha256") != expected_active_policy_sha256:
             mismatches.append(f"AHM row {row_number} active_policy_sha256 differs")
-        if row.get("time_domain") != "rp2040_timer0_extended":
+        if row.get("time_domain") != "rp2040_monotonic_us64":
             mismatches.append(f"AHM row {row_number} time_domain differs")
         try:
             record = int(row["maintenance_record_sequence"])
@@ -2460,19 +2460,19 @@ def _sustained_regulation_outcome(
     )
     endpoint_device_ticks = (
         qualified_origin_ticks
-        + qualified_duration_s * RP2040_TIMER0_TICKS_PER_SECOND
+        + qualified_duration_s * RP2040_MONOTONIC_US_PER_SECOND
         if type(qualified_origin_ticks) is int
         else None
     )
     post_reversal_ticks = (
         endpoint_device_ticks
         - reversal["application_timestamp_s"]
-        * RP2040_TIMER0_TICKS_PER_SECOND
+        * RP2040_MONOTONIC_US_PER_SECOND
         if endpoint_device_ticks is not None and reversal is not None
         else None
     )
     post_reversal_s = (
-        post_reversal_ticks / RP2040_TIMER0_TICKS_PER_SECOND
+        post_reversal_ticks / RP2040_MONOTONIC_US_PER_SECOND
         if post_reversal_ticks is not None
         else None
     )
@@ -2534,7 +2534,7 @@ def _sustained_regulation_outcome(
     post_reversal_pass = (
         post_reversal_ticks is not None
         and post_reversal_ticks
-        >= 21_600 * RP2040_TIMER0_TICKS_PER_SECOND
+        >= 21_600 * RP2040_MONOTONIC_US_PER_SECOND
     )
     physical_accounting_exact = (
         applications.get("automatic_application_count", 0) <= 12
@@ -2550,7 +2550,7 @@ def _sustained_regulation_outcome(
         "deliberate_challenge_recovery": challenge_recovery,
         "selected_reversal": reversal,
         "endpoint_device_ticks": endpoint_device_ticks,
-        "counter_domain": "rp2040_timer0",
+        "counter_domain": "rp2040_monotonic_us32",
         "post_reversal_ticks": post_reversal_ticks,
         "post_reversal_qualified_s": post_reversal_s,
         "post_reversal_minimum_s": 21_600,
@@ -3038,7 +3038,7 @@ def analyze(
             decision_timings=decision_timings,
             minimum_response_elapsed_ticks=(
                 programme.minimum_exact_response_elapsed_s
-                * RP2040_TIMER0_TICKS_PER_SECOND
+                * RP2040_MONOTONIC_US_PER_SECOND
                 if programme.minimum_exact_response_elapsed_s is not None
                 else None
             ),
@@ -3362,7 +3362,7 @@ def analyze(
     if programme.response_checkpoint_observational:
         if programme.persistent_maintenance_policy:
             # CX323 has one decision-bearing 1,500-second response checkpoint,
-            # already validated above in exact rp2040_timer0 ticks.  The CX322
+            # already validated above in exact rp2040_monotonic_us32 ticks.  The CX322
             # coarse-second 600/1500/3600/7200 descriptive fact set is not part
             # of the CX323 policy and must not be borrowed as an input gate.
             response_horizon_facts = {

@@ -167,7 +167,7 @@ def _snapshot_intervals(rows: list[dict[str, str]], *, label: str, errors: list[
             progress = forward_progress(
                 previous["reference_timestamp_ticks"],
                 current["reference_timestamp_ticks"],
-                domain="rp2040_timer0",
+                domain="rp2040_monotonic_us32",
                 allow_equal=False,
             )
             if not progress.valid:
@@ -278,7 +278,7 @@ def _monitor_evidence(rows: list[dict[str, str]], d8: Mapping[str, Any], first_v
                     continuous = False
                 progress = forward_progress(
                     previous["ticks"], current["ticks"],
-                    domain="rp2040_timer0", allow_equal=False,
+                    domain="rp2040_monotonic_us32", allow_equal=False,
                 )
                 if not progress.valid:
                     errors.append(

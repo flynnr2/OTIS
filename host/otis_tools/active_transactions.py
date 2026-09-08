@@ -175,7 +175,7 @@ def _join_cx321_psq_response_to_act(
     *,
     psq_response: dict[str, str],
     act_response: dict[str, str],
-    timer_hz: int = 16_000_000,
+    timer_hz: int = 1_000_000,
 ) -> dict[str, object]:
     """Bind the exact PSQ application tuple to its durable ACT response."""
 

@@ -14,7 +14,8 @@
 #include "otis_phase_preview_live.h"
 #include "otis_protocol.h"
 #include "otis_spsc_queue.h"
-#include "otis_timer0_extension.h"
+#include "otis_monotonic_us_extension.h"
+#include "otis_timebase_math.h"
 #include "otis_transport_serial.h"
 
 namespace {
@@ -36,34 +37,34 @@ constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
 constexpr char kSelectedEstimatorReference[] = "selected600";
 constexpr char kSelectedEstimatorHash[] =
-    "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
+    "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9";
 constexpr char kPolicyId[] =
     "CX319_STABILIZED_TIGHT_DEADBAND_FREQUENCY_ONLY_V1";
 constexpr char kPolicyHash[] =
-    "352daed21b3063c7d58dd8b266f3639f3cbed2500ff59fd2c530243727a5bb3a";
+    "c8939797956fe5605eccfe34117b677536cf2c8b9512b296939406029349ab87";
 #elif OTIS_ENABLE_CX318_STAGE5_PREVIEW
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
 constexpr char kSelectedEstimatorReference[] = "selected600";
 constexpr char kSelectedEstimatorHash[] =
-    "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
+    "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9";
 constexpr char kPolicyId[] = "CX318_STAGE5_TIGHT_ACTIVE_FREQUENCY_ONLY_V1";
 constexpr char kPolicyHash[] =
-    "a0dbe59f1b22fda35c1b760b21a03ab906ef683955368db2eeccba092d0cbbfd";
+    "f9d7f99f94e422d9b3635866bfa06dadd6c5351d4d3b1ff347ee97d9d239010d";
 #else
 constexpr char kSelectedEstimatorVersion[] =
     "cx317_selected_600s_nonoverlap_v1";
 constexpr char kSelectedEstimatorReference[] = "selected600";
 constexpr char kSelectedEstimatorHash[] =
-    "5a53b229cabb5a2cf34fa24eb2ffbaae4900bb802be8d17661539399247fcd6c";
+    "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9";
 constexpr char kPolicyId[] = "CX317_POST_CAMPAIGN_FREQUENCY_CONTROL_POLICY_V1";
 constexpr char kPolicyHash[] =
-    "bd1c8c2fef6239740733316cdfc4aab34ffe14f65e6ece5f76b965d21c42cc0f";
+    "e8cbd3170957abf61cf9a4cdc19a09683d221a62d6f15c1a42a1b7f7586083a8";
 #endif
 constexpr char kPlantModelId[] = "cx317_pps_gated_bench";
 constexpr char kPlantModelHash[] =
-    "86c7acd3e22d206b1806c0ee2723b4f9051442d9624f7339982122c6caeaa0b2";
-constexpr char kTimeDomain[] = "rp2040_timer0";
+    "2dd127278b498d6d62e0e14e3e6de83fec27b79c86041898b85d410183014d92";
+constexpr char kTimeDomain[] = "rp2040_monotonic_us32";
 constexpr double kNominalFrequencyHz = 10000000.0;
 constexpr double kNominalGainHzPerCode = 0.00017072602587382669;
 static_assert(kNominalGainHzPerCode > 0.0,
@@ -73,7 +74,7 @@ constexpr char kNominalGainHzPerCodeText[] = "0.000170726025874";
 constexpr uint32_t kStartupWarmupS = OTIS_CX317_STARTUP_WARMUP_S;
 constexpr uint32_t kSettlingExclusionS = OTIS_CX317_SETTLING_EXCLUSION_S;
 #if OTIS_ENABLE_EXACT_POST_APPLICATION_SETTLING
-constexpr uint64_t kCaptureTicksPerSecond = 16000000ull;
+constexpr uint64_t kCaptureTicksPerSecond = 1000000ull;
 #endif
 constexpr int32_t kActiveLiveUpdateCodes = 0;
 constexpr uint8_t kQueueDepth = 4u;
@@ -117,8 +118,8 @@ double temperature_c = 0.0;
 bool selected_estimator_valid = false;
 bool selected_model_applicable = false;
 bool recovery_requested = false;
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
-OtisTimer0Extension timer_extension = {};
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
+OtisMonotonicUsExtension timer_extension = {};
 uint64_t previous_boundary_extended_ticks = 0u;
 uint32_t previous_boundary_session = 0u;
 bool previous_boundary_available = false;
@@ -439,8 +440,8 @@ bool otis_cx317_preview_live_begin(uint32_t startup_uptime_s) {
   selected_estimator_valid = false;
   selected_model_applicable = false;
   recovery_requested = false;
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
-  otis_timer0_extension_init(&timer_extension);
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
+  otis_monotonic_us_extension_init(&timer_extension);
   previous_boundary_extended_ticks = 0u;
   previous_boundary_session = 0u;
   previous_boundary_available = false;
@@ -538,10 +539,10 @@ void otis_cx317_preview_live_on_dac_applied_epoch_exact(
     exact_settling_deadline_available = true;
   }
 #endif
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
   if (!timer_extension.available ||
       timer_extension.capture_session != capture_session)
-    otis_timer0_extension_seed(
+    otis_monotonic_us_extension_seed(
         &timer_extension, application_ticks, capture_session);
 #endif
 #if OTIS_ENABLE_CX321_ACTIVE_HYBRID
@@ -573,9 +574,9 @@ void otis_cx317_preview_live_on_boundary(
   if (active_outcome != nullptr) *active_outcome = {};
 #if OTIS_ENABLE_CX317_I_ONLY_PREVIEW
   if (!initialized || observation == nullptr) return;
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
   uint64_t current_boundary_extended_ticks = observation->pps_timestamp_ticks;
-  const bool boundary_extended = otis_timer0_extension_advance_boundary(
+  const bool boundary_extended = otis_monotonic_us_extension_advance_boundary(
       &timer_extension, observation->pps_timestamp_ticks,
       observation->session, &current_boundary_extended_ticks);
   const bool interval_opening_exact =
@@ -600,7 +601,7 @@ void otis_cx317_preview_live_on_boundary(
     otis_cx321_plant_sign_accumulator_invalidate(&plant_sign_accumulator);
   }
 #endif
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
   previous_boundary_extended_ticks = current_boundary_extended_ticks;
   previous_boundary_session = observation->session;
   previous_boundary_available = true;
@@ -780,7 +781,7 @@ void otis_cx317_preview_live_on_boundary(
         phase_snapshot_available && phase_snapshot.recorder_published;
 #endif
     OtisCx317ActiveLiveOutcome local_active_outcome;
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
     otis_cx317_active_live_on_decision_at_ticks(
         &active_decision, current_boundary_extended_ticks,
         &local_active_outcome);
@@ -863,13 +864,13 @@ uint16_t otis_cx317_preview_live_plant_sign_accepted_intervals(void) {
 #endif
 }
 
-bool otis_cx317_preview_live_extend_timer0_ticks(
+bool otis_cx317_preview_live_extend_monotonic_us(
     uint64_t raw_ticks, uint64_t *extended_ticks) {
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
-  constexpr uint64_t kMaximumProjectionTicks = 60ull * 16000000ull;
-  return otis_timer0_extension_project_nearest(
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
+  constexpr uint64_t kMaximumProjectionUs = 60ull * 1000000ull;
+  return otis_monotonic_us_extension_project_nearest(
       &timer_extension, raw_ticks, timer_extension.capture_session,
-      kMaximumProjectionTicks, extended_ticks);
+      kMaximumProjectionUs, extended_ticks);
 #else
   (void)raw_ticks;
   (void)extended_ticks;
@@ -877,19 +878,20 @@ bool otis_cx317_preview_live_extend_timer0_ticks(
 #endif
 }
 
-bool otis_cx317_preview_live_project_setup_timer0_ticks(
+bool otis_cx317_preview_live_project_setup_monotonic_us(
     uint64_t raw_ticks, uint32_t capture_session, uint64_t *extended_ticks) {
-#if OTIS_ENABLE_ACTIVE_TIMER0_EXTENSION
-  constexpr uint64_t kTimer0ModulusTicks = (1ull << 32) * 16ull;
+#if OTIS_ENABLE_ACTIVE_MONOTONIC_US_EXTENSION
+  constexpr uint64_t kMonotonicUs32Modulus =
+      OTIS_RP2040_MONOTONIC_US32_MODULUS;
   if (extended_ticks == nullptr || capture_session == 0u) return false;
-  const uint64_t normalized_raw_ticks = raw_ticks % kTimer0ModulusTicks;
+  const uint64_t normalized_raw_ticks = raw_ticks % kMonotonicUs32Modulus;
   if (!timer_extension.available) {
     *extended_ticks = normalized_raw_ticks;
     return true;
   }
-  return otis_timer0_extension_project_nearest(
+  return otis_monotonic_us_extension_project_nearest(
       &timer_extension, normalized_raw_ticks, capture_session,
-      60ull * 16000000ull, extended_ticks);
+      60ull * 1000000ull, extended_ticks);
 #else
   (void)raw_ticks;
   (void)capture_session;

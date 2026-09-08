@@ -246,7 +246,7 @@ link reports `lost` while target-only requalification proceeds.
   drops, interrupt gap, batch, and residence counters, and does no parsing,
   formatting, allocation, logging, receiver transition, or timing/control
   work.
-- Core 0 drains at most 128 observations or 4000 `rp2040_timer0` ticks per
+- Core 0 drains at most 128 observations or 4000 `rp2040_monotonic_us32` ticks per
   service call. A loss-before marker closes both fixed collectors before the
   first retained post-gap byte is delivered. Maximum service gap, drain batch,
   budget exhaustion, depth, high water, and overflow are monotonic telemetry.

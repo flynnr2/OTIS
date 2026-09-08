@@ -132,11 +132,11 @@ def _continuation_fixture(tmp_path: Path) -> tuple[dict, list[dict], dict, dict]
             supervisor.start_phase(
                 timestamp_ticks=phase_start_host_ticks,
                 online_counter_ticks=online_ticks,
-                online_counter_domain="rp2040_timer0_extended",
+                online_counter_domain="rp2040_monotonic_us64",
                 counters={"bytes_observed": counter},
                 metrics={"identity_exact": True},
             )
-            required_online_ticks = phase.duration_s * 16_000_000
+            required_online_ticks = phase.duration_s * 1_000_000
             phase_end_host_ticks = (
                 phase_start_host_ticks + phase.duration_s * 1_000_000_000
             )
@@ -192,7 +192,7 @@ def _continuation_fixture(tmp_path: Path) -> tuple[dict, list[dict], dict, dict]
             "original_contract_file_sha256"
         ],
         "continuation_contract_sha256": contract_file_sha256,
-        "counter_domain": "rp2040_timer0_extended",
+        "counter_domain": "rp2040_monotonic_us64",
         "source_counter_baseline_id": f"{run_id}:capture-baseline:1",
     }
     source["counter_baseline_provenance"] = {

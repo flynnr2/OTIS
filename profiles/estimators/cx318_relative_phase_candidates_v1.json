@@ -9,7 +9,7 @@
     },
     "stage1_contract": {
       "path": "profiles/discipline/cx318_stage1_contracts_v1.json",
-      "sha256": "f59234cd7732da8a71c2d3ef0d0e6b2e07488353f5b97400c58db21640851aff"
+      "sha256": "5912408c81e4f32e9db57127936e2c97e849da79f82d57bc998f83dcbfd2a61e"
     }
   },
   "raw_boundary": {
@@ -27,7 +27,7 @@
     "reference_interval_minimum_s": 0.8,
     "reference_duplicate_maximum_s": 0.1,
     "reference_interval_maximum_s": 1.2,
-    "rp2040_reference_timestamp_modulus_rule": "2^32_microseconds_times_timer_ticks_per_microsecond",
+    "rp2040_reference_timestamp_modulus_rule": "2^32_native_microseconds",
     "require_snapshot_status_zero": true,
     "require_exact_snapshot_and_reference_sequence_increment": true,
     "require_exact_cnt_parity": true,
