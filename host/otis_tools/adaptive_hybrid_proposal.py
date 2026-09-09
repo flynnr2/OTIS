@@ -10,7 +10,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .adaptive_hybrid_bundle import REQUIRED_FALSE_AUTHORITY, validate_bundle
+from .adaptive_hybrid_bundle import (
+    REQUIRED_FALSE_AUTHORITY,
+    validate_bundle,
+    validate_frozen_bundle,
+)
 from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
     AdaptiveHybridProgramme,
@@ -135,8 +139,10 @@ def create_proposal(
     return proposal
 
 
-def validate_proposal(
+def _validate_proposal(
     path: Path, programme: AdaptiveHybridProgramme | None = None,
+    *,
+    frozen_bundle: bool,
 ) -> dict[str, Any]:
     proposal = json.loads(path.resolve().read_text(encoding="utf-8"))
     if not isinstance(proposal, dict):
@@ -148,7 +154,11 @@ def validate_proposal(
     selected = programme or programme_from_mapping(proposal)
     binding = proposal.get("exact_bundle", {})
     bundle_path = Path(str(binding.get("path", ""))).resolve()
-    bundle = validate_bundle(bundle_path, selected)
+    bundle = (
+        validate_frozen_bundle(bundle_path, selected)
+        if frozen_bundle
+        else validate_bundle(bundle_path, selected)
+    )
     if (
         proposal.get("proposal_id") != selected.activation_id.replace("activation", "authority_proposal")
         or proposal.get("programme_id") != selected.programme_id
@@ -166,6 +176,18 @@ def validate_proposal(
     ):
         raise ValueError("proposal identity, authority, or bundle binding differs")
     return proposal
+
+
+def validate_frozen_proposal(
+    path: Path, programme: AdaptiveHybridProgramme | None = None,
+) -> dict[str, Any]:
+    return _validate_proposal(path, programme, frozen_bundle=True)
+
+
+def validate_proposal(
+    path: Path, programme: AdaptiveHybridProgramme | None = None,
+) -> dict[str, Any]:
+    return _validate_proposal(path, programme, frozen_bundle=False)
 
 
 def main(argv: list[str] | None = None) -> int:

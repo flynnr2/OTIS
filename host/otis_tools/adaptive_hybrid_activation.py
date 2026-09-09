@@ -10,7 +10,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .adaptive_hybrid_bundle import FRESH_SERIAL_AUTO_DETECT, validate_bundle
+from .adaptive_hybrid_bundle import (
+    FRESH_SERIAL_AUTO_DETECT,
+    validate_bundle,
+    validate_frozen_bundle,
+)
 from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
     OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES,
@@ -24,7 +28,9 @@ from .adaptive_hybrid_contract import (
     programme_from_mapping,
     validate_bench_attempt_envelope,
 )
-from .adaptive_hybrid_proposal import validate_proposal
+from .adaptive_hybrid_proposal import (
+    validate_frozen_proposal,
+)
 from .authoritative_inputs import (
     ROOT_PROFILE,
     authoritative_binding,
@@ -607,7 +613,7 @@ def create_activation(
         raise ValueError("activation requires operator and attempt reasons")
     bench_attempt = envelope_for_purpose(bench_attempt_purpose)
     bundle = validate_bundle(bundle_path, programme)
-    proposal = validate_proposal(proposal_path, programme)
+    proposal = validate_frozen_proposal(proposal_path, programme)
     rehearsal = validate_operational_rehearsal(
         operational_rehearsal_path, bundle=bundle, proposal=proposal, programme=programme
     )
@@ -644,8 +650,8 @@ def validate_frozen_activation(
     proposal_binding = activation.get("proposal", {})
     selected_bundle_path = (bundle_path or Path(str(bundle_binding.get("path", "")))).resolve()
     selected_proposal_path = (proposal_path or Path(str(proposal_binding.get("path", "")))).resolve()
-    bundle = validate_bundle(selected_bundle_path, selected)
-    proposal = validate_proposal(selected_proposal_path, selected)
+    bundle = validate_frozen_bundle(selected_bundle_path, selected)
+    proposal = validate_frozen_proposal(selected_proposal_path, selected)
     rehearsal_binding = activation.get("operational_rehearsal", {})
     attempt = activation.get("attempt", {})
     operator_ref = activation.get("operator_instruction_ref")
@@ -699,9 +705,18 @@ def validate_activation(
     path: Path, *, bundle_path: Path | None = None, proposal_path: Path | None = None,
     programme: AdaptiveHybridProgramme | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    return validate_frozen_activation(
+    activation, frozen_bundle, proposal = validate_frozen_activation(
         path, bundle_path=bundle_path, proposal_path=proposal_path, programme=programme
     )
+    selected = programme or programme_from_mapping(activation)
+    bundle_binding = activation.get("bundle", {})
+    selected_bundle_path = (
+        bundle_path or Path(str(bundle_binding.get("path", "")))
+    ).resolve()
+    current_bundle = validate_bundle(selected_bundle_path, selected)
+    if current_bundle != frozen_bundle:
+        raise ValueError("activation frozen and reproduced bundle identities differ")
+    return activation, current_bundle, proposal
 
 
 def _transaction_identities(bundle: dict[str, Any]) -> dict[str, str]:
@@ -955,7 +970,7 @@ def create_run_manifest(
     run_dir = run_dir.resolve()
     if output_path.resolve() != (run_dir / RUN_MANIFEST_PATH).resolve():
         raise ValueError("live manifest must be run-local run_manifest.json")
-    activation, bundle, proposal = validate_activation(
+    activation, bundle, proposal = validate_frozen_activation(
         activation_path, bundle_path=bundle_path, proposal_path=proposal_path,
         programme=programme,
     )
@@ -1040,8 +1055,8 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
     bundle_path = Path(str(bundle_binding["path"])).resolve()
     proposal_path = Path(str(proposal_binding["path"])).resolve()
     activation_path = Path(str(activation_binding["path"])).resolve()
-    bundle = validate_bundle(bundle_path, programme)
-    proposal = validate_proposal(proposal_path, programme)
+    bundle = validate_frozen_bundle(bundle_path, programme)
+    proposal = validate_frozen_proposal(proposal_path, programme)
     activation = _read_object(activation_path, "adaptive-hybrid activation")
     raw_bench_attempt = activation.get("bench_attempt")
     if not isinstance(raw_bench_attempt, dict):

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 
 import pytest
+
+from host.otis_tools.active_status_live_state import ActiveStatusLiveReducer
+from host.otis_tools.contracts import HEALTH_FIELDS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,4 +53,19 @@ def test_adaptive_hybrid_status_getter_preserves_application_and_checkpoint(
         cwd=ROOT,
         check=True,
     )
-    subprocess.run([str(executable)], cwd=ROOT, check=True)
+    completed = subprocess.run(
+        [str(executable)], cwd=ROOT, check=True, capture_output=True, text=True
+    )
+    reducer = ActiveStatusLiveReducer()
+    updates: list[dict[str, object]] = []
+    rows = list(csv.reader(completed.stdout.splitlines()))
+    assert rows
+    for values in rows:
+        assert len(values) == len(HEALTH_FIELDS)
+        row = dict(zip(HEALTH_FIELDS, values, strict=True))
+        assert row["component"] == "adaptive_hybrid"
+        update = reducer.observe(row)
+        if update is not None:
+            updates.append(update)
+    assert updates[-1]["state"] == "complete"
+    assert updates[-1]["reason"] == "snapshot_generation_complete"

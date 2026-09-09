@@ -3592,9 +3592,13 @@ def create_supervisor(
     duration_s: float | None = None,
     console_events: bool = False,
 ) -> AdaptiveHybridSupervisor:
-    from .adaptive_hybrid_activation import validate_run_manifest
+    from .adaptive_hybrid_activation import validate_frozen_run_manifest
 
-    manifest = validate_run_manifest(manifest_path)
+    # The physical runner performs the current deterministic firmware
+    # reproduction before authority reservation and hardware entry.  Startup
+    # consumes only the immutable run-local closure so capture is never held
+    # open while the same firmware is compiled again.
+    manifest = validate_frozen_run_manifest(manifest_path)
     spec, identities = load_active_hybrid_spec(manifest)
     build_identity = _manifest_build_identity(manifest)
     if expected_build_identity != build_identity:

@@ -11,6 +11,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from host.otis_tools import adaptive_hybrid_bundle as bundle_module
+from host.otis_tools import adaptive_hybrid_activation as activation_module
 from host.otis_tools import adaptive_hybrid_analyze as analyze_module
 from host.otis_tools import adaptive_hybrid_run as run_module
 from host.otis_tools import adaptive_hybrid_supervisor as supervisor_module
@@ -27,6 +28,7 @@ from host.otis_tools.adaptive_hybrid_bundle import (
     create_progressive_replay,
     _validate_build,
     validate_bundle,
+    validate_frozen_bundle,
     validate_progressive_replay,
 )
 from host.otis_tools.authoritative_inputs import (
@@ -746,6 +748,86 @@ def test_bundle_rejects_self_consistent_authority_mutation(
     _write_json(path, bundle)
     with pytest.raises(ValueError, match="topology, limit, or authority"):
         validate_bundle(path)
+
+
+def test_frozen_bundle_validation_does_not_repeat_firmware_reproduction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build_manifest = tmp_path / "build.json"
+    _write_json(build_manifest, {"build": "fixture"})
+    firmware = {
+        "image_id": ADAPTIVE_HYBRID_PROGRAMME.profile_id,
+        "build_identity": "a" * 64 + ":" + "b" * 64,
+        "build_manifest": _binding(build_manifest),
+    }
+    reproduction_modes: list[bool] = []
+
+    def fake_validate_build(
+        *_args: object,
+        verify_deterministic_reproduction: bool = True,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        reproduction_modes.append(verify_deterministic_reproduction)
+        return firmware
+
+    monkeypatch.setattr(bundle_module, "_validate_build", fake_validate_build)
+    bundle_path = tmp_path / "bundle.json"
+    _write_json(bundle_path, create_bundle(build_manifest_path=build_manifest))
+    assert reproduction_modes == [True]
+
+    reproduction_modes.clear()
+    validate_frozen_bundle(bundle_path)
+    assert reproduction_modes == [False]
+
+    validate_bundle(bundle_path)
+    assert reproduction_modes == [False, True]
+
+
+def test_live_supervisor_consumes_frozen_manifest_without_reproduction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build_identity = "a" * 64 + ":" + "b" * 64
+    manifest = {"firmware": {"build_identity": build_identity}}
+    manifest_path = tmp_path / "run_manifest.json"
+    _write_json(manifest_path, manifest)
+    frozen_calls: list[Path] = []
+
+    def frozen_validator(path: Path) -> dict[str, object]:
+        frozen_calls.append(path)
+        return manifest
+
+    def current_validator(_path: Path) -> dict[str, object]:
+        raise AssertionError("live supervisor repeated current firmware validation")
+
+    monkeypatch.setattr(
+        activation_module, "validate_frozen_run_manifest", frozen_validator
+    )
+    monkeypatch.setattr(
+        activation_module, "validate_run_manifest", current_validator
+    )
+    spec = object()
+    identities = object()
+    monkeypatch.setattr(
+        supervisor_module,
+        "load_active_hybrid_spec",
+        lambda _manifest: (spec, identities),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "AdaptiveHybridSupervisor",
+        lambda **kwargs: kwargs,
+    )
+
+    result = supervisor_module.create_supervisor(
+        manifest_path=manifest_path,
+        run_dir=tmp_path,
+        command_fifo=tmp_path / "normal.fifo",
+        emergency_command_fifo=tmp_path / "emergency.fifo",
+        abort_fifo=tmp_path / "abort.fifo",
+        expected_build_identity=build_identity,
+    )
+    assert frozen_calls == [manifest_path]
+    assert result["manifest"] == manifest
 
 
 def test_bundle_validation_consumes_embedded_profile_and_schema_bytes(

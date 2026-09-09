@@ -2621,7 +2621,7 @@ static void emit_direct_active_status(void *context, const char *key,
                                       const char *value,
                                       const char *severity, uint32_t flags) {
   otis_status_emit(static_cast<OtisStatusEmitContext *>(context),
-                   "adaptive_hybrid_regulation", key, value, severity, flags);
+                   "adaptive_hybrid", key, value, severity, flags);
 }
 
 void otis_adaptive_hybrid_regulation_live_emit_status(OtisStatusEmitContext *context,

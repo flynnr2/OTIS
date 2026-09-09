@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 #define OTIS_BUILD_IMAGE_ID "adaptive_hybrid_regulation"
@@ -9,6 +10,15 @@
 // executable; the few dependencies reached by the getter are linked by the
 // Python driver or stubbed below.
 #include "../../firmware/arduino/otis_nano_rp2040_connect/otis_adaptive_hybrid_regulation_live.cpp"
+
+void otis_status_emit(OtisStatusEmitContext *context, const char *component,
+                      const char *key, const char *value,
+                      const char *severity, uint32_t flags) {
+  assert(context != nullptr);
+  assert(context->sink != nullptr);
+  context->sink(context->sink_context, component, key, value, severity,
+                flags);
+}
 
 bool otis_dual_core_fail_static(void) { return false; }
 void otis_dual_core_latch_fault(OtisPartitionFault) {}
@@ -51,6 +61,24 @@ bool otis_dual_core_evidence_can_publish(uint32_t message_count) {
 void otis_dual_core_note_timing_progress(OtisTimingProgressPhase, uint64_t) {}
 
 namespace {
+
+uint32_t emitted_status_sequence = 1u;
+
+void emit_transport_limited_status(void *, const char *component,
+                                   const char *key, const char *value,
+                                   const char *severity, uint32_t flags) {
+  OtisTelemetryMessage transported = {};
+  snprintf(transported.component, sizeof(transported.component), "%s",
+           component);
+  snprintf(transported.key, sizeof(transported.key), "%s", key);
+  snprintf(transported.value, sizeof(transported.value), "%s", value);
+  snprintf(transported.severity, sizeof(transported.severity), "%s",
+           severity);
+  printf("STS,1,%lu,1,rp2040_monotonic_us32,%s,%s,%s,%s,%lu\n",
+         static_cast<unsigned long>(emitted_status_sequence++),
+         transported.component, transported.key, transported.value,
+         transported.severity, static_cast<unsigned long>(flags));
+}
 
 uint32_t csv_field_count(const char *record) {
   assert(record != nullptr && *record != '\0');
@@ -395,5 +423,13 @@ int main() {
   assert(strcmp(complete.hybrid_state, "HYBRID_TRACKING") == 0);
   assert(complete.first_phase_checkpoint_passed);
   assert_common_application_status(complete);
+
+  // Exercise the production status emitter through the real cross-core
+  // component width.  The Python driver consumes these rows with the live
+  // host reducer, covering the firmware-to-host contract that protects the
+  // live supervisor handoff.
+  OtisStatusEmitContext status_context = {};
+  status_context.sink = emit_transport_limited_status;
+  otis_adaptive_hybrid_regulation_live_emit_status(&status_context, 11112u);
   return 0;
 }

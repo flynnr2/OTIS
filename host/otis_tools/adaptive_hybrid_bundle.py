@@ -260,11 +260,42 @@ def _verify_reproducible_firmware(
     }
 
 
+def _frozen_reproduction_record(
+    *, provenance: dict[str, Any], recorded_uf2: Path
+) -> dict[str, Any]:
+    """Reconstruct the immutable reproduction attestation without compiling.
+
+    Live consumers verify the frozen bundle and artifact bytes.  The physical
+    runner separately performs one current deterministic reproduction before
+    reserving authority or touching hardware; repeating that compile in each
+    downstream process would put offline validation inside the live startup
+    deadline.
+    """
+
+    invocation = provenance.get("invocation")
+    if not isinstance(invocation, dict):
+        raise ValueError("firmware rebuild provenance is malformed")
+    build_session_id = invocation.get("build_session_id")
+    if not isinstance(build_session_id, str) or not LOWER_HEX_16.fullmatch(
+        build_session_id
+    ):
+        raise ValueError("firmware rebuild identity is malformed")
+    return {
+        "contract": "otis_deterministic_firmware_reproduction_v1",
+        "status": "verified",
+        "build_session_id": build_session_id,
+        "provenance_equal": True,
+        "uf2_byte_identical": True,
+        "uf2_sha256": sha256(recorded_uf2.read_bytes()).hexdigest(),
+    }
+
+
 def _validate_build(
     build_manifest_path: Path,
     programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
     *,
     authoritative_inputs: dict[str, Any] | None = None,
+    verify_deterministic_reproduction: bool = True,
 ) -> dict[str, Any]:
     frozen_inputs = authoritative_inputs or collect_authoritative_inputs()
     frozen_summary = authoritative_summary(frozen_inputs)
@@ -408,9 +439,16 @@ def _validate_build(
         or resource.get("status") != "within_budget"
     ):
         raise ValueError("firmware resource budget is not verified")
-    reproduction = _verify_reproducible_firmware(
-        provenance=provenance,
-        recorded_uf2=uf2_path,
+    reproduction = (
+        _verify_reproducible_firmware(
+            provenance=provenance,
+            recorded_uf2=uf2_path,
+        )
+        if verify_deterministic_reproduction
+        else _frozen_reproduction_record(
+            provenance=provenance,
+            recorded_uf2=uf2_path,
+        )
     )
     return {
         "image_id": programme.profile_id,
@@ -553,6 +591,7 @@ def create_bundle(
     programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
     _created_utc: str | None = None,
     _authoritative_inputs: dict[str, Any] | None = None,
+    _verify_deterministic_reproduction: bool = True,
 ) -> dict[str, Any]:
     frozen_inputs = _authoritative_inputs or collect_authoritative_inputs()
     validate_authoritative_inputs(frozen_inputs)
@@ -597,6 +636,9 @@ def create_bundle(
             build_manifest_path.resolve(),
             programme,
             authoritative_inputs=frozen_inputs,
+            verify_deterministic_reproduction=(
+                _verify_deterministic_reproduction
+            ),
         ),
         "offline_replay": replay,
         "host_tools": {
@@ -709,9 +751,11 @@ def create_bundle(
     return bundle
 
 
-def validate_bundle(
+def _validate_bundle(
     path: Path,
     programme: AdaptiveHybridProgramme | None = None,
+    *,
+    verify_deterministic_reproduction: bool,
 ) -> dict[str, Any]:
     bundle = _read_object(path.resolve())
     claimed = bundle.pop("bundle_sha256", None)
@@ -746,12 +790,39 @@ def validate_bundle(
         programme=programme,
         _created_utc=created_utc,
         _authoritative_inputs=frozen_inputs,
+        _verify_deterministic_reproduction=verify_deterministic_reproduction,
     )
     if bundle != expected:
         raise ValueError(
             "bundle build, firmware, replay, policy, tool, topology, limit, or authority identity differs"
         )
     return bundle
+
+
+def validate_frozen_bundle(
+    path: Path,
+    programme: AdaptiveHybridProgramme | None = None,
+) -> dict[str, Any]:
+    """Validate immutable bundle bytes without repeating a firmware compile."""
+
+    return _validate_bundle(
+        path,
+        programme,
+        verify_deterministic_reproduction=False,
+    )
+
+
+def validate_bundle(
+    path: Path,
+    programme: AdaptiveHybridProgramme | None = None,
+) -> dict[str, Any]:
+    """Validate a bundle and reproduce its firmware from the current checkout."""
+
+    return _validate_bundle(
+        path,
+        programme,
+        verify_deterministic_reproduction=True,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

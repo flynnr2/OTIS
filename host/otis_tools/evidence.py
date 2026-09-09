@@ -10,13 +10,13 @@ import os
 import re
 from typing import Any, Iterable
 
-from .adaptive_hybrid_bundle import validate_bundle
+from .adaptive_hybrid_bundle import validate_frozen_bundle
 from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
     OPERATIONAL_REHEARSAL_SEAL_TYPE,
     programme_from_mapping,
 )
-from .adaptive_hybrid_proposal import validate_proposal
+from .adaptive_hybrid_proposal import validate_frozen_proposal
 from .authoritative_inputs import validate_authoritative_inputs
 from .run_loader import (
     CAPTURE_IN_PROGRESS_FLAG,
@@ -371,8 +371,8 @@ def _validate_operational_rehearsal_manifest(
         raise ValueError("rehearsal manifest bundle/proposal bindings are malformed")
     bundle_path = Path(str(bundle_binding.get("path", ""))).resolve()
     proposal_path = Path(str(proposal_binding.get("path", ""))).resolve()
-    bundle = validate_bundle(bundle_path, programme)
-    proposal = validate_proposal(proposal_path, programme)
+    bundle = validate_frozen_bundle(bundle_path, programme)
+    proposal = validate_frozen_proposal(proposal_path, programme)
     files = _operational_rehearsal_files()
     contracts = {
         entry["contract"]: (
