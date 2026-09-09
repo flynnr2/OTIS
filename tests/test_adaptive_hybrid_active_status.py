@@ -16,6 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
 
 
+def test_production_dual_core_active_status_uses_bounded_contract_component() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
+        encoding="utf-8"
+    )
+    start = sketch.index("void publish_dual_core_active_status_field")
+    end = sketch.index("\nbool publish_dual_core_active_status", start)
+    production_sink = sketch[start:end]
+    assert "OTIS_ADAPTIVE_HYBRID_STATUS_COMPONENT" in production_sink
+    assert '"adaptive_hybrid_regulation"' not in production_sink
+
+
 def test_adaptive_hybrid_status_getter_preserves_application_and_checkpoint(
     tmp_path: Path,
 ) -> None:

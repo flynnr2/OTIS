@@ -550,7 +550,8 @@ void publish_dual_core_active_status_field(void *, const char *key,
                                            const char *value,
                                            const char *severity,
                                            uint32_t flags) {
-  publish_dual_core_timing_status("adaptive_hybrid_regulation", key, value, severity, flags);
+  publish_dual_core_timing_status(OTIS_ADAPTIVE_HYBRID_STATUS_COMPONENT, key,
+                                  value, severity, flags);
 }
 
 bool publish_dual_core_active_status(uint32_t now_ms) {

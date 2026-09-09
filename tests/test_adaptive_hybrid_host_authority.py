@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -828,6 +829,49 @@ def test_live_supervisor_consumes_frozen_manifest_without_reproduction(
     )
     assert frozen_calls == [manifest_path]
     assert result["manifest"] == manifest
+
+
+def test_live_manifest_requires_matching_current_reproduction_capability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    activation = {"activation_sha256": "1" * 64}
+    bundle = {
+        "bundle_sha256": "2" * 64,
+        "firmware": {
+            "build_identity": "3" * 64 + ":" + "4" * 64,
+            "uf2": {"sha256": "5" * 64},
+        },
+    }
+    proposal = {"proposal_sha256": "6" * 64}
+    monkeypatch.setattr(
+        activation_module,
+        "validate_activation",
+        lambda *_args, **_kwargs: (activation, bundle, proposal),
+    )
+
+    *_, capability = activation_module.validate_activation_for_physical_entry(
+        tmp_path / "activation.json"
+    )
+    activation_module._require_current_reproduction_capability(
+        capability,
+        activation=activation,
+        bundle=bundle,
+        proposal=proposal,
+    )
+    with pytest.raises(ValueError, match="current firmware reproduction capability"):
+        activation_module._require_current_reproduction_capability(
+            None,
+            activation=activation,
+            bundle=bundle,
+            proposal=proposal,
+        )
+    with pytest.raises(ValueError, match="current firmware reproduction capability"):
+        activation_module._require_current_reproduction_capability(
+            replace(capability, uf2_sha256="7" * 64),
+            activation=activation,
+            bundle=bundle,
+            proposal=proposal,
+        )
 
 
 def test_bundle_validation_consumes_embedded_profile_and_schema_bytes(

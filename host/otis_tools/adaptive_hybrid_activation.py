@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
@@ -57,6 +58,17 @@ FIFO_PATHS = {
     "emergency_abort": "control/emergency_abort.fifo",
     "host_abort": "control/host_abort.fifo",
 }
+_CURRENT_REPRODUCTION_CAPABILITY_SECRET = object()
+
+
+@dataclass(frozen=True)
+class _ValidatedCurrentReproduction:
+    activation_sha256: str
+    bundle_sha256: str
+    proposal_sha256: str
+    build_identity: str
+    uf2_sha256: str
+    _secret: object = field(repr=False, compare=False)
 
 
 def _utc_now() -> str:
@@ -719,6 +731,74 @@ def validate_activation(
     return activation, current_bundle, proposal
 
 
+def validate_activation_for_physical_entry(
+    path: Path,
+    *,
+    bundle_path: Path | None = None,
+    proposal_path: Path | None = None,
+    programme: AdaptiveHybridProgramme | None = None,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    _ValidatedCurrentReproduction,
+]:
+    """Reproduce once and return the private capability required to go live."""
+
+    activation, bundle, proposal = validate_activation(
+        path,
+        bundle_path=bundle_path,
+        proposal_path=proposal_path,
+        programme=programme,
+    )
+    capability = _ValidatedCurrentReproduction(
+        activation_sha256=str(activation["activation_sha256"]),
+        bundle_sha256=str(bundle["bundle_sha256"]),
+        proposal_sha256=str(proposal["proposal_sha256"]),
+        build_identity=str(bundle["firmware"]["build_identity"]),
+        uf2_sha256=str(bundle["firmware"]["uf2"]["sha256"]),
+        _secret=_CURRENT_REPRODUCTION_CAPABILITY_SECRET,
+    )
+    return activation, bundle, proposal, capability
+
+
+def _require_current_reproduction_capability(
+    capability: _ValidatedCurrentReproduction | None,
+    *,
+    activation: dict[str, Any],
+    bundle: dict[str, Any],
+    proposal: dict[str, Any],
+) -> None:
+    firmware = bundle.get("firmware")
+    uf2 = firmware.get("uf2") if isinstance(firmware, dict) else None
+    expected = (
+        activation.get("activation_sha256"),
+        bundle.get("bundle_sha256"),
+        proposal.get("proposal_sha256"),
+        firmware.get("build_identity") if isinstance(firmware, dict) else None,
+        uf2.get("sha256") if isinstance(uf2, dict) else None,
+    )
+    observed = (
+        (
+            capability.activation_sha256,
+            capability.bundle_sha256,
+            capability.proposal_sha256,
+            capability.build_identity,
+            capability.uf2_sha256,
+        )
+        if isinstance(capability, _ValidatedCurrentReproduction)
+        else None
+    )
+    if (
+        not isinstance(capability, _ValidatedCurrentReproduction)
+        or capability._secret is not _CURRENT_REPRODUCTION_CAPABILITY_SECRET
+        or observed != expected
+    ):
+        raise ValueError(
+            "live manifest requires the matching current firmware reproduction capability"
+        )
+
+
 def _transaction_identities(bundle: dict[str, Any]) -> dict[str, str]:
     frozen_inputs = bundle.get("authoritative_inputs")
     validate_authoritative_inputs(frozen_inputs)
@@ -965,6 +1045,7 @@ def _known_limitations() -> list[str]:
 def create_run_manifest(
     *, activation_path: Path, bundle_path: Path, proposal_path: Path,
     run_dir: Path, output_path: Path, serial_device: str | None = None,
+    _validated_current_reproduction: _ValidatedCurrentReproduction | None = None,
 ) -> dict[str, Any]:
     programme = ADAPTIVE_HYBRID_PROGRAMME
     run_dir = run_dir.resolve()
@@ -973,6 +1054,12 @@ def create_run_manifest(
     activation, bundle, proposal = validate_frozen_activation(
         activation_path, bundle_path=bundle_path, proposal_path=proposal_path,
         programme=programme,
+    )
+    _require_current_reproduction_capability(
+        _validated_current_reproduction,
+        activation=activation,
+        bundle=bundle,
+        proposal=proposal,
     )
     if not isinstance(serial_device, str) or not serial_device.startswith("/dev/"):
         raise ValueError("run manifest requires the freshly resolved serial device")

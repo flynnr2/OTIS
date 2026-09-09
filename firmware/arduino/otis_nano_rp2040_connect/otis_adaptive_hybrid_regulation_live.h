@@ -10,6 +10,12 @@
 #define OTIS_ADAPTIVE_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT \
   "adaptive_hybrid_active_status_snapshot_v1"
 
+constexpr char OTIS_ADAPTIVE_HYBRID_STATUS_COMPONENT[] = "adaptive_hybrid";
+static_assert(
+    sizeof(OTIS_ADAPTIVE_HYBRID_STATUS_COMPONENT) <=
+        sizeof(((OtisTelemetryMessage *)nullptr)->component),
+    "active status component must survive the cross-core telemetry record");
+
 struct OtisAdaptiveHybridRegulationLiveHealth {
   uint32_t session_id;
   // Monotonic producer identities.  Metadata qualification must advance

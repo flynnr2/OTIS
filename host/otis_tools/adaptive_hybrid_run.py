@@ -32,7 +32,7 @@ from .adaptive_hybrid_activation import (
     RUN_MANIFEST_PATH,
     RUN_PROPOSAL_PATH,
     create_run_manifest,
-    validate_activation,
+    validate_activation_for_physical_entry,
     validate_frozen_run_manifest,
 )
 from .active_status_contract import complete_active_status_snapshots
@@ -1117,7 +1117,12 @@ def run_adaptive_hybrid_qualification(
     if activation_value is None:
         raise ValueError("active-hybrid activation is unreadable")
     programme = programme_from_mapping(activation_value)
-    activation, bundle, _proposal = validate_activation(activation_path)
+    (
+        activation,
+        bundle,
+        _proposal,
+        current_reproduction,
+    ) = validate_activation_for_physical_entry(activation_path)
     bench_attempt = _activation_bench_attempt(activation)
     run_dir = run_dir.resolve()
     if run_dir.exists():
@@ -1188,6 +1193,7 @@ def run_adaptive_hybrid_qualification(
             run_dir=run_dir,
             output_path=manifest_path,
             serial_device=device,
+            _validated_current_reproduction=current_reproduction,
         )
         generic_manifest = load_manifest(run_dir)
         if generic_manifest.data != created_manifest:
