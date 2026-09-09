@@ -125,6 +125,18 @@ MAXIMUM_CODE = ADAPTIVE_HYBRID_PROGRAMME.maximum_code
 QUALIFIED_DURATION_S = ADAPTIVE_HYBRID_PROGRAMME.qualified_duration_s
 ABSOLUTE_WALL_LIMIT_S = ADAPTIVE_HYBRID_PROGRAMME.absolute_wall_limit_s
 MINIMUM_PHASE_MATERIAL_APPLICATIONS = 2
+
+
+def _tick_is_within_reported_whole_second(
+    event_timestamp_ticks: int, reported_timestamp_s: int
+) -> bool:
+    """Validate the firmware's explicit microsecond-to-second projection."""
+    return (
+        event_timestamp_ticks // RP2040_MONOTONIC_US_PER_SECOND
+        == reported_timestamp_s
+    )
+
+
 # ``uptime_s`` is an integer status value, while estimator timestamps retain
 # the fractional RP2040 timer coordinate.  A fresh estimator can also be
 # published after the latest complete queried status snapshot.  This bound is
@@ -1738,8 +1750,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             mismatched
             or session_id <= 0
             or event_timestamp_ticks <= 0
-            or event_timestamp_ticks
-            != application_timestamp_s * RP2040_MONOTONIC_US_PER_SECOND
+            or not _tick_is_within_reported_whole_second(
+                event_timestamp_ticks, application_timestamp_s
+            )
             or request.get("session_id") != session_id
             or request.get("requested_code") != setup_code
             or request.get("one_shot_ordinal") != 1

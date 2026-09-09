@@ -320,6 +320,18 @@ def test_one_application_setup_is_submitted_once(tmp_path: Path) -> None:
     assert supervisor.state["manual_start_sent"] is True
 
 
+def test_setup_confirmation_accepts_exact_ticks_within_reported_whole_second(
+) -> None:
+    assert supervisor_module._tick_is_within_reported_whole_second(612071551, 612)
+    assert supervisor_module._tick_is_within_reported_whole_second(612999999, 612)
+    assert not supervisor_module._tick_is_within_reported_whole_second(
+        613000000, 612
+    )
+    assert not supervisor_module._tick_is_within_reported_whole_second(
+        611999999, 612
+    )
+
+
 def test_application_frontier_is_durable_before_phase_three_command(
     tmp_path: Path,
 ) -> None:
