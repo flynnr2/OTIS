@@ -11,8 +11,10 @@ from host.otis_tools import adaptive_hybrid_activation as activation_module
 from host.otis_tools import adaptive_hybrid_run as run_module
 from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
+    CAUSAL_STATE_CONTRACT_ID,
+    CAUSAL_STATE_SCHEMA_VERSION,
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
-    SINGLE_AUTOMATIC_APPLICATION,
     envelope_for_purpose,
 )
 
@@ -46,7 +48,7 @@ def _board_listing(*, product: str = "Nano RP2040 Connect") -> dict[str, object]
     ("purpose", "setup", "automatic", "arms", "writes"),
     (
         (INHIBITED_ZERO_WRITE, 0, 0, 0, 0),
-        (SINGLE_AUTOMATIC_APPLICATION, 1, 1, 4, 2),
+        (CONTINGENT_72_HOUR_HYBRID_CONTROL, 1, 144, 468, 145),
     ),
 )
 def test_activation_and_run_fields_derive_from_exact_bench_envelope(
@@ -63,9 +65,21 @@ def test_activation_and_run_fields_derive_from_exact_bench_envelope(
     assert authority["maximum_total_automatic_applications"] == automatic
     assert authority["arm_submission_limit"] == arms
     assert authority["total_dac_value_write_limit"] == writes
-    assert authority["absolute_wall_clock_limit_s"] == 7200
+    expected_wall_s = 7200 if purpose == INHIBITED_ZERO_WRITE else 280800
+    assert authority["absolute_wall_clock_limit_s"] == expected_wall_s
     assert section["purpose"] == purpose
+    assert section["automatic_control"]["authorized"] is (automatic > 0)
     assert section["automatic_control"]["maximum_total_applications"] == automatic
+    assert section["automatic_control"]["maximum_cumulative_movement_codes"] == (
+        ADAPTIVE_HYBRID_PROGRAMME.authorized_maximum_cumulative_movement_codes
+        if automatic
+        else 0
+    )
+    assert authority["maximum_cumulative_absolute_movement_codes"] == (
+        ADAPTIVE_HYBRID_PROGRAMME.authorized_maximum_cumulative_movement_codes
+        if automatic
+        else 0
+    )
     assert section["qualification"]["progress_domain"] == (
         "accepted_D14_D8_apertures"
     )
@@ -91,7 +105,7 @@ def test_board_identity_checks_every_envelope_field(
 
 
 @pytest.mark.parametrize(
-    "purpose", (INHIBITED_ZERO_WRITE, SINGLE_AUTOMATIC_APPLICATION)
+    "purpose", (INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL)
 )
 def test_single_upload_record_binds_envelope_and_compile_identity(
     purpose: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -146,15 +160,17 @@ def test_single_upload_record_binds_envelope_and_compile_identity(
 
 def test_runner_durations_and_terminals_are_envelope_derived(tmp_path: Path) -> None:
     zero = envelope_for_purpose(INHIBITED_ZERO_WRITE)
-    one = envelope_for_purpose(SINGLE_AUTOMATIC_APPLICATION)
+    contingent = envelope_for_purpose(CONTINGENT_72_HOUR_HYBRID_CONTROL)
     capture = run_module._capture_command(
         device="/dev/cu.usbmodem-test", run_dir=tmp_path, bench_attempt=zero
     )
     supervisor = run_module._supervisor_command(
-        run_dir=tmp_path, build_identity="source:config", bench_attempt=one
+        run_dir=tmp_path,
+        build_identity="source:config",
+        bench_attempt=contingent,
     )
     assert capture[capture.index("--duration-s") + 1] == "7380"
-    assert supervisor[supervisor.index("--duration-s") + 1] == "7320"
+    assert supervisor[supervisor.index("--duration-s") + 1] == "280920"
     assert run_module._terminal_expected(
         {
             "result": "healthy_stop",
@@ -176,19 +192,22 @@ def test_runner_durations_and_terminals_are_envelope_derived(tmp_path: Path) -> 
     assert not run_module._terminal_expected(
         {
             "result": "healthy_stop",
-            "reason": one.as_dict()["terminal_semantics"]["success_terminal"],
+            "reason": contingent.as_dict()["terminal_semantics"][
+                "success_terminal"
+            ],
             "preliminary_decision": "pending_offline_scientific_analysis",
             "last_confirmed_code": None,
         },
-        one,
+        contingent,
     )
     assert run_module._terminal_expected(
         {
-            "result": "nonpass",
-            "primary_decision": "bounded_no_natural_correction",
+            "result": "healthy_stop",
+            "reason": "adaptive_hybrid_qualified_complete",
+            "preliminary_decision": "pending_offline_scientific_analysis",
             "last_confirmed_code": ADAPTIVE_HYBRID_PROGRAMME.setup_code,
         },
-        one,
+        contingent,
     )
 
 
@@ -224,7 +243,8 @@ def _zero_write_review_inputs() -> dict[str, object]:
         "bench_attempt_arm_admissions": [],
         "terminal_static_code": None,
         "bench_attempt_causal_state": {
-            "contract": "adaptive_hybrid_bench_attempt_causal_state_v1",
+            "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
+            "contract": CAUSAL_STATE_CONTRACT_ID,
             "durable_ACT_application_count": 0,
             "firmware_correction_count": 0,
             "authority_closed": True,

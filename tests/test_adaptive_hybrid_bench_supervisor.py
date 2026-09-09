@@ -12,8 +12,8 @@ from host.otis_tools import adaptive_hybrid_supervisor as supervisor_module
 from host.otis_tools.adaptive_hybrid_contract import (
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
-    SINGLE_AUTOMATIC_APPLICATION,
     envelope_for_purpose,
 )
 from host.otis_tools.adaptive_hybrid_contract import ADAPTIVE_HYBRID_PROGRAMME
@@ -63,6 +63,7 @@ def _bare_supervisor(purpose: str, run_dir: Path) -> supervisor_module.AdaptiveH
         "bench_attempt_arm_submission_count": 0,
         "bench_attempt_last_arm_opportunity": None,
         "bench_attempt_arm_admissions": [],
+        "response_horizon_closed_utc": None,
         "manual_start_sent": False,
         "arm_pending": False,
         "arm_sent_at_utc": None,
@@ -88,6 +89,14 @@ def _write_single_row(path: Path, row: dict[str, str]) -> None:
         writer = csv.DictWriter(handle, fieldnames=list(row))
         writer.writeheader()
         writer.writerow(row)
+
+
+def _write_rows(path: Path, rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def _zero_write_terminal_health(
@@ -283,7 +292,7 @@ def test_zero_write_wall_endpoint_rejects_a_setup_authority_record(
 
 
 def test_one_application_setup_is_submitted_once(tmp_path: Path) -> None:
-    supervisor = _bare_supervisor(SINGLE_AUTOMATIC_APPLICATION, tmp_path)
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor._identity_ready = lambda _health: True
     supervisor._prewrite_readiness = lambda _health: SimpleNamespace(ready=True)
     request = {
@@ -311,10 +320,10 @@ def test_one_application_setup_is_submitted_once(tmp_path: Path) -> None:
     assert supervisor.state["manual_start_sent"] is True
 
 
-def test_application_closure_is_durable_before_phase_three_command(
+def test_application_frontier_is_durable_before_phase_three_command(
     tmp_path: Path,
 ) -> None:
-    supervisor = _bare_supervisor(SINGLE_AUTOMATIC_APPLICATION, tmp_path)
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     row = _application_row()
     active_path = tmp_path / ACTIVE_CSV
     _write_single_row(active_path, row)
@@ -351,7 +360,7 @@ def test_application_closure_is_durable_before_phase_three_command(
 
     def command(value: str) -> None:
         causal = supervisor.state["bench_attempt_causal_state"]
-        assert causal["authority_closed"] is True
+        assert causal["authority_closed"] is False
         assert causal["durable_ACT_application_count"] == 1
         assert causal["firmware_correction_count"] == 1
         trace.append(("command", value))
@@ -369,15 +378,15 @@ def test_application_closure_is_durable_before_phase_three_command(
     )
 
     assert acknowledged is True
-    closure_event_index = trace.index(
-        ("programme_event", "bench_attempt_authority_closed")
+    frontier_event_index = trace.index(
+        ("programme_event", "bench_attempt_application_frontier_persisted")
     )
     command_index = trace.index(("command", "ACTIVE EVIDENCE 7 3"))
-    assert closure_event_index < command_index
+    assert frontier_event_index < command_index
     causal = supervisor.state["bench_attempt_causal_state"]
-    assert causal["closure"]["accepted_D14_D8_apertures_at_application"] == 733
-    assert supervisor.state["bench_attempt_arm_admission_closed"] is True
-    assert supervisor.state["arm_pending"] is False
+    assert causal["closure"] is None
+    assert supervisor.state["bench_attempt_arm_admission_closed"] is False
+    assert supervisor.state["arm_pending"] is True
 
     events_before = [item for item in trace if item[0] == "programme_event"]
     supervisor._prepare_evidence_acknowledgement(row, 3)
@@ -388,7 +397,7 @@ def test_application_closure_is_durable_before_phase_three_command(
 def test_application_count_mismatch_withholds_phase_three_acknowledgement(
     tmp_path: Path, firmware_count: int
 ) -> None:
-    supervisor = _bare_supervisor(SINGLE_AUTOMATIC_APPLICATION, tmp_path)
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     row = _application_row()
     _write_single_row(tmp_path / ACTIVE_CSV, row)
     supervisor._qualified_d14_apertures = lambda _health: 700
@@ -401,16 +410,162 @@ def test_application_count_mismatch_withholds_phase_three_acknowledgement(
     }
 
     with pytest.raises(ValueError, match="correction counts differ"):
-        supervisor._close_bench_authority_before_application_acknowledgement(
+        supervisor._record_bench_application_before_acknowledgement(
             row, health
         )
     assert supervisor.state["bench_attempt_causal_state"]["authority_closed"] is False
 
 
+def test_long_run_authority_closes_only_at_automatic_application_limit(
+    tmp_path: Path,
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    limit = supervisor.envelope.bench_attempt.limits.automatic_application_limit
+    rows = []
+    for sequence in range(1, limit + 1):
+        rows.append(
+            {
+                "event": "application",
+                "transaction_record_sequence": str(sequence * 4),
+                "request_sequence": str(sequence),
+                "decision_sequence": str(sequence),
+                "application_sequence": str(sequence),
+                "correction_count": str(sequence),
+            }
+        )
+    _write_rows(tmp_path / ACTIVE_CSV, rows)
+    supervisor.state["bench_attempt_causal_state"] = {
+        "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
+        "contract": CAUSAL_STATE_CONTRACT_ID,
+        "durable_ACT_application_count": limit - 1,
+        "firmware_correction_count": limit - 1,
+        "authority_closed": False,
+        "closure": None,
+    }
+    supervisor.state["arm_pending"] = True
+    supervisor._qualified_d14_apertures = lambda _health: 200_000
+    supervisor._save = lambda: None
+    events: list[str] = []
+    supervisor._programme_event = lambda event, **_fields: events.append(event)
+    health = {
+        ("adaptive_hybrid", "snapshot_generation_complete"): "900",
+        ("adaptive_hybrid", "query_nonce"): "901",
+        ("adaptive_hybrid", "correction_count"): str(limit),
+    }
+
+    result = supervisor._record_bench_application_before_acknowledgement(
+        rows[-1], health
+    )
+
+    causal = supervisor.state["bench_attempt_causal_state"]
+    assert result["bench_attempt_authority_closed"] is True
+    assert causal["durable_ACT_application_count"] == 144
+    assert causal["firmware_correction_count"] == 144
+    assert causal["authority_closed"] is True
+    assert causal["closure"]["trigger"] == "automatic_application_limit_reached"
+    assert supervisor.state["bench_attempt_arm_admission_closed"] is True
+    assert supervisor.state["arm_pending"] is False
+    assert events == ["bench_attempt_authority_closed"]
+
+
+def test_long_run_early_hours_and_first_application_are_nonterminal(
+    tmp_path: Path,
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    supervisor.state.update(
+        {
+            "terminal": None,
+            "wall_origin_utc": "2026-09-09T00:00:00Z",
+        }
+    )
+    supervisor._qualified_d14_apertures = lambda _health: 7_200
+
+    delegated = supervisor._maybe_finish_bench_attempt(
+        {}, supervisor_module._parse_utc_epoch("2026-09-09T02:00:00Z")
+    )
+
+    assert delegated is False
+    assert supervisor.state["terminal"] is None
+
+
+def test_long_run_zero_correction_path_reaches_72_hour_qualified_endpoint(
+    tmp_path: Path,
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    supervisor.state.update(
+        {
+            "terminal": None,
+            "terminal_static_code": ADAPTIVE_HYBRID_PROGRAMME.setup_code,
+            "qualification_started_utc": "2026-09-09T01:00:00Z",
+            "wall_origin_utc": "2026-09-09T00:00:00Z",
+        }
+    )
+    supervisor._qualified_d14_apertures = lambda _health: (
+        ADAPTIVE_HYBRID_PROGRAMME.qualified_d14_aperture_count
+    )
+    supervisor._healthy_terminal_ready = lambda _health: True
+    supervisor._save = lambda: None
+    health = {
+        ("adaptive_hybrid", "phase_material_application_count"): "0",
+        ("adaptive_hybrid", "first_phase_checkpoint_passed"): "false",
+    }
+
+    supervisor._maybe_finish(
+        health, supervisor_module._parse_utc_epoch("2026-09-12T01:00:00Z")
+    )
+
+    assert supervisor.state["terminal"] == {
+        "result": "healthy_stop",
+        "reason": "adaptive_hybrid_qualified_complete",
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": ADAPTIVE_HYBRID_PROGRAMME.setup_code,
+        "utc": supervisor.state["terminal"]["utc"],
+    }
+
+
+def test_long_run_host_discrepancy_at_endpoint_remains_review_hold(
+    tmp_path: Path,
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    hold = {
+        "source": "host_verifier",
+        "review_status": "operator_review_required",
+        "new_authority": False,
+    }
+    supervisor.state.update(
+        {
+            "terminal": None,
+            "host_verification_hold": hold,
+            "qualification_started_utc": "2026-09-09T01:00:00Z",
+            "wall_origin_utc": "2026-09-09T00:00:00Z",
+        }
+    )
+    supervisor._qualified_d14_apertures = lambda _health: (
+        ADAPTIVE_HYBRID_PROGRAMME.qualified_d14_aperture_count
+    )
+    supervisor._healthy_terminal_ready = lambda _health: (_ for _ in ()).throw(
+        AssertionError("review hold attempted to decide the terminal")
+    )
+    supervisor._save = lambda: None
+    events: list[tuple[str, dict[str, object]]] = []
+    supervisor._programme_event = lambda event, **fields: events.append(
+        (event, fields)
+    )
+
+    supervisor._maybe_finish(
+        {}, supervisor_module._parse_utc_epoch("2026-09-12T01:00:00Z")
+    )
+
+    assert supervisor.state["terminal"] is None
+    assert hold["qualified_endpoint_review_required"] is True
+    assert events[-1][0] == "host_verification_hold_qualified_endpoint_observed"
+    assert events[-1][1]["capture_continues"] is True
+
+
 def test_transaction_validation_error_enters_review_hold_without_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    supervisor = _bare_supervisor(SINGLE_AUTOMATIC_APPLICATION, tmp_path)
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state["terminal"] = None
     supervisor._validate_hybrid_decisions_or_hold = lambda: True
     holds: list[tuple[Exception, str]] = []
@@ -434,7 +589,7 @@ def test_transaction_validation_error_enters_review_hold_without_terminal(
 def test_arm_admission_closes_at_exact_accepted_aperture_boundary(
     tmp_path: Path,
 ) -> None:
-    supervisor = _bare_supervisor(SINGLE_AUTOMATIC_APPLICATION, tmp_path)
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "qualified_d14_segment_accepted_window_origin": 100,
@@ -445,27 +600,30 @@ def test_arm_admission_closes_at_exact_accepted_aperture_boundary(
     supervisor._save = lambda: None
     events: list[dict[str, object]] = []
     supervisor._programme_event = lambda _event, **fields: events.append(fields)
+    limits = supervisor.envelope.bench_attempt.limits
+    deadline = limits.automatic_application_admission_deadline_apertures
 
     before = {
-        ("pps_gate", "accepted_window_count"): "1899",
-        ("pps_gate", "boundary_reference_sequence"): "1999",
+        ("pps_gate", "accepted_window_count"): str(100 + deadline - 1),
+        ("pps_gate", "boundary_reference_sequence"): str(200 + deadline - 1),
     }
     endpoint = {
-        ("pps_gate", "accepted_window_count"): "1900",
-        ("pps_gate", "boundary_reference_sequence"): "2000",
+        ("pps_gate", "accepted_window_count"): str(100 + deadline),
+        ("pps_gate", "boundary_reference_sequence"): str(200 + deadline),
     }
 
     assert supervisor._close_bench_arm_admission_if_required(before) is False
     assert supervisor._close_bench_arm_admission_if_required(endpoint) is True
     assert supervisor.state["bench_attempt_arm_admission_closed"] is True
-    assert supervisor.state["bench_attempt_arm_admission_endpoint"] == 1800
+    assert supervisor.state["bench_attempt_arm_admission_endpoint"] == deadline
+    assert supervisor.state["response_horizon_closed_utc"] is not None
     assert events[-1]["progress_domain"] == "accepted_D14_D8_apertures"
 
 
 def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    supervisor = _bare_supervisor(SINGLE_AUTOMATIC_APPLICATION, tmp_path)
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "manual_start_sent": True,
@@ -533,7 +691,9 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
 
 
 def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> None:
-    supervisor = _bare_supervisor(SINGLE_AUTOMATIC_APPLICATION, tmp_path)
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    limits = supervisor.envelope.bench_attempt.limits
+    deadline = limits.automatic_application_admission_deadline_apertures
     supervisor.state.update(
         {
             "authorization_sequence": 2,
@@ -547,7 +707,7 @@ def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> Non
                     "authorizing_snapshot_generation": 12,
                     "authorizing_query_nonce": 91,
                     "accepted_D14_D8_apertures": 600,
-                    "admission_deadline_delta": 1800,
+                    "admission_deadline_delta": deadline,
                     "natural_opportunity": "natural-opportunity-1",
                     "admitted_utc": "2026-09-09T00:00:00Z",
                 }
@@ -563,7 +723,7 @@ def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> Non
 
 
 def test_setup_timeout_becomes_review_hold_not_abort(tmp_path: Path) -> None:
-    supervisor = _bare_supervisor(SINGLE_AUTOMATIC_APPLICATION, tmp_path)
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "manual_start_sent": True,

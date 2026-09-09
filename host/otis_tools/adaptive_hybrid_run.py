@@ -42,6 +42,8 @@ from .adaptive_hybrid_contract import (
     AdaptiveHybridProgramme,
     ADAPTIVE_HYBRID_PROGRAMME,
     BenchAttemptEnvelope,
+    CAUSAL_STATE_CONTRACT_ID,
+    CAUSAL_STATE_SCHEMA_VERSION,
     INHIBITED_ZERO_WRITE,
     programme_from_mapping,
     validate_bench_attempt_envelope,
@@ -543,7 +545,6 @@ def _terminal_expected(
             and static_code_is_valid
         )
     decision_is_valid = terminal.get("primary_decision") in {
-        semantics["no_application_terminal"],
         "adaptive_hybrid_right_censored_incomplete",
         *programme.terminal_decisions,
     }
@@ -1642,7 +1643,8 @@ def _zero_write_review_terminal(
     }
     if not (
         isinstance(causal, dict)
-        and causal.get("contract") == "adaptive_hybrid_bench_attempt_causal_state_v1"
+        and causal.get("schema_version") == CAUSAL_STATE_SCHEMA_VERSION
+        and causal.get("contract") == CAUSAL_STATE_CONTRACT_ID
         and causal.get("durable_ACT_application_count") == 0
         and causal.get("firmware_correction_count") == 0
         and causal.get("authority_closed") is True

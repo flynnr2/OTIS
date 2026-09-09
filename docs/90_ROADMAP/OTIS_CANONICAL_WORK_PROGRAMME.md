@@ -217,9 +217,11 @@ deliberately fail-closed until this exists.
 5. Audit retained tests against current invariants and the rehearsal. Remove a
    test only when its protected behavior is retired, duplicated at a cheaper
    layer, or better covered by the end-to-end path.
-6. Produce one concise current-platform readiness report. Do not start a new
-   multi-day Nano campaign merely to validate the software reset if the board
-   is about to be replaced.
+6. Freeze and rehearse the current 72-hour contingent hybrid-control bundle.
+   By operator decision on 2026-09-09, use the complete finite programme as the
+   next decision-bearing current-platform gate; do not insert a separate short
+   setup, one-application, passive, or elapsed-time prefix campaign. Physical
+   entry remains a distinct explicitly authorized step after readiness.
 
 ### Gate
 

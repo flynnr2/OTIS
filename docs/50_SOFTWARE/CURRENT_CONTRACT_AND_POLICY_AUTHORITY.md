@@ -41,11 +41,18 @@ Repository state and passing offline tests do not authorize hardware use. Live
 operation additionally requires an exact frozen bundle, genuine operational-
 path rehearsal, and explicit operator authority.
 
-Current HEAD intentionally cannot create a live activation: its retained
-rehearsal is a non-authorizing structural preflight, and the validator rejects
-both that report and unverified claims to a process-level rehearsal. A genuine
-current-only rehearsal producer is a prerequisite for restoring live entry;
-historical campaign rehearsal code is not a compatibility fallback.
+Current HEAD can create a live activation only from a separately sealed and
+registered current-process rehearsal that binds the exact bundle and proposal.
+The validator rejects the non-authorizing structural preflight and unverified
+claims to a process-level rehearsal. Historical campaign rehearsal code is not
+a compatibility fallback.
+
+The only current closed-loop physical purpose is
+`contingent_72_hour_hybrid_control`: 259,200 accepted D14/D8 apertures, at most
+144 natural applications, at most 3,024 codes of cumulative absolute movement,
+and a 280,800-second wall limit. Zero natural corrections is a valid endpoint
+when the controller remains healthily within its deadband. Setup, a first
+application, or an elapsed short prefix is not a success terminal.
 
 ## Compatibility boundary
 

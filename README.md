@@ -15,6 +15,13 @@ firmware image: `adaptive_hybrid_regulation`, policy
 selectable profile matrix. Run duration and experiment-specific stop conditions
 belong in the frozen run manifest, not in the product or policy identity.
 
+The current physical-entry surface has two exact purposes: a diagnostic
+`inhibited_zero_write` acquisition and the sole authority-bearing
+`contingent_72_hour_hybrid_control` programme. The latter runs to 259,200
+accepted D14/D8 apertures, admits at most 144 natural corrections within the
+characterized DAC envelope, and has a 280,800-second absolute wall limit. It
+does not stop after setup, the first correction, or an arbitrary short prefix.
+
 The invariant bench topology is:
 
 - D14 is the sole authoritative PPS/reference input;
@@ -52,10 +59,10 @@ binary identity, required markers, and memory budget. Artifacts are written to
 ignored local build storage.
 
 The current host structural preflight is deliberately non-authorizing. Live
-activation remains fail-closed until a genuine process/FIFO/command/
-acknowledgement/obstruction/abort/analysis/sealing rehearsal producer is
-implemented and verified. A successful build or structural preflight is not a
-claim that the programme is ready for bench entry.
+activation requires an exact successful process/FIFO/command/acknowledgement/
+obstruction/abort/handoff/analysis/sealing rehearsal, an exact frozen bundle,
+and explicit operator authority. A successful build or structural preflight
+alone is not a claim that the programme is ready for bench entry.
 
 The current cross-disciplinary execution sequence is the
 [`OTIS Canonical Instrument Completion Work Programme`](docs/90_ROADMAP/OTIS_CANONICAL_WORK_PROGRAMME.md).

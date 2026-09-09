@@ -31,8 +31,8 @@ from .adaptive_hybrid_contract import (
 from .adaptive_hybrid_contract import (
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
-    SINGLE_AUTOMATIC_APPLICATION,
     BenchAttemptEnvelope,
     validate_bench_attempt_envelope,
 )
@@ -844,6 +844,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     "inhibited zero-write causal state grants application authority"
                 )
             return
+        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+            raise ValueError("unsupported authority-bearing bench attempt")
         if authority_closed:
             required_closure_fields = {
                 "trigger",
@@ -859,10 +861,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 "closed_utc",
             }
             if (
-                durable_count != 1
+                durable_count != limits.automatic_application_limit
                 or not isinstance(closure, dict)
                 or set(closure) != required_closure_fields
-                or closure.get("trigger") != "first_validated_ACT_application"
+                or closure.get("trigger")
+                != "automatic_application_limit_reached"
                 or closure.get("bench_attempt_purpose") != bench_attempt.purpose
                 or closure.get("bench_attempt_envelope_sha256")
                 != bench_attempt.as_dict()["envelope_sha256"]
@@ -907,8 +910,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 raise ValueError(
                     "closed bench-attempt causal timestamp is malformed"
                 ) from exc
-        elif durable_count != 0 or closure is not None:
-            raise ValueError("open bench-attempt causal state has application evidence")
+        elif (
+            not 0 <= durable_count < limits.automatic_application_limit
+            or closure is not None
+        ):
+            raise ValueError(
+                "open long-run causal state exceeds its application authority"
+            )
 
     def _bench_authority_closed(self) -> bool:
         if self.envelope.bench_attempt is None:
@@ -917,17 +925,17 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self._validate_bench_attempt_causal_state(causal_state)
         return bool(causal_state["authority_closed"])
 
-    def _close_bench_authority_before_application_acknowledgement(
+    def _record_bench_application_before_acknowledgement(
         self,
         row: dict[str, str],
         health: dict[tuple[str, str], str],
     ) -> dict[str, object]:
-        """Persist the one physical application frontier before phase-3 ACK."""
+        """Persist each physical application frontier before phase-3 ACK."""
 
         bench_attempt = self.envelope.bench_attempt
         if bench_attempt is None:
             return {}
-        if bench_attempt.purpose != SINGLE_AUTOMATIC_APPLICATION:
+        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
             raise ValueError(
                 "inhibited zero-write attempt observed an ACT application"
             )
@@ -939,92 +947,123 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         application_rows = [item for item in rows if item.get("event") == "application"]
         record_sequence = int(row["transaction_record_sequence"])
         if (
-            len(application_rows) != 1
-            or application_rows[0] != row
-            or int(application_rows[0]["transaction_record_sequence"])
+            not application_rows
+            or application_rows[-1] != row
+            or int(application_rows[-1]["transaction_record_sequence"])
             != record_sequence
         ):
             raise ValueError(
-                "durable ACT application prefix differs from the one-application envelope"
+                "durable ACT application frontier differs from the long-run envelope"
             )
         durable_count = len(application_rows)
         firmware_count = int(
             health.get(("adaptive_hybrid", "correction_count"), "-1")
         )
         row_count = int(row["correction_count"])
-        if durable_count != 1 or row_count != 1 or firmware_count != 1:
+        limit = bench_attempt.limits.automatic_application_limit
+        if (
+            not 1 <= durable_count <= limit
+            or row_count != durable_count
+            or firmware_count != durable_count
+        ):
             raise ValueError(
                 "durable ACT and causally complete firmware correction counts differ: "
                 f"ACT={durable_count} row={row_count} firmware={firmware_count}"
             )
         accepted_apertures = self._qualified_d14_apertures(health)
-        closure = {
-            "trigger": "first_validated_ACT_application",
-            "bench_attempt_purpose": bench_attempt.purpose,
-            "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
-                "envelope_sha256"
-            ],
-            "request_sequence": int(row["request_sequence"]),
-            "transaction_record_sequence": record_sequence,
-            "decision_sequence": int(row["decision_sequence"]),
-            "application_sequence": int(row["application_sequence"]),
-            "snapshot_generation": int(
-                health[("adaptive_hybrid", "snapshot_generation_complete")]
-            ),
-            "query_nonce": int(health[("adaptive_hybrid", "query_nonce")]),
-            "accepted_D14_D8_apertures_at_application": accepted_apertures,
-            "closed_utc": _utc_now(),
-        }
-        retained = self.state.get("bench_attempt_causal_state")
-        self._validate_bench_attempt_causal_state(retained)
-        if retained["authority_closed"]:
-            retained_closure = retained["closure"]
-            stable_fields = {
-                "trigger",
-                "bench_attempt_purpose",
-                "bench_attempt_envelope_sha256",
-                "request_sequence",
-                "transaction_record_sequence",
-                "decision_sequence",
-                "application_sequence",
-                "accepted_D14_D8_apertures_at_application",
-            }
-            if any(
-                retained_closure.get(field) != closure.get(field)
-                for field in stable_fields
-            ):
-                raise ValueError(
-                    "retained bench-attempt authority closure changed identity"
-                )
-            return {
-                "bench_attempt_authority_closed": True,
+        authority_closed = durable_count == limit
+        closure = (
+            {
+                "trigger": "automatic_application_limit_reached",
+                "bench_attempt_purpose": bench_attempt.purpose,
                 "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
                     "envelope_sha256"
                 ],
+                "request_sequence": int(row["request_sequence"]),
+                "transaction_record_sequence": record_sequence,
+                "decision_sequence": int(row["decision_sequence"]),
+                "application_sequence": int(row["application_sequence"]),
+                "snapshot_generation": int(
+                    health[("adaptive_hybrid", "snapshot_generation_complete")]
+                ),
+                "query_nonce": int(health[("adaptive_hybrid", "query_nonce")]),
+                "accepted_D14_D8_apertures_at_application": accepted_apertures,
+                "closed_utc": _utc_now(),
             }
+            if authority_closed
+            else None
+        )
+        retained = self.state.get("bench_attempt_causal_state")
+        self._validate_bench_attempt_causal_state(retained)
+        retained_count = retained["durable_ACT_application_count"]
+        if retained_count == durable_count:
+            if retained["authority_closed"]:
+                retained_closure = retained["closure"]
+                stable_closure = {
+                    "trigger": "automatic_application_limit_reached",
+                    "bench_attempt_purpose": bench_attempt.purpose,
+                    "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
+                        "envelope_sha256"
+                    ],
+                    "request_sequence": int(row["request_sequence"]),
+                    "transaction_record_sequence": record_sequence,
+                    "decision_sequence": int(row["decision_sequence"]),
+                    "application_sequence": int(row["application_sequence"]),
+                }
+                if any(
+                    retained_closure.get(field) != value
+                    for field, value in stable_closure.items()
+                ):
+                    raise ValueError(
+                        "retained long-run authority closure changed identity"
+                    )
+            return {
+                "bench_attempt_authority_closed": retained["authority_closed"],
+                "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
+                    "envelope_sha256"
+                ],
+                "bench_attempt_durable_application_count": retained_count,
+            }
+        if retained["authority_closed"] or retained_count != durable_count - 1:
+            raise ValueError(
+                "retained long-run application frontier is not the exact predecessor"
+            )
 
         causal_state = {
             "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
             "contract": CAUSAL_STATE_CONTRACT_ID,
             "durable_ACT_application_count": durable_count,
             "firmware_correction_count": firmware_count,
-            "authority_closed": True,
+            "authority_closed": authority_closed,
             "closure": closure,
         }
         self._validate_bench_attempt_causal_state(causal_state)
         self.state["bench_attempt_causal_state"] = causal_state
-        self.state["bench_attempt_arm_admission_closed"] = True
-        self.state["arm_pending"] = False
-        self.state["arm_sent_at_utc"] = None
+        if authority_closed:
+            self.state["bench_attempt_arm_admission_closed"] = True
+            self.state["arm_pending"] = False
+            self.state["arm_sent_at_utc"] = None
         self._save()
         # Event append is itself fsynced.  The phase-3 command is submitted by
         # the base transaction layer only after this method returns.
-        self._programme_event("bench_attempt_authority_closed", **closure)
+        self._programme_event(
+            (
+                "bench_attempt_authority_closed"
+                if authority_closed
+                else "bench_attempt_application_frontier_persisted"
+            ),
+            durable_ACT_application_count=durable_count,
+            firmware_correction_count=firmware_count,
+            accepted_D14_D8_apertures_at_application=accepted_apertures,
+            authority_closed=authority_closed,
+            **({"closure": closure} if closure is not None else {}),
+        )
         return {
-            "bench_attempt_authority_closed": True,
+            "bench_attempt_authority_closed": authority_closed,
             "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
                 "envelope_sha256"
             ],
+            "bench_attempt_durable_application_count": durable_count,
         }
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
@@ -1133,7 +1172,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 }
                 if phase == 3 and self.envelope.bench_attempt is not None:
                     preparation.update(
-                        self._close_bench_authority_before_application_acknowledgement(
+                        self._record_bench_application_before_acknowledgement(
                             row, health
                         )
                     )
@@ -2784,7 +2823,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return True
         if self.state.get("bench_attempt_arm_admission_closed"):
             return True
-        if bench_attempt.purpose != SINGLE_AUTOMATIC_APPLICATION:
+        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
             raise ValueError("unknown physical bench-attempt authority state")
         aperture_progress = self._qualified_d14_apertures(health)
         deadline = (
@@ -2792,6 +2831,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         if aperture_progress is None or aperture_progress < deadline:
             return False
+        if not self._close_response_horizon_if_required(health):
+            raise ValueError(
+                "long-run bench admission deadline differs from programme response horizon"
+            )
         self.state["bench_attempt_arm_admission_closed"] = True
         self.state["bench_attempt_arm_admission_closed_utc"] = _utc_now()
         self.state["bench_attempt_arm_admission_endpoint"] = aperture_progress
@@ -3268,60 +3311,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     source="bench_attempt_wall_endpoint_observer",
                 )
             return True
-
-        causal_state = self.state.get("bench_attempt_causal_state")
-        closure = (
-            causal_state.get("closure")
-            if isinstance(causal_state, dict)
-            else None
-        )
-        if isinstance(closure, dict):
-            application_coordinate = closure.get(
-                "accepted_D14_D8_apertures_at_application"
-            )
-            reserve = int(timing["correction_response_reserve_delta"]) + int(
-                timing["first_dependent_decision_reserve_delta"]
-            )
-            if (
-                type(application_coordinate) is int
-                and progress is not None
-                and progress >= application_coordinate + reserve
-                and self._healthy_terminal_ready(health)
-            ):
-                self._set_healthy_endpoint(
-                    health, endpoint=str(terminals["success_terminal"])
-                )
-                return True
-        elif (
-            self.state.get("bench_attempt_arm_admission_closed")
-            and not self.state.get("arm_pending")
-            and self._healthy_terminal_ready(health)
-        ):
-            self.state["terminal"] = {
-                "result": "nonpass",
-                "reason": str(terminals["no_application_terminal"]),
-                "primary_decision": str(terminals["no_application_terminal"]),
-                "last_confirmed_code": self.state["terminal_static_code"],
-                "utc": _utc_now(),
-            }
-            self._save()
-            return True
-        if wall_reached:
-            if self._healthy_terminal_ready(health):
-                self.state["terminal"] = {
-                    "result": "nonpass",
-                    "reason": "bench_attempt_absolute_wall_endpoint",
-                    "primary_decision": "adaptive_hybrid_right_censored_incomplete",
-                    "last_confirmed_code": self.state["terminal_static_code"],
-                    "utc": _utc_now(),
-                }
-                self._save()
-            else:
-                self._enter_host_verification_hold(
-                    ValueError("bench-attempt wall endpoint lacks a clear static terminal"),
-                    source="bench_attempt_wall_endpoint_observer",
-                )
-        return True
+        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+            raise ValueError("unsupported physical bench-attempt terminal semantics")
+        # The authority-bearing envelope is an exact projection of the sole
+        # 72-hour programme. Its early setup/application milestones are not
+        # alternate terminals; continue into the programme-owned qualified
+        # aperture and wall endpoints below.
+        return False
 
     def _maybe_finish(
         self,

@@ -49,8 +49,8 @@ from host.otis_tools.firmware_binary import (
 from tools import build_firmware
 from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
-    SINGLE_AUTOMATIC_APPLICATION,
     envelope_for_purpose,
     programme_from_mapping,
 )
@@ -1007,7 +1007,7 @@ def test_live_runtime_envelope_consumes_frozen_profiles_not_checkout_paths() -> 
         },
         "started_at_utc": "2026-08-13T00:00:00Z",
         "bench_attempt": envelope_for_purpose(
-            SINGLE_AUTOMATIC_APPLICATION
+            CONTINGENT_72_HOUR_HYBRID_CONTROL
         ).as_dict(),
         ADAPTIVE_HYBRID_PROGRAMME.manifest_section: {},
     }
@@ -1391,7 +1391,7 @@ def test_terminal_normalization_rejects_fabricated_zero_write_success() -> None:
             terminal,
             ADAPTIVE_HYBRID_PROGRAMME,
             bench_attempt=envelope_for_purpose(
-                SINGLE_AUTOMATIC_APPLICATION
+                CONTINGENT_72_HOUR_HYBRID_CONTROL
             ).as_dict(),
         ),
         _normalize_terminal(
@@ -1413,31 +1413,30 @@ def test_terminal_normalization_rejects_fabricated_zero_write_success() -> None:
     assert all(exact is False and decision is None for exact, decision, _, _ in rejected)
 
 
-def test_terminal_normalization_uses_exact_success_for_other_bench_purpose() -> None:
-    programme_terminal = {
+def test_terminal_normalization_uses_exact_72_hour_success() -> None:
+    long_run_terminal = {
         "result": "healthy_stop",
         "reason": ADAPTIVE_HYBRID_PROGRAMME.qualified_endpoint_reason,
         "preliminary_decision": "pending_offline_scientific_analysis",
         "last_confirmed_code": 0xA84D,
     }
-    bench_terminal = {
-        **programme_terminal,
-        "reason": "single_automatic_application_recovery_complete",
-    }
     bench_attempt = envelope_for_purpose(
-        SINGLE_AUTOMATIC_APPLICATION
+        CONTINGENT_72_HOUR_HYBRID_CONTROL
     ).as_dict()
 
     exact, decision, _, _ = _normalize_terminal(
-        bench_terminal,
+        long_run_terminal,
         ADAPTIVE_HYBRID_PROGRAMME,
         bench_attempt=bench_attempt,
     )
     assert exact is True
-    assert decision == "single_automatic_application_recovery_complete"
+    assert decision == "adaptive_hybrid_qualified_complete"
 
     exact, decision, _, _ = _normalize_terminal(
-        programme_terminal,
+        {
+            **long_run_terminal,
+            "reason": "retired_short_gate_complete",
+        },
         ADAPTIVE_HYBRID_PROGRAMME,
         bench_attempt=bench_attempt,
     )

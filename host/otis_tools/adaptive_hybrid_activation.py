@@ -209,7 +209,9 @@ def _authority(
             programme.maximum_step_codes if automatic_limit else 0
         ),
         "maximum_cumulative_absolute_movement_codes": (
-            programme.maximum_step_codes * automatic_limit
+            programme.authorized_maximum_cumulative_movement_codes
+            if automatic_limit
+            else 0
         ),
         "minimum_applied_cadence_s": (
             programme.minimum_applied_cadence_s if automatic_limit else None
@@ -874,7 +876,7 @@ def _run_section(
             )["physical_applied_code_before_setup"],
         },
         "automatic_control": {
-            "authorized": automatic_limit == 1,
+            "authorized": automatic_limit > 0,
             "maximum_total_applications": automatic_limit,
             "maximum_total_automatic_applications": automatic_limit,
             "required_completed_automatic_applications": limits[
@@ -888,7 +890,9 @@ def _run_section(
                 programme.maximum_step_codes if automatic_limit else 0
             ),
             "maximum_cumulative_movement_codes": (
-                programme.maximum_step_codes * automatic_limit
+                programme.authorized_maximum_cumulative_movement_codes
+                if automatic_limit
+                else 0
             ),
             "minimum_applied_cadence_s": (
                 programme.minimum_applied_cadence_s if automatic_limit else None

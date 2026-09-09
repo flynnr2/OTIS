@@ -74,13 +74,20 @@ structural preflight: it exercises current controller, exact-timing, evidence,
 and D10-isolation semantics without device or process I/O, and cannot authorize
 activation.
 
-Current activation is intentionally fail-closed because current HEAD does not
-yet contain a genuine process-level rehearsal producer for the separate
-capture, supervisor, monitor, FIFO, obstruction, abort, analysis, sealing, and
-registration path. Restoring live readiness requires that exact current-only
-path; a producer acknowledgement must then be followed through the first
+The current process-level rehearsal exercises the separate capture, supervisor,
+monitor, FIFO, obstruction, abort, handoff, analysis, sealing, and registration
+path. Activation validates and binds one exact successful sealed rehearsal;
+neither the structural preflight nor an unverified rehearsal claim can
+authorize live entry. Producer acknowledgement is followed through the first
 dependent consumer rather than being treated as proof of downstream
 application by itself.
+
+The sole authority-bearing physical purpose is
+`contingent_72_hour_hybrid_control`. Its 72-hour accepted-aperture endpoint and
+78-hour wall limit are one finite run, not a sequence of setup, one-application,
+or short-duration campaigns. Retained host discrepancies create a review hold:
+they inhibit new authority while capture and the sole serial owner continue,
+and have no automatic abort, teardown, or scientific-terminal authority.
 
 ## Canonical package
 
