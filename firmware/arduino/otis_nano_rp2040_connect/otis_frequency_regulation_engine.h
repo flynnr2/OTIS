@@ -7,6 +7,7 @@
 
 enum class OtisFrequencyRegulationState : uint8_t {
   WarmupInhibit,
+  SetupInhibit,
   Qualifying,
   SettlingInhibit,
   Tracking,
@@ -24,6 +25,8 @@ struct OtisFrequencyRegulationInput {
   bool reference_valid;
   bool estimator_valid;
   bool count_valid;
+  bool actuator_context_established;
+  bool applied_code_available;
   bool model_applicable;
   bool applied_code_matches;
   bool i2c_ok;

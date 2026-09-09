@@ -2097,6 +2097,43 @@ static void active_live_on_decision_impl(
   if (!initialized || !transaction_bound || decision == nullptr ||
       outcome == nullptr)
     return;
+  if (!manual_start_confirmed) {
+    // Selected D14/D8 estimates exist before the operator's one-shot setup,
+    // but they have no actuator context or control authority.  Keep that
+    // evidence-producing path explicitly disarmed.  Only the exact pristine
+    // pre-setup state is benign; any partial transaction or controller state
+    // before setup is an invariant violation and remains fail-closed.
+    const bool pristine_disarmed =
+        transaction.state == OtisRegulationState::Disarmed &&
+        !transaction.have_last_application && !transaction.have_arm &&
+        !transaction.have_request && !transaction.have_acceptance &&
+        !transaction.have_application && transaction.correction_count == 0u &&
+        transaction.cumulative_movement_codes == 0u &&
+        transaction.dac_epoch == 0u && transaction.last_application_s == 0u &&
+        transaction.last_decision_sequence == 0u &&
+        transaction.last_request_sequence == 0u &&
+        transaction.last_authorization_sequence == 0u &&
+        evidence_phase == EvidencePhase::None &&
+        evidence_request_sequence == 0u &&
+        !pending_actionable_request_valid &&
+        !deferred_application_outcome_valid &&
+        pending_application_timestamp_ticks == 0u &&
+        setup_application_timestamp_ticks == 0u &&
+        !adaptive_hybrid_engine_ready && !hybrid_engine_ready &&
+        !pending_adaptive_hybrid_decision_valid &&
+        !pending_adaptive_hybrid_origin_valid &&
+        !gnss_metadata_hold_active &&
+        !gnss_metadata_hold_transaction_pending;
+    if (!pristine_disarmed) {
+      otis_regulation_fault(
+          &transaction, "pre_setup_control_state_inconsistent");
+      outcome->faulted = true;
+      outcome->reason = transaction.reason;
+      return;
+    }
+    outcome->reason = "manual_start_not_confirmed_no_control_authority";
+    return;
+  }
   if (!decision_ticks_available) {
     otis_regulation_fault(
         &transaction, "exact_long_run_decision_timestamp_unavailable");

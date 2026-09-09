@@ -251,12 +251,75 @@ int main() {
   static_assert(OTIS_TELEMETRY_QUEUE_DEPTH == 176u);
   initialized = true;
   transaction_bound = true;
-  transaction = {};
-  transaction.state = OtisRegulationState::Disarmed;
-  transaction.expected_binding.session_id = 7u;
+  const OtisRegulationBinding pre_setup_binding = expected_binding(7u);
+  otis_regulation_transaction_init(&transaction, &pre_setup_binding);
   transaction_record_sequence = 0u;
   manual_start_confirmed = false;
   frame = {};
+
+  // The selected D14/D8 decision producer remains live before setup, but its
+  // active-control consumer must be a zero-authority no-op.  Exercise the
+  // production adapter and then its first decision-bearing status consumer.
+  OtisAdaptiveHybridRegulationLiveDecision pre_setup_decision = {};
+  pre_setup_decision.decision_sequence = 1u;
+  pre_setup_decision.source_first_sequence = 1u;
+  pre_setup_decision.source_last_sequence = 600u;
+  pre_setup_decision.timestamp_s = 600u;
+  pre_setup_decision.capture_session = 7u;
+  pre_setup_decision.measurement_valid = true;
+  pre_setup_decision.preview_available = true;
+  OtisAdaptiveHybridRegulationLiveOutcome pre_setup_outcome = {};
+  otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
+      &pre_setup_decision, 600000000ull, &pre_setup_outcome);
+  assert(!pre_setup_outcome.request_created);
+  assert(!pre_setup_outcome.application_attempted);
+  assert(!pre_setup_outcome.applied);
+  assert(!pre_setup_outcome.response_recorded);
+  assert(!pre_setup_outcome.faulted);
+  assert(strcmp(pre_setup_outcome.reason,
+                "manual_start_not_confirmed_no_control_authority") == 0);
+  assert(transaction.state == OtisRegulationState::Disarmed);
+  assert(strcmp(transaction.reason, "initialized_disarmed") == 0);
+  assert(!transaction.have_arm);
+  assert(!transaction.have_request);
+  assert(!transaction.have_acceptance);
+  assert(!transaction.have_application);
+  assert(transaction.correction_count == 0u);
+  assert(transaction.cumulative_movement_codes == 0u);
+  assert(transaction.dac_epoch == 0u);
+  assert(transaction_record_sequence == 0u);
+  assert(evidence_phase == EvidencePhase::None);
+  assert(!adaptive_hybrid_engine_ready);
+
+  OtisAdaptiveHybridRegulationLiveStatus pre_setup_status = {};
+  otis_adaptive_hybrid_regulation_live_get_status(&pre_setup_status, 600u);
+  assert(strcmp(pre_setup_status.state, "DISARMED") == 0);
+  assert(strcmp(pre_setup_status.reason, "initialized_disarmed") == 0);
+  assert(strcmp(pre_setup_status.hybrid_state, "SETUP_PENDING") == 0);
+  assert(strcmp(pre_setup_status.hybrid_reason,
+                "setup_consumers_pending") == 0);
+  assert(!pre_setup_status.manual_start_confirmed);
+  assert(!pre_setup_status.confirmed_applied_code_known);
+  assert(!pre_setup_status.fail_static);
+  assert(pre_setup_status.correction_count == 0u);
+  assert(pre_setup_status.cumulative_movement_codes == 0u);
+  assert(pre_setup_status.dac_epoch == 0u);
+  OtisStatusEmitContext pre_setup_status_context = {};
+  pre_setup_status_context.sink = emit_transport_limited_status;
+  otis_adaptive_hybrid_regulation_live_emit_status(
+      &pre_setup_status_context, 600u);
+
+  // The exemption is deliberately narrow: partial authority state before
+  // setup still fails closed instead of being silently treated as inhibited.
+  transaction.have_arm = true;
+  OtisAdaptiveHybridRegulationLiveOutcome inconsistent_pre_setup = {};
+  otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
+      &pre_setup_decision, 600000000ull, &inconsistent_pre_setup);
+  assert(inconsistent_pre_setup.faulted);
+  assert(strcmp(inconsistent_pre_setup.reason,
+                "pre_setup_control_state_inconsistent") == 0);
+  otis_regulation_transaction_init(&transaction, &pre_setup_binding);
+
   assert(!otis_adaptive_hybrid_regulation_live_note_manual_start_exact(
       OTIS_ADAPTIVE_HYBRID_START_CODE, 1u, true, 4294u, 0u, 7u));
   transaction = {};

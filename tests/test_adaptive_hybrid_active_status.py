@@ -78,5 +78,28 @@ def test_adaptive_hybrid_status_getter_preserves_application_and_checkpoint(
         update = reducer.observe(row)
         if update is not None:
             updates.append(update)
+    complete_updates = [
+        update for update in updates if update["state"] == "complete"
+    ]
+    assert len(complete_updates) == 2
+    pre_setup = {
+        (record["component"], record["status_key"]): record["status_value"]
+        for record in complete_updates[0]["records"]
+    }
+    assert pre_setup[("adaptive_hybrid", "state")] == "DISARMED"
+    assert pre_setup[("adaptive_hybrid", "reason")] == "initialized_disarmed"
+    assert pre_setup[("adaptive_hybrid", "hybrid_state")] == "SETUP_PENDING"
+    assert (
+        pre_setup[("adaptive_hybrid", "hybrid_reason")]
+        == "setup_consumers_pending"
+    )
+    assert pre_setup[("adaptive_hybrid", "manual_start_confirmed")] == "false"
+    assert (
+        pre_setup[("adaptive_hybrid", "confirmed_applied_code_known")] == "false"
+    )
+    assert pre_setup[("adaptive_hybrid", "fail_static")] == "false"
+    assert pre_setup[("adaptive_hybrid", "correction_count")] == "0"
+    assert pre_setup[("adaptive_hybrid", "cumulative_movement_codes")] == "0"
+    assert pre_setup[("adaptive_hybrid", "dac_epoch")] == "0"
     assert updates[-1]["state"] == "complete"
     assert updates[-1]["reason"] == "snapshot_generation_complete"
