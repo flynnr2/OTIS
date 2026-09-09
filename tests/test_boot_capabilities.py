@@ -46,9 +46,9 @@ def test_named_phases_directly_bracket_selected_initializers() -> None:
         "boot_phase_ring_buffers_init": "otis_capture_ring_reset()",
         "boot_phase_serial_init": "otis_transport_begin(",
         "boot_phase_timer_init": "otis_count_observation_begin(",
-        "boot_phase_pps_input_init": "begin_edge_capture_backend(",
+        "boot_phase_pps_input_init": "otis_capture_irq_begin_d14_reference(",
         "boot_phase_peripherals_init": "otis_dac_ad5693r_begin()",
-        "boot_phase_preview_init": "otis_observe_only_discipline_live_begin(",
+        "boot_phase_preview_init": "otis_phase_preview_live_begin(",
         "boot_phase_capability_audit": "otis_resource_registry_complete()",
     }
     for function, work in expected_work.items():
@@ -61,7 +61,7 @@ def test_named_phases_directly_bracket_selected_initializers() -> None:
         assert begin < actual_work < complete
 
     run_start = source.index("void boot_phase_run_mode(void)")
-    run_end = source.index("\nvoid service_loopback_output", run_start)
+    run_end = source.index("\nvoid ", run_start + 1)
     run_body = source[run_start:run_end]
     gate = run_body.index("otis_boot_capability_mark_run_mode(")
     enter = run_body.index("enter_boot_phase(BootPhase::RunMode)")
@@ -82,12 +82,11 @@ def test_profile_policy_is_explicit_in_firmware() -> None:
 
     for capability in (
         "ResourceRegistry",
-        "SparseCapture",
         "PpsCapture",
-        "CountBackend",
+        "OscillatorCount",
         "Dac",
         "Sensors",
-        "Phase4Preview",
+        "PhaseFrequencyEstimate",
         "Transport",
     ):
         assert f"OtisBootCapability::{capability}" in policy

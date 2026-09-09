@@ -1,9 +1,8 @@
-"""Shared fail-closed runtime contract for pre-write readiness gates.
+"""Shared fail-closed runtime contract for the fixed programme's setup gate.
 
-The inherited A828 preview baseline and a leg's planned A808/A848 stimulus are
-different facts.  This module keeps their provenance explicit and provides the
-single readiness predicate used by the supervisor, rehearsal seal, promotion,
-and offline preflight.  It performs no I/O and has no actuation authority.
+The pre-setup preview is zero-authority observation context. Only the planned
+setup transaction can establish a physically confirmed DAC code. This module
+performs no I/O and has no actuation authority.
 """
 
 from __future__ import annotations
@@ -14,11 +13,8 @@ from typing import Mapping, Sequence
 from .active_status_contract import ACTIVE_STATUS_KEYS
 
 
-RUNTIME_CONTRACT_ID = "cx318_stage5_prewrite_runtime_contract_v2"
-INHERITED_PREVIEW_BASELINE_CODE = 0xA828
-INHERITED_PREVIEW_BASELINE_PROVENANCE = (
-    "stage4_sealed_build_bound_preview_not_physical_dac_confirmation"
-)
+RUNTIME_CONTRACT_ID = "adaptive_hybrid_prewrite_runtime_contract_v1"
+RAW_PPS_QUALIFICATION_DEADLINE_S = 660
 
 Health = Mapping[tuple[str, str], str]
 
@@ -29,13 +25,45 @@ HEALTH_INTEGRITY_EXACT = {
     ("dual_core", "service_publish_failures"): "0",
     ("dual_core", "partition_fault"): "none",
     ("dual_core", "fail_static"): "false",
-    ("cx317_active", "fail_static"): "false",
-    ("cx317_preview", "telemetry_dropped_frames"): "0",
-    ("cx317_preview", "actionable"): "false",
-    ("cx317_preview", "actuation_authorized"): "false",
-    ("cx318_preview", "actionable"): "false",
-    ("cx318_preview", "actuation_authorized"): "false",
-    ("cx318_preview", "authorization_consumed"): "false",
+    ("adaptive_hybrid", "fail_static"): "false",
+}
+
+TELEMETRY_DROP_KEY = ("dual_core", "telemetry_dropped")
+GNSS_OPERATIONAL_PREWRITE_EXACT = {
+    ("gnss_receiver", "uart_configuration"): "uart0_configuration_blind_default_or_retained_115200_v1",
+    ("gnss_receiver", "operational_baud_policy"): "configuration_blind_default_or_retained_115200_v1",
+    ("gnss_receiver", "operational_bootstrap_state"): "complete",
+    ("gnss_receiver", "operational_bootstrap_ordered_source_bauds"): "9600%2C115200",
+    ("gnss_receiver", "operational_bootstrap_settle_ms"): "1200",
+    ("gnss_receiver", "operational_bootstrap_attempt_count"): "2",
+    ("gnss_receiver", "target_baud_command_attempt_count"): "2",
+    ("gnss_receiver", "post_bootstrap_target_baud_command_attempt_count"): "0",
+    ("gnss_receiver", "operational_bootstrap_peripheral_complete_count"): "2",
+    ("gnss_receiver", "operational_bootstrap_completed_rate_mask"): "3",
+    ("gnss_receiver", "operational_bootstrap_first_completed_baud"): "9600",
+    ("gnss_receiver", "operational_bootstrap_second_completed_baud"): "115200",
+    ("gnss_receiver", "local_uart_baud"): "115200",
+    ("gnss_receiver", "local_uart_baud_epoch"): "2",
+    ("gnss_receiver", "post_bootstrap_baud_change_count"): "0",
+    ("gnss_receiver", "autodiscovery_enabled"): "false",
+}
+GNSS_PREWRITE_EXACT = {
+    ("gnss_receiver", "initialized"): "true",
+    ("gnss_receiver", "link_state"): "online",
+    ("gnss_receiver", "link_online"): "true",
+    ("gnss_receiver", "configuration_confirmed"): "true",
+    ("gnss_receiver", "confirmed_baud"): "115200",
+    ("gnss_receiver", "rx_only"): "true",
+    ("gnss_receiver", "metadata_fresh"): "true",
+    ("gnss_receiver", "checksum_requalified"): "true",
+    ("gnss_receiver", "gsa_3d_fresh"): "true",
+    ("gnss_receiver", "gsa_checksum_requalified"): "true",
+    ("gnss_receiver", "identity_epoch"): "1",
+    ("gnss_receiver", "identity_stable"): "true",
+    ("gnss_receiver", "metadata_control_eligible"): "true",
+    ("gnss_receiver", "raw_pps_control_eligible"): "true",
+    ("gnss_receiver", "control_eligible"): "true",
+    **GNSS_OPERATIONAL_PREWRITE_EXACT,
 }
 
 # These are the firmware's exact, current inputs to the one-shot SETUP
@@ -44,9 +72,9 @@ HEALTH_INTEGRITY_EXACT = {
 # metadata is still qualifying after boot.  That state is a bounded pre-setup
 # hold and must never be allowed to consume the sole setup request.
 SETUP_AUTHORITY_EXACT = {
-    ("cx317_active", "setup_gnss_eligible"): "true",
-    ("cx317_active", "setup_reference_eligible"): "true",
-    ("cx317_active", "setup_partition_healthy"): "true",
+    ("adaptive_hybrid", "setup_gnss_eligible"): "true",
+    ("adaptive_hybrid", "setup_reference_eligible"): "true",
+    ("adaptive_hybrid", "setup_partition_healthy"): "true",
 }
 
 
@@ -56,8 +84,6 @@ class PrewriteReadiness:
     ready: bool
     missing: tuple[str, ...]
     mismatches: tuple[str, ...]
-    inherited_preview_baseline_code: str
-    inherited_preview_baseline_provenance: str
     planned_live_stimulus_code: str
     physical_dac_confirmation: str
 
@@ -124,14 +150,27 @@ def _require_unsigned(
         mismatches.append(f"{name}={observed!r}, expected {qualifier} integer")
 
 
-def evaluate_health_integrity(health: Health) -> PrewriteHealthIntegrity:
+def evaluate_health_integrity(
+    health: Health, *, telemetry_drop_baseline: int = 0
+) -> PrewriteHealthIntegrity:
     missing: list[str] = []
     mismatches: list[str] = []
     for status_key in ACTIVE_STATUS_KEYS:
-        key = ("cx317_active", status_key)
+        key = ("adaptive_hybrid", status_key)
         if key not in health:
             missing.append(f"missing {_key_name(key)}")
-    _expect(health, HEALTH_INTEGRITY_EXACT, missing, mismatches)
+    normalized = dict(health)
+    observed_drop = health.get(TELEMETRY_DROP_KEY)
+    if observed_drop is not None:
+        try:
+            if int(observed_drop) != telemetry_drop_baseline:
+                mismatches.append(
+                    "dual_core.telemetry_dropped differs from frozen attach baseline"
+                )
+        except ValueError:
+            mismatches.append("dual_core.telemetry_dropped is not an integer")
+        normalized[TELEMETRY_DROP_KEY] = "0"
+    _expect(normalized, HEALTH_INTEGRITY_EXACT, missing, mismatches)
     return PrewriteHealthIntegrity(
         clean=not missing and not mismatches,
         missing=tuple(missing),
@@ -146,12 +185,10 @@ def evaluate_prewrite_readiness(
     planned_live_stimulus_code: int,
     active_row_count: int,
     dac_row_count: int,
+    telemetry_drop_baseline: int = 0,
     contract_id: str = RUNTIME_CONTRACT_ID,
-    inherited_preview_baseline_provenance: str = (
-        INHERITED_PREVIEW_BASELINE_PROVENANCE
-    ),
 ) -> PrewriteReadiness:
-    """Evaluate the exact no-write state preceding a Stage 5 live stimulus.
+    """Evaluate the exact no-write state preceding live adaptive-hybrid setup.
 
     Missing status is never treated as healthy.  The caller decides how much
     bounded startup grace to allow while the first complete status burst is
@@ -161,42 +198,42 @@ def evaluate_prewrite_readiness(
     missing: list[str] = []
     mismatches: list[str] = []
 
-    integrity = evaluate_health_integrity(health)
+    integrity = evaluate_health_integrity(
+        health, telemetry_drop_baseline=telemetry_drop_baseline
+    )
     missing.extend(integrity.missing)
     mismatches.extend(integrity.mismatches)
 
     exact = {
         **{
-            ("cx317_active", key): value
+            ("adaptive_hybrid", key): value
             for key, value in expected_identity.items()
         },
-        ("cx317_active", "enabled"): "true",
-        ("cx317_active", "state"): "DISARMED",
-        ("cx317_active", "evidence_pending"): "false",
-        ("cx317_active", "evidence_phase"): "evidence_clear",
-        ("cx317_active", "capture_lease_live"): "true",
-        ("cx317_active", "manual_start_confirmed"): "false",
-        ("cx317_active", "arm_eligible"): "false",
-        ("cx317_active", "fail_static"): "false",
-        ("cx317_active", "evidence_request_sequence"): "0",
-        ("cx317_active", "expected_setup_code"): (
+        ("adaptive_hybrid", "enabled"): "true",
+        ("adaptive_hybrid", "state"): "DISARMED",
+        ("adaptive_hybrid", "evidence_pending"): "false",
+        ("adaptive_hybrid", "evidence_phase"): "evidence_clear",
+        ("adaptive_hybrid", "capture_lease_live"): "true",
+        ("adaptive_hybrid", "manual_start_confirmed"): "false",
+        ("adaptive_hybrid", "arm_eligible"): "false",
+        ("adaptive_hybrid", "fail_static"): "false",
+        ("adaptive_hybrid", "evidence_request_sequence"): "0",
+        ("adaptive_hybrid", "expected_setup_code"): (
             f"0x{planned_live_stimulus_code:04X}"
         ),
-        ("cx317_active", "confirmed_applied_code_known"): "false",
-        ("cx317_active", "confirmed_applied_code"): "unavailable",
-        ("cx317_active", "correction_count"): "0",
-        ("cx317_active", "cumulative_movement_codes"): "0",
-        ("cx317_active", "dac_epoch"): "0",
-        ("cx317_active", "automatic_retry"): "false",
-        ("cx317_active", "automatic_restore"): "false",
-        ("cx318_preview", "static_code"): "0xA828",
-        ("cx318_preview", "applied_code"): "0xA828",
-        ("cx318_preview", "dac_epoch"): "0",
+        ("adaptive_hybrid", "confirmed_applied_code_known"): "false",
+        ("adaptive_hybrid", "confirmed_applied_code"): "unavailable",
+        ("adaptive_hybrid", "correction_count"): "0",
+        ("adaptive_hybrid", "cumulative_movement_codes"): "0",
+        ("adaptive_hybrid", "dac_epoch"): "0",
+        ("adaptive_hybrid", "automatic_retry"): "false",
+        ("adaptive_hybrid", "automatic_restore"): "false",
         ("dac", "applied_code_known"): "false",
         ("dac", "last_write_ok"): "false",
         ("dac", "last_applied_code"): "unavailable",
     }
     _expect(health, exact, missing, mismatches)
+    _expect(health, GNSS_PREWRITE_EXACT, missing, mismatches)
     for key, required in SETUP_AUTHORITY_EXACT.items():
         observed = health.get(key)
         name = _key_name(key)
@@ -207,9 +244,9 @@ def evaluate_prewrite_readiness(
                 f"{name}={observed!r}, expected {required!r} before setup"
             )
     for key, nonzero in (
-        (("cx317_active", "session_id"), True),
-        (("cx317_active", "uptime_s"), False),
-        (("cx317_active", "selected_interval_count"), False),
+        (("adaptive_hybrid", "session_id"), True),
+        (("adaptive_hybrid", "uptime_s"), False),
+        (("adaptive_hybrid", "selected_interval_count"), False),
     ):
         _require_unsigned(
             health, key, missing, mismatches, nonzero=nonzero
@@ -231,10 +268,6 @@ def evaluate_prewrite_readiness(
         ready=not missing_exact and not mismatches_exact,
         missing=missing_exact,
         mismatches=mismatches_exact,
-        inherited_preview_baseline_code="0xA828",
-        inherited_preview_baseline_provenance=(
-            inherited_preview_baseline_provenance
-        ),
         planned_live_stimulus_code=f"0x{planned_live_stimulus_code:04X}",
         physical_dac_confirmation="unknown_before_live_stimulus",
     )
@@ -281,21 +314,14 @@ def canonical_prewrite_fixture(
             "setup_partition_healthy": "true",
         }
     )
-    health = {("cx317_active", key): value for key, value in active.items()}
+    health = {("adaptive_hybrid", key): value for key, value in active.items()}
     health.update(
         {
-            ("cx318_preview", "static_code"): "0xA828",
-            ("cx318_preview", "applied_code"): "0xA828",
-            ("cx318_preview", "dac_epoch"): "0",
-            ("cx317_preview", "actionable"): "false",
-            ("cx317_preview", "actuation_authorized"): "false",
-            ("cx318_preview", "actionable"): "false",
-            ("cx318_preview", "actuation_authorized"): "false",
-            ("cx318_preview", "authorization_consumed"): "false",
             ("dac", "applied_code_known"): "false",
             ("dac", "last_write_ok"): "false",
             ("dac", "last_applied_code"): "unavailable",
             **HEALTH_INTEGRITY_EXACT,
         }
     )
+    health.update(GNSS_PREWRITE_EXACT)
     return health

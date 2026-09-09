@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from host.otis_tools.contracts import ACTIVE_HYBRID_DECISION_V1_FIELDS
+from host.otis_tools.contracts import ACTIVE_HYBRID_DECISION_V2_FIELDS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,8 +45,8 @@ def test_firmware_active_hybrid_formatter_emits_the_exact_wire_contract(
         [str(executable)], check=True, text=True, capture_output=True
     )
     values = next(csv.reader(io.StringIO(completed.stdout)))
-    assert len(values) == len(ACTIVE_HYBRID_DECISION_V1_FIELDS) == 56
-    row = dict(zip(ACTIVE_HYBRID_DECISION_V1_FIELDS, values, strict=True))
+    assert len(values) == len(ACTIVE_HYBRID_DECISION_V2_FIELDS)
+    row = dict(zip(ACTIVE_HYBRID_DECISION_V2_FIELDS, values, strict=True))
     assert row["record_type"] == "AHY"
     assert row["reason"] == "minimum_applied_cadence_hold"
     assert row["response_policy_sha256"] == "response_policy_sha256"

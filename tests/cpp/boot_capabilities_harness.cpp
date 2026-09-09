@@ -22,9 +22,8 @@ OtisBootCapabilityTracker representative_profile(void) {
   OtisBootCapabilityTracker tracker;
   otis_boot_capability_tracker_init(&tracker);
   select_required(&tracker, OtisBootCapability::ResourceRegistry);
-  select_required(&tracker, OtisBootCapability::SparseCapture);
   select_required(&tracker, OtisBootCapability::PpsCapture);
-  select_required(&tracker, OtisBootCapability::CountBackend);
+  select_required(&tracker, OtisBootCapability::OscillatorCount);
   select_required(&tracker, OtisBootCapability::Transport);
   otis_boot_capability_select(&tracker, OtisBootCapability::Sensors,
                               OtisBootCapabilityRequirement::Optional);
@@ -37,15 +36,12 @@ void record_representative_ready(OtisBootCapabilityTracker *tracker) {
                   OtisBootCapabilityOutcome::Ready);
   assert(otis_boot_capability_begin_phase(tracker, BootPhase::PpsInputInit));
   assert(otis_boot_capability_record(
-      tracker, OtisBootCapability::SparseCapture,
-      OtisBootCapabilityOutcome::Ready));
-  assert(otis_boot_capability_record(
       tracker, OtisBootCapability::PpsCapture,
       OtisBootCapabilityOutcome::Ready));
   assert(otis_boot_capability_complete_phase(tracker,
                                              BootPhase::PpsInputInit));
   record_in_phase(tracker, BootPhase::TimerInit,
-                  OtisBootCapability::CountBackend,
+                  OtisBootCapability::OscillatorCount,
                   OtisBootCapabilityOutcome::Ready);
   record_in_phase(tracker, BootPhase::SerialInit,
                   OtisBootCapability::Transport,
@@ -67,17 +63,17 @@ int main() {
   assert(otis_boot_capability_overall_outcome(&good) ==
          OtisBootCapabilityOutcome::Ready);
 
-  // PIO/sparse-capture allocation failure blocks RunMode.
-  OtisBootCapabilityTracker pio_failure = representative_profile();
-  record_representative_ready(&pio_failure);
-  assert(otis_boot_capability_begin_phase(&pio_failure,
+  // D14 reference-capture initialization failure blocks RunMode.
+  OtisBootCapabilityTracker pps_failure = representative_profile();
+  record_representative_ready(&pps_failure);
+  assert(otis_boot_capability_begin_phase(&pps_failure,
                                           BootPhase::PpsInputInit));
   assert(otis_boot_capability_record(
-      &pio_failure, OtisBootCapability::SparseCapture,
+      &pps_failure, OtisBootCapability::PpsCapture,
       OtisBootCapabilityOutcome::RequiredUnavailable));
-  assert(otis_boot_capability_complete_phase(&pio_failure,
+  assert(otis_boot_capability_complete_phase(&pps_failure,
                                              BootPhase::PpsInputInit));
-  assert(!otis_boot_capability_mark_run_mode(&pio_failure));
+  assert(!otis_boot_capability_mark_run_mode(&pps_failure));
 
   // A selected count backend is part of the required measurement path.
   OtisBootCapabilityTracker count_failure = representative_profile();
@@ -85,7 +81,7 @@ int main() {
   assert(otis_boot_capability_begin_phase(&count_failure,
                                           BootPhase::TimerInit));
   assert(otis_boot_capability_record(
-      &count_failure, OtisBootCapability::CountBackend,
+      &count_failure, OtisBootCapability::OscillatorCount,
       OtisBootCapabilityOutcome::RequiredUnavailable));
   assert(otis_boot_capability_complete_phase(&count_failure,
                                              BootPhase::TimerInit));
@@ -94,13 +90,11 @@ int main() {
   // Every other enabled required path, including DAC and Phase 4 preview,
   // follows the same blocking rule.
   const OtisBootCapability required_failures[] = {
-      OtisBootCapability::PpsCapture,
       OtisBootCapability::Dac,
-      OtisBootCapability::Phase4Preview,
+      OtisBootCapability::PhaseFrequencyEstimate,
       OtisBootCapability::Transport,
   };
   const BootPhase required_failure_phases[] = {
-      BootPhase::PpsInputInit,
       BootPhase::PeripheralsInit,
       BootPhase::PreviewInit,
       BootPhase::SerialInit,
@@ -178,22 +172,22 @@ int main() {
   // Breadcrumb/work ordering is checked independently of hardware.
   OtisBootCapabilityTracker bad_order;
   otis_boot_capability_tracker_init(&bad_order);
-  select_required(&bad_order, OtisBootCapability::CountBackend);
+  select_required(&bad_order, OtisBootCapability::OscillatorCount);
   assert(!otis_boot_capability_record(
-      &bad_order, OtisBootCapability::CountBackend,
+      &bad_order, OtisBootCapability::OscillatorCount,
       OtisBootCapabilityOutcome::Ready));
   assert(!bad_order.ordering_valid);
   assert(!otis_boot_capability_mark_run_mode(&bad_order));
 
   OtisBootCapabilityTracker bracketed;
   otis_boot_capability_tracker_init(&bracketed);
-  select_required(&bracketed, OtisBootCapability::CountBackend);
+  select_required(&bracketed, OtisBootCapability::OscillatorCount);
   record_in_phase(&bracketed, BootPhase::TimerInit,
-                  OtisBootCapability::CountBackend,
+                  OtisBootCapability::OscillatorCount,
                   OtisBootCapabilityOutcome::Ready);
   const OtisBootCapabilityEntry *count =
       otis_boot_capability_entry(&bracketed,
-                                 OtisBootCapability::CountBackend);
+                                 OtisBootCapability::OscillatorCount);
   assert(count != nullptr && count->reported);
   assert(count->outcome_phase == BootPhase::TimerInit);
   assert(otis_boot_capability_mark_run_mode(&bracketed));

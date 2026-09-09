@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/pps_gated_frequency_estimator_v1.schema.json",
+  "title": "OTIS PPS-gated frequency estimator v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "status",
+    "method_id",
+    "base_estimator",
+    "expected_snapshot_backend",
+    "authoritative_denominator",
+    "authoritative_policy",
+    "invalidation_policy"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "profile_id": {"const": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1"},
+    "status": {"const": "selected_production_estimator"},
+    "method_id": {"const": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1"},
+    "base_estimator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "counter_direction",
+        "counter_width_bits",
+        "accumulator_width_bits",
+        "nominal_reference_interval_s",
+        "timer_domain",
+        "timer_nominal_hz",
+        "maximum_captured_edge_rate_hz",
+        "uncertainty_policy",
+        "criteria_rationale_document"
+      ],
+      "properties": {
+        "counter_direction": {"const": "down"},
+        "counter_width_bits": {"const": 32},
+        "accumulator_width_bits": {"const": 64},
+        "nominal_reference_interval_s": {"const": 1.0},
+        "timer_domain": {"const": "rp2040_monotonic_us32"},
+        "timer_nominal_hz": {"const": 1000000},
+        "maximum_captured_edge_rate_hz": {"const": 133000000},
+        "uncertainty_policy": {"const": "unknown_components_unavailable"},
+        "criteria_rationale_document": {"const": "docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md"}
+      }
+    },
+    "expected_snapshot_backend": {"const": "pio_wait_cumulative_snapshot_dma_v1"},
+    "authoritative_denominator": {"const": "nominal_accepted_D14_interval_count"},
+    "authoritative_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "span_s",
+        "output_mode",
+        "output_cadence_s",
+        "fresh_support_recovery_time_s",
+        "count_increment_hz"
+      ],
+      "properties": {
+        "span_s": {"const": 600},
+        "output_mode": {"const": "non_overlapping"},
+        "output_cadence_s": {"const": 600},
+        "fresh_support_recovery_time_s": {"const": 600},
+        "count_increment_hz": {"const": 0.0016666666666666668}
+      }
+    },
+    "invalidation_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reset_on", "D10_external_event_anomaly_resets_estimator"],
+      "properties": {
+        "reset_on": {
+          "const": [
+            "invalid_adjacent_D14_D8_interval",
+            "capture_session_boundary",
+            "sequence_discontinuity",
+            "reference_association_failure",
+            "snapshot_or_counter_fault",
+            "parser_or_transport_loss",
+            "dac_control_epoch",
+            "declared_settling_exclusion"
+          ]
+        },
+        "D10_external_event_anomaly_resets_estimator": {"const": false}
+      }
+    }
+  }
+}

@@ -93,10 +93,11 @@ emission, control consumption, foreground backlog, and telemetry backpressure
 are separate progress planes. Backlog within capacity can delay reporting but
 cannot alter captured count values or become `reference_missing_pps`.
 
-D10 is not a PPS observer. It remains an independent external-event input and
-is not claimed by the CX319 PPS/oscillator profile. A future D10 measurement
-path must define how external edges are counted or timestamped against the
-disciplined D8 oscillator without entering PPS or control authority.
+D10 is not a PPS observer. It remains an independent external-event input with
+an explicit D10/channel 0 contract and no PPS or control authority. The fixed
+firmware does not yet claim a safely isolated D10 capture backend. That backend
+must be implemented and qualified without sharing D14's interrupt/ring path or
+allowing D10 traffic to compromise D14/D8 capture.
 
 ## Failure behavior
 
@@ -115,9 +116,10 @@ disciplined D8 oscillator without entering PPS or control authority.
   session.
 - Short, long, duplicate, bounce, glitch, or otherwise malformed PPS evidence
   remains raw and diagnostic, but cannot become control-valid measurement.
-- The backend architecture was accepted on 2026-08-01 for observe-only
-  measurement. The checked-in qualification build and sealed evidence remain
-  `backend_qualified=false`, so no PPS-gated observation authorizes actuation.
+- Current source and deterministic proofs bind the qualified PPS-gated snapshot
+  backend into the fixed image. Physical qualification remains bound to the
+  exact historical evidence that established it; this code reset creates no new
+  physical claim.
 
 ## Validation obligations
 

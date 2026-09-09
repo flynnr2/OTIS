@@ -149,19 +149,9 @@ def test_observed_185us_double_edge_is_rejected_without_latching_current_eligibi
     firmware = (FIRMWARE / "otis_count_observation.cpp").read_text(
         encoding="utf-8"
     )
-    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
-    active_health = sketch[
-        sketch.index("void service_cx317_active_health(void)") :
-        sketch.index("void service_cx317_active_application_outcome(void)")
-    ]
     assert 'return "suspect";' in firmware
     assert 'return "requalifying";' in firmware
     assert "control_ready_clean_windows" in firmware
-    assert "d14_rejected_short_count == 0u" not in active_health
-    assert "d14_rejected_long_count == 0u" not in active_health
-    assert "snapshot.continuity_loss_count == 0u" not in active_health
 
 
 def test_pps_backend_exposes_independent_validity_and_unavailable_uncertainty() -> None:
@@ -231,16 +221,3 @@ def test_pps_counter_boundary_is_owned_by_pio_and_inhibits_rejected_anchor() -> 
     assert "previous_boundary_inhibited" in reference
     assert "OtisPpsBoundaryReason::PreviousBoundaryInvalid" in reference
     assert '"reference_previous_boundary_invalid"' in source
-
-
-def test_phase4_live_adapter_uses_modular_pps_boundaries_and_separate_validity() -> None:
-    source = (FIRMWARE / "otis_observe_only_discipline_live.cpp").read_text(
-        encoding="utf-8"
-    )
-    assert '#include "otis_timebase_math.h"' in source
-    assert "const uint64_t gate_ticks = otis_monotonic_us32_interval(" in source
-    assert (
-        "OTIS_TCXO_COUNTER_BACKEND == "
-        "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
-    ) in source
-    assert "flags & OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT" in source

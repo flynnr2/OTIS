@@ -23,12 +23,9 @@ enum class OtisRunControlKind : uint8_t {
   None,
   Mode,
   Arm,
-  Recover,
   Abort,
-  SyntheticReceiverInvalidation,
   CaptureLease,
   EvidenceRelease,
-  PlantSignEvidenceRelease,
   StatusQuery,
   DiagnosticConfigQuery,
   DiagnosticRuntimeQuery,
@@ -76,16 +73,9 @@ struct OtisRunControlMessage {
   uint64_t published_ticks;
   uint32_t authorization_sequence;
   uint32_t nonce;
-  uint32_t duration_ms;
   uint32_t capture_lease_sequence;
   uint32_t request_sequence;
   uint32_t evidence_phase;
-  uint32_t response_psq_record_sequence;
-  int64_t response_counts;
-  uint32_t application_sequence;
-  uint32_t dac_epoch;
-  uint32_t response_source_last_sequence;
-  char replay_attestation_sha256[65];
   uint32_t expires_s;
   OtisRunControlKind kind;
   bool asserted;
@@ -263,7 +253,7 @@ struct OtisEvidenceFrameMessage {
   char data[OTIS_EVIDENCE_FRAME_CAPACITY];
 };
 
-// A Stage 7 build identity is two full SHA-256 digests separated by a colon:
+// A fixed-image build identity is two full SHA-256 digests separated by a colon:
 // 64 + 1 + 64 characters, plus the terminating NUL.  Keep telemetry values
 // large enough to carry that identity across cores without truncation.
 constexpr uint16_t OTIS_TELEMETRY_VALUE_CAPACITY = 160u;
@@ -286,11 +276,9 @@ struct OtisTelemetryMessage {
 };
 
 // Core 1 publishes one immutable numerical result per observed PPS boundary;
-// Core 0 alone turns it into RPH/PHE/HPR CSV.  The record deliberately carries
-// no callback, pointer, authority, actuator request, or DAC-driver state.
+// Core 0 alone turns it into RPH/PHE CSV. The record deliberately carries no
+// callback, pointer, authority, actuator request, or DAC-driver state.
 struct OtisPhasePreviewRecordMessage {
-  uint32_t preview_sequence;
-  uint64_t decision_timestamp_ticks;
   uint32_t phase_epoch;
   uint32_t observation_sequence;
   uint32_t capture_session;
@@ -303,39 +291,14 @@ struct OtisPhasePreviewRecordMessage {
   int64_t edge_error_cycles;
   int64_t relative_phase_cycles;
   int64_t relative_phase_time_ns;
-  double raw_frequency_error_hz;
-  double observed_frequency_error_hz;
+  double frequency_error_hz;
   double frequency_estimate_age_s;
-  double modeled_relative_phase_cycles;
-  double modeled_frequency_error_hz;
-  double frequency_term_hz;
-  double phase_bias_hz;
-  double combined_frequency_error_hz;
-  double raw_counterfactual_delta_codes;
-  int32_t counterfactual_delta_codes;
-  uint16_t actual_applied_code;
-  uint16_t shadow_code_before;
-  uint16_t shadow_code_after;
-  uint16_t correction_count;
-  uint16_t cumulative_movement_codes;
-  uint16_t alternating_correction_count;
   bool phase_accepted;
   bool interval_available;
-  bool raw_frequency_available;
-  bool modeled_frequency_available;
+  bool frequency_available;
   bool frequency_observation_event;
-  bool counterfactual_decision;
-  bool counterfactual_correction;
-  bool raw_counterfactual_delta_available;
-  bool step_limited;
-  bool range_clamped;
-  bool modeled_not_observed_after_divergence;
   char phase_qualification_state[16];
   char phase_reason[64];
-  char band_state_before[12];
-  char band_state_after[12];
-  char preview_state[32];
-  char decision_reason[64];
 };
 
 enum class OtisActuatorGuardState : uint8_t {

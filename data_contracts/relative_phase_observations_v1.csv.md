@@ -2,8 +2,8 @@
 
 ## Status and scope
 
-Normative CX318 Stage 4 raw relative-phase observation contract. `RPH` v1 is
-immutable derived timing evidence: it records the frozen Stage 1 cumulative
+Normative current raw relative-phase observation contract. `RPH` v1 is
+immutable derived timing evidence: it records the cumulative
 edge-error boundary and does not imply UTC, absolute phase, phase lock, or
 actuation authority.
 

@@ -32,7 +32,7 @@ struct Producer {
   }
 };
 
-Producer *find(std::array<Producer, 4> *producers,
+Producer *find(std::array<Producer, 3> *producers,
                OtisSerialFrameOwner owner) {
   for (Producer &producer : *producers)
     if (producer.owner == owner) return &producer;
@@ -40,27 +40,23 @@ Producer *find(std::array<Producer, 4> *producers,
 }
 
 OtisSerialFrameReadiness readiness(
-    const std::array<Producer, 4> &producers) {
+    const std::array<Producer, 3> &producers) {
   return {
       producers[0].pending(),
       producers[1].pending(),
       producers[2].pending(),
-      producers[3].pending(),
   };
 }
 
 void test_partial_owner_is_exclusive_and_direct_output_waits() {
   const std::string evidence = "ACT," + std::string(410u, 'E') + "\r\n";
-  const std::string phase4 = "CTL," + std::string(80u, 'P') + "\r\n";
-  const std::string cx317 = "EST," + std::string(90u, 'I') + "\r\n";
-  const std::string cx318 = "RPH," + std::string(100u, 'R') + "\r\n" +
-                            "PHE," + std::string(100u, 'H') + "\r\n" +
-                            "HPR," + std::string(100u, 'D') + "\r\n";
-  std::array<Producer, 4> producers = {{
+  const std::string regulation = "EST," + std::string(90u, 'I') + "\r\n";
+  const std::string phase_preview = "RPH," + std::string(100u, 'R') + "\r\n" +
+                            "PHE," + std::string(100u, 'H') + "\r\n";
+  std::array<Producer, 3> producers = {{
       {OtisSerialFrameOwner::DualCoreEvidence, {evidence}},
-      {OtisSerialFrameOwner::Phase4Preview, {phase4}},
-      {OtisSerialFrameOwner::Cx317Preview, {cx317}},
-      {OtisSerialFrameOwner::PhasePreview, {cx318}},
+      {OtisSerialFrameOwner::FrequencyRegulation, {regulation}},
+      {OtisSerialFrameOwner::PhasePreview, {phase_preview}},
   }};
   const std::array<size_t, 6> capacities = {64u, 0u, 31u, 192u, 7u, 4096u};
   OtisSerialFrameArbiter arbiter = {};
@@ -100,17 +96,17 @@ void test_partial_owner_is_exclusive_and_direct_output_waits() {
   }
 
   assert(direct_written);
-  assert(wire == evidence + phase4 + cx317 + cx318 + "STS,1,direct\r\n");
+  assert(wire == evidence + regulation + phase_preview +
+                     "STS,1,direct\r\n");
   assert(otis_serial_frame_arbiter_owner(&arbiter) ==
          OtisSerialFrameOwner::None);
 }
 
 void test_round_robin_releases_between_complete_groups() {
-  std::array<Producer, 4> producers = {{
+  std::array<Producer, 3> producers = {{
       {OtisSerialFrameOwner::DualCoreEvidence, {"EST,first\r\n", "EST,second\r\n"}},
-      {OtisSerialFrameOwner::Phase4Preview, {"CTL,one\r\n"}},
-      {OtisSerialFrameOwner::Cx317Preview, {}},
-      {OtisSerialFrameOwner::PhasePreview, {"RPH,PHE,HPR\r\n"}},
+      {OtisSerialFrameOwner::FrequencyRegulation, {"CTL,one\r\n"}},
+      {OtisSerialFrameOwner::PhasePreview, {"RPH,PHE\r\n"}},
   }};
   OtisSerialFrameArbiter arbiter = {};
   otis_serial_frame_arbiter_reset(&arbiter);
@@ -124,7 +120,7 @@ void test_round_robin_releases_between_complete_groups() {
     assert(!producer->service(4096u, &wire));
     assert(otis_serial_frame_arbiter_release(&arbiter, owner));
   }
-  assert(wire == "EST,first\r\nCTL,one\r\nRPH,PHE,HPR\r\nEST,second\r\n");
+  assert(wire == "EST,first\r\nCTL,one\r\nRPH,PHE\r\nEST,second\r\n");
 }
 
 }  // namespace

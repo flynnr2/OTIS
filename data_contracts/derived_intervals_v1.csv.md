@@ -22,7 +22,7 @@ Every derived row should preserve provenance back to:
 - source record family;
 - source sequence numbers;
 - timing domains;
-- profile assumptions.
+- fixed-configuration assumptions.
 
 ## Philosophy
 

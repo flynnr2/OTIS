@@ -7,11 +7,8 @@
 
 struct OtisPhasePreviewLiveStatus {
   bool initialized;
-  // Stage 4 compatibility: these describe the immutable boot-time premise.
-  bool static_code_bound;
-  uint16_t static_code;
-  // The current Core 0-confirmed code context consumed by Core 1.  It equals
-  // static_code for an unchanged Stage 4 preview run.
+  // The current Core 0-confirmed code context consumed by Core 1. It remains
+  // unbound until the setup application is physically confirmed.
   bool applied_code_bound;
   uint16_t applied_code;
   uint32_t dac_epoch;
@@ -20,9 +17,9 @@ struct OtisPhasePreviewLiveStatus {
   uint32_t last_observation_sequence;
 };
 
-// CX320-only same-core handoff.  This snapshot is published only after the
-// canonical HPR record has entered the recorder queue, so the active policy
-// cannot consume phase evidence that the recorder did not accept.
+// Adaptive-hybrid-only same-core handoff. This snapshot is published only
+// after the canonical RPH/PHE evidence has entered the recorder queue, so the
+// active policy cannot consume phase evidence that the recorder did not accept.
 struct OtisPhasePreviewActiveSnapshot {
   bool available;
   bool recorder_published;
@@ -37,10 +34,10 @@ struct OtisPhasePreviewActiveSnapshot {
   uint16_t applied_code;
 };
 
-// Called only on Core 1. The static code must have been confirmed by preflight;
-// this function has no mechanism to read or write a DAC.
-bool otis_phase_preview_live_begin(uint16_t confirmed_static_code,
-                                   uint32_t dac_epoch);
+// Called only on Core 1. This initializes the service without inventing a DAC
+// state; the numerical preview remains dormant until the first confirmed
+// application arrives through update_applied_code().
+bool otis_phase_preview_live_begin(void);
 // Called by the timing owner only after Core 0's DAC application has been
 // confirmed.  This is a one-way observation update: it neither requests nor
 // writes a DAC value, and has no path back to an active controller.  Epochs

@@ -33,20 +33,20 @@ def test_snapshot_and_sequence_wrap_validity_and_control_gating(
             #include "{HELPER}"
 
             int main(void) {{
-              OtisCounterSnapshotDelta ordinary =
-                  otis_counter_snapshot_delta_u32(100u, 125u, 1000u);
+                  OtisCounterSnapshotDelta ordinary =
+                      otis_down_counter_snapshot_delta_u32(125u, 100u, 1000u);
               assert(ordinary.valid && ordinary.count == 25u);
               assert(!ordinary.wrap_handled && !ordinary.wrap_ambiguous);
 
-              OtisCounterSnapshotDelta wrapped =
-                  otis_counter_snapshot_delta_u32(
-                      0xfffffff0u, 0x00000010u, 1000u);
+                  OtisCounterSnapshotDelta wrapped =
+                      otis_down_counter_snapshot_delta_u32(
+                          0x00000010u, 0xfffffff0u, 1000u);
               assert(wrapped.valid && wrapped.count == 32u);
               assert(wrapped.wrap_handled && !wrapped.wrap_ambiguous);
 
-              OtisCounterSnapshotDelta ambiguous =
-                  otis_counter_snapshot_delta_u32(
-                      0xfffffff0u, 0x00001000u, 1000u);
+                  OtisCounterSnapshotDelta ambiguous =
+                      otis_down_counter_snapshot_delta_u32(
+                          0x00001000u, 0xfffffff0u, 1000u);
               assert(!ambiguous.valid && ambiguous.wrap_ambiguous);
 
               assert(otis_boundary_sequence_relation(41u, 42u) ==
@@ -63,17 +63,17 @@ def test_snapshot_and_sequence_wrap_validity_and_control_gating(
                   otis_pps_count_window_validity(
                       true, true,
                       OtisBoundarySequenceRelation::Continuous,
-                      OTIS_PPS_APERTURE_NONE, true, true);
+                      OTIS_PPS_APERTURE_NONE, true);
               assert(clean.control_eligible);
 
-              OtisPpsCountWindowValidity unqualified =
+              OtisPpsCountWindowValidity otherwise_inhibited =
                   otis_pps_count_window_validity(
                       true, true,
                       OtisBoundarySequenceRelation::Continuous,
-                      OTIS_PPS_APERTURE_NONE, false, true);
-              assert(!unqualified.control_eligible);
-              assert(unqualified.reference_interval_valid);
-              assert(unqualified.counter_window_valid);
+                      OTIS_PPS_APERTURE_NONE, false);
+              assert(!otherwise_inhibited.control_eligible);
+              assert(otherwise_inhibited.reference_interval_valid);
+              assert(otherwise_inhibited.counter_window_valid);
 
               // Synthetic regression: a nominal timestamp interval and a
               // nonzero partial count cannot overcome explicit aperture
@@ -85,14 +85,14 @@ def test_snapshot_and_sequence_wrap_validity_and_control_gating(
                       true, true,
                       OtisBoundarySequenceRelation::Continuous,
                       OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE,
-                      true, true);
+                      true);
               assert(!partial.counter_window_valid);
               assert(!partial.control_eligible);
 
               OtisPpsCountWindowValidity gap =
                   otis_pps_count_window_validity(
                       true, true, OtisBoundarySequenceRelation::Gap,
-                      OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW, true, true);
+                      OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW, true);
               assert(!gap.observation_pair_valid);
               assert(!gap.fifo_continuous);
               assert(!gap.control_eligible);
@@ -250,7 +250,7 @@ def test_pio_boundary_path_is_hardware_owned_and_reason_contract_is_explicit() -
     assert "sm_config_set_in_shift(&config, true, true, 32u)" in backend
     assert "stop_and_sample_h1_pio_counter_from_pps_isr" not in source
     irq_start = irq_source.index("void handle_capture_edge(void)")
-    irq_end = irq_source.index("void handle_tcxo_observation_edge", irq_start)
+    irq_end = irq_source.index("}  // namespace", irq_start)
     irq_handler = irq_source[irq_start:irq_end]
     assert "pps_count_boundary_handler" not in irq_handler
     assert "pio_sm_" not in irq_handler
@@ -302,7 +302,7 @@ def test_association_loss_freezes_decision_local_backend_evidence_before_rearm()
 
     capsule = sketch[
         sketch.index("void publish_dual_core_association_loss_decision(") :
-        sketch.index("#endif", sketch.index("void publish_dual_core_association_loss_decision("))
+        sketch.index("void emit_captured_edge(", sketch.index("void publish_dual_core_association_loss_decision("))
     ]
     for evidence in (
         '"ASL,1,',
@@ -344,5 +344,5 @@ def test_resource_and_telemetry_contract_name_boundary_ownership() -> None:
     assert sketch.count("emit_build_provenance_status();") == 2
     assert "if (!config_query_provenance_emitted)" in sketch
     assert "config_query_provenance_emitted = true;" in sketch
-    assert "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED 0" in config
-    assert "PPS_GATED_RATIO requires the GPIO IRQ backend for the independent D14 REF observer" in config
+    assert "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED" not in config
+    assert "OTIS_TCXO_COUNTER_BACKEND" not in config

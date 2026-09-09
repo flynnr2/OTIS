@@ -214,10 +214,11 @@ def recover_registration(journal_path: Path) -> dict[str, Any]:
         package_path=run_dir,
         source_revision=metadata["source_revision"],
         build_identity=metadata["build_identity"],
-        profile_identity=metadata["profile_identity"],
+        image_identity=metadata["image_identity"],
         attempt_classification=metadata["attempt_classification"],
         result_or_failure_reason=metadata["result_or_failure_reason"],
         analyzer_identity=metadata["analyzer_identity"],
+        expected_content_sha256=value["expected_content_sha256"],
     )
     advance_phase(
         journal_path,

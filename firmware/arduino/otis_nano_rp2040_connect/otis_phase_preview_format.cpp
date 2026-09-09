@@ -3,31 +3,16 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "otis_build_profile_config.h"
+#include "otis_build_config.h"
 #include "otis_decimal_format.h"
 
 namespace {
 
-constexpr char kPhaseEstimatorId[] =
-    "CX318_RELATIVE_PHASE_RAW_PLUS_SELECTED600_V1";
+constexpr char kPhaseEstimatorId[] = OTIS_BUILD_PHASE_ESTIMATOR_ID;
 constexpr char kPhaseConfigurationSha256[] =
-    "2bd2bf41f74e27bdc42032ace23b53cc70f4929a2dbd6fee3c03bda729ade792";
-constexpr char kFrequencyEstimatorId[] =
-    "cx317_selected_600s_nonoverlap_v1";
-constexpr char kFrequencyConfigurationSha256[] =
-    "968130fc809b0674f8ed6e9007ebbd3aa3e45d742ec986130291fff3d11a57a9";
-#if OTIS_SELECTED_HYBRID_EXTERNAL_DAC_EPOCH_RESEED
-constexpr char kCandidateId[] = "p21600_cap1_epoch_reseed_v3";
-constexpr char kHybridConfigurationSha256[] =
-    "fa1fe792cc21307ef56d4f6a936dad167d450e5a168a56d7196a4c13e1ea92be";
-#else
-constexpr char kCandidateId[] = "p21600_cap1_v2";
-constexpr char kHybridConfigurationSha256[] =
-    "5af329828aea2c63d9ab9333225f1c65e02bdf48a7c0cbafc6b7c0624904e358";
-#endif
+    OTIS_BUILD_PHASE_ESTIMATOR_SHA256;
 constexpr char kSourceBackend[] = "pio_wait_cumulative_snapshot_dma_v1";
-constexpr char kRawMethodId[] = "CX318_RELATIVE_PHASE_RAW_ACCUMULATOR_V1";
-constexpr char kTimeDomain[] = "rp2040_monotonic_us32";
+constexpr char kRawMethodId[] = OTIS_BUILD_PHASE_RAW_METHOD_ID;
 constexpr char kLiveSourceIdentity[] = "live_stream_unsealed";
 
 bool finish_format(int used, size_t output_size, size_t *length) {
@@ -40,8 +25,6 @@ bool fixed(double value, char *output, size_t size) {
   return otis_format_fixed(value, 15u, output, size);
 }
 
-const char *boolean_text(bool value) { return value ? "true" : "false"; }
-
 }  // namespace
 
 const char *otis_phase_preview_rph_header(void) {
@@ -50,10 +33,6 @@ const char *otis_phase_preview_rph_header(void) {
 
 const char *otis_phase_preview_phe_header(void) {
   return "record_type,schema_version,phase_epoch,observation_sequence,source_relative_phase_observation,raw_relative_phase_cycles,raw_relative_phase_time_ns,filtered_relative_phase_cycles,estimated_frequency_error_hz,estimator_id,configuration_sha256,estimate_age_s,qualification_state,uncertainty_status,reason_codes\r\n";
-}
-
-const char *otis_phase_preview_hpr_header(void) {
-  return "record_type,schema_version,preview_sequence,candidate_id,candidate_configuration_sha256,phase_estimator_id,phase_estimator_configuration_sha256,frequency_estimator_id,frequency_estimator_configuration_sha256,configuration_sha256,phase_epoch,observation_sequence,dac_epoch,decision_timestamp_ticks,time_domain,source_phase_estimate,source_frequency_estimate,raw_relative_phase_cycles,modeled_relative_phase_cycles,observed_frequency_error_hz,modeled_frequency_error_hz,frequency_term_hz,phase_bias_hz,combined_frequency_error_hz,actual_applied_code,shadow_code_before,shadow_code_after,band_state_before,band_state_after,preview_state,decision_reason,frequency_observation_event,counterfactual_decision,counterfactual_correction,raw_counterfactual_delta_codes,counterfactual_delta_codes,counterfactual_code,step_limited,range_clamped,correction_count,cumulative_movement_codes,alternating_correction_count,modeled_not_observed_after_divergence,uncertainty_status,actionable,actuation_authorized,authorization_consumed\r\n";
 }
 
 bool otis_phase_preview_format_rph(const OtisPhasePreviewRecordMessage *message,
@@ -93,8 +72,8 @@ bool otis_phase_preview_format_phe(const OtisPhasePreviewRecordMessage *message,
     return false;
   char frequency[40] = "";
   char estimate_age[40] = "";
-  if (message->modeled_frequency_available &&
-      (!fixed(message->observed_frequency_error_hz, frequency,
+  if (message->frequency_available &&
+      (!fixed(message->frequency_error_hz, frequency,
               sizeof(frequency)) ||
        !fixed(message->frequency_estimate_age_s, estimate_age,
               sizeof(estimate_age))))
@@ -102,16 +81,15 @@ bool otis_phase_preview_format_phe(const OtisPhasePreviewRecordMessage *message,
   const char *qualification =
       strcmp(message->phase_qualification_state, "invalid") == 0
           ? "invalid"
-          : (message->modeled_frequency_available ? "qualified"
-                                                  : "initializing");
+          : (message->frequency_available ? "qualified" : "initializing");
   const char *reason =
       strcmp(message->phase_qualification_state, "invalid") == 0
           ? message->phase_reason
-          : (message->modeled_frequency_available
+          : (message->frequency_available
                  ? (message->frequency_observation_event
-                        ? "selected_600_interval_frequency_fresh"
-                        : "selected_600_interval_frequency_retained")
-                 : "selected_600_interval_frequency_initializing");
+                        ? "frequency_estimate_fresh"
+                        : "frequency_estimate_retained")
+                 : "frequency_estimate_initializing");
   const int used = snprintf(
       output, output_size,
       "PHE,1,%lu,%lu,RPH:%lu:%lu,%lld,%lld,%lld,%s,%s,%s,%s,%s,unavailable,%s\r\n",
@@ -124,77 +102,5 @@ bool otis_phase_preview_format_phe(const OtisPhasePreviewRecordMessage *message,
       static_cast<long long>(message->relative_phase_cycles), frequency,
       kPhaseEstimatorId, kPhaseConfigurationSha256, estimate_age,
       qualification, reason);
-  return finish_format(used, output_size, length);
-}
-
-bool otis_phase_preview_format_hpr(const OtisPhasePreviewRecordMessage *message,
-                           char *output, size_t output_size, size_t *length) {
-  if (message == nullptr || output == nullptr || output_size == 0u)
-    return false;
-  char modeled_phase[48] = "";
-  char observed_frequency[40] = "";
-  char modeled_frequency[40] = "";
-  char frequency_term[40] = "";
-  char phase_bias[40] = "";
-  char combined[40] = "";
-  char raw_delta[48] = "";
-  char limited_delta[24] = "";
-  if (!fixed(message->modeled_relative_phase_cycles, modeled_phase,
-             sizeof(modeled_phase)) ||
-      !fixed(message->phase_bias_hz, phase_bias, sizeof(phase_bias)))
-    return false;
-  if (message->modeled_frequency_available &&
-      (!fixed(message->observed_frequency_error_hz, observed_frequency,
-              sizeof(observed_frequency)) ||
-       !fixed(message->modeled_frequency_error_hz, modeled_frequency,
-              sizeof(modeled_frequency)) ||
-       !fixed(message->frequency_term_hz, frequency_term,
-              sizeof(frequency_term)) ||
-       !fixed(message->combined_frequency_error_hz, combined,
-              sizeof(combined))))
-    return false;
-  if (message->counterfactual_decision) {
-    if (!message->raw_counterfactual_delta_available ||
-        !fixed(message->raw_counterfactual_delta_codes, raw_delta,
-               sizeof(raw_delta)))
-      return false;
-    snprintf(limited_delta, sizeof(limited_delta), "%ld",
-             static_cast<long>(message->counterfactual_delta_codes));
-  }
-  char phase_source[40] = "";
-  char frequency_source[40] = "unavailable";
-  snprintf(phase_source, sizeof(phase_source), "PHE:%lu:%lu",
-           static_cast<unsigned long>(message->phase_epoch),
-           static_cast<unsigned long>(message->observation_sequence));
-  if (message->modeled_frequency_available)
-    snprintf(frequency_source, sizeof(frequency_source), "PHE:%lu:%lu",
-             static_cast<unsigned long>(message->phase_epoch),
-             static_cast<unsigned long>(message->observation_sequence));
-  const int used = snprintf(
-      output, output_size,
-      "HPR,1,%lu,%s,%s,%s,%s,%s,%s,%s,%lu,%lu,%lu,%llu,%s,%s,%s,%lld,%s,%s,%s,%s,%s,%s,%u,%u,%u,%s,%s,%s,%s,%s,%s,%s,%s,%s,%u,%s,%s,%u,%u,%u,%s,unavailable,false,false,false\r\n",
-      static_cast<unsigned long>(message->preview_sequence), kCandidateId,
-      kHybridConfigurationSha256, kPhaseEstimatorId,
-      kPhaseConfigurationSha256, kFrequencyEstimatorId,
-      kFrequencyConfigurationSha256, kHybridConfigurationSha256,
-      static_cast<unsigned long>(message->phase_epoch),
-      static_cast<unsigned long>(message->observation_sequence),
-      static_cast<unsigned long>(message->dac_epoch),
-      static_cast<unsigned long long>(message->decision_timestamp_ticks),
-      kTimeDomain, phase_source, frequency_source,
-      static_cast<long long>(message->relative_phase_cycles), modeled_phase,
-      observed_frequency, modeled_frequency, frequency_term, phase_bias,
-      combined, message->actual_applied_code, message->shadow_code_before,
-      message->shadow_code_after, message->band_state_before,
-      message->band_state_after, message->preview_state,
-      message->decision_reason,
-      boolean_text(message->frequency_observation_event),
-      boolean_text(message->counterfactual_decision),
-      boolean_text(message->counterfactual_correction), raw_delta,
-      limited_delta, message->shadow_code_after,
-      boolean_text(message->step_limited), boolean_text(message->range_clamped),
-      message->correction_count, message->cumulative_movement_codes,
-      message->alternating_correction_count,
-      boolean_text(message->modeled_not_observed_after_divergence));
   return finish_format(used, output_size, length);
 }

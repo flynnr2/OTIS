@@ -18,29 +18,9 @@ from host.otis_tools.serial_commands import (
         ("help", "HELP"),
         ("config?", "CONFIG?"),
         ("dualcore?", "DUALCORE?"),
-        ("dualcore invalidate_gnss", "DUALCORE INVALIDATE_GNSS"),
-        ("dualcore recover", "DUALCORE RECOVER"),
         ("dac?", "DAC?"),
         ("dac limits?", "DAC LIMITS?"),
-        ("dac mid", "DAC MID"),
-        ("dac set 32768", "DAC SET 32768"),
-        ("dac set 0x8000", "DAC SET 0x8000"),
-        ("fc0?", "FC0?"),
-        ("q2 case 1362166001 38", "Q2 CASE 1362166001 38"),
-        ("sweep?", "SWEEP?"),
-        ("sweep load tiny_plus_minus_1", "SWEEP LOAD TINY_PLUS_MINUS_1"),
-        ("sweep load slope_center_edge_300s", "SWEEP LOAD SLOPE_CENTER_EDGE_300S"),
-        ("sweep load slope_repeat_300s", "SWEEP LOAD SLOPE_REPEAT_300S"),
-        ("sweep start", "SWEEP START"),
-        ("sweep stop", "SWEEP STOP"),
-        ("sweep step", "SWEEP STEP"),
-        ("sweep clear", "SWEEP CLEAR"),
-        ("ppsgen?", "PPSGEN?"),
-        ("ppsgen profiles?", "PPSGEN PROFILES?"),
-        ("ppsgen arm composite", "PPSGEN ARM COMPOSITE"),
-        ("ppsgen arm clean_soak_10m", "PPSGEN ARM CLEAN_SOAK_10M"),
-        ("ppsgen start", "PPSGEN START"),
-        ("ppsgen stop", "PPSGEN STOP"),
+        ("count?", "COUNT?"),
         ("active?", "ACTIVE?"),
         ("active snapshot 99", "ACTIVE SNAPSHOT 99"),
         ("active lease 17", "ACTIVE LEASE 17"),
@@ -68,12 +48,21 @@ def test_parse_serial_command_normalizes_known_atomic_commands(raw: str, normali
     "raw",
     [
         "",
+        "DUALCORE INVALIDATE_GNSS",
+        "DUALCORE RECOVER",
+        "DAC MID",
+        "DAC ZERO",
         "DAC SET 70000",
         "DAC SET nope",
+        "DAC SET 0x8000",
+        "FC0?",
+        "Q2 CASE 1362166001 38",
+        "SWEEP?",
         "SWEEP LOAD arbitrary",
         "SWEEP ADD 0x8000 5000",
         "RESET",
         "PPSGEN ARM arbitrary",
+        "PPSGEN?",
         "ACTIVE LEASE 0",
         "ACTIVE SNAPSHOT 0",
         "ACTIVE SNAPSHOT 4294967296",
@@ -100,8 +89,8 @@ def test_send_command_to_fifo_writes_normalized_command(tmp_path) -> None:
     fifo = tmp_path / "control" / "commands.fifo"
 
     with CommandFifo(fifo) as reader:
-        assert send_command_to_fifo(fifo, "dac set 0x8000") == 0
-        assert reader.poll() == ["DAC SET 0x8000"]
+        assert send_command_to_fifo(fifo, "count?") == 0
+        assert reader.poll() == ["COUNT?"]
 
 
 def test_command_fifo_bounded_poll_preserves_remaining_order(tmp_path) -> None:

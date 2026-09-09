@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "model_id": "OTIS_PPS_GATED_OSCILLATOR_PLANT_V1",
+  "status": "selected_production_model",
+  "oscillator": {
+    "part": "CX317 VCOCXO",
+    "nominal_frequency_hz": 10000000,
+    "supply_voltage_v": 3.292
+  },
+  "topology": {
+    "reference_input": "D14",
+    "oscillator_count_input": "D8",
+    "external_event_input": "D10",
+    "external_event_authority": false,
+    "dac": "AD5693R",
+    "dac_i2c_address": "0x4C"
+  },
+  "control_range": {
+    "minimum_code": 43008,
+    "maximum_code": 43776,
+    "nominal_code": 43344
+  },
+  "response": {
+    "gain_sign": "positive",
+    "minimum_hz_per_code": 0.00016357422282453626,
+    "nominal_hz_per_code": 0.00017008467693813145,
+    "maximum_hz_per_code": 0.00017334010044578463,
+    "settling_exclusion_s": 900,
+    "selected_control_cadence_s": 1800,
+    "observed_temperature_min_c": 27.259,
+    "observed_temperature_max_c": 30.851,
+    "temperature_role": "nearby_air_telemetry_covariate_only"
+  },
+  "invalidation_conditions": [
+    "physical oscillator DAC conditioning D14 D8 or shared power topology changes",
+    "DAC code leaves 0xA800..0xAB00",
+    "measurement backend or selected estimator semantics change",
+    "a span crosses a DAC epoch settling exclusion invalid interval session boundary sequence discontinuity or capture fault",
+    "D10 is used as a PPS observer reference witness control input health veto or run terminal"
+  ],
+  "limitations": [
+    "calibrated connected control voltage and combined uncertainty are unavailable",
+    "nearby air temperature is context and not a control eligibility bound",
+    "D10 is optional external event evidence only"
+  ]
+}

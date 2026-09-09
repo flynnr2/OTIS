@@ -47,7 +47,7 @@ def test_backward_ambiguous_duplicate_and_unknown_domain_fail_closed() -> None:
     duplicate = forward_progress(
         10, 10, domain="rp2040_monotonic_us32", allow_equal=False
     )
-    strict = forward_progress(1000, 900, domain="h1_cx317_ocxo_10mhz")
+    strict = forward_progress(1000, 900, domain="h1_adaptive_hybrid_ocxo_10mhz")
 
     assert (backward.valid, backward.reason) == (
         False,

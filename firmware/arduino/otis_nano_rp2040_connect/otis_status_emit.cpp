@@ -41,12 +41,10 @@ void otis_status_emit(OtisStatusEmitContext *context,
   otis_emit_health((*context->status_seq)++, otis_monotonic_us32_now(),
                    OTIS_DOMAIN_RP2040_MONOTONIC_US32, component, key, value, severity,
                    flags);
-#if OTIS_ENABLE_GNSS_RECEIVER
   // Synchronous periodic and CONFIG? status bursts must not overflow UART0's
   // receive FIFO. Invoke the existing fixed-byte service once per complete STS
   // frame; capture remains interrupt/PIO driven and main-loop capture-first.
   otis_gnss_receiver_service(millis());
-#endif
 }
 
 void otis_status_emit_u32(OtisStatusEmitContext *context,

@@ -37,7 +37,10 @@ def test_decimal_formatter_avoids_cross_core_libc_float_state(tmp_path: Path) ->
 
 
 def test_core1_evidence_paths_do_not_use_libc_float_formatting() -> None:
-    for name in ("otis_cx317_preview_live.cpp", "otis_cx317_active_live.cpp"):
+    for name in (
+        "otis_frequency_regulation_live.cpp",
+        "otis_adaptive_hybrid_regulation_live.cpp",
+    ):
         source = (FIRMWARE / name).read_text(encoding="utf-8")
         assert "%.12f" not in source
         assert "%.9f" not in source

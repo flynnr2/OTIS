@@ -749,9 +749,9 @@ const char *otis_partition_fault_name(OtisPartitionFault fault) {
     case OtisPartitionFault::EvidenceExhausted:
       return "evidence_queue_exhausted";
     case OtisPartitionFault::PhasePreviewQueueExhausted:
-      return "cx318_preview_queue_exhausted";
+      return "phase_frequency_estimate_queue_exhausted";
     case OtisPartitionFault::PhasePreviewFault:
-      return "cx318_preview_processing_fault";
+      return "phase_frequency_estimate_processing_fault";
     case OtisPartitionFault::TransportObstructed:
       return "transport_obstructed";
     case OtisPartitionFault::ActuatorTimeout:
@@ -770,28 +770,26 @@ const char *otis_timing_progress_phase_name(OtisTimingProgressPhase phase) {
       return "loop_enter";
     case OtisTimingProgressPhase::ServiceInput:
       return "service_input";
-    case OtisTimingProgressPhase::CaptureBackend:
-      return "capture_backend";
     case OtisTimingProgressPhase::BoundaryDrain:
       return "boundary_drain";
     case OtisTimingProgressPhase::CaptureDrain:
       return "capture_drain";
     case OtisTimingProgressPhase::GateService:
       return "gate_service";
-    case OtisTimingProgressPhase::Cx317EstimatePrepare:
-      return "cx317_estimate_prepare";
-    case OtisTimingProgressPhase::Cx317EstimateFormat:
-      return "cx317_estimate_format";
-    case OtisTimingProgressPhase::Cx317EstimatePublish:
-      return "cx317_estimate_publish";
-    case OtisTimingProgressPhase::Cx317ActivePrepare:
-      return "cx317_active_prepare";
-    case OtisTimingProgressPhase::Cx317ActiveFormat:
-      return "cx317_active_format";
-    case OtisTimingProgressPhase::Cx317ActivePublish:
-      return "cx317_active_publish";
+    case OtisTimingProgressPhase::FrequencyEstimatePrepare:
+      return "frequency_estimate_prepare";
+    case OtisTimingProgressPhase::FrequencyEstimateFormat:
+      return "frequency_estimate_format";
+    case OtisTimingProgressPhase::FrequencyEstimatePublish:
+      return "frequency_estimate_publish";
+    case OtisTimingProgressPhase::AdaptiveHybridPrepare:
+      return "adaptive_hybrid_regulation_prepare";
+    case OtisTimingProgressPhase::AdaptiveHybridFormat:
+      return "adaptive_hybrid_regulation_format";
+    case OtisTimingProgressPhase::AdaptiveHybridPublish:
+      return "adaptive_hybrid_regulation_publish";
     case OtisTimingProgressPhase::PhasePreview:
-      return "cx318_preview";
+      return "phase_frequency_estimate";
     case OtisTimingProgressPhase::TimingHealth:
       return "timing_health";
     case OtisTimingProgressPhase::LoopIdle:

@@ -12,10 +12,8 @@ bool ready(OtisSerialFrameOwner owner,
   switch (owner) {
     case OtisSerialFrameOwner::DualCoreEvidence:
       return readiness.dual_core_evidence;
-    case OtisSerialFrameOwner::Phase4Preview:
-      return readiness.phase4_preview;
-    case OtisSerialFrameOwner::Cx317Preview:
-      return readiness.cx317_preview;
+    case OtisSerialFrameOwner::FrequencyRegulation:
+      return readiness.frequency_regulation;
     case OtisSerialFrameOwner::PhasePreview:
       return readiness.phase_preview;
     case OtisSerialFrameOwner::None:

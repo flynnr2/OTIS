@@ -1,5 +1,9 @@
 # CX317 bounded response-classification contract
 
+> Historical predecessor contract. The retained experiment and identity remain
+> evidence, but current response semantics are defined by
+> `profiles/discipline/response_classification_v1.json`.
+
 Status: frozen before first hardware actuation.
 
 Machine-readable authority:

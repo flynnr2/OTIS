@@ -23,26 +23,20 @@ provenance and need not resolve in a fresh clone.
 The snapshot covers:
 
 - the selected run manifest;
-- `config.env`, when present;
-- an exact `selected_profile.yaml` copy of the manifest-selected repository
-  profile, when a profile is declared;
-- every regular file below `raw/`, plus legacy root-level raw serial logs;
+- every regular file below `raw/`;
 - every existing file declared by the run manifest.
 
-When the declared `health_v1` evidence contains the new-only
-`build,provenance_format,otis_generated_build_v1` sentinel, the snapshot also
-records the exact emitted Git commit,
+The declared `health_v1` evidence must contain the
+`build,provenance_format,otis_fixed_firmware_build_v1` sentinel. The snapshot records
+the exact emitted Git commit,
 clean/dirty source state, canonical build-input source hash, configuration hash,
-profile, generated FQBN/board identity, Arduino core provider/version and
+fixed image identity, generated FQBN/board identity, Arduino core provider/version and
 installed-byte hash, compiler/toolchain and installed-byte hash, Arduino CLI
 version, and build invocation identity as `firmware_build_provenance`.
 These values are derived from the sealed device output; a detached build-side
-claim is not substituted for what the device reported. A partial new banner is
-rejected. Historical identity-like rows without the sentinel remain legacy v1
-evidence and do not acquire a new provenance interpretation. A run manifest
-may require the complete banner with
-`firmware.build_provenance_required: true`; new OTIS Phase 5 candidate
-templates do so.
+claim is not substituted for what the device reported. A missing, partial, or
+conflicting banner is rejected. The current run manifest requires the complete
+banner with `firmware.build_provenance_required: true`.
 
 Reports, plots, and derived products are covered only when the run manifest
 declares them. They are otherwise reproducible outputs, not primary evidence.
@@ -84,8 +78,6 @@ if snapshotted bytes change, a snapshotted artifact disappears, snapshot
 metadata changes without a matching canonical digest, or new evidence-bearing
 raw/config/profile/declared files are not covered.
 
-## Compatibility
-
-Historical runs without `evidence_manifest.json` remain loadable and valid.
-The validator emits a warning so their weaker provenance is visible. Templates
-do not require or accept evidence snapshots.
+Current non-template runs require `evidence_manifest.json`. Retired evidence
+formats must be interpreted with the exact repository revision recorded by the
+package; current HEAD does not provide compatibility readers.

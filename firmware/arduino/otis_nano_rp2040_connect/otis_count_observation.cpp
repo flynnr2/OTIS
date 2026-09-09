@@ -24,9 +24,7 @@
 #include "otis_resource_registry.h"
 #include "otis_timebase.h"
 
-#if OTIS_ENABLE_DUAL_CORE_PARTITION
 #include <pico/platform.h>
-#endif
 
 namespace {
 
@@ -100,114 +98,7 @@ struct WindowAnomaly {
   uint32_t flags;
 };
 
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
-struct H1PioLongGateCounter {
-  PIO pio;
-  uint sm;
-  uint offset;
-  bool initialized;
-  volatile bool active;
-  uint64_t gate_open_ticks;
-  uint32_t saturation_count;
-};
 
-H1PioLongGateCounter h1_pio_long_gate = {
-    pio0, 0, 0, false, false, 0, 0,
-};
-
-bool begin_h1_pio_long_gate_counter(void) {
-  uint16_t instructions[] = {
-      (uint16_t)pio_encode_pull(false, true),
-      (uint16_t)pio_encode_mov(pio_x, pio_osr),
-      (uint16_t)pio_encode_wait_pin(true, 0),
-      (uint16_t)pio_encode_wait_pin(false, 0),
-      (uint16_t)pio_encode_jmp_x_dec(2),
-  };
-  pio_program program = {
-      instructions,
-      5,
-      -1,
-  };
-
-  if (h1_pio_long_gate.initialized) {
-    return false;
-  }
-
-  h1_pio_long_gate.pio = pio0;
-  if (!pio_can_add_program(h1_pio_long_gate.pio, &program)) {
-    return false;
-  }
-  int claimed_sm = pio_claim_unused_sm(h1_pio_long_gate.pio, false);
-  if (claimed_sm < 0) {
-    return false;
-  }
-  h1_pio_long_gate.sm = static_cast<uint>(claimed_sm);
-  h1_pio_long_gate.offset = pio_add_program(h1_pio_long_gate.pio, &program);
-  bool ownership_bound =
-      otis_resource_registry_bind_pio_state_machine(
-          OTIS_OWNER_COUNT_OBSERVATION, 0u,
-          static_cast<uint8_t>(h1_pio_long_gate.sm)) &&
-      otis_resource_registry_bind_pio_program(
-          OTIS_OWNER_COUNT_OBSERVATION, 0u,
-          static_cast<uint8_t>(h1_pio_long_gate.offset),
-          static_cast<uint8_t>(program.length));
-  if (!ownership_bound) {
-    return false;
-  }
-
-  pio_gpio_init(h1_pio_long_gate.pio, OTIS_GPIO_OSC_OBSERVATION);
-  gpio_pull_down(OTIS_GPIO_OSC_OBSERVATION);
-
-  pio_sm_config config = pio_get_default_sm_config();
-  sm_config_set_in_pins(&config, OTIS_GPIO_OSC_OBSERVATION);
-  sm_config_set_wrap(&config, h1_pio_long_gate.offset + 2,
-                     h1_pio_long_gate.offset + 4);
-  sm_config_set_clkdiv(&config, 1.0f);
-  pio_sm_init(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
-              h1_pio_long_gate.offset, &config);
-  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, false);
-  h1_pio_long_gate.initialized = true;
-  h1_pio_long_gate.active = false;
-  h1_pio_long_gate.gate_open_ticks = 0;
-  h1_pio_long_gate.saturation_count = 0;
-  return true;
-}
-
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
-void start_h1_pio_long_gate_counter(uint64_t gate_open_ticks) {
-  if (!h1_pio_long_gate.initialized) {
-    return;
-  }
-  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, false);
-  pio_sm_clear_fifos(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
-  pio_sm_restart(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
-  pio_sm_clkdiv_restart(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
-  pio_sm_put_blocking(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
-                      kH1PioCounterInitialX);
-  pio_sm_exec_wait_blocking(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
-                            pio_encode_jmp(h1_pio_long_gate.offset));
-  h1_pio_long_gate.gate_open_ticks = gate_open_ticks;
-  h1_pio_long_gate.active = true;
-  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, true);
-}
-
-uint32_t stop_h1_pio_long_gate_counter(void) {
-  pio_sm_set_enabled(h1_pio_long_gate.pio, h1_pio_long_gate.sm, false);
-  pio_sm_clear_fifos(h1_pio_long_gate.pio, h1_pio_long_gate.sm);
-  pio_sm_exec_wait_blocking(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
-                            pio_encode_mov(pio_isr, pio_x));
-  pio_sm_exec_wait_blocking(h1_pio_long_gate.pio, h1_pio_long_gate.sm,
-                            pio_encode_push(false, false));
-  uint32_t remaining = pio_sm_get_blocking(h1_pio_long_gate.pio,
-                                           h1_pio_long_gate.sm);
-  h1_pio_long_gate.active = false;
-  return remaining;
-}
-#endif
-
-#endif
-
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
 struct PpsGatedRatioBackend {
   PpsGateState state;
   bool initialized_ok;
@@ -255,12 +146,10 @@ PpsGatedRatioBackend pps_gated_ratio = {};
 uint32_t pps_gate_status_snapshot_generation = 0u;
 
 OtisPpsDiagnostics pps_diagnostics = {};
-#endif
 
 void emit_status(OtisStatusEmitContext *context, const char *component,
                  const char *key, const char *value, const char *severity,
                  uint32_t flags) {
-#if OTIS_ENABLE_DUAL_CORE_PARTITION
   if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
     OtisTelemetryMessage message = {};
     message.timestamp_ticks = otis_monotonic_us32_now();
@@ -272,14 +161,12 @@ void emit_status(OtisStatusEmitContext *context, const char *component,
     otis_dual_core_publish_telemetry(&message);
     return;
   }
-#endif
   otis_status_emit(context, component, key, value, severity, flags);
 }
 
 void emit_status_u32(OtisStatusEmitContext *context, const char *component,
                      const char *key, uint32_t value, const char *severity,
                      uint32_t flags) {
-#if OTIS_ENABLE_DUAL_CORE_PARTITION
   if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
     char formatted[24];
     snprintf(formatted, sizeof(formatted), "%lu",
@@ -287,7 +174,6 @@ void emit_status_u32(OtisStatusEmitContext *context, const char *component,
     emit_status(context, component, key, formatted, severity, flags);
     return;
   }
-#endif
   otis_status_emit_u32(context, component, key, value, severity, flags);
 }
 
@@ -302,7 +188,6 @@ void emit_status_u64(OtisStatusEmitContext *context, const char *component,
 
 const char *bool_text(bool value) { return value ? "true" : "false"; }
 
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
 const char *aperture_reason_name(uint32_t flags) {
   if ((flags & OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u) {
     return kWindowReasonBoundaryObservationOverflow;
@@ -400,17 +285,15 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
                   pps_gate_status_snapshot_generation,
                   OTIS_SEVERITY_INFO, flags);
   emit_status(status_context, "pps_gate", "backend", "pps_gated_ratio",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "boundary_owner", "pio_state_machine",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "aperture_backend",
               "pio_wait_cumulative_snapshot_dma_v1", OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "backend_qualified",
-              bool_text(OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED != 0),
-              OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED ? OTIS_SEVERITY_INFO
-                                                  : OTIS_SEVERITY_WARN,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              "true", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "valid",
               bool_text(pps_gated_ratio.last_window_state_known &&
                         pps_gated_ratio.last_window_valid),
@@ -468,7 +351,7 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
                   flags);
   emit_status_u32(status_context, "pps_gate", "boundary_ring_capacity",
                   otis_pps_count_boundary_ring_capacity(), OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   uint32_t boundary_ring_dropped_count =
       otis_pps_count_boundary_ring_dropped_count();
   emit_status_u32(status_context, "pps_gate", "boundary_ring_dropped_count",
@@ -632,7 +515,7 @@ void emit_pps_gate_window_status(OtisRuntimeState *runtime_state,
               bool_text(runtime_state->tcxo.startup_inhibit_active),
               runtime_state->tcxo.startup_inhibit_active ? OTIS_SEVERITY_WARN
                                                          : OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "control_eligible",
               bool_text(runtime_state->tcxo.valid_for_control),
               runtime_state->tcxo.valid_for_control ? OTIS_SEVERITY_INFO
@@ -698,59 +581,12 @@ void emit_pps_gate_fault(OtisRuntimeState *runtime_state,
               bool_text(runtime_state->tcxo.startup_inhibit_active),
               runtime_state->tcxo.startup_inhibit_active ? OTIS_SEVERITY_WARN
                                                          : OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "control_eligible", "false",
               OTIS_SEVERITY_WARN, flags);
   emit_pps_gate_status(status_context, OTIS_SEVERITY_WARN, flags);
 }
 
-#endif
-
-void reset_fc0_accum_window(OtisRuntimeState *runtime_state) {
-  runtime_state->tcxo.fc0_accum_active = false;
-  runtime_state->tcxo.fc0_accum_gate_open_ticks = 0;
-  runtime_state->tcxo.fc0_accum_weighted_khz_us = 0;
-  runtime_state->tcxo.fc0_accum_elapsed_us = 0;
-  runtime_state->tcxo.fc0_accum_sample_count = 0;
-  runtime_state->tcxo.fc0_accum_zero_sample_count = 0;
-  runtime_state->tcxo.fc0_accum_first_sample_khz = 0;
-  runtime_state->tcxo.fc0_accum_last_sample_khz = 0;
-  runtime_state->tcxo.fc0_accum_min_sample_khz = 0;
-  runtime_state->tcxo.fc0_accum_max_sample_khz = 0;
-  runtime_state->tcxo.fc0_accum_flags = OTIS_FLAG_NONE;
-}
-
-void start_fc0_accum_window(OtisRuntimeState *runtime_state,
-                            uint64_t gate_open_ticks) {
-  reset_fc0_accum_window(runtime_state);
-  runtime_state->tcxo.fc0_accum_gate_open_ticks = gate_open_ticks;
-  runtime_state->tcxo.fc0_accum_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-  runtime_state->tcxo.fc0_accum_active = true;
-}
-
-void record_fc0_sample(OtisRuntimeState *runtime_state, uint32_t measured_khz,
-                       uint64_t elapsed_us) {
-  runtime_state->tcxo.fc0_accum_weighted_khz_us +=
-      (uint64_t)measured_khz * elapsed_us;
-  runtime_state->tcxo.fc0_accum_elapsed_us += elapsed_us;
-  runtime_state->tcxo.fc0_accum_sample_count += 1u;
-  if (runtime_state->tcxo.fc0_accum_sample_count == 1u) {
-    runtime_state->tcxo.fc0_accum_first_sample_khz = measured_khz;
-    runtime_state->tcxo.fc0_accum_min_sample_khz = measured_khz;
-    runtime_state->tcxo.fc0_accum_max_sample_khz = measured_khz;
-  } else {
-    if (measured_khz < runtime_state->tcxo.fc0_accum_min_sample_khz) {
-      runtime_state->tcxo.fc0_accum_min_sample_khz = measured_khz;
-    }
-    if (measured_khz > runtime_state->tcxo.fc0_accum_max_sample_khz) {
-      runtime_state->tcxo.fc0_accum_max_sample_khz = measured_khz;
-    }
-  }
-  runtime_state->tcxo.fc0_accum_last_sample_khz = measured_khz;
-  if (measured_khz == 0u) {
-    runtime_state->tcxo.fc0_accum_zero_sample_count += 1u;
-  }
-}
 
 void emit_bad_window_diagnostics(OtisRuntimeState *runtime_state,
                                  OtisStatusEmitContext *status_context,
@@ -906,11 +742,6 @@ void update_control_gate(OtisRuntimeState *runtime_state,
   runtime_state->tcxo.valid_for_control =
       runtime_state->tcxo.control_clean_window_count >=
       config->control_ready_clean_windows;
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-  runtime_state->tcxo.valid_for_control =
-      runtime_state->tcxo.valid_for_control &&
-      OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED;
-#endif
   if (runtime_state->tcxo.valid_for_control) {
     runtime_state->tcxo.fault_after_startup = false;
   }
@@ -919,7 +750,6 @@ void update_control_gate(OtisRuntimeState *runtime_state,
 void emit_count_observation(OtisRuntimeState *runtime_state,
                             const OtisCountObservationConfig *config,
                             uint64_t counted_edges, uint32_t flags) {
-#if OTIS_ENABLE_DUAL_CORE_PARTITION
   if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
     OtisObservationMessage message = {};
     message.kind = OtisObservationMessageKind::CountObservation;
@@ -937,7 +767,6 @@ void emit_count_observation(OtisRuntimeState *runtime_state,
     otis_dual_core_publish_observation(&message);
     return;
   }
-#endif
   otis_emit_count_observation(
       runtime_state->sequences.count_seq++, OTIS_CHANNEL_OSC_OBSERVATION,
       runtime_state->tcxo.last_gate_open_ticks,
@@ -950,40 +779,6 @@ void emit_count_observation(OtisRuntimeState *runtime_state,
 bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   OtisStatusEmitContext *status_context,
                                   const OtisCountObservationConfig *config) {
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
-  (void)runtime_state;
-  (void)config;
-  gpio_set_function(OTIS_GPIO_OSC_OBSERVATION, GPIO_FUNC_GPCK);
-  emit_status(status_context, "capture", "tcxo_counter_backend",
-              "rp2040_fc0_gpin0", OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
-  return true;
-#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
-  (void)runtime_state;
-  bool counter_ok = begin_h1_pio_long_gate_counter();
-  emit_status(status_context, "capture", "tcxo_counter_backend",
-              "pio_long_gate_gpio20", OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status(status_context, "capture", "pio_long_gate_init",
-              counter_ok ? "ok" : "failed",
-              counter_ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
-              counter_ok ? OTIS_FLAG_PROFILE_ASSUMPTION
-                         : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
-  emit_status_u32(status_context, "capture", "pio_long_gate_gpio",
-                  OTIS_GPIO_OSC_OBSERVATION, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status_u32(status_context, "capture", "pio_long_gate_period_us",
-                  config->gate_period_us, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
-  if (counter_ok) {
-    emit_status_u32(status_context, "capture", "pio_long_gate_pio", 0u,
-                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
-    emit_status_u32(status_context, "capture", "pio_long_gate_sm",
-                    h1_pio_long_gate.sm, OTIS_SEVERITY_INFO,
-                    OTIS_FLAG_PROFILE_ASSUMPTION);
-  }
-  return counter_ok;
-#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   (void)runtime_state;
   bool counter_ok = otis_pps_snapshot_backend_begin();
   otis_pps_count_boundary_ring_reset();
@@ -1043,101 +838,91 @@ bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
   pps_gated_ratio.association_loss_reason = "none";
   emit_status(status_context, "capture", "tcxo_counter_backend",
               "pps_gated_ratio", OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "capture", "pps_gated_ratio_init",
               counter_ok ? "ok" : "failed",
               counter_ok ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
-              counter_ok ? OTIS_FLAG_PROFILE_ASSUMPTION
+              counter_ok ? OTIS_FLAG_CONFIGURATION_ASSUMPTION
                          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   emit_status_u32(status_context, "pps_gate", "pps_gpio",
                   OTIS_PIN_PPS_REFERENCE, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "osc_gpio",
                   OTIS_GPIO_OSC_OBSERVATION, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "min_interval_us",
                   OTIS_PPS_GATE_MIN_INTERVAL_US, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "duplicate_max_interval_us",
                   OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US,
-                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "max_interval_us",
                   OTIS_PPS_GATE_MAX_INTERVAL_US, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "missing_timeout_us",
                   OTIS_PPS_GATE_MISSING_TIMEOUT_US, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "count_resolution_edges", 1u,
-                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "counter_direction", "down",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "counter_width_bits", 32u,
-                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate",
                   "declared_max_captured_edge_rate_hz",
                   OTIS_PPS_SNAPSHOT_MAX_CAPTURED_EDGE_RATE_HZ,
                   OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "pio_system_clock_hz",
                   snapshot_stats.system_clock_hz, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "pio_clock_divider", "1.0",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "snapshot_rx_fifo_depth", 8u,
-                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "snapshot_ring_capacity",
                   snapshot_stats.ring_capacity, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "boundary_ring_capacity",
                   otis_pps_count_boundary_ring_capacity(), OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "boundary_owner", "pio_state_machine",
-              OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "aperture_backend",
               "pio_wait_cumulative_snapshot_dma_v1", OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "backend_qualified",
-              bool_text(OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED != 0),
-              OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED ? OTIS_SEVERITY_INFO
-                                                  : OTIS_SEVERITY_WARN,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              "true", OTIS_SEVERITY_INFO,
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate",
               "counter_aperture_uncertainty_ns", "unavailable",
-              OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_SEVERITY_WARN, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate",
               "reference_frequency_uncertainty_ppb", "unavailable",
-              OTIS_SEVERITY_WARN, OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_SEVERITY_WARN, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   if (counter_ok) {
     emit_status_u32(status_context, "pps_gate", "counter_pio",
                     snapshot_stats.pio_block,
-                    OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
     emit_status_u32(status_context, "pps_gate", "counter_sm",
                     snapshot_stats.state_machine, OTIS_SEVERITY_INFO,
-                    OTIS_FLAG_PROFILE_ASSUMPTION);
+                    OTIS_FLAG_CONFIGURATION_ASSUMPTION);
     emit_status_u32(status_context, "pps_gate", "counter_program_offset",
                     snapshot_stats.program_offset, OTIS_SEVERITY_INFO,
-                    OTIS_FLAG_PROFILE_ASSUMPTION);
+                    OTIS_FLAG_CONFIGURATION_ASSUMPTION);
     emit_status_u32(status_context, "pps_gate", "counter_program_length",
                     snapshot_stats.program_length, OTIS_SEVERITY_INFO,
-                    OTIS_FLAG_PROFILE_ASSUMPTION);
+                    OTIS_FLAG_CONFIGURATION_ASSUMPTION);
     emit_status_u32(status_context, "pps_gate", "snapshot_dma_channel",
                     snapshot_stats.dma_channel, OTIS_SEVERITY_INFO,
-                    OTIS_FLAG_PROFILE_ASSUMPTION);
+                    OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   }
   emit_pps_gate_status(status_context,
                        counter_ok ? OTIS_SEVERITY_INFO
                                   : OTIS_SEVERITY_ERROR,
-                       counter_ok ? OTIS_FLAG_PROFILE_ASSUMPTION
+                       counter_ok ? OTIS_FLAG_CONFIGURATION_ASSUMPTION
                                   : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   return counter_ok;
-#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
-  pinMode(OTIS_PIN_OSC_OBSERVATION, INPUT_PULLDOWN);
-  runtime_state->tcxo.gate_open_us = micros();
-  emit_status(status_context, "capture", "tcxo_counter_backend",
-              "gpio_irq_divided_only", OTIS_SEVERITY_WARN,
-              OTIS_FLAG_RATE_TOO_HIGH);
-  return otis_capture_irq_begin_tcxo_counter(OTIS_PIN_OSC_OBSERVATION);
-#endif
 }
 
 bool otis_count_observation_on_pps_boundary(
@@ -1145,9 +930,6 @@ bool otis_count_observation_on_pps_boundary(
     OtisStatusEmitContext *status_context,
     const OtisCountObservationConfig *config,
     const OtisPpsCountBoundaryObservation *observation) {
-#if (OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
-     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE) && \
-    OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   if (observation == nullptr) {
     return false;
   }
@@ -1307,8 +1089,7 @@ bool otis_count_observation_on_pps_boundary(
   }
 
   OtisPpsCountWindowValidity validity = otis_pps_count_window_validity(
-      true, boundary.valid, sequence_relation, aperture_flags,
-      OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED != 0, true);
+      true, boundary.valid, sequence_relation, aperture_flags, true);
   bool measurement_valid =
       validity.reference_interval_valid &&
       validity.count_boundary_valid &&
@@ -1501,13 +1282,6 @@ bool otis_count_observation_on_pps_boundary(
   }
 
   return emit_count;
-#else
-  (void)runtime_state;
-  (void)status_context;
-  (void)config;
-  (void)observation;
-  return false;
-#endif
 }
 
 void otis_count_observation_note_association_loss(
@@ -1515,9 +1289,6 @@ void otis_count_observation_note_association_loss(
     OtisStatusEmitContext *status_context,
     uint32_t reference_sequence,
     const char *reason) {
-#if (OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
-     OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE) && \
-    OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   if (runtime_state == nullptr || status_context == nullptr) {
     return;
   }
@@ -1534,191 +1305,17 @@ void otis_count_observation_note_association_loss(
       runtime_state, status_context, kWindowReasonAssociationLoss,
       pps_gated_ratio.association_loss_reason, kCountReasonSnapshotAbsent,
       OTIS_FLAG_SOURCE_HEALTH_SUSPECT | OTIS_FLAG_GATE_INCOMPLETE);
-#else
-  (void)runtime_state;
-  (void)status_context;
-  (void)reference_sequence;
-  (void)reason;
-#endif
 }
 
 void otis_count_observation_note_control_consumer(uint32_t session,
                                                   uint32_t sequence) {
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   otis_pps_diagnostics_note_control_observed(
       &pps_diagnostics, session, sequence, otis_monotonic_us32_now());
-#else
-  (void)session;
-  (void)sequence;
-#endif
 }
 
 bool otis_count_observation_service(OtisRuntimeState *runtime_state,
                                     OtisStatusEmitContext *status_context,
                                     const OtisCountObservationConfig *config) {
-#if OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_TCXO_OBSERVE || \
-    OTIS_SW1_BRINGUP_MODE == OTIS_SW1_MODE_H1_OCXO_OBSERVE
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0
-  uint32_t now_ms = millis();
-  if ((uint32_t)(now_ms - runtime_state->tcxo.last_measure_ms) <
-      config->measure_period_ms) {
-    return false;
-  }
-  runtime_state->tcxo.last_measure_ms = now_ms;
-
-  uint64_t gate_open_ticks = otis_monotonic_us32_now();
-  uint32_t measured_khz = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLKSRC_GPIN0);
-  uint64_t gate_close_ticks = otis_monotonic_us32_now();
-  uint64_t elapsed_us = gate_close_ticks - gate_open_ticks;
-
-  if (!runtime_state->tcxo.fc0_accum_active) {
-    start_fc0_accum_window(runtime_state, gate_open_ticks);
-  }
-
-  record_fc0_sample(runtime_state, measured_khz, elapsed_us);
-
-  uint64_t emitted_gate_close_ticks = gate_close_ticks;
-  if (emitted_gate_close_ticks < runtime_state->tcxo.fc0_accum_gate_open_ticks) {
-    emitted_gate_close_ticks += kRp2040MonotonicUs32Modulus;
-  }
-  uint64_t observation_span_us =
-      (emitted_gate_close_ticks -
-       runtime_state->tcxo.fc0_accum_gate_open_ticks) /
-      16ull;
-  if (observation_span_us < config->gate_period_us) {
-    return false;
-  }
-
-  uint32_t averaged_khz = 0;
-  if (runtime_state->tcxo.fc0_accum_elapsed_us > 0) {
-    averaged_khz =
-        (uint32_t)(runtime_state->tcxo.fc0_accum_weighted_khz_us /
-                   runtime_state->tcxo.fc0_accum_elapsed_us);
-  }
-  uint64_t counted_edges =
-      ((uint64_t)averaged_khz * observation_span_us) / 1000ull;
-  uint32_t window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-  if (runtime_state->tcxo.fc0_accum_zero_sample_count > 0u) {
-    if (runtime_state->tcxo.fc0_accum_zero_sample_count ==
-        runtime_state->tcxo.fc0_accum_sample_count) {
-      window_flags |= OTIS_FLAG_INPUT_STUCK_LOW;
-    } else {
-      window_flags |= OTIS_FLAG_SOURCE_HEALTH_SUSPECT;
-    }
-  }
-
-  runtime_state->tcxo.last_gate_open_ticks =
-      runtime_state->tcxo.fc0_accum_gate_open_ticks;
-  runtime_state->tcxo.last_gate_close_ticks = emitted_gate_close_ticks;
-  runtime_state->tcxo.last_counted_edges = counted_edges;
-  runtime_state->tcxo.last_elapsed_us = (uint32_t)observation_span_us;
-  runtime_state->tcxo.last_measured_khz = averaged_khz;
-  runtime_state->tcxo.last_sampled_elapsed_us =
-      (uint32_t)runtime_state->tcxo.fc0_accum_elapsed_us;
-  runtime_state->tcxo.last_sample_count =
-      runtime_state->tcxo.fc0_accum_sample_count;
-  runtime_state->tcxo.last_zero_sample_count =
-      runtime_state->tcxo.fc0_accum_zero_sample_count;
-  runtime_state->tcxo.last_valid_sample_count =
-      runtime_state->tcxo.fc0_accum_sample_count -
-      runtime_state->tcxo.fc0_accum_zero_sample_count;
-  runtime_state->tcxo.last_first_sample_khz =
-      runtime_state->tcxo.fc0_accum_first_sample_khz;
-  runtime_state->tcxo.last_last_sample_khz =
-      runtime_state->tcxo.fc0_accum_last_sample_khz;
-  runtime_state->tcxo.last_min_sample_khz =
-      runtime_state->tcxo.fc0_accum_min_sample_khz;
-  runtime_state->tcxo.last_max_sample_khz =
-      runtime_state->tcxo.fc0_accum_max_sample_khz;
-  runtime_state->tcxo.last_window_flags = window_flags;
-  WindowAnomaly anomaly = classify_window(runtime_state, config, true, true);
-  update_control_gate(runtime_state, config, &anomaly, now_ms);
-  record_window_quality(runtime_state, anomaly);
-
-  emit_count_observation(runtime_state, config, counted_edges,
-                         runtime_state->tcxo.last_window_flags);
-
-  if (!anomaly.valid) {
-    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
-  }
-
-  reset_fc0_accum_window(runtime_state);
-  return true;
-#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
-  if (!h1_pio_long_gate.initialized) {
-    return false;
-  }
-
-  uint32_t now_ms = millis();
-  uint64_t now_ticks = otis_monotonic_us32_now();
-  if (!h1_pio_long_gate.active) {
-    start_h1_pio_long_gate_counter(now_ticks);
-    return false;
-  }
-
-  uint64_t emitted_gate_close_ticks = now_ticks;
-  if (emitted_gate_close_ticks < h1_pio_long_gate.gate_open_ticks) {
-    emitted_gate_close_ticks += kRp2040MonotonicUs32Modulus;
-  }
-  uint64_t observation_span_us =
-      emitted_gate_close_ticks - h1_pio_long_gate.gate_open_ticks;
-  if (observation_span_us < config->gate_period_us) {
-    return false;
-  }
-
-  uint32_t remaining = stop_h1_pio_long_gate_counter();
-  OtisPioCounterSample counter_sample =
-      otis_pio_counter_sample(kH1PioCounterInitialX, remaining);
-  uint64_t counted_edges = counter_sample.counted_edges;
-  uint32_t measured_khz = 0;
-  if (observation_span_us > 0) {
-    measured_khz = (uint32_t)((counted_edges * 1000ull) / observation_span_us);
-  }
-  uint32_t window_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
-  bool counted_edges_nonzero = counted_edges > 0ull;
-
-  runtime_state->tcxo.last_gate_open_ticks = h1_pio_long_gate.gate_open_ticks;
-  runtime_state->tcxo.last_gate_close_ticks = emitted_gate_close_ticks;
-  runtime_state->tcxo.last_counted_edges = counted_edges;
-  runtime_state->tcxo.last_elapsed_us = (uint32_t)observation_span_us;
-  runtime_state->tcxo.last_measured_khz = measured_khz;
-  runtime_state->tcxo.last_sampled_elapsed_us = (uint32_t)observation_span_us;
-  runtime_state->tcxo.last_sample_count = 1u;
-  runtime_state->tcxo.last_zero_sample_count = counted_edges_nonzero ? 0u : 1u;
-  runtime_state->tcxo.last_valid_sample_count = counted_edges_nonzero ? 1u : 0u;
-  runtime_state->tcxo.last_first_sample_khz = measured_khz;
-  runtime_state->tcxo.last_last_sample_khz = measured_khz;
-  runtime_state->tcxo.last_min_sample_khz = measured_khz;
-  runtime_state->tcxo.last_max_sample_khz = measured_khz;
-  runtime_state->tcxo.last_window_flags = window_flags;
-  WindowAnomaly anomaly = classify_window(runtime_state, config, false, true);
-  if (counter_sample.saturated) {
-    anomaly.reason = kWindowReasonCounterSaturated;
-    anomaly.valid = false;
-    anomaly.flags |= OTIS_FLAG_COUNT_SATURATED;
-    h1_pio_long_gate.saturation_count += 1u;
-  }
-  runtime_state->tcxo.last_window_flags = anomaly.flags;
-  runtime_state->tcxo.last_window_invalid_reason = anomaly.reason;
-  update_control_gate(runtime_state, config, &anomaly, now_ms);
-  record_window_quality(runtime_state, anomaly);
-
-  emit_count_observation(runtime_state, config, counted_edges,
-                         runtime_state->tcxo.last_window_flags);
-
-  if (!anomaly.valid) {
-    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
-  }
-  emit_status_u32(
-      status_context, "capture", "pio_long_gate_count_saturated_count",
-      h1_pio_long_gate.saturation_count,
-      h1_pio_long_gate.saturation_count == 0u ? OTIS_SEVERITY_INFO
-                                              : OTIS_SEVERITY_WARN,
-      runtime_state->tcxo.last_window_flags);
-
-  start_h1_pio_long_gate_counter(otis_monotonic_us32_now());
-  return true;
-#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   uint32_t now_ms = millis();
   update_startup_inhibit(runtime_state, config, now_ms);
   OtisCaptureIrqReferenceStats reference_stats;
@@ -1774,57 +1371,11 @@ bool otis_count_observation_service(OtisRuntimeState *runtime_state,
   }
 
   return false;
-#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ
-  uint32_t now_us = micros();
-  if ((uint32_t)(now_us - runtime_state->tcxo.gate_open_us) <
-      config->gate_period_us) {
-    return false;
-  }
-
-  noInterrupts();
-  uint32_t counted_edges = otis_capture_irq_read_and_reset_tcxo_count();
-  uint32_t gate_open_us = runtime_state->tcxo.gate_open_us;
-  runtime_state->tcxo.gate_open_us = now_us;
-  interrupts();
-
-  uint32_t flags = OTIS_FLAG_NONE;
-  bool counted_edges_nonzero = counted_edges > 0u;
-  runtime_state->tcxo.last_gate_open_ticks = (uint64_t)gate_open_us;
-  runtime_state->tcxo.last_gate_close_ticks = (uint64_t)now_us;
-  runtime_state->tcxo.last_counted_edges = counted_edges;
-  runtime_state->tcxo.last_elapsed_us = now_us - gate_open_us;
-  runtime_state->tcxo.last_measured_khz = 0;
-  runtime_state->tcxo.last_sampled_elapsed_us = runtime_state->tcxo.last_elapsed_us;
-  runtime_state->tcxo.last_sample_count = 1u;
-  runtime_state->tcxo.last_zero_sample_count = counted_edges_nonzero ? 0u : 1u;
-  runtime_state->tcxo.last_valid_sample_count = counted_edges_nonzero ? 1u : 0u;
-  runtime_state->tcxo.last_first_sample_khz = 0;
-  runtime_state->tcxo.last_last_sample_khz = 0;
-  runtime_state->tcxo.last_min_sample_khz = 0;
-  runtime_state->tcxo.last_max_sample_khz = 0;
-  runtime_state->tcxo.last_window_flags = flags;
-  WindowAnomaly anomaly = classify_window(runtime_state, config, false, true);
-  update_control_gate(runtime_state, config, &anomaly, millis());
-  record_window_quality(runtime_state, anomaly);
-  emit_count_observation(runtime_state, config, counted_edges,
-                         runtime_state->tcxo.last_window_flags);
-  if (!anomaly.valid) {
-    emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
-  }
-  return true;
-#endif
-#else
-  (void)runtime_state;
-  (void)status_context;
-  (void)config;
-  return false;
-#endif
 }
 
 void otis_count_observation_emit_status(
     OtisRuntimeState *runtime_state,
     OtisStatusEmitContext *status_context) {
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   emit_pps_gate_status(
       status_context,
       runtime_state->tcxo.last_observation_valid ? OTIS_SEVERITY_INFO
@@ -1835,11 +1386,7 @@ void otis_count_observation_emit_status(
               runtime_state->tcxo.startup_inhibit_active
                   ? OTIS_SEVERITY_WARN
                   : OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
-#else
-  (void)runtime_state;
-  (void)status_context;
-#endif
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
 }
 
 void otis_count_observation_emit_runtime_status(
@@ -1858,13 +1405,10 @@ void otis_count_observation_emit_runtime_status(
               OTIS_FLAG_NONE);
   emit_status(status_context, "count_path", "measurement_mode",
               otis_count_observation_measurement_mode(), OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
-  emit_status_u32(status_context, "count_path", "measure_period_ms",
-                  config->measure_period_ms, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "count_path", "gate_period_us",
                   config->gate_period_us, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "count_path", "last_measured_khz",
                   count.last_measured_khz, OTIS_SEVERITY_INFO,
                   OTIS_FLAG_NONE);
@@ -1923,23 +1467,23 @@ void otis_count_observation_emit_runtime_status(
               bool_text(count.startup_inhibit_active),
               count.startup_inhibit_active ? OTIS_SEVERITY_WARN
                                            : OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "count_path", "startup_inhibit_elapsed_s",
                   count.startup_inhibit_elapsed_s,
                   count.startup_inhibit_active ? OTIS_SEVERITY_WARN
                                                : OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "count_path", "control_eligible",
               bool_text(count.valid_for_control),
               count.valid_for_control ? OTIS_SEVERITY_INFO
                                       : OTIS_SEVERITY_WARN,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "count_path",
                   "control_ready_clean_window_count",
                   count.control_clean_window_count,
                   count.valid_for_control ? OTIS_SEVERITY_INFO
                                           : OTIS_SEVERITY_WARN,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "count_path", "fault_latched",
               bool_text(count.fault_after_startup),
               count.fault_after_startup ? OTIS_SEVERITY_WARN
@@ -1958,49 +1502,39 @@ void otis_count_observation_emit_runtime_status(
 
 void otis_count_observation_emit_configuration_status(
     OtisStatusEmitContext *status_context) {
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   OtisPpsSnapshotBackendStats snapshot_stats;
   otis_pps_snapshot_backend_get_stats(&snapshot_stats);
   emit_status(status_context, "capture", "tcxo_counter_backend",
               "pps_gated_ratio", OTIS_SEVERITY_INFO,
-              OTIS_FLAG_PROFILE_ASSUMPTION);
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "capture", "pps_gated_ratio_init",
               pps_gated_ratio.initialized_ok ? "ok" : "failed",
               pps_gated_ratio.initialized_ok ? OTIS_SEVERITY_INFO
                                              : OTIS_SEVERITY_ERROR,
               pps_gated_ratio.initialized_ok
-                  ? OTIS_FLAG_PROFILE_ASSUMPTION
+                  ? OTIS_FLAG_CONFIGURATION_ASSUMPTION
                   : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   emit_status_u32(status_context, "pps_gate", "min_interval_us",
                   OTIS_PPS_GATE_MIN_INTERVAL_US, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "duplicate_max_interval_us",
                   OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US,
-                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "max_interval_us",
                   OTIS_PPS_GATE_MAX_INTERVAL_US, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "missing_timeout_us",
                   OTIS_PPS_GATE_MISSING_TIMEOUT_US, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "count_resolution_edges", 1u,
-                  OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+                  OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(status_context, "pps_gate", "snapshot_ring_capacity",
                   snapshot_stats.ring_capacity, OTIS_SEVERITY_INFO,
-                  OTIS_FLAG_PROFILE_ASSUMPTION);
-#else
-  (void)status_context;
-#endif
+                  OTIS_FLAG_CONFIGURATION_ASSUMPTION);
 }
 
 const char *otis_count_observation_measurement_mode(void) {
-#if OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE
-  return "raw_edge_long_gate";
-#elif OTIS_TCXO_COUNTER_BACKEND == OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
   return "pps_gated_ratio";
-#else
-  return "short_frequency_gate";
-#endif
 }
 
 const char *otis_count_observation_window_invalid_reason(

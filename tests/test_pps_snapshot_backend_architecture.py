@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from tools.verify_pio_snapshot import (
@@ -37,9 +36,10 @@ def test_checked_in_pio_program_and_installed_configuration_match_proof() -> Non
     installed = verify_repository_installation(
         FW / "otis_pps_snapshot_backend.cpp",
         FW / "otis_pps_snapshot.pio.h",
-        ROOT / "firmware/arduino/firmware_matrix.json",
+        ROOT / "firmware/arduino/firmware_build_manifest.json",
     )
-    assert installed["matrix_fqbn"].endswith(":freq=133")
+    assert installed["manifest_fqbn"].endswith(":freq=133")
+    assert installed["image_id"] == "adaptive_hybrid_regulation"
     assert installed["in_base_gpio"] == 20
     assert installed["jmp_pin_gpio"] == 26
     assert installed["input_synchronizers"] == "enabled"
@@ -87,7 +87,7 @@ def test_d14_isr_only_preserves_compact_reference_events() -> None:
     assert "d14_last_raw_timestamp" not in d14
 
     timestamp = d14.index("otis_monotonic_us32_now_from_isr()")
-    sampled_level = d14.index("gpio_get(capture_gpio)")
+    sampled_level = d14.index("gpio_get(OTIS_PIN_PPS_REFERENCE)")
     ring_publish = d14.index("otis_capture_ring_push_from_isr")
     assert timestamp < sampled_level < ring_publish
 
@@ -145,53 +145,10 @@ def test_late_snapshot_cannot_be_paired_after_an_unmatched_reference() -> None:
     assert "OTIS_FLAG_GATE_INCOMPLETE" in association_loss
 
 
-def test_only_explicit_qualified_profiles_consume_backend_qualification() -> None:
-    matrix = json.loads(
-        (ROOT / "firmware/arduino/firmware_matrix.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    candidate_profiles = [
-        profile
-        for profile in matrix["profiles"]
-        if profile["defines"].get("OTIS_TCXO_COUNTER_BACKEND")
-        == "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
-        and profile["expect"] == "pass"
-    ]
-    assert candidate_profiles
-    qualified = [
-        profile["id"]
-        for profile in candidate_profiles
-        if profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "1"
-    ]
-    assert qualified == [
-        "cx319_tight_lower",
-        "cx319_tight_upper",
-        "cx319_range_map_part_a",
-        "cx319_range_part_b_lower",
-        "cx319_range_part_b_upper",
-        "cx319_range_part_b_upper_completion",
-        "cx320_active_hybrid",
-        "cx321_active_hybrid",
-        "cx322_direct_hybrid",
-        "cx322_d9_d6_integration_engineering",
-        "cx322_d9_d6_72h_sustained_engineering",
-        "cx323_d9_d6_72h_adaptive_hybrid",
-        "otis_sustained_hybrid_regulation_v1",
-        "otis_gnss_baud_envelope_characterization_v1",
-        "otis_gnss_baud_envelope_characterization_continuation_v1",
-        "otis_gnss_baud_envelope_characterization_resume_v1",
-        "d9_disabled_no_control_baseline",
-        "d9_forwarded_output_no_control",
-        "d9_d6_forwarded_output_no_control",
-        "d9_d6_frequency_only_lower",
-    ]
-    assert all(
-        profile["defines"]["OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED"] == "0"
-        for profile in candidate_profiles
-        if profile["id"] not in qualified
-    )
-
+def test_fixed_image_uses_the_qualified_pps_gated_snapshot_backend() -> None:
+    config = (FW / "otis_config.h").read_text(encoding="utf-8")
+    assert "OTIS_TCXO_COUNTER_BACKEND" not in config
+    assert "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED" not in config
     production_sources = "\n".join(
         path.read_text(encoding="utf-8")
         for path in FW.iterdir()
@@ -199,6 +156,7 @@ def test_only_explicit_qualified_profiles_consume_backend_qualification() -> Non
     )
     assert "pps_isr_stop_sample_restart_v1" not in production_sources
     assert "pio_wait_cumulative_snapshot_dma_v1" in production_sources
+    assert "otis_pps_snapshot_backend_begin" in production_sources
 
 
 def test_counter_wrap_envelope_does_not_treat_nominal_frequency_as_a_maximum() -> None:

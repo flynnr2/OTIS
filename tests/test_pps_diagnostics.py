@@ -66,13 +66,7 @@ def test_pps_diagnostics_core_has_no_service_plane_dependencies() -> None:
 
 def test_pps_watchdog_samples_now_after_copying_irq_mailbox() -> None:
     source = COUNT_OBSERVATION.read_text(encoding="utf-8")
-    service = source[source.index("bool otis_count_observation_service") :]
-    backend = service[
-        service.index(
-            "#elif OTIS_TCXO_COUNTER_BACKEND == "
-            "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
-        ) :
-    ]
+    backend = source[source.index("bool otis_count_observation_service") :]
 
     mailbox_copy = backend.index("otis_capture_irq_get_reference_stats")
     mailbox_note = backend.index("otis_pps_diagnostics_note_physical_pps")

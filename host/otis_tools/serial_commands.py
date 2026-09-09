@@ -10,63 +10,19 @@ import stat
 import time
 
 
-KNOWN_SWEEP_PROFILES = frozenset(
-    {
-        "CENTER_ONLY",
-        "TINY_PLUS_MINUS_1",
-        "TINY_PLUS_MINUS_2",
-        "SLOPE_CENTER_EDGE_300S",
-        "SLOPE_REPEAT_300S",
-    }
-)
-KNOWN_PSEUDO_PPS_PROFILES = frozenset(
-    {
-        "CLEAN_NOMINAL",
-        "CLEAN_SOAK_10M",
-        "ONE_SHORT",
-        "ONE_LONG",
-        "ONE_OMIT",
-        "DOUBLE",
-        "BOUNCE",
-        "NARROW_GLITCH",
-        "POSITIVE_PHASE_STEP",
-        "NEGATIVE_PHASE_STEP",
-        "SUSTAINED_POSITIVE_OFFSET",
-        "SUSTAINED_NEGATIVE_OFFSET",
-        "REPEATED_OMISSIONS",
-        "MIXED_MALFORMED",
-        "RETURN_CLEAN",
-        "COMPOSITE",
-    }
-)
 SIMPLE_COMMANDS = frozenset(
     {
         "HELP",
         "CONFIG?",
         "DUALCORE?",
-        "DUALCORE INVALIDATE_GNSS",
-        "DUALCORE RECOVER",
         "DAC?",
         "DAC LIMITS?",
-        "DAC MID",
-        "DAC ZERO",
-        "FC0?",
-        "SWEEP?",
-        "SWEEP START",
-        "SWEEP STOP",
-        "SWEEP STEP",
-        "SWEEP CLEAR",
-        "PPSGEN?",
-        "PPSGEN PROFILES?",
-        "PPSGEN START",
-        "PPSGEN STOP",
+        "COUNT?",
         "ACTIVE?",
         "ACTIVE ABORT",
     }
 )
 TIMESTAMPED_COMMAND_PREFIX = "OTISQ1"
-GNSS_BAUD_PROGRAMME_ID = "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1"
-GNSS_CHARACTERIZATION_BAUDS = frozenset({9600, 19200, 38400, 57600, 115200})
 
 
 @dataclass(frozen=True)
@@ -96,101 +52,11 @@ def parse_serial_command(text: str) -> SerialCommand:
     if command in SIMPLE_COMMANDS:
         return SerialCommand(command)
 
-    if command.startswith("DAC SET "):
-        code = _normalize_code(command[len("DAC SET ") :])
-        if code is None:
-            raise ValueError("DAC SET requires a 16-bit decimal or hex code")
-        return SerialCommand(f"DAC SET {code}")
-
-    if command.startswith("SWEEP LOAD "):
-        profile = command[len("SWEEP LOAD ") :]
-        if profile not in KNOWN_SWEEP_PROFILES:
-            raise ValueError(f"SWEEP LOAD profile must be one of {sorted(KNOWN_SWEEP_PROFILES)}")
-        return SerialCommand(f"SWEEP LOAD {profile}")
-
-    if command.startswith("SWEEP ADD"):
-        raise ValueError("SWEEP ADD is intentionally unsupported by host command ingress")
-
-    if command.startswith("PPSGEN ARM "):
-        profile = command[len("PPSGEN ARM ") :]
-        if profile not in KNOWN_PSEUDO_PPS_PROFILES:
-            raise ValueError(
-                f"PPSGEN ARM profile must be one of {sorted(KNOWN_PSEUDO_PPS_PROFILES)}"
-            )
-        return SerialCommand(f"PPSGEN ARM {profile}")
-
     if command.startswith("ACTIVE LEASE "):
         value = command[len("ACTIVE LEASE ") :]
         if not re.fullmatch(r"[1-9][0-9]*", value) or int(value, 10) > 0xFFFFFFFF:
             raise ValueError("ACTIVE LEASE requires one non-zero uint32 sequence")
         return SerialCommand(f"ACTIVE LEASE {int(value, 10)}")
-
-    if command.startswith("Q2 CASE "):
-        fields = command[len("Q2 CASE ") :].split()
-        if len(fields) != 2 or any(
-            not re.fullmatch(r"[1-9][0-9]*", field)
-            or int(field, 10) > 0xFFFFFFFF
-            for field in fields
-        ):
-            raise ValueError("Q2 CASE requires nonce and case id as non-zero uint32 values")
-        if int(fields[1], 10) > 38:
-            raise ValueError("Q2 CASE id must be in 1..38")
-        return SerialCommand(
-            f"Q2 CASE {int(fields[0], 10)} {int(fields[1], 10)}"
-        )
-
-    if command.startswith("GNSS BAUD "):
-        fields = command.split(" ")
-        if len(fields) != 8 or fields[:2] != ["GNSS", "BAUD"]:
-            raise ValueError(
-                "GNSS BAUD requires programme, request, segment, source baud, "
-                "source epoch, and target baud"
-            )
-        programme, request, segment, source, source_epoch, target = fields[2:]
-        if programme != GNSS_BAUD_PROGRAMME_ID:
-            raise ValueError("GNSS BAUD requires the exact characterization programme")
-        if not re.fullmatch(r"S(?:0[1-9]|1[01])", segment):
-            raise ValueError("GNSS BAUD segment must be S01..S11")
-        if (
-            not re.fullmatch(r"[1-9][0-9]*", request)
-            or int(request, 10) > 0xFFFFFFFF
-            or not re.fullmatch(r"[1-9][0-9]*", source_epoch)
-            or int(source_epoch, 10) > 0xFFFFFFFF
-        ):
-            raise ValueError("GNSS BAUD request and source epoch must be uint32")
-        if (
-            not source.isdigit()
-            or not target.isdigit()
-            or int(source, 10) not in GNSS_CHARACTERIZATION_BAUDS
-            or int(target, 10) not in GNSS_CHARACTERIZATION_BAUDS
-        ):
-            raise ValueError("GNSS BAUD source and target must be frozen candidates")
-        return SerialCommand(
-            f"GNSS BAUD {programme} {int(request, 10)} {segment} "
-            f"{int(source, 10)} {int(source_epoch, 10)} {int(target, 10)}"
-        )
-
-    if command.startswith("GNSS STATUS "):
-        fields = command.split(" ")
-        if len(fields) != 6 or fields[:2] != ["GNSS", "STATUS"]:
-            raise ValueError(
-                "GNSS STATUS requires programme, challenge, segment, and baud epoch"
-            )
-        programme, challenge, segment, baud_epoch = fields[2:]
-        if programme != GNSS_BAUD_PROGRAMME_ID:
-            raise ValueError("GNSS STATUS requires the exact characterization programme")
-        if not re.fullmatch(r"S(?:0[1-9]|1[01])", segment):
-            raise ValueError("GNSS STATUS segment must be S01..S11")
-        if any(
-            not re.fullmatch(r"[1-9][0-9]*", field)
-            or int(field, 10) > 0xFFFFFFFF
-            for field in (challenge, baud_epoch)
-        ):
-            raise ValueError("GNSS STATUS challenge and baud epoch must be non-zero uint32")
-        return SerialCommand(
-            f"GNSS STATUS {programme} {int(challenge, 10)} {segment} "
-            f"{int(baud_epoch, 10)}"
-        )
 
     if command.startswith("ACTIVE SNAPSHOT "):
         value = command[len("ACTIVE SNAPSHOT ") :]
@@ -440,7 +306,10 @@ def send_timestamped_command_to_fifo(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send one validated OTIS command to a capture_device command FIFO.")
     parser.add_argument("--fifo", required=True, type=Path, help="Run-local command FIFO owned by capture_device.")
-    parser.add_argument("command", help="Atomic OTIS command to send, for example 'DAC MID' or 'SWEEP START'.")
+    parser.add_argument(
+        "command",
+        help="Fixed-image OTIS command, for example 'COUNT?' or 'ACTIVE?'.",
+    )
     args = parser.parse_args()
     raise SystemExit(send_command_to_fifo(args.fifo, args.command))
 

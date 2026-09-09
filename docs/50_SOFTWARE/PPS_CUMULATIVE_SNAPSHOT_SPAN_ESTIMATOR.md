@@ -2,16 +2,17 @@
 
 ## Status and scope
 
-`PPS_CUMULATIVE_SNAPSHOT_SPAN_V1` is a host-only, observe-only analysis
-contract for the accepted
-`pio_wait_cumulative_snapshot_dma_v1` PPS-gated backend. It does not select a
-control estimator, controller cadence, DAC step, or firmware behavior. It
-never authorizes actuation.
+`PPS_CUMULATIVE_SNAPSHOT_SPAN_V1` is the integer accumulation method inside the
+sole selected `OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1`. It consumes the accepted
+`pio_wait_cumulative_snapshot_dma_v1` D14/D8 backend and has no authority of its
+own. Estimator selection, the 600-second production span, and every reset rule
+are defined together in
+`profiles/estimators/pps_gated_frequency_estimator_v1.json` and validated by
+`schemas/pps_gated_frequency_estimator_v1.schema.json`.
 
-The implementation is
-`host/otis_tools/pps_cumulative_span_estimator.py`; its strict configuration is
-`profiles/estimators/pps_cumulative_snapshot_span_v1.json` and its schema is
-`schemas/pps_cumulative_snapshot_span_config_v1.schema.json`.
+There is deliberately no separate base-estimator profile or legacy host
+implementation on current HEAD. Firmware produces the estimate; the current
+host path independently reconstructs it from canonical snapshots and counts.
 
 ## Method contract
 

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "policy_id": "OTIS_RESPONSE_CLASSIFICATION_V1",
+  "status": "selected_production_component",
+  "parameters": {
+    "gain_min_hz_per_code": 0.00016357422282453626,
+    "gain_nominal_hz_per_code": 0.00017008467693813145,
+    "gain_max_hz_per_code": 0.00017334010044578463,
+    "empirical_detection_floor_hz": 0.0033333317438761396,
+    "maximum_observed_hysteresis_hz": 0.0012499988079071045,
+    "centre_repeatability_span_hz": 0.0016666650772094727,
+    "error_deadband_hz": 0.006249995628992717,
+    "wrong_sign_minimum_hz": 0.0033333317438761396,
+    "growing_error_margin_hz": 0.006249995628992717,
+    "excess_response_additive_margin_hz": 0.006249995628992717,
+    "maximum_consecutive_indeterminate": 2,
+    "maximum_step_codes": 21,
+    "diagnostic_span_s": 60,
+    "authoritative_span_s": 600
+  },
+  "classification_order": [
+    "measurement_or_actuator_fault",
+    "inside_deadband",
+    "limit_reached",
+    "wrong_sign",
+    "growing_error",
+    "excess_response",
+    "healthy_detected",
+    "healthy_indeterminate_near_resolution"
+  ],
+  "authority": {
+    "automatic_restore": false,
+    "out_of_model_is_fail_static_hold_not_measurement_fault": true,
+    "temperature_context_required_for_response_classification": false,
+    "D10_external_event_required_for_response_classification": false
+  }
+}

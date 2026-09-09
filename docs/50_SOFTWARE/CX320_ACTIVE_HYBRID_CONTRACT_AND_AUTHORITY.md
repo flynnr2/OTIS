@@ -1,5 +1,8 @@
 # CX320 Active-Hybrid Contract and Authority
 
+> Historical programme contract. It grants no present authority and must be
+> reproduced only from its recorded Git revision.
+
 ## Scope and current authority
 
 CX320 tests one coherent bounded controller. It combines the authoritative
@@ -212,8 +215,9 @@ are observations and always `actionable=false`; the private existing
 transaction is the only authority-bearing path.
 
 `ACT` continues to preserve request, acceptance, application and response
-transactions. `HPR` remains the historical/counterfactual observational
-candidate and is not relabeled as physical active evidence.
+transactions. The former historical/counterfactual preview product is retired;
+current phase/frequency evidence is carried only by `RPH`, `PHE`, and the
+decision-bearing `AHY`/`AHM` path.
 
 ## Finite programme and decisions
 

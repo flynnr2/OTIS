@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://otis.local/schemas/response_classification_v1.schema.json",
+  "title": "OTIS response classification policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "status",
+    "parameters",
+    "classification_order",
+    "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "policy_id": {"const": "OTIS_RESPONSE_CLASSIFICATION_V1"},
+    "status": {"const": "selected_production_component"},
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gain_min_hz_per_code",
+        "gain_nominal_hz_per_code",
+        "gain_max_hz_per_code",
+        "empirical_detection_floor_hz",
+        "maximum_observed_hysteresis_hz",
+        "centre_repeatability_span_hz",
+        "error_deadband_hz",
+        "wrong_sign_minimum_hz",
+        "growing_error_margin_hz",
+        "excess_response_additive_margin_hz",
+        "maximum_consecutive_indeterminate",
+        "maximum_step_codes",
+        "diagnostic_span_s",
+        "authoritative_span_s"
+      ],
+      "properties": {
+        "gain_min_hz_per_code": {"const": 0.00016357422282453626},
+        "gain_nominal_hz_per_code": {"const": 0.00017008467693813145},
+        "gain_max_hz_per_code": {"const": 0.00017334010044578463},
+        "empirical_detection_floor_hz": {"const": 0.0033333317438761396},
+        "maximum_observed_hysteresis_hz": {"const": 0.0012499988079071045},
+        "centre_repeatability_span_hz": {"const": 0.0016666650772094727},
+        "error_deadband_hz": {"const": 0.006249995628992717},
+        "wrong_sign_minimum_hz": {"const": 0.0033333317438761396},
+        "growing_error_margin_hz": {"const": 0.006249995628992717},
+        "excess_response_additive_margin_hz": {"const": 0.006249995628992717},
+        "maximum_consecutive_indeterminate": {"const": 2},
+        "maximum_step_codes": {"const": 21},
+        "diagnostic_span_s": {"const": 60},
+        "authoritative_span_s": {"const": 600}
+      }
+    },
+    "classification_order": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {"const": "measurement_or_actuator_fault"},
+        {"const": "inside_deadband"},
+        {"const": "limit_reached"},
+        {"const": "wrong_sign"},
+        {"const": "growing_error"},
+        {"const": "excess_response"},
+        {"const": "healthy_detected"},
+        {"const": "healthy_indeterminate_near_resolution"}
+      ],
+      "items": false
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "automatic_restore",
+        "out_of_model_is_fail_static_hold_not_measurement_fault",
+        "temperature_context_required_for_response_classification",
+        "D10_external_event_required_for_response_classification"
+      ],
+      "properties": {
+        "automatic_restore": {"const": false},
+        "out_of_model_is_fail_static_hold_not_measurement_fault": {"const": true},
+        "temperature_context_required_for_response_classification": {"const": false},
+        "D10_external_event_required_for_response_classification": {"const": false}
+      }
+    }
+  }
+}

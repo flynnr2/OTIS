@@ -1,0 +1,415 @@
+"""Strict offline replay and seal for one adaptive-hybrid run.
+
+The analyzer is read-only with respect to captured evidence.  It validates the
+current manifest, exact lifecycle records, D14/D8 measurement reconstruction,
+controller transactions, and maintenance-state replay before publishing a
+content-addressed seal.  D10 remains optional external-event evidence and is
+never consulted by a control or terminal predicate.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+from datetime import datetime, timezone
+from hashlib import sha256
+import json
+import os
+from pathlib import Path
+import tempfile
+from typing import Any
+
+from .adaptive_hybrid_activation import validate_frozen_run_manifest
+from .adaptive_hybrid_contract import AdaptiveHybridProgramme, programme_from_mapping
+from .adaptive_hybrid_evidence import replay_adaptive_hybrid_maintenance_history
+from .adaptive_hybrid_policy import policy_from_mapping
+from .adaptive_hybrid_replay import _capsules_exact, _measurement_replay, _response_replay
+from .adaptive_hybrid_transactions import CampaignSpec, _read_csv, validate_transaction_history
+from .contracts import CsvValidationContext, validate_csv
+from .authoritative_inputs import (
+    ROOT_PROFILE,
+    authoritative_binding,
+    authoritative_document,
+    validate_authoritative_inputs,
+)
+from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
+from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, RunManifest
+
+
+TOOL_ID = "adaptive_hybrid_analyze_v1"
+SEAL_TYPE = "adaptive_hybrid_physical_seal_v1"
+DEFAULT_SEAL = Path("reports/adaptive_hybrid_physical_seal_v1.json")
+SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
+SUPERVISOR_EVENTS = Path("reports/adaptive_hybrid_supervisor_events.jsonl")
+
+
+def _sha256_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _canonical_sha256(value: object) -> str:
+    return sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _read_object(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} does not contain an object")
+    return value
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            value = json.loads(line)
+            if not isinstance(value, dict):
+                raise ValueError(f"{path} contains a non-object record")
+            rows.append(value)
+    return rows
+
+
+def _normalize_terminal(
+    terminal: object, programme: AdaptiveHybridProgramme
+) -> tuple[bool, str | None, str | None, str | None]:
+    """Return exactness, scientific decision, result, and detailed reason."""
+
+    if not isinstance(terminal, dict):
+        return False, None, None, None
+    result = terminal.get("result")
+    reason = terminal.get("reason")
+    primary = terminal.get("primary_decision")
+    if not isinstance(reason, str) or not reason:
+        return False, None, result if isinstance(result, str) else None, None
+    if result == "healthy_stop":
+        exact = (
+            reason == programme.qualified_endpoint_reason
+            and terminal.get("preliminary_decision")
+            in programme.healthy_preliminary_decisions
+            and primary is None
+        )
+        return exact, programme.qualified_endpoint_reason if exact else None, result, reason
+    if result in {"nonpass", "aborted"}:
+        exact = (
+            isinstance(primary, str)
+            and primary in programme.terminal_decisions
+            and primary != programme.qualified_endpoint_reason
+        )
+        return exact, primary if exact else None, result, reason
+    return False, None, result if isinstance(result, str) else None, reason
+
+
+def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.",
+        suffix=".tmp", delete=False,
+    ) as handle:
+        json.dump(value, handle, indent=2, sort_keys=True, allow_nan=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = Path(handle.name)
+    try:
+        os.link(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _contract_paths(manifest: RunManifest, contract: str) -> list[Path]:
+    return [
+        manifest.root / str(item["path"])
+        for item in manifest.files
+        if item.get("contract") == contract
+    ]
+
+
+def _one_contract(manifest: RunManifest, contract: str) -> Path:
+    paths = _contract_paths(manifest, contract)
+    if len(paths) != 1:
+        raise ValueError(f"expected one {contract} artifact, got {len(paths)}")
+    return paths[0]
+
+
+def require_exact_lifecycle_records(manifest: RunManifest) -> dict[str, Any]:
+    """Require the sole complete exact ACT and AHY schema-2 products."""
+
+    results: dict[str, Any] = {
+        "time_domain": "rp2040_monotonic_us64",
+        "exact": True,
+    }
+    for label, contract in (
+        ("transactions", "active_transactions_v2"),
+        ("decisions", "active_hybrid_decisions_v2"),
+    ):
+        path = _one_contract(manifest, contract)
+        validation = validate_csv(
+            path,
+            CsvValidationContext(
+                contract, manifest.known_channels, manifest.known_domains
+            ),
+        )
+        if not validation.ok:
+            raise ValueError(
+                f"{contract} validation failed: {'; '.join(validation.errors)}"
+            )
+        results[label] = {
+            "contract": contract,
+            "path": str(path.relative_to(manifest.root)),
+            "row_count": validation.row_count,
+            "exact": True,
+        }
+    return results
+
+
+def _validate_manifest_csvs(
+    manifest: RunManifest, *, expected_policy_sha256: str | None = None
+) -> dict[str, Any]:
+    results: dict[str, Any] = {}
+    for item in manifest.files:
+        contract = item.get("contract")
+        path = manifest.root / str(item.get("path", ""))
+        if not isinstance(contract, str) or path.suffix.lower() != ".csv":
+            continue
+        if not path.is_file() and item.get("optional") is True:
+            continue
+        record_type = item.get("record_type")
+        label = (
+            f"{contract}:{record_type}"
+            if isinstance(record_type, str)
+            else contract
+        )
+        fail_local = contract == "raw_events_v1" and record_type == "EVT"
+        try:
+            validation = validate_csv(
+                path,
+                CsvValidationContext(
+                    contract,
+                    manifest.known_channels,
+                    manifest.known_domains,
+                    expected_policy_sha256=expected_policy_sha256,
+                ),
+            )
+            row_count = validation.row_count
+            errors = list(validation.errors)
+            warnings = list(validation.warnings)
+            exact = validation.ok
+        except (OSError, UnicodeError, csv.Error) as error:
+            if not fail_local:
+                raise
+            row_count = 0
+            errors = [f"fail-local D10 validation error: {type(error).__name__}: {error}"]
+            warnings = []
+            exact = False
+        results[label] = {
+            "contract": contract,
+            "record_type": record_type,
+            "path": str(path.relative_to(manifest.root)),
+            "row_count": row_count,
+            "errors": errors,
+            "warnings": warnings,
+            "exact": exact,
+            "authority": "fail_local" if fail_local else "authoritative",
+        }
+    return results
+
+
+def _authoritative_csvs_exact(results: dict[str, Any]) -> bool:
+    authoritative = [
+        item for item in results.values() if item.get("authority") == "authoritative"
+    ]
+    return bool(authoritative) and all(item.get("exact") is True for item in authoritative)
+
+
+def _source_hashes(manifest: RunManifest) -> dict[str, str]:
+    return {
+        str(item["path"]): _sha256_file(manifest.root / str(item["path"]))
+        for item in manifest.files
+        if (manifest.root / str(item.get("path", ""))).is_file()
+    }
+
+
+def analyze(
+    run_dir: Path, *, output_path: Path | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    """Replay unchanged current evidence and publish one immutable seal."""
+
+    run_dir = run_dir.resolve()
+    if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
+        raise ValueError("adaptive-hybrid capture is still active")
+    if not (run_dir / COMPLETE_MARKER).is_file():
+        raise ValueError("adaptive-hybrid run is not marked complete")
+    manifest_value = validate_frozen_run_manifest(run_dir / "run_manifest.json")
+    programme = programme_from_mapping(manifest_value)
+    manifest = RunManifest(run_dir, run_dir / "run_manifest.json", manifest_value)
+    before_hashes = _source_hashes(manifest)
+
+    frozen_inputs = manifest_value.get("authoritative_inputs")
+    validate_authoritative_inputs(frozen_inputs)
+    policy_document = authoritative_document(frozen_inputs, ROOT_PROFILE)
+    policy_binding = authoritative_binding(frozen_inputs, ROOT_PROFILE)
+    policy = policy_from_mapping(
+        policy_document, policy_sha256=str(policy_binding["sha256"])
+    )
+    csv_results = _validate_manifest_csvs(
+        manifest, expected_policy_sha256=policy.policy_sha256
+    )
+    csv_exact = _authoritative_csvs_exact(csv_results)
+    snapshot_failures, snapshot_warnings = validate_evidence_snapshot(run_dir, manifest)
+    lifecycle = require_exact_lifecycle_records(manifest)
+
+    section = manifest_value[programme.manifest_section]
+    control = section["automatic_control"]
+    build_identity = str(manifest_value["firmware"]["build_identity"])
+    spec = CampaignSpec(
+        campaign=programme.campaign_name,
+        profile=str(manifest_value["image_identity"]),
+        run_identity=str(manifest_value["run_identity"]),
+        start_code=int(section["setup"]["code"]),
+        correction_limit=int(control["maximum_total_applications"]),
+        cumulative_limit=int(control["maximum_cumulative_movement_codes"]),
+        minimum_code=int(control["minimum_code"]),
+        maximum_code=int(control["maximum_code"]),
+        maximum_step=int(control["maximum_step_codes"]),
+    )
+    transactions_path = _one_contract(manifest, "active_transactions_v2")
+    decisions_path = _one_contract(manifest, "active_hybrid_decisions_v2")
+    maintenance_path = _one_contract(manifest, "active_hybrid_maintenance_v1")
+    transactions = _read_csv(transactions_path)
+    decisions = _read_csv(decisions_path)
+    maintenance = _read_csv(maintenance_path)
+    validate_transaction_history(
+        transactions, spec, manifest_value["transaction_identities"],
+        build_identity, dual_core=True,
+    )
+    maintenance_replay = replay_adaptive_hybrid_maintenance_history(
+        decisions, transactions, maintenance,
+        expected_run_identity=spec.run_identity,
+        expected_build_identity=build_identity,
+        expected_image_identity=spec.profile,
+        expected_active_policy_sha256=policy.policy_sha256,
+        policy=policy,
+        policy_document=policy_document,
+        estimator_sha256=str(manifest_value["transaction_identities"]["estimator_sha256"]),
+    )
+    measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value)
+    response_exact, responses = _response_replay(
+        transactions, spec.minimum_code, spec.maximum_code,
+        response_classification_observational=programme.response_checkpoint_observational,
+        response_policy_document=authoritative_document(
+            frozen_inputs,
+            str(policy_document["bindings"]["response_classification"]),
+        ),
+    )
+    supervisor_state = _read_object(run_dir / SUPERVISOR_STATE)
+    events = _read_jsonl(run_dir / SUPERVISOR_EVENTS)
+    capsules_exact, capsule_hashes = _capsules_exact(
+        run_dir, transactions, events, supervisor_state
+    )
+
+    d10 = section.get("external_event_input", {})
+    d10_isolated = (
+        d10.get("pin") == "D10"
+        and d10.get("authority") == "evidence_only"
+        and d10.get("control_eligible") is False
+        and d10.get("terminal_eligible") is False
+        and measurement.get("D10", {}).get("enters_D14_D8_replay") is False
+    )
+    checks = {
+        "manifest_current": True,
+        "csv_contracts_exact": csv_exact,
+        "evidence_snapshot_exact": not snapshot_failures,
+        "exact_lifecycle_records": lifecycle["exact"],
+        "transactions_exact": True,
+        "maintenance_replay_exact": bool(maintenance_replay.get("exact")),
+        "D14_D8_measurement_replay_exact": measurement_exact,
+        "response_replay_exact": response_exact,
+        "transaction_capsules_exact": capsules_exact,
+        "D10_optional_event_isolated": d10_isolated,
+    }
+    (
+        terminal_exact,
+        scientific_decision,
+        terminal_result,
+        terminal_reason,
+    ) = _normalize_terminal(supervisor_state.get("terminal"), programme)
+    checks["supervisor_terminal_exact"] = terminal_exact
+    passed = all(checks.values())
+    source_hashes = _source_hashes(manifest)
+    if source_hashes != before_hashes:
+        raise RuntimeError("source evidence changed during offline analysis")
+    tool_hash = _sha256_file(Path(__file__))
+    unsigned: dict[str, Any] = {
+        "schema_version": 1,
+        "seal_type": SEAL_TYPE,
+        "tool": TOOL_ID,
+        "tool_sha256": tool_hash,
+        "created_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "run_id": manifest.run_id,
+        "run_identity": spec.run_identity,
+        "build_identity": build_identity,
+        "image_identity": spec.profile,
+        "programme_id": programme.programme_id,
+        "policy_id": policy.policy_id,
+        "status": "passed" if passed else "failed",
+        "primary_decision": (
+            scientific_decision
+            if passed and isinstance(scientific_decision, str)
+            else "adaptive_hybrid_identity_or_evidence_fault"
+        ),
+        "terminal_result": terminal_result,
+        "terminal_reason": terminal_reason,
+        "checks": checks,
+        "csv_validation": csv_results,
+        "exact_lifecycle_records": lifecycle,
+        "maintenance_replay": maintenance_replay,
+        "measurement_replay": measurement,
+        "response_replay": responses,
+        "transaction_capsule_sha256": capsule_hashes,
+        "evidence_snapshot": {
+            "path": EVIDENCE_MANIFEST,
+            "failures": snapshot_failures,
+            "warnings": snapshot_warnings,
+        },
+        "source_sha256": source_hashes,
+        "D10_semantics": {
+            "pin": "D10", "record_type": "EVT", "authority": "evidence_only",
+            "absence_noise_invalidity_or_overflow_cannot_change_control_or_terminal": True,
+        },
+        "limitations": [
+            "D14 is the sole PPS/reference input and D8 is the oscillator/count input.",
+            "D10 is optional external-event evidence and never timing or control authority.",
+            "GNSS metadata qualifies the D14 receiver but cannot replace D14 timing authority.",
+        ],
+    }
+    unsigned["seal_sha256"] = _canonical_sha256(unsigned)
+    destination = output_path.resolve() if output_path else run_dir / programme.physical_seal_path
+    _atomic_new_json(destination, unsigned)
+    return destination, unsigned
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("run_dir", type=Path)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args(argv)
+    path, seal = analyze(args.run_dir, output_path=args.output)
+    print(json.dumps({"path": str(path), **seal}, indent=2, sort_keys=True))
+    return 0 if seal["status"] == "passed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -9,7 +9,6 @@
 
 struct OtisCountObservationConfig {
   uint32_t gate_period_us;
-  uint32_t measure_period_ms;
   uint32_t startup_inhibit_ms;
   uint32_t control_ready_clean_windows;
   const char *source_domain;

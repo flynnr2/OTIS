@@ -3,16 +3,18 @@
 #include <stdio.h>
 
 #include "otis_active_hybrid_policy_engine.h"
-#include "otis_cx317_active_live.h"
+#include "otis_adaptive_hybrid_regulation_live.h"
 #include "otis_decimal_format.h"
 
-int otis_format_active_hybrid_decision_v1(
+int otis_format_active_hybrid_decision_v2(
     char *output, size_t output_size,
-    const OtisCx317ActiveLiveDecision *source,
+    const OtisAdaptiveHybridRegulationLiveDecision *source,
     const OtisActiveHybridDecision *decision,
     const OtisActiveHybridDecisionRecordContext *context) {
   if (output == nullptr || output_size == 0u || source == nullptr ||
-      decision == nullptr || context == nullptr)
+      decision == nullptr || context == nullptr ||
+      context->decision_timestamp_ticks == 0u ||
+      source->timestamp_s != context->decision_timestamp_ticks / 1000000ull)
     return -1;
 
   char frequency_error[32] = "";
@@ -34,11 +36,12 @@ int otis_format_active_hybrid_decision_v1(
 
   return snprintf(
       output, output_size,
-      "AHY,1,%lu,%lu,%lu,%s,%s,%s,%lu,%lu,%lu,%s,%s,%ld,%s,%s,%lu,%lu,%lld,%s,%s,%s,%s,%u,%lu,%u,%lu,%s,%s,%s,%s,%s,%s,%ld,%u,%ld,%s,%s,%s,%s,%s,%s,%u,%u,%s,%lu,%lu,%lu,%s,%u,%lu,%s,%s,%s,%s,%s\r\n",
+      "AHY,2,%lu,%lu,%llu,rp2040_monotonic_us64,%lu,%s,%s,%s,%lu,%lu,%lu,%s,%s,%ld,%s,%s,%lu,%lu,%lld,%s,%s,%s,%s,%u,%lu,%u,%lu,%s,%s,%s,%s,%s,%s,%ld,%u,%ld,%s,%s,%s,%s,%s,%s,%u,%u,%s,%lu,%lu,%lu,%s,%u,%lu,%s,%s,%s,%s,%s\r\n",
       static_cast<unsigned long>(context->hybrid_record_sequence),
       static_cast<unsigned long>(decision->decision_sequence),
+      static_cast<unsigned long long>(context->decision_timestamp_ticks),
       static_cast<unsigned long>(source->timestamp_s), context->run_identity,
-      context->build_identity, context->profile_identity,
+      context->build_identity, context->image_identity,
       static_cast<unsigned long>(source->capture_session),
       static_cast<unsigned long>(source->source_first_sequence),
       static_cast<unsigned long>(source->source_last_sequence),

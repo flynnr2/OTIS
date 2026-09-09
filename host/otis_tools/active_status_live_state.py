@@ -23,8 +23,8 @@ from .active_status_contract import (
 )
 
 
-LIVE_STATE_CONTRACT = "cx317_active_status_live_state_v1"
-LIVE_STATE_PATH = Path("reports/cx317_active_status_live_state_v1.json")
+LIVE_STATE_CONTRACT = "adaptive_hybrid_status_live_state_v1"
+LIVE_STATE_PATH = Path("reports/adaptive_hybrid_status_live_state_v1.json")
 LIVE_STATE_SCHEMA_VERSION = 1
 LIVE_STATES = frozenset({"in_progress", "complete", "invalid"})
 LIVE_FRONTIER_COMPONENT = "active_status_live_state"

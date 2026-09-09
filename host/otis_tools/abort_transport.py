@@ -20,7 +20,7 @@ import time
 
 
 ABORT_TOKEN = "ABORT"
-TOOL_VERSION = "cx317_independent_abort_fifo_v1"
+TOOL_VERSION = "adaptive_hybrid_independent_abort_fifo_v1"
 
 
 def _utc_now() -> str:
@@ -158,7 +158,7 @@ def probe_abort_path(path: Path, result_path: Path, timeout_s: float) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Probe or trigger the independent CX317 fail-static abort FIFO.")
+    parser = argparse.ArgumentParser(description="Probe or trigger the independent ADAPTIVE_HYBRID fail-static abort FIFO.")
     subparsers = parser.add_subparsers(dest="operation", required=True)
     probe = subparsers.add_parser("probe", help="Open the abort reader and wait for one ABORT token without hardware action.")
     probe.add_argument("--fifo", type=Path, required=True)

@@ -37,7 +37,7 @@ struct MonitorState {
 
 MonitorState monitor = {
     pio0, -1, -1, false, false, false, false, false, 0u, 0u, 0u,
-    0u,   0u, 0u, 0u,    0u,    OTIS_FORWARDED_CLOCK_MONITOR_STATUS_DISABLED_PROFILE,
+    0u,   0u, 0u, 0u,    0u,    OTIS_FORWARDED_CLOCK_MONITOR_STATUS_DISABLED_IMAGE,
     0u,   {},
 };
 
@@ -78,10 +78,6 @@ void cleanup_unbound_hardware(void) {
 }  // namespace
 
 bool otis_forwarded_clock_monitor_begin(void) {
-#if !OTIS_ENABLE_FORWARDED_D6_MONITOR
-  monitor.last_status = OTIS_FORWARDED_CLOCK_MONITOR_STATUS_DISABLED_PROFILE;
-  return false;
-#else
   if (monitor.selected || monitor.configured) {
     return false;
   }
@@ -163,11 +159,9 @@ bool otis_forwarded_clock_monitor_begin(void) {
   monitor.last_status = OTIS_FORWARDED_CLOCK_MONITOR_STATUS_NONE;
   pio_sm_set_enabled(monitor.pio, static_cast<uint>(monitor.sm), true);
   return true;
-#endif
 }
 
 void otis_forwarded_clock_monitor_poll(void) {
-#if OTIS_ENABLE_FORWARDED_D6_MONITOR
   if (!monitor.configured || !monitor.running || monitor.sm < 0) {
     return;
   }
@@ -176,17 +170,10 @@ void otis_forwarded_clock_monitor_poll(void) {
     increment_saturating(&monitor.pio_rxstall_count);
     latch_local_fault(OTIS_FORWARDED_CLOCK_MONITOR_STATUS_PIO_RXSTALL);
   }
-#endif
 }
 
 bool otis_forwarded_clock_monitor_service(uint32_t reference_session,
                                           uint32_t reference_sequence) {
-#if !OTIS_ENABLE_FORWARDED_D6_MONITOR
-  (void)reference_session;
-  (void)reference_sequence;
-  monitor.last_status = OTIS_FORWARDED_CLOCK_MONITOR_STATUS_DISABLED_PROFILE;
-  return false;
-#else
   otis_forwarded_clock_monitor_poll();
   if (!monitor.configured || !monitor.running || monitor.fault_latched) {
     return false;
@@ -234,7 +221,6 @@ bool otis_forwarded_clock_monitor_service(uint32_t reference_session,
     latch_local_fault(OTIS_FORWARDED_CLOCK_MONITOR_STATUS_FIFO_BACKLOG);
   }
   return true;
-#endif
 }
 
 bool otis_forwarded_clock_monitor_read(OtisForwardedClockMonitorSnapshot *out) {

@@ -48,6 +48,14 @@ def test_inventory_matches_every_implemented_queue_and_ring() -> None:
         )
     assert value["transport"]["maximum_supported_tx_obstruction_ms"] == 2000
 
+    evidence = resources["evidence"]
+    assert evidence["capacity"] == 8
+    assert "request frontier 7" in evidence["maximum_consumer_absence"]
+    assert "response frontier 8" in evidence["maximum_consumer_absence"]
+    telemetry = resources["telemetry"]
+    assert telemetry["capacity"] == 176
+    assert "max_concurrent_176" in telemetry["maximum_consumer_absence"]
+
 
 def test_inventory_is_referenced_by_architecture_documents() -> None:
     for relative in (

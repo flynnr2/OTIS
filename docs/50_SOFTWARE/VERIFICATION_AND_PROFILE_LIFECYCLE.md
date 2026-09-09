@@ -1,29 +1,27 @@
-# Verification and Firmware-Profile Lifecycle
+# Verification and Fixed-Firmware Lifecycle
 
-## Status
+## Current build contract
 
-Normative for the current evidence epochs accepted by `host/otis_tools/run_loader.py`.
-Current HEAD has eleven supported firmware profiles and eight expected-failure
-guards in
-`firmware/arduino/firmware_matrix.json`.
+Current HEAD has one buildable fixed firmware image, `adaptive_hybrid_regulation`,
+defined by `firmware/arduino/firmware_build_manifest.json` and built by
+`tools/build_firmware.py`.
 
-The only lifecycle values are:
+There is no firmware profile matrix, lifecycle registry, expected-failure
+profile collection, or historical compatibility tier. Policy, model, and
+estimator JSON files describe current semantics; they do not select alternate
+firmware programmes.
 
-- `keep_active`: a supported current build;
-- `keep_compile_only`: a current structural expected-failure guard.
+Historical reproduction requires the revision recorded by the evidence
+package or reviewed report. That checkout's source and instructions are the
+authority for the historical result.
 
-Archived profiles are not dormant entries in the current matrix. Reproduce one
-by checking out the revision recorded in its manifest, bundle, or reviewed
-report. A historical build is not a current release result.
-
-## Offline tiers
-
-All commands below are no-hardware checks.
+## No-hardware tiers
 
 ### Fast
 
-Current unit, contract, source-guard tests, the focused CX321 plant-sign
-firmware/host regressions and the fast-tier firmware smoke builds:
+Runs the architectural guards, current controller and transaction contracts,
+GNSS hold/requalification checks, D14/D8 authority and D9/D6/D10 isolation
+checks, native parity, and the fixed firmware build:
 
 ```bash
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier fast
@@ -31,11 +29,9 @@ firmware/host regressions and the fast-tier firmware smoke builds:
 
 ### Campaign
 
-Current capture, serial ownership, abort, rotation, transaction, supervisor,
-replay, analyzer, evidence, sealing, registration, range-spanning,
-domain-rollover and accelerated operational-path tests, including the CX321
-producer-to-first-consumer path and the GNSS baud-characterization contract and
-preflight guards, plus all eleven supported firmware profiles:
+Adds current serial, capture, abort, evidence, entry-point, and package-boundary
+checks, including the deliberate activation fail-closed boundary, then builds
+and audits the same fixed image:
 
 ```bash
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier campaign
@@ -43,43 +39,37 @@ preflight guards, plus all eleven supported firmware profiles:
 
 ### Release
 
-The complete current Python/native suite and all eleven profiles plus all eight
-expected-failure guards:
+Runs every retained current test and the same fixed build/binary/resource audit:
 
 ```bash
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier release
 ```
 
-Release continues to enforce the firmware resource budget, current wire
-parity, command and authority boundaries, fail-static paths, and evidence
-finalization. It does not compile retired profiles.
+Use `--list` to inspect the commands without executing them.
 
-### Historical
+## Structural guards
 
-```bash
-.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier historical
-```
+Current verification fails when:
 
-This prints reproduction guidance and executes nothing. Use the package's
-recorded source revision (or an explicit archival tag if one is later created),
-then use that checkout's own commands and matrix. There were no archival tags
-at the compatibility reset, so the recorded commit is the authority.
+- a retired CX318-CX323 identity appears in executable code, configuration, a
+  filename, schema, profile, or test;
+- CX317 is used as a software/campaign identity rather than the physical
+  oscillator component;
+- a second firmware image, profile selector, historical tier, or retired
+  backend appears;
+- a current host module is unreachable, imports a missing internal module, or
+  creates an orchestration cycle;
+- `EVT` and `REF` records do not match D10/channel 0 and D14/channel 1;
+- D10 or D6 evidence enters D14/D8 validity, regulation eligibility, actuation,
+  or terminal decisions; or
+- fixed-image identity, provenance, required binary markers, or resource
+  budgets differ.
 
-## Bench
+## Bench boundary
 
-Bench work is outside these commands and still requires an exact frozen bundle,
-the applicable operation-specific authority, and explicit operator authority.
-The range-spanning programme carries its frozen operator transition in
-`profiles/qualification/cx319_range_spanning_programme_v1.json`; it does not
-authorize phase/hybrid actuation or bypass Part A-to-Part B prerequisites.
-The GNSS baud-envelope profile is separately non-actuating and keeps physical
-authority false in its tracked contract. Any live use requires an exact-bundle
-activation record that binds separate operator authority without changing the
-tracked contract.
-
-## Change rule
-
-A new current profile requires an explicit retained purpose, verification-tier
-membership, exact policy/build provenance, and any required expected-failure
-guard. Do not add historical profiles back to the current matrix to reproduce
-an old package.
+These tiers touch no hardware and do not establish bench readiness. Current
+activation remains deliberately fail-closed until a genuine process-level
+operational-path rehearsal producer exists. Bench work then requires explicit
+operator authority, one immutable campaign bundle, a rehearsal of that exact
+bundle, exact firmware identity, singular serial ownership, and independent
+bounded abort delivery.

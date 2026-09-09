@@ -1,5 +1,8 @@
 # CX323 Active-Hybrid Maintenance Evidence Contract
 
+> Historical predecessor contract. Current adaptive-hybrid identities and
+> authority are defined in `CURRENT_CONTRACT_AND_POLICY_AUTHORITY.md`.
+
 ## Status and scope
 
 This document freezes `active_hybrid_maintenance_v1`, wire tag `AHM`, for

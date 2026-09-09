@@ -2,7 +2,7 @@
 
 namespace {
 
-constexpr char kPolicyId[] = "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1";
+constexpr char kPolicyId[] = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1";
 
 void requalify(OtisIntegerCountDeadbandTightDeadband *deadband) {
   deadband->state = OTIS_INTEGER_COUNT_DEADBAND_REQUALIFY_OUTSIDE;

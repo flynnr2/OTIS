@@ -2,205 +2,125 @@
 
 ## Purpose
 
-`health_v1.csv` records device status, health transitions, counters, warnings, restart breadcrumbs, and other operational telemetry.
+`health_v1.csv` records operational state, counters, warnings, capability
+outcomes, and command snapshots. It uses the `STS` record family and remains
+separate from canonical `REF`, `EVT`, `CNT`, and controller evidence.
 
-Health/status records are intentionally separated from event captures and oscillator observations.
-
-Use the `STS` record family for device and pipeline state.
+Status is not a synthetic capture channel. An `STS` row cannot replace a raw
+observation, establish a missing timestamp, or silently repair incomplete
+evidence.
 
 ## Schema
 
 | Field | Type | Meaning |
 |---|---|---|
-| `record_type` | enum | compact tag; always `STS` |
-| `schema_version` | uint | schema revision |
-| `status_seq` | uint64 | monotonic status record counter |
+| `record_type` | enum | always `STS` |
+| `schema_version` | uint | currently `1` |
+| `status_seq` | uint64 | monotonic status-record sequence |
 | `timestamp_ticks` | uint64 | timestamp in `status_domain` |
-| `status_domain` | string | timestamp domain |
+| `status_domain` | string | declared timestamp domain |
 | `component` | string | emitting subsystem |
-| `status_key` | string | compact status key |
-| `status_value` | string | status payload |
-| `severity` | enum | `INFO`, `WARN`, `ERROR`, `FATAL` |
-| `flags` | uint32 | numeric flags from `capture_flags_v1` |
+| `status_key` | string | component-local field name |
+| `status_value` | string | field value |
+| `severity` | enum | `INFO`, `WARN`, `ERROR`, or `FATAL` |
+| `flags` | uint32 | `capture_flags_v1` bitmask |
 
-## Example
+## Current fixed measurement path
 
-```csv
-record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags
-STS,1,7,100000000,rp2040_monotonic_us32,capture,ring_fill_pct,12,INFO,0
-STS,1,8,100006250,rp2040_monotonic_us32,pps,reference_valid,true,INFO,0
-STS,1,9,1600200000,rp2040_monotonic_us32,system,restart_reason,brownout,WARN,32
-```
+D14 is the sole reference authority. D8 is the sole oscillator-count input.
+The fixed count path uses one continuously running PIO counter on D8 and a DMA
+cumulative snapshot at each D14 boundary. There is no selectable count or
+reference-capture profile in current firmware.
 
-## Design Rule
+Component `pps_gate` reports the independent validity dimensions needed to
+interpret that path:
 
-Status is not a fake capture channel.
+- `reference_validity` and `reference_reason` describe the D14 side;
+- `count_validity` and `count_reason` describe the D8 count side;
+- `boundary_validity`, `aperture_validity`, and
+  `observation_pair_validity` retain the atomic-boundary, physical-aperture,
+  and adjacent-pair conclusions;
+- `fifo_continuity`, sequence, backlog, overflow, and dropped counters retain
+  transport continuity evidence;
+- `association_state`, loss reason, and recovery counters retain D14-to-D8
+  association state;
+- `state`, `valid`, `last_reason`, startup/requalification fields, and
+  `control_eligible` state the current fixed-path conclusion; and
+- implementation/provenance fields identify the PIO owner, DMA snapshot
+  mechanism, counter width/direction, resolution, and resource allocation.
 
-Do not encode operational telemetry as invented `EVT` rows. Keep health/state telemetry distinct from scientific timing observations.
+Reference and count validity remain independent. A D14 fault must not be
+reported as a bad oscillator count, and a D8 fault must not be reported as a
+bad reference. Lifetime anomaly counters remain evidence of prior events; they
+do not permanently poison a subsequently requalified path.
 
-## Count-Observation Status
+`ratio_available` is a validity indicator, not a numeric ratio. Host analysis
+derives ratio and frequency from canonical `CNT`, `REF`, status, and manifest
+inputs. Unknown uncertainty is emitted as `unavailable`, never zero.
 
-Count backends emit health/status rows for backend selection, anomaly reasons,
-bad-window counters, startup inhibit, and control eligibility. These rows are
-ordinary `STS` records; they do not extend the CSV schema.
+## Command snapshots
 
-Backend-neutral count readiness uses component `count_path`. Hardware-specific
-sample details may still name the physical backend in their values, but the
-component and control-readiness keys do not imply FC0 ownership:
+`CONFIG?` and `COUNT?` publish bounded snapshots. Begin/complete generation
+markers make partial, duplicated, or mixed-generation results ineligible.
+Core 1 owns timing state; Core 0 transports immutable snapshot messages and
+does not reconstruct timing state from live getters.
 
-| Component | Key | Meaning |
-|---|---|---|
-| `count_path` | `observation_valid` | latest count observation was bounded and internally coherent |
-| `count_path` | `control_eligible` | startup inhibit has expired and enough clean windows have followed it |
-| `count_path` | `fault_latched` | recovery inhibition is active after a post-startup invalid window; it clears only after the configured clean-window qualification succeeds |
-| `count_path` | `last_window_invalid_reason` | latest count-window anomaly reason |
-| `count_path` | `consecutive_bad_windows` | consecutive invalid count windows |
-| `count_path` | `total_bad_windows` | invalid count windows observed in this boot |
+`ACTIVE SNAPSHOT <nonce>` publishes component `adaptive_hybrid` under
+[`adaptive_hybrid_active_status_snapshot_v1.md`](adaptive_hybrid_active_status_snapshot_v1.md).
+Every canonical field must appear exactly once between equal non-zero
+generation markers. A command-bearing consumer may also require the solicited
+nonce. A newer incomplete generation prevents fallback to an older eligible
+one.
 
-PPS-gated ratio runs add component `pps_gate`:
+Component `adaptive_hybrid_setup` records the correlated setup lifecycle and
+its command, authorization, status-generation, query-nonce, session, code, and
+DAC-epoch identities. The current acceptance event is `request_accepted`.
+Rejecting or contradictory identity is terminal for that one setup attempt;
+there is no compatibility retry path.
 
-| Component | Key | Meaning |
-|---|---|---|
-| `pps_gate` | `backend` | selected PPS-gated backend name |
-| `pps_gate` | `state` | `idle`, `armed`, `open`, recoverable `suspect`, clean-window `requalifying`, or integrity `fault` |
-| `pps_gate` | `valid` | latest bounded PPS-gated window validity |
-| `pps_gate` | `last_reason` | latest PPS-gate validity or fault reason |
-| `pps_gate` | `reference_validity` | independent `valid`, `invalid`, or `unavailable` state for the authoritative PPS side |
-| `pps_gate` | `reference_reason` | typed reference conclusion, including duplicate/short/long/missing/flagged/recovery cases |
-| `pps_gate` | `count_validity` | independent `valid`, `invalid`, or `unavailable` oscillator-count state |
-| `pps_gate` | `count_reason` | typed count conclusion, including valid/zero/saturated/unavailable cases |
-| `pps_gate` | `boundary_owner` | timing owner, currently `pio_state_machine` |
-| `pps_gate` | `aperture_backend` | physical implementation, currently `pio_wait_cumulative_snapshot_dma_v1` |
-| `pps_gate` | `backend_qualified` | explicit bench-qualification gate for control eligibility |
-| `pps_gate` | `boundary_sequence` | modulo-2^32 atomic boundary sequence |
-| `pps_gate` | `boundary_validity` | independent count-boundary capture conclusion |
-| `pps_gate` | `boundary_reason` | typed boundary capture reason |
-| `pps_gate` | `aperture_validity` | independent physical counter-window conclusion |
-| `pps_gate` | `aperture_reason` | typed snapshot/wrap/completeness reason |
-| `pps_gate` | `observation_pair_validity` | whether two atomic boundaries form a defensible pair |
-| `pps_gate` | `observation_pair_reason` | typed pair/sequence reason |
-| `pps_gate` | `fifo_continuity` | `continuous`, `duplicate`, `gap`, `overflow`, or `unavailable` |
-| `pps_gate` | `association_state` | `awaiting_anchor`, `anchor`, `clean`, sequence-associated `associated_invalid`, or fail-closed `lost` state |
-| `pps_gate` | `association_loss_reason` | `ref_without_snapshot`, snapshot backend fault/timeout, or `none` |
-| `pps_gate` | `association_loss_count` | saturating count of closed REF/SNP associations |
-| `pps_gate` | `association_recovery_count` | saturating count of fresh adjacent clean pairs after association loss |
-| `pps_gate` | `association_loss_reference_sequence` | D14 source sequence that could not be associated; zero until the first loss |
-| `pps_gate` | `boundary_ring_depth` / `boundary_ring_capacity` | bounded ISR-to-foreground queue health |
-| `pps_gate` | `boundary_ring_dropped_count` | atomic observations lost because that queue was full |
-| `pps_gate` | `ratio_available` | latest bounded window is valid and has nonzero counted edges |
-| `pps_gate` | `last_interval_us` | latest bounded PPS gate interval in microseconds |
-| `pps_gate` | `missing_pps_count` | missing stop-PPS faults |
-| `pps_gate` | `pps_interval_anomaly_count` | lifetime saturating count of PPS intervals outside configured validity limits; evidence of prior anomalies, not current eligibility |
-| `pps_gate` | `count_saturated_count` | oscillator counter saturation events |
-| `pps_gate` | `accepted_window_count` | accepted PPS-gated count windows |
-| `pps_gate` | `rejected_window_count` | rejected PPS-gated count windows |
-| `pps_gate` | `consecutive_bad_window_count` | consecutive invalid PPS-gated windows |
-| `pps_gate` | `total_bad_window_count` | invalid PPS-gated windows observed in this boot |
-| `pps_gate` | `startup_inhibit_active` | startup inhibit state for control eligibility |
-| `pps_gate` | `control_eligible` | latest count/PPS gate has met control-readiness requirements |
-| `pps_gate` | `count_resolution_edges` | native integer count resolution, currently one edge |
-| `pps_gate` | `declared_max_captured_edge_rate_hz` | conservative PIO/system-clock ceiling used only to exclude an unobservable full counter wrap; not expected oscillator frequency |
-| `pps_gate` | `counter_aperture_uncertainty_ns` | evidence-backed aperture uncertainty or `unavailable` |
-| `pps_gate` | `reference_frequency_uncertainty_ppb` | evidence-backed reference uncertainty or `unavailable` |
+## GNSS qualification
 
-`ratio_available` is a validity indicator, not a firmware-emitted numeric ratio.
-Host analysis derives the actual ratio and frequency from `CNT`, `REF`, and run
-metadata.
+Component `gnss_receiver` reports the fixed boot promotion to 115200, exact
+receiver/output qualification, parser and UART continuity, metadata freshness,
+and requalification state. GNSS metadata qualifies the receiver that supplies
+D14; it cannot replace D14 timing authority. A recoverable metadata anomaly
+holds new corrections while D14/D8 capture and canonical evidence continue.
 
-Reference, count snapshot, boundary, physical aperture, pair, and FIFO
-continuity are independent eligibility inputs. A reference-only fault must not
-be rewritten as a bad oscillator count, or vice versa. Measurement validity
-requires every physical/provenance dimension; control eligibility additionally
-requires `backend_qualified=true` and the existing startup/recovery gates.
-Rejected-short, rejected-long, association-loss, and interval-anomaly counters
-remain lifetime scientific evidence. Current eligibility is instead derived
-from the latest gate state and clean-window requalification; a nonzero lifetime
-counter must not permanently poison a recovered reference path.
+## D9, D6, and D10
 
-Steady state emits aggregate health at a bounded ten-second default cadence.
-Detailed rows are emitted on a transition, anomaly, timeout, or explicit
-query. `command/config_snapshot=begin` and `end` delimit each bounded
-`CONFIG?` response.
+Component `forwarded_clock_output` reports the fixed D8/GPIN0 to D9/GPOUT0
+configuration and readback. This is digital configuration evidence, not an
+analog waveform, loading, jitter, or independent-frequency claim.
 
-Command-bearing `cx317_active` fields are a special coherent burst governed by
-[`cx317_active_status_snapshot_v1.md`](cx317_active_status_snapshot_v1.md).
-They must not be read as independent latest values.
+Component `forwarded_clock_monitor` and its queue-health fields describe the
+fail-local D6 diagnostic path. D6 status has no reference, regulation,
+actuation, abort, or terminal authority.
 
-## Diagnostic and setup transaction snapshots
+Component `external_event` reports D10/channel 0 as `not_implemented` in the
+fixed firmware. D10 remains an optional external-event contract only. Its
+absence, noise, invalidity, or overflow cannot enter D14/D8 validity, setup,
+regulation, actuation, or a run terminal.
 
-Dual-core `CONFIG?` and `FC0?` produce component
-`timing_diagnostic_snapshot`. The envelope carries
-`snapshot_generation_begin`, contract
-`core1_timing_diagnostic_snapshot_v1`, `query_sequence`, `query_nonce`,
-`query_kind`, the Core 1-owned timing fields, and the matching
-`snapshot_generation_complete`. Core 0 transports this immutable burst and
-does not call timing getters or poll/pop functions.
+## Boot and resource evidence
 
-Component `cx317_setup` records correlated setup phases and the
-`command_sequence`, `authorization_sequence`, `status_generation`, and
-`query_nonce`. The successful order is `firmware_received`,
-`core1_authorized`, `core0_accepted`, `core1_execution_released`, and
-`applied`; any rejecting or failed phase is terminal and permits no retry.
+Component `boot_capabilities` reports the outcome of each fixed capability as
+`Ready`, `OptionalDegraded`, `RequiredUnavailable`, or `FatalConflict`, plus
+the overall run-mode conclusion. A valid but incomplete resource registry is
+`RequiredUnavailable`; an ownership conflict is `FatalConflict`. No selected
+profile or profile matrix exists on current HEAD.
 
-## Hardware Resource Ownership Status
-
-Firmware resource ownership is reported with component `resource_registry`.
-`valid`, `complete`, `conflict_count`, and `binding_failure_count` expose the
-registry outcome. Per-class claim counts include GPIO, IRQ, PIO state machine,
-PIO instruction memory, DMA, timer, and clock resources. `claim_00`,
-`claim_01`, and subsequent deterministic keys preserve the physical identity,
-owner, role, and bound/pending state of each selected claim.
-
-These are additive status rows. They do not replace backend-specific
-initialization status or any raw timing observation. The normative ownership
-map is
+Component `resource_registry` reports complete, deterministic ownership of
+GPIO, IRQ, PIO state machine and instruction memory, DMA, timer, and clock
+resources. See
 [`../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md`](../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md).
 
-## Boot Capability Status
+## Emission and interpretation
 
-Firmware reports the selected boot profile and its capability gate with
-component `boot_capabilities`. Each selected capability has a requirement and a
-typed outcome in `requirement:outcome` form:
+Steady state emits aggregate health at a bounded cadence. Transitions,
+anomalies, explicit queries, and command transactions emit their required
+detail immediately. Missing, stale, partial, duplicated, contradictory, or
+out-of-order status is not clean evidence.
 
-- `Ready`: initialization completed successfully;
-- `OptionalDegraded`: an explicitly optional selected capability failed;
-- `RequiredUnavailable`: a required selected capability did not initialize;
-- `FatalConflict`: resource selection or ownership is invalid.
-
-`selected_profile`, `selected_count`, `overall`, `degraded`, and `run_mode`
-summarize the set. `run_mode=Ready` is emitted only after every selected
-capability has a known result and every required measurement and transport
-capability is `Ready`. Optional failure is therefore visible as
-`overall=OptionalDegraded` and `degraded=true`; it is never represented as an
-unqualified successful boot.
-
-Registry `valid` and `complete` remain separate status keys. An invalid
-registry is a `FatalConflict`; a valid but incomplete registry is
-`RequiredUnavailable`, because an expected dynamic resource did not bind.
-
-## Forwarded-output and D6 monitor status
-
-The compile-time D9 output emits component `forwarded_clock_output` with its
-exact contract ID and semantic SHA-256, selected/configured/readback state,
-source/destination GPIOs and functions, requested and applied AUXSRC/divider,
-inversion, drive strength, slew rate, nominal frequency, first-valid
-`rp2040_monotonic_us32` tick, and explicit validity reason. Before physical waveform
-qualification, a successful readback is
-`configured_10mhz_forwarded_unqualified`; it is not a waveform claim.
-
-The optional component `forwarded_clock_monitor` reports configured/running
-state, local session, snapshot/no-snapshot/backlog/RX-stall counters, fault
-flags, and actual PIO state-machine/program allocation. These keys and the
-separate monitor queue depth/high-water/drop counters are diagnostic-only.
-Their values must not enter D14/D8 validity, control eligibility, actuation,
-abort, or a run terminal. Raw D6 snapshots use the independent
-[`forwarded_monitor_snapshots_v1`](forwarded_monitor_snapshots_v1.csv.md)
-contract.
-
-## Diagnostics relationship
-
-`health_v1` is low-level status evidence. First-class diagnostic findings are
-additive and use the sole current diagnostic contract,
-[`diagnostics_v1.csv.md`](diagnostics_v1.csv.md). Host replay may derive `DIAG`
-rows from `STS`, `REF`, `CNT`, `DAC`, manifests, and reports, but must not
-remove or rewrite the original `STS` rows.
+Offline tools may derive findings from status and canonical records, but those
+findings cannot erase or rewrite the original rows and have no independent
+timing or control authority.

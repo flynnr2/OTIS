@@ -1,5 +1,8 @@
 # CX319 Range-Spanning Contract and Authority Addendum
 
+> Historical programme contract. It grants no present authority and must be
+> reproduced only from its recorded Git revision.
+
 ## Status
 
 Current addendum for the separately identified CX319 range-spanning

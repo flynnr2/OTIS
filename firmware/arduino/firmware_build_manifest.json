@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "builder_id": "otis_fixed_firmware_builder_v1",
+  "image": {
+    "id": "adaptive_hybrid_regulation",
+    "firmware_version": "OTIS_ADAPTIVE_HYBRID_REGULATION_V1",
+    "purpose": "Fixed adaptive hybrid oscillator regulation with D14 reference authority, D8 count authority, GNSS qualification, D9 clock forwarding, fail-local D6 monitoring, and a reserved D10 external-event seam whose capture backend is not implemented."
+  },
+  "capabilities": {
+    "external_event_capture": {
+      "pin": "D10",
+      "channel": "CH0",
+      "status": "not_implemented",
+      "isolation_claimed": false,
+      "control_authority": false,
+      "terminal_authority": false
+    }
+  },
+  "profile_bindings": {
+    "adaptive_policy": "profiles/discipline/adaptive_hybrid_regulation_v1.json",
+    "frequency_estimator": "profiles/estimators/pps_gated_frequency_estimator_v1.json",
+    "phase_estimator": "profiles/estimators/relative_phase_estimator_v1.json",
+    "plant_model": "profiles/plant_models/pps_gated_oscillator_plant_v1.json",
+    "response_policy": "profiles/discipline/response_classification_v1.json"
+  },
+  "schema_bindings": {
+    "adaptive_policy": "schemas/adaptive_hybrid_regulation_v1.schema.json",
+    "response_policy": "schemas/response_classification_v1.schema.json",
+    "frequency_estimator": "schemas/pps_gated_frequency_estimator_v1.schema.json",
+    "phase_estimator": "schemas/relative_phase_estimator_v1.schema.json",
+    "plant_model": "schemas/plant_model_v1.schema.json",
+    "setup_authority": "schemas/adaptive_hybrid_setup_authority_v1.schema.json",
+    "run_evidence": "schemas/run_evidence_v1.schema.json"
+  },
+  "forwarded_clock_contract": {
+    "schema_version": 1,
+    "contract_id": "OTIS_D9_FORWARDED_CLOCK_CONTRACT_V1",
+    "state": "configured_10mhz_forwarded_unqualified",
+    "source": "D8_GPIO20_GPIN0",
+    "destination": "D9_GPIO21_GPOUT0",
+    "source_gpio": 20,
+    "destination_gpio": 21,
+    "applied_auxsrc": 1,
+    "integer_divider": 1,
+    "fractional_divider": 0,
+    "inversion": false,
+    "drive_strength_ma": 2,
+    "slew_rate": "slow",
+    "nominal_frequency_hz": 10000000,
+    "control_authority": false
+  },
+  "arduino_cli_version": "1.4.1",
+  "target": {
+    "fqbn": "rp2040:rp2040:arduino_nano_connect:freq=133",
+    "core_provider": "rp2040",
+    "core_architecture": "rp2040",
+    "core_version": "6.0.0",
+    "core_archive_sha256": "d2163a321748be872a29cb99ead739840990d3ddf0935de756eb52f9fc2b5d46",
+    "core_installed_sha256": "ad07711b86d0e75a602b9d656a8d1a37733913f8f0995b4bb2008db414d42c33"
+  },
+  "toolchain": {
+    "packager": "rp2040",
+    "name": "pqt-gcc",
+    "version": "5.0.0-9576866",
+    "compiler": "arm-none-eabi-g++",
+    "compiler_version": "16.1.0",
+    "installed_sha256": "2f5dd0d916934d55f12f5ca70848b62dcad447a819baab1563e0799c4aee3910"
+  },
+  "resource_budget": {
+    "dynamic_memory_total_bytes": 262144,
+    "static_dynamic_memory_max_bytes": 157286,
+    "runtime_memory_reserve_min_bytes": 104858
+  }
+}

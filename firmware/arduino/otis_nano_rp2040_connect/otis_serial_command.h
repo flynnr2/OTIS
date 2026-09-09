@@ -32,17 +32,9 @@ enum class OtisSerialCommandKind : uint8_t {
   Help,
   ConfigQuery,
   DualCoreQuery,
-  DualCoreInvalidateGnss,
-  DualCoreRecover,
-  DualCoreOther,
   DacQuery,
   DacLimitsQuery,
-  DacMid,
-  DacZero,
-  DacSet,
-  Fc0Query,
-  Q2Case,
-  Q2Other,
+  CountQuery,
   ActiveQuery,
   ActiveSnapshot,
   ActiveSetup,
@@ -50,32 +42,12 @@ enum class OtisSerialCommandKind : uint8_t {
   ActiveArm,
   ActiveAbort,
   ActiveEvidence,
-  ActiveOther,
-  GnssBaud,
-  GnssStatus,
-  GnssOther,
-  SweepQuery,
-  SweepLoad,
-  SweepStart,
-  SweepStop,
-  SweepStep,
-  SweepClear,
-  SweepAdd,
-  SweepOther,
-  PpsGenProfilesQuery,
-  PpsGenArm,
-  PpsGenStart,
-  PpsGenStop,
-  PpsGenQuery,
-  PpsGenOther,
   Unknown,
 };
 
 struct OtisParsedSerialCommand {
   OtisSerialCommandKind kind;
   bool arguments_valid;
-  uint16_t code;
-  uint32_t dwell_ms;
   char *text_argument;
 };
 

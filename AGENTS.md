@@ -279,8 +279,8 @@ Choose verification from the changed risk surface:
   current firmware profile. Run during narrow development.
 - **Campaign:** affected integration/replay tests, analyzer checks, current
   live profile, and rehearsal simulation. Run before bundle rehearsal.
-- **Release:** full current tests, exhaustive current proofs, supported CX319
-  profiles, and the current expected-failure guard matrix. Run before the first live campaign, after final
+- **Release:** full current tests, exhaustive current proofs, and the fixed
+  current firmware image and resource audit. Run before the first live campaign, after final
   integration, and whenever a shared transport, protocol, verifier, build
   system, or safety boundary changes materially.
 - **Historical:** never part of a current release claim. Check out the exact
@@ -289,7 +289,7 @@ Choose verification from the changed risk surface:
   profiles, or campaign CLIs.
 - **Bench:** exact-bundle rehearsal followed by the authorized finite live run.
 
-Do not automatically run the full repository suite or complete firmware matrix
+Do not automatically run the full repository suite or fixed firmware build
 after every narrow repair. Reuse build results only when source, configuration,
 toolchain, and all other relevant inputs have identical identities.
 

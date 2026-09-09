@@ -2,10 +2,10 @@
 
 ## Status and scope
 
-Normative CX318 Stage 4 phase-estimator output contract. `PHE` v1 is a
-derived, non-actionable estimate sourced from one immutable `RPH` observation.
-It keeps raw and filtered phase fields distinct even where the selected raw
-estimator deliberately makes their values equal.
+Normative current phase-estimator output contract. `PHE` v1 is a derived,
+non-actionable estimate sourced from one immutable `RPH` observation and
+consumed by the adaptive-hybrid regulator. It keeps raw and filtered phase
+fields distinct even where their values are equal.
 
 ## Fields
 

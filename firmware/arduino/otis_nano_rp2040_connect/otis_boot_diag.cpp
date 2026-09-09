@@ -28,7 +28,6 @@ constexpr uint32_t kSafeModeRequestedBit = 1u << 26;
 
 OtisBootBreadcrumbSnapshot boot_snapshot = {};
 
-#if OTIS_ENABLE_RP2040_BOOT_DIAG
 struct OtisRp2040BootDiagSnapshot {
   bool captured;
   uint32_t wd_reason;
@@ -58,7 +57,6 @@ struct OtisRp2040BootDiagSnapshot {
 };
 
 OtisRp2040BootDiagSnapshot rp2040_boot_diag_snapshot = {};
-#endif
 
 uint32_t pack_boot_status(BootFatal fatal, uint32_t reset_reason,
                           bool watchdog_reboot,
@@ -398,8 +396,6 @@ void emitOtisBootFatal(Stream &out, BootFatal fatal, BootPhase phase) {
   out.println(boot_snapshot.current_failure_count);
 }
 
-#if OTIS_ENABLE_RP2040_BOOT_DIAG
-
 static void otisBootDiagPrintHex32(Stream &out, uint32_t value) {
   print_hex32(out, value);
 }
@@ -506,5 +502,3 @@ void emitRp2040BootDiag(Stream &out) {
 #endif
   out.println();
 }
-
-#endif

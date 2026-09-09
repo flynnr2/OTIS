@@ -2,17 +2,17 @@
 
 #include "otis_active_hybrid_decision_format.h"
 #include "otis_active_hybrid_policy_engine.h"
-#include "otis_cx317_active_live.h"
+#include "otis_adaptive_hybrid_regulation_live.h"
 
 int main() {
-  const OtisCx317ActiveLiveDecision source = {
-      1u, 1799u, 2399u, 2401u, 43068u, 0, 43068u, 0.00166666694,
+  const OtisAdaptiveHybridRegulationLiveDecision source = {
+      1u, 1799u, 2399u, 5000u, 43068u, 0, 43068u, 0.00166666694,
       true, true, true, true, 1u, 1, "OUTSIDE", 1u, 1u, 2394u, 4,
       1u, 43068u, true, true, false, true,
   };
   const OtisActiveHybridDecision decision = {
       1u,
-      2401u,
+      5000u,
       OtisActiveHybridState::FrequencyAcquire,
       OtisActiveHybridState::FrequencyAcquire,
       "minimum_applied_cadence_hold",
@@ -34,9 +34,10 @@ int main() {
   };
   const OtisActiveHybridDecisionRecordContext context = {
       1u,
-      "cx320_active_hybrid:3200001",
+      5000000000ull,
+      "adaptive_hybrid_regulation:1",
       "source_sha256:config_sha256",
-      "cx320_active_hybrid",
+      "adaptive_hybrid_regulation",
       "frequency_estimator_sha256",
       "phase_estimator_sha256",
       "ARMED",
@@ -50,7 +51,7 @@ int main() {
       false,
   };
   char output[1536] = "";
-  const int used = otis_format_active_hybrid_decision_v1(
+  const int used = otis_format_active_hybrid_decision_v2(
       output, sizeof(output), &source, &decision, &context);
   if (used <= 0 || static_cast<size_t>(used) >= sizeof(output)) return 1;
   fputs(output, stdout);

@@ -70,8 +70,8 @@ TIME_DOMAINS: Mapping[str, TimeDomain] = {
     # D8 counted-edge totals are not RP2040 timer coordinates.  Current CSV
     # timestamp fields do not use this domain, but declaring its strict
     # non-wrapping semantics prevents an accidental timer-style inference.
-    "h1_cx317_ocxo_10mhz": TimeDomain(
-        name="h1_cx317_ocxo_10mhz",
+    "h1_adaptive_hybrid_ocxo_10mhz": TimeDomain(
+        name="h1_adaptive_hybrid_ocxo_10mhz",
         nominal_hz=10_000_000,
         counter_width_bits=None,
         modulus_ticks=None,

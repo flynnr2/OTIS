@@ -10,37 +10,29 @@ were observed.
 Run sealing remains host-side and does not change capture ordering, analysis,
 or control. Firmware now emits build-generated identity rows, and sealing binds
 their exact source/configuration hashes, Git state, FQBN/board, core, compiler,
-toolchain, profile, and invocation identity into the canonical snapshot. Raw
-evidence remains untouched. If a run selects a repository profile, sealing
-copies its exact bytes to `selected_profile.yaml` before hashing so later
-repository profile edits cannot silently change replay context.
+toolchain, image, and invocation identity into the canonical snapshot. Raw
+evidence remains untouched. The frozen bundle copies and hashes the exact
+current policy, estimator, model, and run-manifest bytes so later repository
+edits cannot silently change replay context.
 
-Qualification firmware is produced only by `tools/firmware_matrix.py`. The
-builder verifies pinned Arduino CLI/core/toolchain identities and hashes the
-functional contents of the installed core and toolchain. It rejects profile
-attempts to override generated identity or selectors, hashes all
-sketch/build-definition inputs, and compiles
-a disposable sketch copy containing a one-use generated profile header. The
-builder rechecks Git/source/configuration state after compilation and artifact
-hashing, rehashes installed core/toolchain bytes around every profile, and then
-removes transient source/header bytes. One matrix-wide source identity is
-pinned across all profiles. A fresh builder session ID must match between the
-one-use header and the compiler flag, so an accidentally retained complete
-header cannot authorize an ordinary raw compile. The firmware has no fallback
-commit, board, or configuration literal.
+Qualification firmware is produced only by `tools/build_firmware.py` from the
+canonical `firmware/arduino/firmware_build_manifest.json`. The builder verifies
+pinned Arduino CLI/core/toolchain identities, hashes the functional installed
+core and toolchain, hashes all sketch/build-definition inputs, and compiles a
+disposable sketch copy with a one-use generated provenance header. It rechecks
+Git/source/configuration and installed-tool identities after compilation and
+artifact hashing, then removes transient source/header bytes. A fresh builder
+session identity binds the generated header to the compiler invocation. The
+firmware has no fallback commit, board, configuration, alternate manifest, or
+profile selector.
 
 Installed-tree hashes deliberately exclude package-manager metadata
 (`installed.json`), Finder metadata, and generated Python bytecode caches.
 Those files are not release inputs and vary with installation/runtime context;
 all functional source, library, executable, and symlink bytes remain covered.
 
-For interactive bench bring-up, the same tool can materialize one supported
-profile beside the source sketch with `--prepare-ide --profile <profile_id>`.
-That ignored header allows normal Arduino IDE compilation and records the
-validated source/profile/environment identity at generation time. It is not a
-qualification artifact: the IDE path does not emit
-`firmware_build_manifest.json`, bind a one-use compiler session flag, or run
-the builder's post-compile source/toolchain and artifact-hash checks.
+There is no Arduino IDE provenance escape path on current HEAD. Bench and
+qualification binaries use the same fixed builder and canonical manifest.
 
 Multi-session captures require the same preservation rule. A reset or reconnect
 may define a later authoritative session, but the original raw capture remains
@@ -82,15 +74,14 @@ small test fixture. It does not mean committing the source run directory.
 - Newly added raw or declared evidence is reported as uncovered rather than
   silently ignored.
 
-## Backwards compatibility
+## Current compatibility boundary
 
-Manifest schema version 1 and all CSV contracts are unchanged. Existing runs
-without snapshots continue to validate, with a warning that their evidence is
-not cryptographically bound. Once a snapshot is present, a mismatch is a hard
-validation failure. This is deliberate: silently accepting changed evidence
-would defeat the snapshot contract. Historical firmware identity rows remain
-legacy unless the new generated-provenance sentinel is present. New Phase 5
-candidate templates explicitly require the complete sentinel banner.
+Current non-template packages require the current manifest, current CSV
+contracts, the complete fixed-build provenance banner, and an immutable
+snapshot. Missing or mismatched identity is a hard validation failure. Current
+HEAD does not accept an older layout, infer an absent snapshot, or translate a
+retired firmware identity. Historical packages remain evidence, but their
+recorded Git revision supplies their reader and validation rules.
 
 ## Risk assessment
 
@@ -98,9 +89,8 @@ candidate templates explicitly require the complete sentinel banner.
 |---|---|
 | SHA-256 proves integrity, not authorship | The snapshot is tamper-evident only relative to a trusted copy of its digest. Signing and external transparency logs remain out of scope. |
 | A partial run may need preservation | Default sealing requires `COMPLETE`; `--allow-incomplete` is explicit and still refuses active capture. |
-| Repository profile changes break replay | The selected profile bytes are copied into the run before sealing. |
+| Repository policy or model changes break replay | The frozen bundle and run manifest bind the exact policy, estimator, and model bytes. |
 | Derived reports legitimately change | They are excluded unless explicitly declared by the run manifest. Primary evidence remains bound. |
-| Legacy layouts use root-level raw logs | `serial_raw.log` and `raw_serial.log` are covered alongside the canonical `raw/` tree. |
 | Additional evidence may appear after sealing | Validation fails for uncovered evidence-bearing files, requiring a new immutable snapshot/run rather than mutation. |
 | A malicious caller can replay a generated session binding | The binding prevents accidental stale-header/raw builds, but it is deliberately unsigned and not secret. A caller that reconstructs the matching invocation remains outside the trust boundary; signing and isolated builders remain future work. |
 
@@ -110,8 +100,8 @@ Before using a run for plant-model promotion:
 
 1. stop capture and create `COMPLETE`;
 2. populate known manifest provenance rather than inventing missing values;
-3. run `python3 -m host.otis_tools.evidence RUN_DIR`;
-4. run the normal validator and analysis;
+3. run `.venv/bin/python -m host.otis_tools.evidence RUN_DIR`;
+4. run `.venv/bin/python -m host.otis_tools.adaptive_hybrid_analyze RUN_DIR`;
 5. retain and back up the local run directory and snapshot digest together;
 6. promote only reviewed, compact outputs to tracked paths outside `runs/`.
 

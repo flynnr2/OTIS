@@ -18,16 +18,7 @@ void process_complete_frame(OtisSerialFrameCollector *collector) {
     case OtisSerialCommandKind::Help:
       std::cout << "EXEC_HELP\n";
       break;
-    case OtisSerialCommandKind::DacSet:
-      std::cout << (command.arguments_valid ? "EXEC_DAC_SET"
-                                            : "DIAG_REJECTED_DAC_ARGUMENT")
-                << '\n';
-      break;
-    case OtisSerialCommandKind::SweepStart:
-      std::cout << "EXEC_SWEEP_START\n";
-      break;
     case OtisSerialCommandKind::Unknown:
-    case OtisSerialCommandKind::SweepOther:
       std::cout << "DIAG_REJECTED_UNKNOWN\n";
       break;
     case OtisSerialCommandKind::Empty:

@@ -53,22 +53,22 @@
       "id": "evidence",
       "implementation": "OtisEvidenceBurstQueue evidence_to_service",
       "capacity_symbol": "OTIS_EVIDENCE_QUEUE_DEPTH",
-      "capacity": 10,
+      "capacity": 8,
       "producer": "core1_timing",
       "consumer": "core0_service",
       "loss_policy": "non_droppable_latch_fail_static",
-      "maximum_consumer_absence": "min(2000ms_transport_horizon,queue_fill_time); exact CX323 selected request frontier 9 and response frontier 10 require no concurrent core0 drainage",
+      "maximum_consumer_absence": "min(2000ms_transport_horizon,queue_fill_time); exact adaptive-hybrid selected request frontier 7 and response frontier 8 require no concurrent core0 drainage",
       "recovery": "reset_new_evidence_session"
     },
     {
       "id": "telemetry",
       "implementation": "OtisSpscQueue<OtisTelemetryMessage, OTIS_TELEMETRY_QUEUE_DEPTH>",
       "capacity_symbol": "OTIS_TELEMETRY_QUEUE_DEPTH",
-      "capacity": 212,
+      "capacity": 176,
       "producer": "core1_timing",
       "consumer": "core0_service",
       "loss_policy": "drop_new_increment_counter_no_control_authority",
-      "maximum_consumer_absence": "declared_bursts_only; max_boot_169,max_concurrent_212; core0_drains_12_per_loop",
+      "maximum_consumer_absence": "declared_bursts_only; max_boot_169,max_concurrent_176; core0_drains_12_per_loop",
       "recovery": "continue_if_absolute_gates_clean; reset_if_transport_fault"
     },
     {
@@ -87,22 +87,22 @@
       "implementation": "volatile OtisCapturedEdge capture_ring[kCaptureRingSize]",
       "capacity_symbol": "OTIS_CAPTURE_RING_SIZE-1",
       "capacity": 31,
-      "producer": "capture_irq_or_pio_service",
+      "producer": "d14_reference_gpio_irq",
       "consumer": "timing_foreground_owner",
       "loss_policy": "drop_new_increment_capture_dropped_and_invalidate_evidence",
       "maximum_consumer_absence": "less_than_31_arrivals; drain_budget_31_per_loop",
-      "recovery": "reset_new_evidence_session"
+      "recovery": "reset_d14_irq_ring; new_evidence_session_required"
     },
     {
       "id": "pps_count_boundary_ring",
       "implementation": "volatile OtisPpsCountBoundaryObservation boundary_ring[kBoundaryRingSize]",
       "capacity_symbol": "OTIS_PPS_COUNT_BOUNDARY_RING_SIZE-1",
       "capacity": 127,
-      "producer": "reference_capture_isr",
+      "producer": "d14_reference_gpio_irq",
       "consumer": "core1_timing_foreground",
       "loss_policy": "drop_new_increment_boundary_dropped_and_invalidate_evidence",
       "maximum_consumer_absence": "less_than_127_reference_arrivals; core1_drains_each_loop",
-      "recovery": "rearm_backend_and_reset_ring; new_qualified_session_required"
+      "recovery": "rearm_d14_gated_d8_snapshot_and_reset_boundary_ring; new_qualified_session_required"
     }
   ]
 }

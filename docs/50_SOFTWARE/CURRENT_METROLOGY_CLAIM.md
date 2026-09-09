@@ -3,10 +3,10 @@
 ## Status and scope
 
 This document is the current claim boundary for the stabilized OTIS platform.
-It applies to the Arduino Nano RP2040 Connect, the
-`pio_wait_cumulative_snapshot_dma_v1` PPS-gated count backend, and the CX317
-10 MHz observation topology. It is an experimental measurement claim, not a
-calibration certificate or a control-authority statement.
+It applies to the Arduino Nano RP2040 Connect, the fixed
+`pio_wait_cumulative_snapshot_dma_v1` D14/D8 capture mechanism, and the physical
+CX317 oscillator topology. It is an experimental measurement claim, not a
+calibration certificate or a claim that control action proves correctness.
 
 OTIS currently supports:
 
@@ -18,7 +18,7 @@ OTIS currently supports:
 
 OTIS does not currently claim traceable absolute frequency, calibrated phase,
 UTC alignment, reference or cable-delay calibration, combined or expanded
-uncertainty, phase lock, holdover, or permission to actuate.
+uncertainty, phase lock, or holdover.
 
 ## Frequency meaning and digital bound
 
@@ -104,8 +104,8 @@ spread must not be relabelled as calibrated uncertainty.
 
 ## Platform completion bench gate
 
-The stabilization rehearsal may support this bounded claim only by confirming
-that the exact non-actuating build preserves the declared backend identity,
+The operational-path rehearsal may support this bounded claim only by
+confirming that the exact fixed image preserves the declared mechanism identity,
 resource ownership, coherent status, continuous serial capture, queue and
 memory margins, transport-obstruction recovery, independent priority abort,
 same-owner evidence rotation, analysis, and sealing without a

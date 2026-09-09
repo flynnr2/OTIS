@@ -1,5 +1,9 @@
 # PPS Hardware-Snapshot Replacement Architecture
 
+> Historical implementation decision. The replacement described here is now
+> the only D14/D8 count mechanism in current firmware. Stages and compatibility
+> work below describe the completed migration and are not current build modes.
+
 Status: implemented; digital proof passed; observe-only bench qualification accepted 2026-08-01 with documented limitations
 Decision date: 2026-07-31
 Scope: decision record for the replacement architecture; implementation and bench disposition are recorded by later linked evidence
@@ -381,7 +385,8 @@ Each stage should be a reviewable commit and leave all no-hardware checks green.
 4. **Contracts, resources, and host**
    - update resource claims, raw/status schemas, host parsing, and qualifier
      identity checks together;
-   - retain explicit compatibility handling for historical old-backend data.
+   - bind current host parsing to the new mechanism; interpret older evidence
+     with its recorded Git revision rather than a current compatibility reader.
 5. **Pseudo-PPS and bench enablement**
    - choose one candidate pin only after schematic/front-end review;
    - implement a guarded test-only generator and contention-safe startup;

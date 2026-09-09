@@ -15,6 +15,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any, Iterable
 
@@ -35,6 +36,48 @@ ATTEMPT_CLASSIFICATIONS = {
     "diagnostic",
     "historical",
 }
+SUCCESS_CLASSIFICATIONS = frozenset(
+    {
+        "successful_rehearsal",
+        "successful_qualification",
+        "completed_campaign",
+    }
+)
+CURRENT_SEAL_TYPE = "adaptive_hybrid_physical_seal_v1"
+CURRENT_ANALYZER_ID = "adaptive_hybrid_analyze_v1"
+CURRENT_SEAL_PATH = Path("reports/adaptive_hybrid_physical_seal_v1.json")
+LOWER_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
+CURRENT_SEAL_FIELDS = frozenset(
+    {
+        "schema_version",
+        "seal_type",
+        "tool",
+        "tool_sha256",
+        "created_utc",
+        "run_id",
+        "run_identity",
+        "build_identity",
+        "image_identity",
+        "programme_id",
+        "policy_id",
+        "status",
+        "primary_decision",
+        "terminal_result",
+        "terminal_reason",
+        "checks",
+        "csv_validation",
+        "exact_lifecycle_records",
+        "maintenance_replay",
+        "measurement_replay",
+        "response_replay",
+        "transaction_capsule_sha256",
+        "evidence_snapshot",
+        "source_sha256",
+        "D10_semantics",
+        "limitations",
+        "seal_sha256",
+    }
+)
 
 
 def _utc_now() -> str:
@@ -47,6 +90,193 @@ def _sha256_file(path: Path) -> str:
         while chunk := handle.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _canonical_sha256(value: object) -> str:
+    return sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _read_object(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{label} is unreadable: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must contain a JSON object")
+    return value
+
+
+def _validated_success_package(
+    location: Path,
+    *,
+    source_revision: str,
+    build_identity: str,
+    image_identity: str,
+    attempt_classification: str,
+    result_or_failure_reason: str,
+    analyzer_identity: str,
+) -> dict[str, str]:
+    """Validate the complete current package behind a successful classification."""
+
+    if not location.is_dir():
+        raise ValueError(
+            "successful evidence registration requires a completed package directory"
+        )
+    required = {
+        "completion marker": location / "COMPLETE",
+        "run manifest": location / "run_manifest.json",
+        "evidence snapshot": location / "evidence_manifest.json",
+        "analyzer seal": location / CURRENT_SEAL_PATH,
+    }
+    missing = [label for label, path in required.items() if not path.is_file()]
+    if missing:
+        raise ValueError(
+            "successful evidence registration requires " + ", ".join(missing)
+        )
+
+    # Imports remain local so raw, interrupted, failed, diagnostic, and historical
+    # inventory registration does not acquire the current live-programme graph.
+    from .adaptive_hybrid_activation import validate_frozen_run_manifest
+    from .adaptive_hybrid_contract import programme_from_mapping
+    from .evidence import validate_evidence_snapshot
+    from .run_loader import load_manifest
+
+    try:
+        manifest_value = validate_frozen_run_manifest(required["run manifest"])
+        manifest = load_manifest(location)
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"successful evidence registration requires an exact current run manifest: {exc}"
+        ) from exc
+    programme = programme_from_mapping(manifest_value)
+    if programme.physical_seal_path != CURRENT_SEAL_PATH:
+        raise ValueError("successful evidence registration seal path differs")
+
+    completion = _read_object(required["completion marker"], "completion marker")
+    if (
+        completion.get("completion")
+        != "adaptive_hybrid_finite_physical_campaign"
+        or not isinstance(completion.get("terminal"), dict)
+    ):
+        raise ValueError("successful evidence registration completion marker differs")
+
+    snapshot = _read_object(required["evidence snapshot"], "evidence snapshot")
+    failures, warnings = validate_evidence_snapshot(location, manifest)
+    if failures or warnings or snapshot.get("run_state") != "complete":
+        detail = "; ".join([*failures, *warnings]) or "run_state is not complete"
+        raise ValueError(
+            "successful evidence registration requires an exact complete evidence "
+            f"snapshot: {detail}"
+        )
+
+    seal = _read_object(required["analyzer seal"], "analyzer seal")
+    if set(seal) != CURRENT_SEAL_FIELDS:
+        raise ValueError("successful evidence registration analyzer seal fields differ")
+    claimed_seal_sha256 = seal.get("seal_sha256")
+    unsigned_seal = {
+        key: value for key, value in seal.items() if key != "seal_sha256"
+    }
+    checks = seal.get("checks")
+    snapshot_result = seal.get("evidence_snapshot")
+    if (
+        seal.get("schema_version") != 1
+        or seal.get("seal_type") != CURRENT_SEAL_TYPE
+        or seal.get("tool") != CURRENT_ANALYZER_ID
+        or not isinstance(claimed_seal_sha256, str)
+        or not LOWER_HEX_64.fullmatch(claimed_seal_sha256)
+        or claimed_seal_sha256 != _canonical_sha256(unsigned_seal)
+        or seal.get("status") != "passed"
+        or not isinstance(checks, dict)
+        or not checks
+        or not all(value is True for value in checks.values())
+        or not isinstance(snapshot_result, dict)
+        or snapshot_result.get("path") != "evidence_manifest.json"
+        or snapshot_result.get("failures") != []
+        or snapshot_result.get("warnings") != []
+    ):
+        raise ValueError(
+            "successful evidence registration requires an exact passing analyzer seal"
+        )
+
+    terminal = completion["terminal"]
+    firmware = manifest_value.get("firmware", {})
+    policy = manifest_value.get("policy", {})
+    host = manifest_value.get("host", {})
+    tool_bindings = host.get("tool_bindings", {}) if isinstance(host, dict) else {}
+    analyzer_binding = (
+        tool_bindings.get("adaptive_hybrid_analyze", {})
+        if isinstance(tool_bindings, dict)
+        else {}
+    )
+    expected = {
+        "run_id": manifest.run_id,
+        "run_identity": manifest_value.get("run_identity"),
+        "build_identity": build_identity,
+        "image_identity": image_identity,
+        "programme_id": manifest_value.get("programme_id"),
+        "policy_id": policy.get("policy_id") if isinstance(policy, dict) else None,
+        "tool_sha256": analyzer_identity,
+        "terminal_result": terminal.get("result"),
+        "terminal_reason": terminal.get("reason"),
+    }
+    mismatched = sorted(
+        field for field, expected_value in expected.items()
+        if seal.get(field) != expected_value
+    )
+    if mismatched:
+        raise ValueError(
+            "successful evidence registration metadata differs from analyzer seal: "
+            + ", ".join(mismatched)
+        )
+    if (
+        not isinstance(firmware, dict)
+        or firmware.get("source_revision") != source_revision
+        or firmware.get("build_identity") != build_identity
+        or manifest_value.get("image_identity") != image_identity
+        or analyzer_binding.get("sha256") != analyzer_identity
+        or not isinstance(seal.get("primary_decision"), str)
+        or seal["primary_decision"] not in result_or_failure_reason
+    ):
+        raise ValueError(
+            "successful evidence registration metadata differs from the completed package"
+        )
+    if (
+        attempt_classification == "successful_qualification"
+        and (
+            seal.get("terminal_result") != "healthy_stop"
+            or seal.get("primary_decision") != programme.qualified_endpoint_reason
+        )
+    ):
+        raise ValueError(
+            "successful qualification registration requires the qualified endpoint"
+        )
+    if attempt_classification == "successful_rehearsal":
+        raise ValueError(
+            "successful rehearsal registration is unavailable until the current "
+            "operational-rehearsal producer and seal contract exist"
+        )
+
+    sealed_sources = seal.get("source_sha256")
+    expected_sources = {
+        str(item["path"]): _sha256_file(location / str(item["path"]))
+        for item in manifest.files
+        if (location / str(item.get("path", ""))).is_file()
+    }
+    if sealed_sources != expected_sources:
+        raise ValueError(
+            "successful evidence registration analyzer source identities differ"
+        )
+
+    return {
+        "contract": "otis_validated_success_package_v1",
+        "evidence_snapshot_sha256": str(snapshot["snapshot_digest"]),
+        "seal_path": CURRENT_SEAL_PATH.as_posix(),
+        "seal_sha256": claimed_seal_sha256,
+        "seal_status": str(seal["status"]),
+        "primary_decision": str(seal["primary_decision"]),
+    }
 
 
 def _package_files(path: Path) -> Iterable[tuple[str, Path]]:
@@ -200,15 +430,16 @@ def register_package(
     package_path: Path,
     source_revision: str,
     build_identity: str,
-    profile_identity: str,
+    image_identity: str,
     attempt_classification: str,
     result_or_failure_reason: str,
     analyzer_identity: str,
+    expected_content_sha256: str | None = None,
 ) -> dict[str, Any]:
     required = {
         "source_revision": source_revision,
         "build_identity": build_identity,
-        "profile_identity": profile_identity,
+        "image_identity": image_identity,
         "result_or_failure_reason": result_or_failure_reason,
         "analyzer_identity": analyzer_identity,
     }
@@ -220,18 +451,42 @@ def register_package(
             "attempt_classification must be one of: "
             + ", ".join(sorted(ATTEMPT_CLASSIFICATIONS))
         )
+    if expected_content_sha256 is not None and not LOWER_HEX_64.fullmatch(
+        expected_content_sha256
+    ):
+        raise ValueError("expected evidence content identity must be lowercase SHA-256")
 
     location = package_path.expanduser().resolve()
     identity = package_identity(location)
     content_sha256 = identity["content_sha256"]
-    immutable_metadata = {
+    if (
+        expected_content_sha256 is not None
+        and content_sha256 != expected_content_sha256
+    ):
+        raise ValueError("evidence package differs from expected content identity")
+    package_validation = None
+    if attempt_classification in SUCCESS_CLASSIFICATIONS:
+        package_validation = _validated_success_package(
+            location,
+            source_revision=source_revision,
+            build_identity=build_identity,
+            image_identity=image_identity,
+            attempt_classification=attempt_classification,
+            result_or_failure_reason=result_or_failure_reason,
+            analyzer_identity=analyzer_identity,
+        )
+        if package_identity(location) != identity:
+            raise ValueError("evidence package changed during success validation")
+    immutable_metadata: dict[str, Any] = {
         "source_revision": source_revision,
         "build_identity": build_identity,
-        "profile_identity": profile_identity,
+        "image_identity": image_identity,
         "attempt_classification": attempt_classification,
         "result_or_failure_reason": result_or_failure_reason,
         "analyzer_identity": analyzer_identity,
     }
+    if package_validation is not None:
+        immutable_metadata["package_validation"] = package_validation
     with _index_lock(index_path, exclusive=True) as locked_path:
         index = _load_index_unlocked(locked_path)
         existing = index["packages"].get(content_sha256)
@@ -348,7 +603,7 @@ def _parser() -> argparse.ArgumentParser:
     register.add_argument("package", type=Path)
     register.add_argument("--source-revision", required=True)
     register.add_argument("--build-identity", required=True)
-    register.add_argument("--profile-identity", required=True)
+    register.add_argument("--image-identity", required=True)
     register.add_argument(
         "--attempt-classification",
         required=True,
@@ -378,7 +633,7 @@ def main(argv: list[str] | None = None) -> int:
             package_path=args.package,
             source_revision=args.source_revision,
             build_identity=args.build_identity,
-            profile_identity=args.profile_identity,
+            image_identity=args.image_identity,
             attempt_classification=args.attempt_classification,
             result_or_failure_reason=args.result_or_failure_reason,
             analyzer_identity=args.analyzer_identity,

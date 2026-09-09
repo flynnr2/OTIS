@@ -75,11 +75,7 @@ void otis_memory_budget_emit_status(OtisStatusEmitContext *status_context) {
       &memory_budget.minimum_free_stack_bytes[1], __ATOMIC_RELAXED);
   const bool core0_ok =
       core0_observed && core0_free >= OTIS_MINIMUM_FREE_STACK_BYTES;
-#if OTIS_ENABLE_DUAL_CORE_PARTITION
   const bool core1_required = true;
-#else
-  const bool core1_required = false;
-#endif
   const bool core1_ok =
       !core1_required ||
       (core1_observed && core1_free >= OTIS_MINIMUM_FREE_STACK_BYTES);
@@ -88,16 +84,16 @@ void otis_memory_budget_emit_status(OtisStatusEmitContext *status_context) {
                            OTIS_MINIMUM_FREE_HEAP_BYTES;
   const bool valid = core0_ok && core1_ok && heap_ok;
   const char *severity = valid ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR;
-  const uint32_t flags = valid ? OTIS_FLAG_PROFILE_ASSUMPTION
+  const uint32_t flags = valid ? OTIS_FLAG_CONFIGURATION_ASSUMPTION
                                : OTIS_FLAG_SOURCE_HEALTH_SUSPECT;
 
   emit_bool(status_context, "valid", valid, severity, flags);
   emit_u32(status_context, "minimum_free_stack_budget_bytes",
            OTIS_MINIMUM_FREE_STACK_BYTES, OTIS_SEVERITY_INFO,
-           OTIS_FLAG_PROFILE_ASSUMPTION);
+           OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_u32(status_context, "minimum_free_heap_budget_bytes",
            OTIS_MINIMUM_FREE_HEAP_BYTES, OTIS_SEVERITY_INFO,
-           OTIS_FLAG_PROFILE_ASSUMPTION);
+           OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_bool(status_context, "core0_observed", core0_observed,
             core0_observed ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_ERROR,
             core0_observed ? OTIS_FLAG_NONE
@@ -108,7 +104,7 @@ void otis_memory_budget_emit_status(OtisStatusEmitContext *status_context) {
              core0_ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   }
   emit_bool(status_context, "core1_required", core1_required,
-            OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+            OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_bool(status_context, "core1_observed", core1_observed,
             core1_required && !core1_observed ? OTIS_SEVERITY_ERROR
                                               : OTIS_SEVERITY_INFO,
@@ -126,5 +122,5 @@ void otis_memory_budget_emit_status(OtisStatusEmitContext *status_context) {
            heap_ok ? OTIS_FLAG_NONE : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   otis_status_emit(status_context, "memory_budget", "measurement_scope",
                    "live_observed_minimum_approximation",
-                   OTIS_SEVERITY_INFO, OTIS_FLAG_PROFILE_ASSUMPTION);
+                   OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
 }

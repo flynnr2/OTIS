@@ -2,9 +2,12 @@
 
 ## Purpose
 
-`count_observations_v1.csv` records gated or windowed counts of a high-rate source such as a TCXO, OCXO, VCXO, divided XCXO, or frequency-output module.
+`count_observations_v1.csv` records the fixed D8 oscillator count between
+adjacent qualified D14-triggered cumulative PIO snapshots.
 
-It exists because a 10 MHz or 16 MHz oscillator must not be represented as a raw emitted edge stream. The firmware should count edges in hardware or a deterministic capture fabric and emit compact observations.
+It exists because the 10 MHz CX317 oscillator must not be represented as a raw
+emitted edge stream. Firmware counts D8 edges in the hardware timing fabric and
+emits compact observations.
 
 ## Schema
 
@@ -26,7 +29,7 @@ It exists because a 10 MHz or 16 MHz oscillator must not be represented as a raw
 
 ```csv
 record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags
-CNT,1,42,2,100000000,101000000,rp2040_monotonic_us32,16000000,R,h0_tcxo_16mhz,0
+CNT,1,42,2,100000000,101000000,rp2040_monotonic_us32,10000000,R,h1_cx317_ocxo_10mhz,0
 ```
 
 ## Semantics
@@ -58,18 +61,15 @@ control summaries, but it must not delete them from raw artifacts.
 If no honest close boundary exists, firmware should report the fault through
 `STS` rather than fabricating a clean `CNT` row.
 
-## Backend Semantics
+## Fixed backend semantics
 
-All current count-observation backends use the same schema:
+One PIO state machine continuously decrements a wrapping 32-bit counter on D8
+rising edges and snapshots its cumulative value when D14 satisfies the PPS
+condition. DMA transports the immutable word. The D14 GPIO IRQ provides the
+independent canonical `REF` timestamp but does not stop, sample, restart, or
+otherwise define the count aperture.
 
-| Backend | Gate source | Count source | Notes |
-|---|---|---|---|
-| `OTIS_TCXO_COUNTER_BACKEND_FC0_GPIN0` | firmware gate in `rp2040_monotonic_us32` | RP2040 FC0/GPIN0 | accumulated FC0 samples converted to counted edges over the emitted gate |
-| `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ` | firmware `micros()` gate | divided, interrupt-safe test input | not valid for raw MHz oscillator input |
-| `OTIS_TCXO_COUNTER_BACKEND_PIO_LONG_GATE` | firmware gate in `rp2040_monotonic_us32` | PIO oscillator edge counter | long raw-edge gate for H1 characterization |
-| `OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` | immediate D14 PPS GPIO IRQ boundary | PIO oscillator edge counter | ISR stop/sample/restart publishes one atomic boundary; PPS remains visible as `REF`; ratio/frequency remain host-derived |
-
-For the PPS-gated backend, a `CNT` row is emitted only when its opening and
+A `CNT` row is emitted only when its opening and
 closing atomic boundary observations are sequence-continuous. A nominal
 timestamp interval and nonzero count do not establish a complete physical
 aperture: `GATE_INCOMPLETE`, boundary overrun/order flags, snapshot failure,
@@ -79,13 +79,10 @@ defensible opening timestamp produces `REF` plus `STS`, not a fabricated
 lost boundary remains visible as a sequence gap.
 
 See `docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md` for the full
-backend contract.
+contract.
 
-## H0 Use
+## Current use
 
-For the H0 prototype, `CH2` is the reference TCXO/XCXO observation role on
-`D8` / `GPIO20` / `GPIN0`. The ECS-TXO-5032-160-TR 16 MHz TCXO may be
-observed through count windows rather than raw edge emission.
-
-Future GPSDO/XCXO designs may use the same contract for OCXO/VCXO observations,
-divided outputs, reciprocal counters, or PPS-to-PPS count windows.
+`CH2` is the sole oscillator/count role on D8 / GPIO20. Its source domain names
+the physical CX317 10 MHz oscillator. D10 external-event evidence, D6 monitor
+evidence, and D14 timestamps cannot replace or redefine a `CNT` observation.

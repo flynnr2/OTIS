@@ -1,9 +1,7 @@
 #include "otis_env_sensors.h"
 
-#if OTIS_ENABLE_ENV_SENSORS
 #include <Arduino.h>
 #include <Wire.h>
-#endif
 
 #include "otis_i2c_bus.h"
 
@@ -38,7 +36,6 @@ struct Bmp280Calibration {
 
 Bmp280Calibration bmp280_cal = {};
 
-#if OTIS_ENABLE_ENV_SENSORS
 bool i2c_probe(uint8_t address) {
   Wire.beginTransmission(address);
   return Wire.endTransmission() == 0u;
@@ -146,17 +143,16 @@ float bmp280_compensate_pressure(int32_t adc_p) {
   p = ((p + var1 + var2) >> 8) + (static_cast<int64_t>(bmp280_cal.dig_p7) << 4);
   return static_cast<float>(p) / 256.0f;
 }
-#endif
 
 void fill_status(OtisEnvSensorStatus *out) {
   if (out == nullptr) {
     return;
   }
-  out->sht4x_enabled = OTIS_ENABLE_ENV_SHT4X != 0;
+  out->sht4x_enabled = true;
   out->sht4x_initialized = sht4x_initialized;
   out->sht4x_last_read_ok = sht4x_last_read_ok;
   out->sht4x_i2c_address = kSht4xAddress;
-  out->bmp280_enabled = OTIS_ENABLE_ENV_BMP280 != 0;
+  out->bmp280_enabled = true;
   out->bmp280_initialized = bmp280_initialized;
   out->bmp280_last_read_ok = bmp280_last_read_ok;
   out->bmp280_i2c_address = kBmp280Address;
@@ -166,19 +162,12 @@ void fill_status(OtisEnvSensorStatus *out) {
 }  // namespace
 
 bool otis_env_sensors_begin(void) {
-#if OTIS_ENABLE_ENV_SENSORS
   if (!otis_i2c_bus_begin()) {
     return false;
   }
-#if OTIS_ENABLE_ENV_SHT4X
   sht4x_initialized = i2c_probe(kSht4xAddress);
   sht4x_last_read_ok = sht4x_initialized;
-#else
-  sht4x_initialized = false;
-  sht4x_last_read_ok = false;
-#endif
 
-#if OTIS_ENABLE_ENV_BMP280
   uint8_t chip_id = 0;
   bmp280_initialized = i2c_probe(kBmp280Address) &&
                        read_registers(kBmp280Address, 0xD0u, &chip_id, 1) &&
@@ -187,22 +176,10 @@ bool otis_env_sensors_begin(void) {
                        write_register8(kBmp280Address, 0xF4u, 0x27u) &&
                        write_register8(kBmp280Address, 0xF5u, 0xA0u);
   bmp280_last_read_ok = bmp280_initialized;
-#else
-  bmp280_initialized = false;
-  bmp280_last_read_ok = false;
-#endif
   // A selected sensor set is ready only when every selected member completed
   // initialization. The boot capability policy decides whether that complete
   // set is required or explicitly degraded.
-  return (!OTIS_ENABLE_ENV_SHT4X || sht4x_initialized) &&
-         (!OTIS_ENABLE_ENV_BMP280 || bmp280_initialized);
-#else
-  sht4x_initialized = false;
-  sht4x_last_read_ok = false;
-  bmp280_initialized = false;
-  bmp280_last_read_ok = false;
-  return false;
-#endif
+  return sht4x_initialized && bmp280_initialized;
 }
 
 bool otis_env_sensors_read_sht4x(OtisEnvSample *out) {
@@ -214,7 +191,6 @@ bool otis_env_sensors_read_sht4x(OtisEnvSample *out) {
   out->role = "vcocxo_near";
   out->has_humidity = true;
   out->has_pressure = false;
-#if OTIS_ENABLE_ENV_SENSORS && OTIS_ENABLE_ENV_SHT4X
   if (!sht4x_initialized) {
     sht4x_last_read_ok = false;
     return false;
@@ -257,10 +233,6 @@ bool otis_env_sensors_read_sht4x(OtisEnvSample *out) {
   out->valid = true;
   sht4x_last_read_ok = true;
   return true;
-#else
-  sht4x_last_read_ok = false;
-  return false;
-#endif
 }
 
 bool otis_env_sensors_read_bmp280(OtisEnvSample *out) {
@@ -272,7 +244,6 @@ bool otis_env_sensors_read_bmp280(OtisEnvSample *out) {
   out->role = "pressure_reference";
   out->has_humidity = false;
   out->has_pressure = true;
-#if OTIS_ENABLE_ENV_SENSORS && OTIS_ENABLE_ENV_BMP280
   if (!bmp280_initialized || !bmp280_cal.valid) {
     bmp280_last_read_ok = false;
     return false;
@@ -294,10 +265,6 @@ bool otis_env_sensors_read_bmp280(OtisEnvSample *out) {
   out->valid = out->pressure_pa > 0.0f;
   bmp280_last_read_ok = out->valid;
   return out->valid;
-#else
-  bmp280_last_read_ok = false;
-  return false;
-#endif
 }
 
 void otis_env_sensors_get_status(OtisEnvSensorStatus *out) {

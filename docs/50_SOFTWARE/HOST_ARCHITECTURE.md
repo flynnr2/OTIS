@@ -1,97 +1,99 @@
 # Host Architecture
 
 OTIS host services preserve and analyze timing evidence; hardware capture is
-timing truth. Host scheduling, logging, networking, and storage must not define
-or modify timestamps.
+timing truth. Host scheduling, logging, networking, and storage must never
+define or modify a timestamp.
 
 ## Current boundary
 
-Current HEAD implements only `CX319_EVIDENCE_EPOCH_1`; see
-`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`. The range-spanning additions are
-summarized in
-`docs/50_SOFTWARE/CX319_RANGE_SPANNING_CONTRACT_AND_AUTHORITY.md`. Reusable code
-is organized by responsibility:
+Current HEAD supports one operating path, `adaptive_hybrid_regulation`. The
+host package is a closed, acyclic dependency graph. It contains no readers,
+aliases, programme registries, compatibility branches, or command-line tools
+for retired campaigns. Historical reproduction uses the exact recorded Git
+revision.
 
-- `capture_device`, `capture_segment_rotation`, and `capture_owner_handoff`
-  preserve one known serial owner and complete-record boundaries;
-- `capture_runtime_checks` holds sole-owner, live-capture, and bounded
-  obstruction/priority-abort checks;
-- `active_transactions`, `active_control_policy`, and
-  `active_control_supervisor` preserve the current transaction and fail-static
-  authority mechanics without retired campaign state modes;
-- `measurement_replay`, `frequency_control_replay`,
-  `control_evidence_replay`, and `tight_deadband_policy` provide deterministic
-  current replay;
-- `time_domains` provides the canonical domain-selected rollover and
-  progression semantics used by validation, estimation, supervision, replay,
-  and analysis;
-- `range_spanning_programme`, `range_spanning_bundle`,
-  `range_spanning_rehearsal`, `range_spanning_run`, and
-  `range_spanning_analyze` provide the exact non-automatic CX319 Part A path;
-- `campaign_finalization`, `evidence`, `evidence_finalization`, and
-  `evidence_index` preserve acquisition, sealing, recovery, and registration.
+Responsibilities are grouped as follows:
 
-Deployed `cx317_*` strings in wire rows, firmware APIs, hashes, and profile
-paths remain exact provenance. They do not imply that CX317 campaign CLIs or
-formats are supported.
+- `capture_device`, `capture_serial`, `serial_commands`, and
+  `adaptive_hybrid_transport` own the bounded serial and command paths;
+- `adaptive_hybrid_contract`, `adaptive_hybrid_policy`,
+  `adaptive_hybrid_transactions`, and `adaptive_hybrid_supervisor` implement
+  the current decision-bearing controller and transaction state;
+- `adaptive_hybrid_bundle`, `adaptive_hybrid_proposal`,
+  `adaptive_hybrid_structural_preflight`, `adaptive_hybrid_activation`, and
+  `adaptive_hybrid_run` form the frozen operational path;
+- `authoritative_inputs` freezes the exact five-profile transitive closure and
+  all seven current schemas as content-addressed bytes, while
+  `firmware_binary` independently reconstructs and inspects the UF2 payload;
+- `adaptive_hybrid_replay`, `adaptive_hybrid_analyze`, and
+  `adaptive_hybrid_monitor` provide deterministic replay, analysis, and
+  retained-state monitoring;
+- `adaptive_hybrid_evidence`, `evidence`, `evidence_finalization`, and
+  `evidence_index` preserve provenance, sealing, and registration; and
+- `time_domains`, `contracts`, `run_loader`, and `run_paths` provide shared
+  current-only kernels.
 
-## Capture topology
+## Timing and channel authority
+
+D14/channel 1 reference records and D8 count observations are the only inputs
+to regulation validity and authority. D10/channel 0 `EVT` records are optional
+external-event evidence. D10 absence, noise, invalidity, or overflow changes
+only D10-local evidence and can never change eligibility, requested/applied DAC
+codes, or a run terminal. D6 is likewise diagnostic-only. GNSS serial metadata
+can place regulation into a bounded static hold but cannot replace D14 timing
+authority.
+
+Host validation rejects a role/record mismatch: `EVT` belongs to D10/channel 0
+and `REF` belongs to D14/channel 1.
+
+## Operational path
 
 ```text
-hardware timing fabric
-        ↓
-firmware telemetry
-        ↓
-capture_device (sole USB serial owner)
-        ├── raw/serial.log (canonical immutable observations)
-        ├── csv/ (interpreted products)
-        └── reports/ (state and audit records)
+fixed firmware + policy + tools
+              |
+            bundle
+              |
+           proposal
+              |
+          rehearsal
+              |
+          activation
+              |
+         run manifest
+              |
+   capture + supervisor + monitor
+              |
+      analysis + sealed evidence
 ```
 
-Other host processes use bounded run-local FIFOs. The normal FIFO accepts only
-the closed command vocabulary for the current operation. The independent
-emergency FIFO accepts only `ACTIVE ABORT` and remains usable when normal
-command ingress is obstructed. `host_written` proves only that the carrier sent
-bytes; firmware telemetry proves receipt, authorization, application, failure,
-and resulting state.
+The bundle embeds and content-addresses every decision-bearing component,
+including the exact profile/schema bytes used by later supervision, replay,
+and analysis. Those consumers do not substitute files from the live checkout.
+The retained `adaptive_hybrid_structural_preflight` tool is a deterministic
+structural preflight: it exercises current controller, exact-timing, evidence,
+and D10-isolation semantics without device or process I/O, and cannot authorize
+activation.
 
-Logical segment rotation waits for a complete device record, closes the source
-segment, and opens the target under the same PID and serial handle. The current
-owner-handoff transition retains its deployed CX318 wire identity because that
-identity is present in current sealed CX319 evidence; it has no command or
-actuation authority.
+Current activation is intentionally fail-closed because current HEAD does not
+yet contain a genuine process-level rehearsal producer for the separate
+capture, supervisor, monitor, FIFO, obstruction, abort, analysis, sealing, and
+registration path. Restoring live readiness requires that exact current-only
+path; a producer acknowledgement must then be followed through the first
+dependent consumer rather than being treated as proof of downstream
+application by itself.
 
 ## Canonical package
 
-A current package contains:
-
-```text
-run_manifest.json
-raw/serial.log
-csv/
-reports/
-evidence_manifest.json
-COMPLETE
-```
-
-The manifest is authoritative for declared artifacts and contracts. Raw
-observations are append-only during capture and never overwritten by derived
-values. A non-template package without the immutable evidence snapshot is
-invalid. Root-level raw-log aliases and `manifest.json` are rejected.
-
-## Replay and analysis
-
-Analysis reads manifest-declared evidence and creates new derived products. It
-must preserve raw source hashes, clock domains, estimator/policy/model identity,
-and actionability. Reanalysis and supersession follow
-`docs/50_SOFTWARE/EVIDENCE_LIFECYCLE.md`; no analyzer may silently make a
-historical package current or grant operational authority.
+A current package contains a canonical run manifest, append-only raw serial
+capture, manifest-declared CSV products, retained reports, and an immutable
+evidence manifest. Derived products never overwrite raw observations. Offline
+analysis may supersede a failed deterministic consumer only when it binds the
+unchanged raw evidence and both tool identities.
 
 ## Authority
 
-Repository code and offline verification do not authorize hardware work.
-Operational tools must bind an exact operation-specific authority and frozen
-bundle, keep the serial and abort invariants, and fail static on an identity,
-health, timeout, or evidence discontinuity. Legacy CX319 operations use
-`profiles/programme_status_v2.json`; the range-spanning successor additionally
-binds `profiles/qualification/cx319_range_spanning_programme_v1.json`.
+Repository code and offline verification do not authorize hardware work. Live
+operation requires an exact frozen bundle and explicit operator authority.
+Normal and abort transport remain separate, serial ownership remains singular,
+and an identity, health, timeout, or evidence discontinuity holds or fails
+static according to the fixed current contract.

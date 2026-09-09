@@ -12,17 +12,6 @@ constexpr size_t kOtisGnssReleaseMaximumBytes = 40u;
 constexpr size_t kOtisGnssOutputSignatureMaximumBytes = 32u;
 constexpr size_t kOtisGnssLinkPhaseMaximumBytes = 40u;
 constexpr size_t kOtisGnssConfirmationMethodMaximumBytes = 40u;
-constexpr size_t kOtisGnssSegmentIdMaximumBytes = 5u;
-constexpr char kOtisGnssBaudCharacterizationProgrammeId[] =
-    "OTIS_GNSS_BAUD_ENVELOPE_CHARACTERIZATION_V1";
-
-enum class OtisGnssObservationPhase : uint8_t {
-  Discovery = 0u,
-  PlannedTransition = 1u,
-  Recovery = 2u,
-  OrdinaryOnline = 3u,
-  PeakLoad = 4u,
-};
 
 enum class OtisGnssParserFaultClass : uint8_t {
   None = 0u,
@@ -35,8 +24,6 @@ enum class OtisGnssParserFaultClass : uint8_t {
 };
 
 struct OtisGnssParserFaultContext {
-  uint8_t segment_ordinal;
-  OtisGnssObservationPhase observation_phase;
   uint32_t baud;
   uint32_t baud_epoch;
   uint32_t hardware_overrun_delta;
@@ -50,8 +37,6 @@ struct OtisGnssParserFaultContext {
 
 struct OtisGnssParserFaultCapsule {
   bool valid;
-  uint8_t segment_ordinal;
-  OtisGnssObservationPhase observation_phase;
   OtisGnssParserFaultClass fault_class;
   uint16_t partial_line_length;
   uint32_t baud;
@@ -67,96 +52,28 @@ struct OtisGnssParserFaultCapsule {
   char sentence_type[4];
 };
 
-enum class OtisGnssTransitionState : uint8_t {
-  Idle = 0u,
-  Targeting = 1u,
-  AwaitFreshMetadata = 2u,
-  Complete = 3u,
-  RecoveryScanning = 4u,
-  Recovered = 5u,
-  Unrecoverable = 6u,
-  PlatformFault = 7u,
-};
-
-enum class OtisGnssRequestDisposition : uint8_t {
-  Accepted = 0u,
-  Duplicate = 1u,
-  RejectedDisabled = 2u,
-  RejectedParse = 3u,
-  RejectedIdentity = 4u,
-  RejectedBusy = 5u,
-  RejectedStale = 6u,
-  RejectedSkipped = 7u,
-  RejectedContradictory = 8u,
-  RejectedSource = 9u,
-  RejectedTarget = 10u,
-  RejectedPhase = 11u,
-};
-
-struct OtisGnssBaudTransitionRequest {
-  uint32_t request_sequence;
-  uint8_t segment_ordinal;
-  uint32_t source_baud;
-  uint32_t source_baud_epoch;
-  uint32_t target_baud;
-};
-
-struct OtisGnssStatusChallengeRequest {
-  uint32_t challenge_sequence;
-  uint8_t segment_ordinal;
-  uint32_t baud_epoch;
-};
-
-// A completed peak remains available until the first accepted request for the
-// immediately following challenge. Repeated delivery of the completed
-// challenge is therefore a read-only retry and cannot erase or overwrite the
-// decision-bearing peak evidence.
-struct OtisGnssCompletedPeakRetention {
-  bool available;
-  uint32_t challenge_sequence;
-};
-
 enum class OtisGnssLinkState : uint8_t {
   SelectCandidateBaud = 0u,
   PassiveListen = 1u,
-  TransmitIdentityQuery = 2u,
-  AwaitIdentityResponse = 3u,
-  TransmitTargetBaud = 4u,
-  SelectTargetBaud = 5u,
-  TransmitTargetIdentityQuery = 6u,
-  AwaitTargetIdentityResponse = 7u,
-  TransmitOutputQuery = 8u,
-  AwaitOutputResponse = 9u,
-  TransmitOutputConfiguration = 10u,
-  AwaitOutputConfigurationAck = 11u,
-  TransmitOutputVerificationQuery = 12u,
-  AwaitOutputVerificationResponse = 13u,
-  Online = 14u,
-  ObserveConfiguredOutput = 15u,
-  AwaitTargetBaudEpochBoundary = 16u,
-  OperationalBootstrapSettle = 17u,
-  OperationalBootstrapFailed = 18u,
+  TransmitTargetBaud = 2u,
+  TransmitTargetIdentityQuery = 3u,
+  AwaitTargetIdentityResponse = 4u,
+  TransmitOutputQuery = 5u,
+  AwaitOutputResponse = 6u,
+  TransmitOutputConfiguration = 7u,
+  AwaitOutputConfigurationAck = 8u,
+  TransmitOutputVerificationQuery = 9u,
+  AwaitOutputVerificationResponse = 10u,
+  Online = 11u,
+  ObserveConfiguredOutput = 12u,
+  OperationalBootstrapSettle = 13u,
+  OperationalBootstrapFailed = 14u,
 };
 
 enum class OtisGnssOutputConfirmationMethod : uint8_t {
   None = 0u,
   Pmtk514Exact = 1u,
   Pmtk314AckObservedExact = 2u,
-  RetainedBaudNmeaObservedExact = 3u,
-};
-
-enum class OtisGnssStartupHintIdentityOutcome : uint8_t {
-  NotAttempted = 0u,
-  Pending = 1u,
-  Confirmed = 2u,
-  TimedOut = 3u,
-  TransmitFailed = 4u,
-};
-
-enum class OtisGnssInitialDiscoveryOutcome : uint8_t {
-  Pending = 0u,
-  HintConfirmed = 1u,
-  FallbackConfirmed = 2u,
 };
 
 enum class OtisGnssLinkActionKind : uint8_t {
@@ -197,20 +114,8 @@ struct OtisGnssLink {
   bool receiver_identity_available;
   bool configuration_confirmed;
   bool output_configuration_command_acknowledged;
-  bool characterization_targeting;
-  bool characterization_target_failed;
-  bool characterization_recovery_scan;
-  bool characterization_recovery_scan_exhausted;
-  bool startup_hint_active;
-  bool startup_hint_attachment_active;
-  bool nmea_observation_active;
-  bool discovery_output_repair_active;
-  bool startup_hint_attempted;
-  bool startup_fallback_entered;
   bool operational_bootstrap_complete;
   bool operational_bootstrap_failed;
-  OtisGnssStartupHintIdentityOutcome startup_hint_identity_outcome;
-  OtisGnssInitialDiscoveryOutcome initial_discovery_outcome;
   OtisGnssLinkState state;
   OtisGnssLinkActionKind pending_action;
   OtisGnssOutputConfirmationMethod output_confirmation_method;
@@ -220,10 +125,7 @@ struct OtisGnssLink {
   uint32_t confirmed_baud;
   uint32_t last_identity_response_baud;
   uint32_t pending_baud;
-  uint32_t startup_hint_baud;
-  uint32_t initial_discovery_identity_baud;
   uint32_t state_started_ms;
-  uint32_t characterization_target_started_ms;
   uint32_t discovery_started_ms;
   uint32_t last_valid_frame_ms;
   uint32_t discovery_cycle;
@@ -237,7 +139,6 @@ struct OtisGnssLink {
   uint32_t checksum_valid_count;
   uint32_t checksum_failure_count;
   uint32_t oversize_count;
-  uint32_t candidate_rejection_count;
   uint32_t configuration_failure_count;
   uint32_t transmit_failure_count;
   uint32_t link_loss_count;
@@ -344,8 +245,6 @@ struct OtisGnssReceiverSnapshot {
   bool gsa_fresh;
   bool gsa_3d;
   bool gsa_checksum_requalified;
-  bool startup_hint_attempted;
-  bool startup_fallback_entered;
   bool operational_bootstrap_complete;
   bool operational_bootstrap_failed;
   bool pmtk605_last_peripheral_complete_ticks_available;
@@ -382,17 +281,12 @@ struct OtisGnssReceiverSnapshot {
   uint32_t link_checksum_valid_count;
   uint32_t link_checksum_failure_count;
   uint32_t link_oversize_count;
-  uint32_t candidate_rejection_count;
   uint32_t configuration_failure_count;
   uint32_t transmit_failure_count;
   uint32_t link_loss_count;
   uint32_t identity_response_count;
-  uint32_t startup_hint_baud;
-  uint32_t initial_discovery_identity_baud;
   uint32_t pmtk605_peripheral_complete_count;
   uint64_t pmtk605_last_peripheral_complete_ticks;
-  OtisGnssStartupHintIdentityOutcome startup_hint_identity_outcome;
-  OtisGnssInitialDiscoveryOutcome initial_discovery_outcome;
   uint32_t output_response_count;
   uint32_t output_query_timeout_count;
   uint32_t output_configuration_ack_count;
@@ -434,45 +328,6 @@ struct OtisGnssReceiverSnapshot {
       fault_capsules[kOtisGnssFaultCapsuleCapacity];
   OtisGnssParserFaultCapsule latest_fault_capsule;
   OtisGnssUartRxStats uart_rx;
-  OtisGnssObservationPhase observation_phase;
-  OtisGnssTransitionState transition_state;
-  OtisGnssRequestDisposition last_request_disposition;
-  uint8_t segment_ordinal;
-  char segment_id[kOtisGnssSegmentIdMaximumBytes];
-  uint32_t baud_epoch;
-  uint32_t transition_request_sequence;
-  uint32_t transition_source_baud;
-  uint32_t transition_source_baud_epoch;
-  uint32_t transition_target_baud;
-  uint32_t transition_recovered_baud;
-  uint32_t transition_accepted_count;
-  uint32_t transition_duplicate_count;
-  uint32_t transition_rejected_count;
-  uint32_t transition_completed_count;
-  uint32_t transition_recovered_count;
-  uint32_t transition_unrecoverable_count;
-  uint32_t transition_evidence_frontier;
-  bool transition_target_command_transmit_complete;
-  bool transition_target_identity_confirmed;
-  bool transition_target_output_confirmed;
-  uint32_t transition_target_command_transmit_elapsed_ms;
-  uint32_t transition_target_identity_elapsed_ms;
-  uint32_t transition_target_output_elapsed_ms;
-  uint32_t transition_complete_elapsed_ms;
-  uint32_t transition_recovery_started_elapsed_ms;
-  uint32_t transition_recovery_terminal_elapsed_ms;
-  bool transition_first_dependent_snapshot;
-  bool transition_platform_fault;
-  bool status_challenge_active;
-  uint32_t status_challenge_sequence;
-  uint32_t status_challenge_completed_count;
-  OtisGnssRequestDisposition last_status_request_disposition;
-  uint32_t last_status_request_sequence;
-  uint8_t last_status_request_segment_ordinal;
-  uint32_t last_status_request_baud_epoch;
-  bool completed_peak_uart_available;
-  uint32_t completed_peak_challenge_sequence;
-  OtisGnssUartRxStats completed_peak_uart;
 };
 
 void otis_gnss_link_reset(OtisGnssLink *link,
@@ -498,11 +353,6 @@ const char *otis_gnss_link_state_name(const OtisGnssLink *link,
 const char *otis_gnss_link_phase_name(const OtisGnssLink *link);
 const char *otis_gnss_output_confirmation_method_name(
     const OtisGnssLink *link);
-const char *otis_gnss_startup_hint_identity_outcome_name(
-    OtisGnssStartupHintIdentityOutcome outcome);
-const char *otis_gnss_initial_discovery_outcome_name(
-    OtisGnssInitialDiscoveryOutcome outcome);
-
 void otis_gnss_receiver_reset(OtisGnssReceiver *receiver, uint32_t now_ms);
 void otis_gnss_receiver_feed(OtisGnssReceiver *receiver, char byte,
                              uint32_t now_ms);
@@ -535,31 +385,8 @@ bool otis_gnss_receiver_begin(void);
 void otis_gnss_receiver_service(uint32_t now_ms);
 void otis_gnss_receiver_get_snapshot(uint32_t now_ms,
                                      OtisGnssReceiverSnapshot *snapshot);
-OtisGnssRequestDisposition otis_gnss_receiver_request_baud_transition(
-    const char *arguments, uint32_t now_ms);
-OtisGnssRequestDisposition otis_gnss_receiver_begin_status_challenge(
-    const char *arguments, uint32_t now_ms);
-void otis_gnss_receiver_complete_status_challenge(uint32_t now_ms);
-// Called only after the coherent status end marker is physically submitted.
-// It causally closes the retained peak-load window and opens ordinary-online.
-void otis_gnss_receiver_finish_status_snapshot(void);
 #endif
 
-bool otis_gnss_parse_baud_transition_request(
-    const char *arguments, OtisGnssBaudTransitionRequest *request);
-bool otis_gnss_parse_status_challenge_request(
-    const char *arguments, OtisGnssStatusChallengeRequest *request);
-bool otis_gnss_completed_peak_prepare_next(
-    OtisGnssCompletedPeakRetention *retention,
-    uint32_t current_challenge_sequence,
-    uint32_t requested_challenge_sequence);
-bool otis_gnss_completed_peak_publish(
-    OtisGnssCompletedPeakRetention *retention,
-    uint32_t completed_challenge_sequence);
-const char *otis_gnss_observation_phase_name(OtisGnssObservationPhase phase);
-const char *otis_gnss_transition_state_name(OtisGnssTransitionState state);
-const char *otis_gnss_request_disposition_name(
-    OtisGnssRequestDisposition disposition);
 const char *otis_gnss_parser_fault_class_name(
     OtisGnssParserFaultClass fault_class);
 

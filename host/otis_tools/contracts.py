@@ -1,15 +1,20 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 import csv
 import math
 import re
 
-from .cx321_plant_sign_evidence_guard import (
-    EVENTS as CX321_PLANT_SIGN_EVENTS,
-    PLANT_SIGN_QUALIFICATION_V1_FIELDS,
-)
 from .time_domains import forward_progress, time_domain
+
+
+CURRENT_PLANT_MODEL_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "profiles/plant_models/pps_gated_oscillator_plant_v1.json"
+)
+CURRENT_PLANT_MODEL_REF = "model:pps_gated_oscillator_plant_v1"
+CURRENT_PLANT_MODEL_ID = "OTIS_PPS_GATED_OSCILLATOR_PLANT_V1"
 
 
 RAW_EVENT_FIELDS = [
@@ -147,84 +152,6 @@ ENVIRONMENT_FIELDS = [
     "flags",
 ]
 
-PSEUDO_PPS_TRUTH_FIELDS = [
-    "record_type",
-    "schema_version",
-    "truth_seq",
-    "generator_session",
-    "profile_id",
-    "profile_version",
-    "generator_sequence",
-    "event",
-    "intended_class",
-    "scheduled_offset_us",
-    "scheduled_interval_us",
-    "pulse_width_us",
-    "flags",
-]
-
-DIAGNOSTICS_V1_FIELDS = [
-    "record_type",
-    "schema_version",
-    "diagnostic_seq",
-    "diagnostic_id",
-    "episode_id",
-    "subsystem",
-    "severity",
-    "state",
-    "transition",
-    "diagnostic_confidence",
-    "reason_code",
-    "clear_reason_code",
-    "first_seen_ticks",
-    "last_seen_ticks",
-    "time_domain",
-    "occurrence_count",
-    "persistence_state",
-    "first_evidence_refs",
-    "latest_evidence_refs",
-    "algorithm_version",
-    "config_hash",
-    "observation_effect",
-    "reference_effect",
-    "model_effect",
-    "control_effect",
-]
-
-REFERENCE_OBSERVATION_V1_FIELDS = [
-    "record_type",
-    "schema_version",
-    "reference_observation_seq",
-    "reference_observation_id",
-    "observation_timestamp_ticks",
-    "time_domain",
-    "source_identity_epoch",
-    "source_reference_first_seq",
-    "source_reference_last_seq",
-    "source_reference_refs",
-    "source_metadata_refs",
-    "receiver_identity",
-    "receiver_firmware",
-    "cadence_state",
-    "capture_path_state",
-    "receiver_authority_state",
-    "utc_traceability_state",
-    "metadata_freshness",
-    "timing_mode",
-    "fix_holdover_state",
-    "antenna_state",
-    "leap_state",
-    "sawtooth_correction_ns",
-    "cable_delay_ns",
-    "pulse_configuration",
-    "calibration_ref",
-    "reference_standard_uncertainty_s",
-    "qualification_state",
-    "qualification_reason_codes",
-    "algorithm_version",
-    "config_hash",
-]
-
 ESTIMATE_COMMON_FIELDS = [
     "record_type",
     "schema_version",
@@ -320,14 +247,16 @@ CONTROL_PREVIEW_V1_FIELDS = [
     "decision_reason_code",
 ]
 
-ACTIVE_TRANSACTION_V1_FIELDS = [
+ACTIVE_TRANSACTION_V2_FIELDS = [
     "record_type",
     "schema_version",
     "transaction_record_sequence",
     "event",
+    "event_timestamp_ticks",
+    "time_domain",
     "run_identity",
     "build_identity",
-    "profile_identity",
+    "image_identity",
     "session_id",
     "authorization_sequence",
     "nonce",
@@ -370,40 +299,17 @@ ACTIVE_TRANSACTION_V1_FIELDS = [
     "evidence_state",
 ]
 
-ACTIVE_TRANSACTION_V2_FIELDS = [
-    "record_type",
-    "schema_version",
-    "timing_record_sequence",
-    "transaction_record_sequence",
-    "event",
-    "event_timestamp_ticks",
-    "time_domain",
-    "run_identity",
-    "build_identity",
-    "profile_identity",
-    "session_id",
-    "request_sequence",
-    "decision_sequence",
-    "source_first_sequence",
-    "source_last_sequence",
-    "authorization_sequence",
-    "nonce",
-    "accepted_code",
-    "applied_code",
-    "application_sequence",
-    "dac_epoch",
-    "reason",
-]
-
-ACTIVE_HYBRID_DECISION_V1_FIELDS = [
+ACTIVE_HYBRID_DECISION_V2_FIELDS = [
     "record_type",
     "schema_version",
     "hybrid_record_sequence",
     "decision_sequence",
+    "decision_timestamp_ticks",
+    "time_domain",
     "decision_timestamp_s",
     "run_identity",
     "build_identity",
-    "profile_identity",
+    "image_identity",
     "capture_session",
     "source_first_sequence",
     "source_last_sequence",
@@ -454,26 +360,9 @@ ACTIVE_HYBRID_DECISION_V1_FIELDS = [
     "actionable",
 ]
 
-ACTIVE_HYBRID_DECISION_V2_FIELDS = [
-    "record_type",
-    "schema_version",
-    "timing_record_sequence",
-    "hybrid_record_sequence",
-    "decision_sequence",
-    "decision_timestamp_ticks",
-    "time_domain",
-    "run_identity",
-    "build_identity",
-    "profile_identity",
-    "capture_session",
-    "source_first_sequence",
-    "source_last_sequence",
-    "reason",
-]
-
-# CX323 AHM is decision-bearing controller-state evidence. It is separate from
-# AHY controller content and the AH2 exact-timing sidecar so persistence and
-# provenance-tagged correction debt remain reconstructable across request,
+# AHM is decision-bearing controller-state evidence. It is separate from
+# AHY controller content so persistence and provenance-tagged correction debt
+# remain reconstructable across request,
 # application, response, GNSS-hold, and fail-static transitions.
 ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS = [
     "record_type",
@@ -484,7 +373,7 @@ ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS = [
     "time_domain",
     "run_identity",
     "build_identity",
-    "profile_identity",
+    "image_identity",
     "policy_id",
     "active_policy_sha256",
     "capture_session",
@@ -497,10 +386,8 @@ ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS = [
     "current_applied_code",
     "current_dac_epoch",
     "hybrid_record_sequence",
-    "hybrid_timing_record_sequence",
     "decision_sequence",
     "transaction_record_sequence",
-    "transaction_timing_record_sequence",
     "transaction_event",
     "request_sequence",
     "application_sequence",
@@ -539,10 +426,8 @@ ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS = [
     "actionable",
 ]
 
-# CX318 Stage 4 telemetry is deliberately separate from the accepted frequency
-# control products.  RPH is the immutable raw relative-phase boundary; HPR is
-# a candidate-specific, counterfactual hybrid-preview boundary.  Neither
-# record is an authority or an actuator request.
+# RPH is the immutable raw relative-phase boundary. PHE adds the selected
+# retained frequency support without authority or an actuator request.
 RELATIVE_PHASE_OBSERVATION_V1_FIELDS = [
     "record_type",
     "schema_version",
@@ -586,56 +471,6 @@ PHASE_ESTIMATOR_OUTPUT_V1_FIELDS = [
     "reason_codes",
 ]
 
-HYBRID_PREVIEW_DECISION_V1_FIELDS = [
-    "record_type",
-    "schema_version",
-    "preview_sequence",
-    "candidate_id",
-    "candidate_configuration_sha256",
-    "phase_estimator_id",
-    "phase_estimator_configuration_sha256",
-    "frequency_estimator_id",
-    "frequency_estimator_configuration_sha256",
-    "configuration_sha256",
-    "phase_epoch",
-    "observation_sequence",
-    "dac_epoch",
-    "decision_timestamp_ticks",
-    "time_domain",
-    "source_phase_estimate",
-    "source_frequency_estimate",
-    "raw_relative_phase_cycles",
-    "modeled_relative_phase_cycles",
-    "observed_frequency_error_hz",
-    "modeled_frequency_error_hz",
-    "frequency_term_hz",
-    "phase_bias_hz",
-    "combined_frequency_error_hz",
-    "actual_applied_code",
-    "shadow_code_before",
-    "shadow_code_after",
-    "band_state_before",
-    "band_state_after",
-    "preview_state",
-    "decision_reason",
-    "frequency_observation_event",
-    "counterfactual_decision",
-    "counterfactual_correction",
-    "raw_counterfactual_delta_codes",
-    "counterfactual_delta_codes",
-    "counterfactual_code",
-    "step_limited",
-    "range_clamped",
-    "correction_count",
-    "cumulative_movement_codes",
-    "alternating_correction_count",
-    "modeled_not_observed_after_divergence",
-    "uncertainty_status",
-    "actionable",
-    "actuation_authorized",
-    "authorization_consumed",
-]
-
 TIGHT_DEADBAND_DECISION_V1_FIELDS = [
     "record_type",
     "schema_version",
@@ -655,8 +490,8 @@ TIGHT_DEADBAND_DECISION_V1_FIELDS = [
     "frequency_controller_eligible",
     "requalified",
     "requalification_reason",
-    "historical_v2_inside",
-    "symmetric_two_count_inside",
+    "three_count_band_inside",
+    "two_count_band_inside",
     "policy_id",
     "policy_sha256",
     "actionable",
@@ -674,23 +509,14 @@ CONTRACT_FIELDS = {
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
-    "pseudo_pps_truth_v1": PSEUDO_PPS_TRUTH_FIELDS,
-    "diagnostics_v1": DIAGNOSTICS_V1_FIELDS,
-    "reference_observations_v1": REFERENCE_OBSERVATION_V1_FIELDS,
     "estimates_v2": ESTIMATE_V2_FIELDS,
     "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
-    "active_transactions_v1": ACTIVE_TRANSACTION_V1_FIELDS,
     "active_transactions_v2": ACTIVE_TRANSACTION_V2_FIELDS,
-    "active_hybrid_decisions_v1": ACTIVE_HYBRID_DECISION_V1_FIELDS,
     "active_hybrid_decisions_v2": ACTIVE_HYBRID_DECISION_V2_FIELDS,
     "active_hybrid_maintenance_v1": ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
     "relative_phase_observations_v1": RELATIVE_PHASE_OBSERVATION_V1_FIELDS,
     "phase_estimator_outputs_v1": PHASE_ESTIMATOR_OUTPUT_V1_FIELDS,
-    "hybrid_preview_decisions_v1": HYBRID_PREVIEW_DECISION_V1_FIELDS,
     "tight_deadband_decisions_v1": TIGHT_DEADBAND_DECISION_V1_FIELDS,
-    "plant_sign_qualification_v1": list(
-        PLANT_SIGN_QUALIFICATION_V1_FIELDS
-    ),
 }
 
 CONTRACT_RECORD_TYPES = {
@@ -702,21 +528,14 @@ CONTRACT_RECORD_TYPES = {
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
-    "pseudo_pps_truth_v1": {"PGT"},
-    "diagnostics_v1": {"DIAG"},
-    "reference_observations_v1": {"RFO"},
     "estimates_v2": {"EST"},
     "control_previews_v1": {"CTL"},
-    "active_transactions_v1": {"ACT"},
-    "active_transactions_v2": {"AT2"},
-    "active_hybrid_decisions_v1": {"AHY"},
-    "active_hybrid_decisions_v2": {"AH2"},
+    "active_transactions_v2": {"ACT"},
+    "active_hybrid_decisions_v2": {"AHY"},
     "active_hybrid_maintenance_v1": {"AHM"},
     "relative_phase_observations_v1": {"RPH"},
     "phase_estimator_outputs_v1": {"PHE"},
-    "hybrid_preview_decisions_v1": {"HPR"},
     "tight_deadband_decisions_v1": {"TDB"},
-    "plant_sign_qualification_v1": {"PSQ"},
 }
 
 CONTRACT_SCHEMA_VERSIONS = {
@@ -728,21 +547,14 @@ CONTRACT_SCHEMA_VERSIONS = {
     "health_v1": 1,
     "dac_steps_v1": 1,
     "environment_v1": 1,
-    "pseudo_pps_truth_v1": 1,
-    "diagnostics_v1": 1,
-    "reference_observations_v1": 1,
     "estimates_v2": 2,
     "control_previews_v1": 1,
-    "active_transactions_v1": 1,
     "active_transactions_v2": 2,
-    "active_hybrid_decisions_v1": 1,
     "active_hybrid_decisions_v2": 2,
     "active_hybrid_maintenance_v1": 1,
     "relative_phase_observations_v1": 1,
     "phase_estimator_outputs_v1": 1,
-    "hybrid_preview_decisions_v1": 1,
     "tight_deadband_decisions_v1": 1,
-    "plant_sign_qualification_v1": 1,
 }
 
 SEQUENCE_FIELDS = {
@@ -754,21 +566,14 @@ SEQUENCE_FIELDS = {
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
-    "pseudo_pps_truth_v1": "truth_seq",
-    "diagnostics_v1": "diagnostic_seq",
-    "reference_observations_v1": "reference_observation_seq",
     "estimates_v2": "estimate_seq",
     "control_previews_v1": "control_seq",
-    "active_transactions_v1": "transaction_record_sequence",
-    "active_transactions_v2": "timing_record_sequence",
-    "active_hybrid_decisions_v1": "hybrid_record_sequence",
-    "active_hybrid_decisions_v2": "timing_record_sequence",
+    "active_transactions_v2": "transaction_record_sequence",
+    "active_hybrid_decisions_v2": "hybrid_record_sequence",
     "active_hybrid_maintenance_v1": "maintenance_record_sequence",
     "relative_phase_observations_v1": "observation_sequence",
     "phase_estimator_outputs_v1": "observation_sequence",
-    "hybrid_preview_decisions_v1": "preview_sequence",
     "tight_deadband_decisions_v1": "decision_sequence",
-    "plant_sign_qualification_v1": "qualification_record_sequence",
 }
 
 TIMESTAMP_FIELDS = {
@@ -780,21 +585,14 @@ TIMESTAMP_FIELDS = {
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
-    "pseudo_pps_truth_v1": (),
-    "diagnostics_v1": ("last_seen_ticks",),
-    "reference_observations_v1": ("observation_timestamp_ticks",),
     "estimates_v2": ("estimator_timestamp_ticks",),
     "control_previews_v1": ("decision_timestamp_ticks",),
-    "active_transactions_v1": (),
     "active_transactions_v2": ("event_timestamp_ticks",),
-    "active_hybrid_decisions_v1": (),
     "active_hybrid_decisions_v2": ("decision_timestamp_ticks",),
     "active_hybrid_maintenance_v1": ("event_timestamp_ticks",),
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
-    "hybrid_preview_decisions_v1": ("decision_timestamp_ticks",),
     "tight_deadband_decisions_v1": ("decision_timestamp_ticks",),
-    "plant_sign_qualification_v1": ("event_timestamp_ticks",),
 }
 
 CHANNEL_FIELDS = {
@@ -812,21 +610,14 @@ DOMAIN_FIELDS = {
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
-    "pseudo_pps_truth_v1": (),
-    "diagnostics_v1": ("time_domain",),
-    "reference_observations_v1": ("time_domain",),
     "estimates_v2": ("time_domain",),
     "control_previews_v1": ("time_domain",),
-    "active_transactions_v1": (),
     "active_transactions_v2": ("time_domain",),
-    "active_hybrid_decisions_v1": (),
     "active_hybrid_decisions_v2": ("time_domain",),
     "active_hybrid_maintenance_v1": ("time_domain",),
     "relative_phase_observations_v1": (),
     "phase_estimator_outputs_v1": (),
-    "hybrid_preview_decisions_v1": ("time_domain",),
     "tight_deadband_decisions_v1": ("time_domain",),
-    "plant_sign_qualification_v1": (),
 }
 
 CONTRACT_IMPLICIT_TIME_DOMAINS = {
@@ -834,88 +625,20 @@ CONTRACT_IMPLICIT_TIME_DOMAINS = {
     "forwarded_monitor_snapshots_v1": "rp2040_monotonic_us32",
     "association_loss_decisions_v1": "rp2040_monotonic_us32",
     "dac_steps_v1": "host_elapsed_ms",
-    "plant_sign_qualification_v1": "rp2040_monotonic_us64",
 }
 
 SESSION_FIELDS = {
     "pps_snapshots_v1": "session",
     "forwarded_monitor_snapshots_v1": "session",
     "tight_deadband_decisions_v1": "capture_session",
-    "active_hybrid_decisions_v1": "capture_session",
     "active_transactions_v2": "session_id",
     "active_hybrid_decisions_v2": "capture_session",
     "active_hybrid_maintenance_v1": "capture_session",
-    "plant_sign_qualification_v1": "capture_session",
 }
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
 VALID_EDGES = {"R", "F", "B"}
 VALID_SEVERITIES = {"INFO", "WARN", "ERROR", "FATAL"}
-VALID_DIAGNOSTIC_SEVERITIES = {"INFO", "DEGRADED", "WARN", "FAULT", "CRITICAL"}
-VALID_DIAGNOSTIC_SUBSYSTEMS = {
-    "reference",
-    "count_path",
-    "oscillator",
-    "actuator",
-    "estimator",
-    "control",
-    "environment",
-    "service_plane",
-    "storage",
-}
-VALID_DIAGNOSTIC_STATES = {"active", "cleared", "latched", "suppressed", "unknown"}
-VALID_DIAGNOSTIC_TRANSITIONS = {"raised", "updated", "cleared", "latched", "suppressed", "snapshot", "unknown"}
-VALID_DIAGNOSTIC_EFFECTS = {
-    "none",
-    "invalidate",
-    "mark_unavailable",
-    "reduce_trust",
-    "not_applicable",
-    "inhibit",
-    "holdover",
-    "fail_static",
-    "unknown",
-}
-VALID_PERSISTENCE_STATES = {"candidate", "confirmed", "recovering", "cleared", "latched"}
-VALID_CADENCE_STATES = {
-    "valid",
-    "duplicate",
-    "short",
-    "long",
-    "missing",
-    "invalid",
-    "unavailable",
-}
-VALID_CAPTURE_PATH_STATES = {
-    "valid",
-    "sequence_gap",
-    "overflow",
-    "resource_failure",
-    "invalid",
-    "unavailable",
-}
-VALID_REFERENCE_AUTHORITY_STATES = {
-    "qualified",
-    "holdover",
-    "fix_unavailable",
-    "antenna_fault",
-    "invalid",
-    "unknown",
-    "unavailable",
-}
-VALID_UTC_TRACEABILITY_STATES = {"valid", "invalid", "unknown", "unavailable"}
-VALID_METADATA_FRESHNESS = {"current", "stale", "missing", "unavailable"}
-VALID_REFERENCE_QUALIFICATION_STATES = {
-    "qualified",
-    "cadence_valid_authority_unknown",
-    "holdover",
-    "utc_invalid",
-    "antenna_fault",
-    "metadata_stale",
-    "capture_path_invalid",
-    "unqualified",
-    "unknown",
-}
 VALID_UNCERTAINTY_STATUS = {"available", "incomplete", "unavailable"}
 VALID_CORRELATION_POLICIES = {
     "independent_root_sum_square",
@@ -951,16 +674,6 @@ VALID_PHASE_ESTIMATOR_QUALIFICATION_STATES = {
     "invalid",
 }
 VALID_CALIBRATED_UNCERTAINTY_STATUS = {"available", "unavailable"}
-VALID_HYBRID_PREVIEW_STATES = {
-    "RELATIVE_PHASE_ACQUIRE",
-    "FREQUENCY_ACQUIRED_PREVIEW",
-    "HYBRID_TRACKING_PREVIEW",
-    "PHASE_STEP_HOLD_PREVIEW",
-    "REFERENCE_LOST_PREVIEW",
-    "RECOVER_PREVIEW",
-    "FAULT_PREVIEW",
-}
-VALID_HYBRID_BAND_STATES = {"INSIDE", "OUTSIDE"}
 VALID_TIGHT_DEADBAND_STATES = {"REQUALIFY_OUTSIDE", "OUTSIDE", "TIGHT_INSIDE"}
 VALID_TIGHT_DEADBAND_REASONS = {
     "invalid_or_stale_requalify",
@@ -977,14 +690,12 @@ VALID_TIGHT_DEADBAND_REQUALIFICATION_REASONS = {
     "session_changed_requalify",
     "dac_epoch_changed_requalify",
 }
-TIGHT_DEADBAND_POLICY_ID = "CX318_STAGE5_TIGHT_HYSTERETIC_COUNTS_V1"
-TIGHT_DEADBAND_POLICY_SHA256 = "f9d7f99f94e422d9b3635866bfa06dadd6c5351d4d3b1ff347ee97d9d239010d"
+TIGHT_DEADBAND_POLICY_ID = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
 
 VALID_ACTIVE_TRANSACTION_EVENTS = {
     "manual_start",
     "request_created",
     "request_withdrawn",
-    "core0_accepted",
     "request_accepted",
     "application",
     "application_fault",
@@ -1029,8 +740,8 @@ VALID_ACTIVE_HYBRID_STATES = {
     "FAIL_STATIC",
 }
 
-CX323_MAINTENANCE_POLICY_ID = "CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1"
-MAX_CX323_COMMITTED_DEBT_PICOCODES = 500_000_000_000
+ADAPTIVE_HYBRID_MAINTENANCE_POLICY_ID = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
+MAX_COMMITTED_DEBT_PICOCODES = 500_000_000_000
 VALID_ACTIVE_HYBRID_MAINTENANCE_EVENTS = {
     "policy_activation",
     "decision",
@@ -1073,11 +784,13 @@ class CsvValidationContext:
     known_channels: frozenset[int]
     known_domains: frozenset[str]
     template: bool = False
-    tight_deadband_policy_sha256: str | None = None
     # True only when run-level evidence independently establishes multiple
     # capture sessions in this CSV. Sequence resets remain reportable, while
     # domain progression restarts at that same boundary.
     segmented_capture: bool = False
+    # Run-level replay supplies the hash from its frozen authoritative input
+    # set. Standalone syntax validation has no authority to consult live files.
+    expected_policy_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1212,16 +925,17 @@ def _check_channel(context: CsvValidationContext, row: dict[str, str], row_numbe
     channel = _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
     if channel is not None and context.known_channels and channel not in context.known_channels:
         errors.append(f"row {row_number}: {field_name} {channel} is not declared in manifest channels")
+    if context.contract == "raw_events_v1" and channel is not None:
+        expected = {"EVT": 0, "REF": 1}.get(row.get("record_type", ""))
+        if expected is not None and channel != expected:
+            pin = "D10" if expected == 0 else "D14"
+            errors.append(
+                f"row {row_number}: {row.get('record_type')} must be {pin}/CH{expected}; "
+                f"got channel_id={channel}"
+            )
 
 
 def _check_domains(context: CsvValidationContext, row: dict[str, str], row_number: int, errors: list[str]) -> None:
-    if context.contract == "plant_sign_qualification_v1":
-        implicit = CONTRACT_IMPLICIT_TIME_DOMAINS[context.contract]
-        if context.known_domains and implicit not in context.known_domains:
-            errors.append(
-                f"row {row_number}: implicit time domain {implicit!r} "
-                "is not declared in manifest domains"
-            )
     for field_name in DOMAIN_FIELDS[context.contract]:
         domain = row.get(field_name, "")
         if not domain:
@@ -1445,229 +1159,6 @@ def _check_environment(row: dict[str, str], row_number: int, errors: list[str]) 
         errors.append(f"row {row_number}: relative_humidity_pct must be between 0 and 100")
     if pressure is not None and pressure <= 0.0:
         errors.append(f"row {row_number}: pressure_pa must be positive")
-
-
-def _check_pseudo_pps_truth(row: dict[str, str], row_number: int, errors: list[str]) -> None:
-    valid_events = {
-        "schedule",
-        "start",
-        "completion",
-        "abort",
-        "underflow",
-        "resource_fault",
-    }
-    event = row.get("event", "")
-    if event not in valid_events:
-        errors.append(f"row {row_number}: event must be one of {sorted(valid_events)}")
-    for field_name in (
-        "generator_session",
-        "profile_version",
-        "generator_sequence",
-        "scheduled_offset_us",
-        "scheduled_interval_us",
-        "pulse_width_us",
-    ):
-        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
-    for field_name in ("profile_id", "intended_class"):
-        if not row.get(field_name):
-            errors.append(f"row {row_number}: {field_name} must not be empty")
-    if event == "schedule":
-        if row.get("generator_sequence") == "0":
-            errors.append(f"row {row_number}: schedule generator_sequence must be nonzero")
-        if row.get("scheduled_interval_us") == "0":
-            errors.append(f"row {row_number}: schedule interval must be nonzero")
-    else:
-        for field_name in (
-            "generator_sequence",
-            "scheduled_offset_us",
-            "scheduled_interval_us",
-            "pulse_width_us",
-        ):
-            if row.get(field_name) != "0":
-                errors.append(f"row {row_number}: marker {field_name} must be zero")
-
-
-def _check_diagnostics_v1(row: dict[str, str], row_number: int, errors: list[str]) -> None:
-    if row.get("subsystem") not in VALID_DIAGNOSTIC_SUBSYSTEMS:
-        errors.append(
-            f"row {row_number}: subsystem must be one of "
-            f"{sorted(VALID_DIAGNOSTIC_SUBSYSTEMS)}"
-        )
-    if row.get("severity") not in VALID_DIAGNOSTIC_SEVERITIES:
-        errors.append(
-            f"row {row_number}: severity must be one of "
-            f"{sorted(VALID_DIAGNOSTIC_SEVERITIES)}"
-        )
-    if row.get("state") not in VALID_DIAGNOSTIC_STATES:
-        errors.append(
-            f"row {row_number}: state must be one of {sorted(VALID_DIAGNOSTIC_STATES)}"
-        )
-    if row.get("transition") not in VALID_DIAGNOSTIC_TRANSITIONS:
-        errors.append(
-            f"row {row_number}: transition must be one of "
-            f"{sorted(VALID_DIAGNOSTIC_TRANSITIONS)}"
-        )
-    confidence = row.get("diagnostic_confidence", "")
-    if confidence != "unknown":
-        parsed_confidence = _parse_optional_float(
-            confidence, "diagnostic_confidence", row_number, errors
-        )
-        if parsed_confidence is None or not 0.0 <= parsed_confidence <= 1.0:
-            errors.append(
-                f"row {row_number}: diagnostic_confidence must be between "
-                "0.0 and 1.0 or 'unknown'"
-            )
-    first_seen = _parse_non_negative_int(
-        row.get("first_seen_ticks", ""), "first_seen_ticks", row_number, errors
-    )
-    last_seen = _parse_non_negative_int(
-        row.get("last_seen_ticks", ""), "last_seen_ticks", row_number, errors
-    )
-    if first_seen is not None and last_seen is not None and last_seen < first_seen:
-        errors.append(
-            f"row {row_number}: last_seen_ticks must be greater than or equal "
-            "to first_seen_ticks"
-        )
-    _check_required_text(
-        row,
-        row_number,
-        errors,
-        (
-            "diagnostic_id",
-            "episode_id",
-            "reason_code",
-            "persistence_state",
-            "first_evidence_refs",
-            "latest_evidence_refs",
-            "algorithm_version",
-            "config_hash",
-        ),
-    )
-    if row.get("persistence_state") not in VALID_PERSISTENCE_STATES:
-        errors.append(
-            f"row {row_number}: persistence_state must be one of "
-            f"{sorted(VALID_PERSISTENCE_STATES)}"
-        )
-    _parse_non_negative_int(
-        row.get("occurrence_count", ""),
-        "occurrence_count",
-        row_number,
-        errors,
-    )
-    for field_name in (
-        "observation_effect",
-        "reference_effect",
-        "model_effect",
-        "control_effect",
-    ):
-        if row.get(field_name) not in VALID_DIAGNOSTIC_EFFECTS:
-            errors.append(
-                f"row {row_number}: {field_name} must be one of "
-                f"{sorted(VALID_DIAGNOSTIC_EFFECTS)}"
-            )
-    is_clear = row.get("transition") == "cleared"
-    if is_clear and not row.get("clear_reason_code"):
-        errors.append(
-            f"row {row_number}: cleared transition requires clear_reason_code"
-        )
-    if not is_clear and row.get("clear_reason_code"):
-        errors.append(
-            f"row {row_number}: clear_reason_code is only valid for cleared transitions"
-        )
-    if row.get("subsystem") == "service_plane" and row.get("reference_effect") not in {
-        "none",
-        "unknown",
-    }:
-        errors.append(
-            f"row {row_number}: service-plane diagnostics must not redefine reference truth"
-        )
-
-
-def _check_reference_observation_v1(
-    row: dict[str, str], row_number: int, errors: list[str]
-) -> None:
-    _check_required_text(
-        row,
-        row_number,
-        errors,
-        (
-            "reference_observation_id",
-            "source_identity_epoch",
-            "source_reference_refs",
-            "source_metadata_refs",
-            "qualification_reason_codes",
-            "algorithm_version",
-            "config_hash",
-        ),
-    )
-    for field_name in ("source_reference_first_seq", "source_reference_last_seq"):
-        if row.get(field_name):
-            _parse_non_negative_int(row[field_name], field_name, row_number, errors)
-    if row.get("cadence_state") not in VALID_CADENCE_STATES:
-        errors.append(
-            f"row {row_number}: cadence_state must be one of {sorted(VALID_CADENCE_STATES)}"
-        )
-    if row.get("capture_path_state") not in VALID_CAPTURE_PATH_STATES:
-        errors.append(
-            f"row {row_number}: capture_path_state must be one of "
-            f"{sorted(VALID_CAPTURE_PATH_STATES)}"
-        )
-    if row.get("receiver_authority_state") not in VALID_REFERENCE_AUTHORITY_STATES:
-        errors.append(
-            f"row {row_number}: receiver_authority_state must be one of "
-            f"{sorted(VALID_REFERENCE_AUTHORITY_STATES)}"
-        )
-    if row.get("utc_traceability_state") not in VALID_UTC_TRACEABILITY_STATES:
-        errors.append(
-            f"row {row_number}: utc_traceability_state must be one of "
-            f"{sorted(VALID_UTC_TRACEABILITY_STATES)}"
-        )
-    if row.get("metadata_freshness") not in VALID_METADATA_FRESHNESS:
-        errors.append(
-            f"row {row_number}: metadata_freshness must be one of "
-            f"{sorted(VALID_METADATA_FRESHNESS)}"
-        )
-    if row.get("qualification_state") not in VALID_REFERENCE_QUALIFICATION_STATES:
-        errors.append(
-            f"row {row_number}: qualification_state must be one of "
-            f"{sorted(VALID_REFERENCE_QUALIFICATION_STATES)}"
-        )
-    for field_name in (
-        "sawtooth_correction_ns",
-        "cable_delay_ns",
-        "reference_standard_uncertainty_s",
-    ):
-        value = _parse_optional_float(row.get(field_name), field_name, row_number, errors)
-        if field_name == "reference_standard_uncertainty_s" and value is not None and value < 0:
-            errors.append(
-                f"row {row_number}: reference_standard_uncertainty_s must be non-negative"
-            )
-    if (
-        row.get("cadence_state") == "valid"
-        and row.get("receiver_authority_state") in {"unknown", "unavailable"}
-        and row.get("qualification_state") == "qualified"
-    ):
-        errors.append(
-            f"row {row_number}: valid cadence alone must not qualify reference authority"
-        )
-    if row.get("qualification_state") == "qualified":
-        required = {
-            "cadence_state": "valid",
-            "capture_path_state": "valid",
-            "receiver_authority_state": "qualified",
-            "utc_traceability_state": "valid",
-            "metadata_freshness": "current",
-        }
-        mismatched = [
-            field_name
-            for field_name, expected in required.items()
-            if row.get(field_name) != expected
-        ]
-        if mismatched:
-            errors.append(
-                f"row {row_number}: qualified reference requires evidence-backed "
-                f"{', '.join(mismatched)}"
-            )
 
 
 def _check_required_text(
@@ -1905,6 +1396,23 @@ def _check_control_preview_v1(row: dict[str, str], row_number: int, errors: list
             "decision_reason_code",
         ),
     )
+    if row.get("plant_model_ref") != CURRENT_PLANT_MODEL_REF:
+        errors.append(
+            f"row {row_number}: plant_model_ref must identify the current PPS-gated oscillator plant"
+        )
+    if row.get("plant_model_id") != CURRENT_PLANT_MODEL_ID:
+        errors.append(
+            f"row {row_number}: plant_model_id must identify the current PPS-gated oscillator plant"
+        )
+    if row.get("plant_model_version") != "1":
+        errors.append(f"row {row_number}: plant_model_version must be 1")
+    _check_sha256(row, "plant_model_hash", row_number, errors)
+    if CURRENT_PLANT_MODEL_PATH.is_file() and row.get("plant_model_hash") != sha256(
+        CURRENT_PLANT_MODEL_PATH.read_bytes()
+    ).hexdigest():
+        errors.append(
+            f"row {row_number}: plant_model_hash must match the current plant profile bytes"
+        )
     if row.get("control_state") not in VALID_CONTROL_STATES:
         errors.append(f"row {row_number}: control_state must be one of {sorted(VALID_CONTROL_STATES)}")
     if row.get("previous_control_state") not in VALID_CONTROL_STATES:
@@ -1932,11 +1440,11 @@ def _check_control_preview_v1(row: dict[str, str], row_number: int, errors: list
     ):
         _check_boolean_text(row, field_name, row_number, errors)
     if row.get("preview_only") != "true":
-        errors.append(f"row {row_number}: preview_only must remain true in Phase 4 v1")
+        errors.append(f"row {row_number}: preview_only must be true for zero-authority CTL evidence")
     if row.get("actuation_authorized") != "false":
-        errors.append(f"row {row_number}: actuation_authorized must remain false in Phase 4 v1")
+        errors.append(f"row {row_number}: CTL evidence cannot authorize actuation")
     if row.get("actionable") != "false":
-        errors.append(f"row {row_number}: actionable must remain false in Phase 4 v1")
+        errors.append(f"row {row_number}: CTL evidence cannot be actionable")
 
     for field_name in ("plant_model_version", "current_dac_code", "proposed_dac_code"):
         if row.get(field_name):
@@ -1956,7 +1464,7 @@ def _check_control_preview_v1(row: dict[str, str], row_number: int, errors: list
         errors.append(f"row {row_number}: inhibited preview must not contain proposed_dac_code")
 
 
-def _check_active_transaction_v1(
+def _check_active_transaction_v2(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
     _check_required_text(
@@ -1965,9 +1473,10 @@ def _check_active_transaction_v1(
         errors,
         (
             "event",
+            "time_domain",
             "run_identity",
             "build_identity",
-            "profile_identity",
+            "image_identity",
             "active_state",
             "response_class",
             "reason",
@@ -1983,6 +1492,10 @@ def _check_active_transaction_v1(
     if event not in VALID_ACTIVE_TRANSACTION_EVENTS:
         errors.append(
             f"row {row_number}: event must be one of {sorted(VALID_ACTIVE_TRANSACTION_EVENTS)}"
+        )
+    if row.get("time_domain") != "rp2040_monotonic_us64":
+        errors.append(
+            f"row {row_number}: ACT event timing requires rp2040_monotonic_us64"
         )
     if row.get("active_state") not in VALID_ACTIVE_STATES:
         errors.append(
@@ -2013,6 +1526,7 @@ def _check_active_transaction_v1(
 
     for field_name in (
         "session_id",
+        "event_timestamp_ticks",
         "authorization_sequence",
         "nonce",
         "request_sequence",
@@ -2069,8 +1583,7 @@ def _check_active_transaction_v1(
         expected_evidence = {
             "request_created": "request_pending",
             "request_withdrawn": "evidence_clear",
-            "core0_accepted": "acceptance_pending",
-            "request_accepted": "request_pending",
+            "request_accepted": "acceptance_pending",
             "application": "application_pending",
             "application_fault": "application_pending",
             "response": "response_pending",
@@ -2087,7 +1600,7 @@ def _check_active_transaction_v1(
         errors.append(
             f"row {row_number}: request_withdrawn requires DISARMED"
         )
-    if event in {"request_accepted", "core0_accepted"} and row.get("active_state") != "ACCEPTED_AWAITING_APPLICATION":
+    if event == "request_accepted" and row.get("active_state") != "ACCEPTED_AWAITING_APPLICATION":
         errors.append(
             f"row {row_number}: {event} requires ACCEPTED_AWAITING_APPLICATION"
         )
@@ -2104,81 +1617,6 @@ def _check_active_transaction_v1(
         errors.append(f"row {row_number}: response requires a response classification")
 
 
-def _check_active_transaction_v2(
-    row: dict[str, str], row_number: int, errors: list[str]
-) -> None:
-    _check_required_text(
-        row,
-        row_number,
-        errors,
-        (
-            "event",
-            "time_domain",
-            "run_identity",
-            "build_identity",
-            "profile_identity",
-            "reason",
-        ),
-    )
-    event = row.get("event")
-    if event not in VALID_ACTIVE_TRANSACTION_EVENTS:
-        errors.append(
-            f"row {row_number}: event must be one of "
-            f"{sorted(VALID_ACTIVE_TRANSACTION_EVENTS)}"
-        )
-    if row.get("time_domain") != "rp2040_monotonic_us64":
-        errors.append(
-            f"row {row_number}: active timing sidecar requires "
-            "rp2040_monotonic_us64"
-        )
-    parsed = {
-        field_name: _parse_non_negative_int(
-            row.get(field_name, ""), field_name, row_number, errors
-        )
-        for field_name in (
-            "timing_record_sequence",
-            "transaction_record_sequence",
-            "event_timestamp_ticks",
-            "session_id",
-            "request_sequence",
-            "decision_sequence",
-            "source_first_sequence",
-            "source_last_sequence",
-            "authorization_sequence",
-            "nonce",
-            "accepted_code",
-            "applied_code",
-            "application_sequence",
-            "dac_epoch",
-        )
-    }
-    for field_name in ("timing_record_sequence", "transaction_record_sequence"):
-        if parsed[field_name] == 0:
-            errors.append(f"row {row_number}: {field_name} must be non-zero")
-    if event == "manual_start":
-        for field_name in (
-            "request_sequence",
-            "decision_sequence",
-            "source_first_sequence",
-            "source_last_sequence",
-            "authorization_sequence",
-            "nonce",
-            "application_sequence",
-        ):
-            if parsed[field_name] not in {None, 0}:
-                errors.append(
-                    f"row {row_number}: manual_start {field_name} must be zero"
-                )
-        if parsed["accepted_code"] in {None, 0} or (
-            parsed["accepted_code"] != parsed["applied_code"]
-        ):
-            errors.append(
-                f"row {row_number}: manual_start must bind one exact applied code"
-            )
-    elif parsed["request_sequence"] in {None, 0}:
-        errors.append(f"row {row_number}: {event} requires a request sequence")
-
-
 def _check_active_hybrid_decision_v2(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
@@ -2190,42 +1628,7 @@ def _check_active_hybrid_decision_v2(
             "time_domain",
             "run_identity",
             "build_identity",
-            "profile_identity",
-            "reason",
-        ),
-    )
-    if row.get("time_domain") != "rp2040_monotonic_us64":
-        errors.append(
-            f"row {row_number}: hybrid timing sidecar requires "
-            "rp2040_monotonic_us64"
-        )
-    for field_name in (
-        "timing_record_sequence",
-        "hybrid_record_sequence",
-        "decision_sequence",
-        "decision_timestamp_ticks",
-        "capture_session",
-        "source_first_sequence",
-        "source_last_sequence",
-    ):
-        value = _parse_non_negative_int(
-            row.get(field_name, ""), field_name, row_number, errors
-        )
-        if field_name not in {"decision_timestamp_ticks"} and value == 0:
-            errors.append(f"row {row_number}: {field_name} must be non-zero")
-
-
-def _check_active_hybrid_decision_v1(
-    row: dict[str, str], row_number: int, errors: list[str]
-) -> None:
-    _check_required_text(
-        row,
-        row_number,
-        errors,
-        (
-            "run_identity",
-            "build_identity",
-            "profile_identity",
+            "image_identity",
             "frequency_estimator_sha256",
             "tight_state",
             "phase_estimator_sha256",
@@ -2238,6 +1641,11 @@ def _check_active_hybrid_decision_v1(
             "response_policy_sha256",
         ),
     )
+    if row.get("time_domain") != "rp2040_monotonic_us64":
+        errors.append(
+            f"row {row_number}: AHY decision timing requires "
+            "rp2040_monotonic_us64"
+        )
     for field_name in (
         "phase_continuous",
         "phase_current",
@@ -2269,6 +1677,7 @@ def _check_active_hybrid_decision_v1(
         errors.append(f"row {row_number}: invalid tight_state")
     for field_name in (
         "decision_sequence",
+        "decision_timestamp_ticks",
         "decision_timestamp_s",
         "capture_session",
         "source_first_sequence",
@@ -2324,35 +1733,22 @@ def _check_active_hybrid_decision_v1(
         errors.append(f"row {row_number}: requested code does not equal current plus delta")
     if not 0xA800 <= requested_code <= 0xAB00:
         errors.append(f"row {row_number}: requested code is outside A800..AB00")
-    deliberate_challenge = (
-        row.get("reason") == "deliberate_reversal_challenge_request_ready"
-    )
     expected_material: bool | None
-    if row.get("profile_identity") == "cx323_d9_d6_72h_adaptive_hybrid":
-        # CX323 classifies the unchanged legacy path in the integer DAC-code
-        # domain before cadence/budget guards.  Its exact PLL component is
-        # retained in AHM picocodes and can be smaller than AHY's 12-decimal
-        # Hz projection (for example, 6 picocodes serializes as 0 Hz).  Check
-        # the path-local cases that AHY represents exactly and leave lossy
-        # zero-demand hold rows to the mandatory AHM/native replay join.
-        reason = row.get("reason")
-        raw_combined = float(row["raw_combined_delta_codes"])
-        if reason == "phase_material_legacy_request_ready":
-            expected_material = True
-        elif reason == "outside_tight_legacy_request_ready":
-            expected_material = delta != counterfactual
-        elif reason == "phase_degraded_frequency_only_request_ready":
-            expected_material = False
-        elif raw_combined != 0.0:
-            expected_material = False
-        else:
-            expected_material = None
+    # The exact PLL component is retained in AHM picocodes and can be smaller
+    # than AHY's 12-decimal Hz projection. Check the path-local cases that AHY
+    # represents exactly and leave lossy zero-demand holds to AHM replay.
+    reason = row.get("reason")
+    raw_combined = float(row["raw_combined_delta_codes"])
+    if reason == "phase_material_ordinary_request_ready":
+        expected_material = True
+    elif reason == "outside_tight_ordinary_request_ready":
+        expected_material = delta != counterfactual
+    elif reason == "phase_degraded_frequency_only_request_ready":
+        expected_material = False
+    elif raw_combined != 0.0:
+        expected_material = False
     else:
-        expected_material = (
-            not deliberate_challenge
-            and phase_term != 0.0
-            and delta != counterfactual
-        )
+        expected_material = None
     if (
         expected_material is not None
         and (row.get("phase_materially_influenced") == "true")
@@ -2373,11 +1769,11 @@ def _check_active_hybrid_decision_v1(
 def _check_active_hybrid_maintenance_v1(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
-    """Validate one CX323 maintenance lifecycle record.
+    """Validate one adaptive-hybrid maintenance lifecycle record.
 
-    Cross-file one-to-one joins are verified by the campaign analyzer.  This
-    row contract makes every required AHY/AH2 and ACT/AT2 key explicit and
-    rejects partial identities before analysis.
+    Cross-file one-to-one joins are verified by the campaign analyzer. This
+    row contract makes every required AHY and ACT key explicit and rejects
+    partial identities before analysis.
     """
 
     _check_required_text(
@@ -2389,7 +1785,7 @@ def _check_active_hybrid_maintenance_v1(
             "time_domain",
             "run_identity",
             "build_identity",
-            "profile_identity",
+            "image_identity",
             "policy_id",
             "active_policy_sha256",
             "frequency_estimator_sha256",
@@ -2411,10 +1807,10 @@ def _check_active_hybrid_maintenance_v1(
             f"row {row_number}: AHM event timing requires "
             "rp2040_monotonic_us64"
         )
-    if row.get("policy_id") != CX323_MAINTENANCE_POLICY_ID:
+    if row.get("policy_id") != ADAPTIVE_HYBRID_MAINTENANCE_POLICY_ID:
         errors.append(
             f"row {row_number}: policy_id must equal "
-            f"{CX323_MAINTENANCE_POLICY_ID}"
+            f"{ADAPTIVE_HYBRID_MAINTENANCE_POLICY_ID}"
         )
     for field_name in ("active_policy_sha256", "frequency_estimator_sha256"):
         _check_sha256(row, field_name, row_number, errors)
@@ -2462,10 +1858,8 @@ def _check_active_hybrid_maintenance_v1(
         "current_applied_code",
         "current_dac_epoch",
         "hybrid_record_sequence",
-        "hybrid_timing_record_sequence",
         "decision_sequence",
         "transaction_record_sequence",
-        "transaction_timing_record_sequence",
         "request_sequence",
         "application_sequence",
         "actual_applied_code",
@@ -2583,7 +1977,7 @@ def _check_active_hybrid_maintenance_v1(
             + parsed_signed["committed_pll_debt_after_picocodes"]
         )
         for label, value in (("before", debt_before), ("after", debt_after)):
-            if abs(value) > MAX_CX323_COMMITTED_DEBT_PICOCODES:
+            if abs(value) > MAX_COMMITTED_DEBT_PICOCODES:
                 errors.append(
                     f"row {row_number}: committed {label} debt exceeds the "
                     "500000000000 picocode bound"
@@ -2595,7 +1989,7 @@ def _check_active_hybrid_maintenance_v1(
             "committed_pll_debt_after_picocodes",
         ):
             value = parsed_signed[field_name]
-            if value is not None and abs(value) > MAX_CX323_COMMITTED_DEBT_PICOCODES:
+            if value is not None and abs(value) > MAX_COMMITTED_DEBT_PICOCODES:
                 errors.append(
                     f"row {row_number}: {field_name} exceeds the bounded "
                     "picocode tag range"
@@ -2619,14 +2013,12 @@ def _check_active_hybrid_maintenance_v1(
 
     hybrid_join_fields = (
         "hybrid_record_sequence",
-        "hybrid_timing_record_sequence",
         "decision_sequence",
         "source_first_sequence",
         "source_last_sequence",
     )
     transaction_join_fields = (
         "transaction_record_sequence",
-        "transaction_timing_record_sequence",
         "request_sequence",
     )
 
@@ -2688,9 +2080,9 @@ def _check_active_hybrid_maintenance_v1(
             )
     elif event == "decision":
         _require_non_zero(hybrid_join_fields, event)
-        if burst_count is not None and burst_count < 3:
+        if burst_count is not None and burst_count < 2:
             errors.append(
-                f"row {row_number}: decision burst must contain at least AHY, AH2, and AHM"
+                f"row {row_number}: decision burst must contain at least AHY and AHM"
             )
         request_created = (
             row.get("request_pending_before") == "false"
@@ -2700,13 +2092,13 @@ def _check_active_hybrid_maintenance_v1(
             _require_non_zero(transaction_join_fields, "decision request creation")
             if row.get("transaction_event") != "request_created":
                 errors.append(
-                    f"row {row_number}: a newly pending request must join ACT/AT2 "
+                    f"row {row_number}: a newly pending request must join ACT "
                     "request_created"
                 )
-            if burst_count is not None and burst_count < 5:
+            if burst_count is not None and burst_count < 3:
                 errors.append(
                     f"row {row_number}: request decision burst must contain "
-                    "AHY, AH2, ACT, AT2, and AHM"
+                    "AHY, ACT, and AHM"
                 )
         else:
             _require_zero(transaction_join_fields, "decision without request creation")
@@ -2723,17 +2115,17 @@ def _check_active_hybrid_maintenance_v1(
                 f"row {row_number}: {event} must join transaction_event="
                 f"{transaction_events[event]}"
             )
-        if burst_count is not None and burst_count < 3:
+        if burst_count is not None and burst_count < 2:
             errors.append(
-                f"row {row_number}: {event} burst must contain ACT, AT2, and AHM"
+                f"row {row_number}: {event} burst must contain ACT and AHM"
             )
     elif event == "fail_static" and row.get("transaction_event") == "application_fault":
         _require_non_zero(hybrid_join_fields, event)
         _require_non_zero(transaction_join_fields, event)
-        if burst_count is not None and burst_count < 3:
+        if burst_count is not None and burst_count < 2:
             errors.append(
                 f"row {row_number}: fail_static application-fault burst must "
-                "contain ACT, AT2, and AHM"
+                "contain ACT and AHM"
             )
     else:
         _require_zero(transaction_join_fields, event or "non-transaction event")
@@ -2746,7 +2138,7 @@ def _check_active_hybrid_maintenance_v1(
             value in {None, 0} for value in hybrid_values
         ):
             errors.append(
-                f"row {row_number}: last-completed AHY/AH2 identity must be all zero "
+                f"row {row_number}: last-completed AHY identity must be all zero "
                 "or complete"
             )
 
@@ -2924,49 +2316,6 @@ def _check_active_hybrid_maintenance_v1(
         )
 
 
-def _check_plant_sign_qualification_v1(
-    row: dict[str, str], row_number: int, errors: list[str]
-) -> None:
-    _check_required_text(
-        row,
-        row_number,
-        errors,
-        (
-            "event",
-            "run_identity",
-            "build_identity",
-            "profile_identity",
-            "capture_session",
-            "policy_sha256",
-            "plant_sign_gate_sha256",
-            "identification_estimator_sha256",
-            "identification_estimator_config_sha256",
-            "natural_frequency_estimator_sha256",
-            "state_before",
-            "state_after",
-            "reason",
-        ),
-    )
-    if row.get("event") not in CX321_PLANT_SIGN_EVENTS:
-        errors.append(
-            f"row {row_number}: invalid plant-sign qualification event"
-        )
-    _check_boolean_text(row, "actionable", row_number, errors)
-    if row.get("actionable") != "false":
-        errors.append(
-            f"row {row_number}: plant-sign evidence must never be actionable"
-        )
-    for field_name in (
-        "policy_sha256",
-        "plant_sign_gate_sha256",
-        "identification_estimator_sha256",
-        "identification_estimator_config_sha256",
-        "natural_frequency_estimator_sha256",
-    ):
-        if re.fullmatch(r"[0-9a-f]{64}", row.get(field_name, "")) is None:
-            errors.append(f"row {row_number}: {field_name} is not SHA-256")
-
-
 def _check_sha256(row: dict[str, str], field_name: str, row_number: int, errors: list[str]) -> None:
     value = row.get(field_name, "")
     if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
@@ -3105,186 +2454,12 @@ def _check_phase_estimator_output_v1(
         )
 
 
-def _check_hybrid_preview_decision_v1(
-    row: dict[str, str], row_number: int, errors: list[str]
-) -> None:
-    _check_required_text(
-        row,
-        row_number,
-        errors,
-        (
-            "candidate_id",
-            "candidate_configuration_sha256",
-            "phase_estimator_id",
-            "phase_estimator_configuration_sha256",
-            "frequency_estimator_id",
-            "frequency_estimator_configuration_sha256",
-            "configuration_sha256",
-            "time_domain",
-            "source_phase_estimate",
-            "source_frequency_estimate",
-            "band_state_before",
-            "band_state_after",
-            "preview_state",
-            "decision_reason",
-            "uncertainty_status",
-        ),
-    )
-    for field_name in (
-        "phase_epoch",
-        "observation_sequence",
-        "dac_epoch",
-        "decision_timestamp_ticks",
-        "actual_applied_code",
-        "shadow_code_before",
-        "shadow_code_after",
-        "correction_count",
-        "cumulative_movement_codes",
-        "alternating_correction_count",
-    ):
-        _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
-    if row.get("counterfactual_code"):
-        _parse_non_negative_int(
-            row["counterfactual_code"], "counterfactual_code", row_number, errors
-        )
-    _parse_int(
-        row.get("raw_relative_phase_cycles", ""),
-        "raw_relative_phase_cycles",
-        row_number,
-        errors,
-    )
-    for field_name in (
-        "modeled_relative_phase_cycles",
-        "observed_frequency_error_hz",
-        "modeled_frequency_error_hz",
-        "frequency_term_hz",
-        "phase_bias_hz",
-        "combined_frequency_error_hz",
-        "raw_counterfactual_delta_codes",
-        "counterfactual_delta_codes",
-    ):
-        _parse_optional_float(row.get(field_name), field_name, row_number, errors)
-    for field_name in (
-        "frequency_observation_event",
-        "counterfactual_decision",
-        "counterfactual_correction",
-        "step_limited",
-        "range_clamped",
-        "modeled_not_observed_after_divergence",
-        "actionable",
-        "actuation_authorized",
-        "authorization_consumed",
-    ):
-        _check_boolean_text(row, field_name, row_number, errors)
-    if row.get("preview_state") not in VALID_HYBRID_PREVIEW_STATES:
-        errors.append(
-            f"row {row_number}: preview_state must be one of "
-            f"{sorted(VALID_HYBRID_PREVIEW_STATES)}"
-        )
-    for field_name in ("band_state_before", "band_state_after"):
-        if row.get(field_name) not in VALID_HYBRID_BAND_STATES:
-            errors.append(
-                f"row {row_number}: {field_name} must be one of "
-                f"{sorted(VALID_HYBRID_BAND_STATES)}"
-            )
-    if row.get("uncertainty_status") not in VALID_UNCERTAINTY_STATUS:
-        errors.append(
-            f"row {row_number}: uncertainty_status must be one of "
-            f"{sorted(VALID_UNCERTAINTY_STATUS)}"
-        )
-    for field_name in (
-        "candidate_configuration_sha256",
-        "phase_estimator_configuration_sha256",
-        "frequency_estimator_configuration_sha256",
-        "configuration_sha256",
-    ):
-        _check_sha256(row, field_name, row_number, errors)
-    for field_name in ("actionable", "actuation_authorized", "authorization_consumed"):
-        if row.get(field_name) != "false":
-            errors.append(f"row {row_number}: {field_name} must remain false for CX318 HPR")
-    expected_phase_source = (
-        f"PHE:{row.get('phase_epoch', '')}:{row.get('observation_sequence', '')}"
-    )
-    if row.get("source_phase_estimate") != expected_phase_source:
-        errors.append(
-            f"row {row_number}: source_phase_estimate must equal "
-            f"{expected_phase_source}"
-        )
-    frequency_fields = (
-        "observed_frequency_error_hz",
-        "modeled_frequency_error_hz",
-        "frequency_term_hz",
-        "combined_frequency_error_hz",
-    )
-    frequency_available = bool(row.get("observed_frequency_error_hz"))
-    if any(bool(row.get(field_name)) != frequency_available for field_name in frequency_fields):
-        errors.append(
-            f"row {row_number}: HPR frequency values must be all present or all empty"
-        )
-    expected_frequency_source = expected_phase_source if frequency_available else "unavailable"
-    if row.get("source_frequency_estimate") != expected_frequency_source:
-        errors.append(
-            f"row {row_number}: source_frequency_estimate must equal "
-            f"{expected_frequency_source}"
-        )
-    try:
-        counterfactual_code = int(row.get("counterfactual_code", ""), 10)
-        shadow_code_after = int(row.get("shadow_code_after", ""), 10)
-        if counterfactual_code != shadow_code_after:
-            errors.append(
-                f"row {row_number}: counterfactual_code must equal shadow_code_after"
-            )
-    except (TypeError, ValueError):
-        pass
-    try:
-        shadow_code_before = int(row.get("shadow_code_before", ""), 10)
-        shadow_code_after = int(row.get("shadow_code_after", ""), 10)
-        counterfactual_delta = row.get("counterfactual_delta_codes", "")
-        if (
-            row.get("counterfactual_correction") == "true"
-            and counterfactual_delta
-            and not math.isclose(
-            float(counterfactual_delta),
-            shadow_code_after - shadow_code_before,
-            rel_tol=0.0,
-            abs_tol=1e-12,
-            )
-        ):
-            errors.append(
-                f"row {row_number}: an applied counterfactual correction's "
-                "counterfactual_delta_codes must equal "
-                "shadow_code_after-shadow_code_before"
-            )
-        actual_applied_code = int(row.get("actual_applied_code", ""), 10)
-        modeled_divergence = row.get("modeled_not_observed_after_divergence")
-        expected_divergence = shadow_code_after != actual_applied_code
-        if modeled_divergence in VALID_BOOLEAN_TEXT and (
-            (modeled_divergence == "true") != expected_divergence
-        ):
-            errors.append(
-                f"row {row_number}: modeled_not_observed_after_divergence must "
-                "equal shadow_code_after != actual_applied_code"
-            )
-    except (TypeError, ValueError):
-        pass
-    if row.get("counterfactual_decision") == "false":
-        for field_name in (
-            "raw_counterfactual_delta_codes",
-            "counterfactual_delta_codes",
-        ):
-            if row.get(field_name):
-                errors.append(
-                    f"row {row_number}: {field_name} must be empty without a "
-                    "counterfactual decision"
-                )
-
-
 def _check_tight_deadband_decision_v1(
     row: dict[str, str],
     row_number: int,
     errors: list[str],
     *,
-    expected_policy_sha256: str,
+    expected_policy_sha256: str | None,
 ) -> None:
     _check_required_text(
         row,
@@ -3337,8 +2512,8 @@ def _check_tight_deadband_decision_v1(
         "transition",
         "frequency_controller_eligible",
         "requalified",
-        "historical_v2_inside",
-        "symmetric_two_count_inside",
+        "three_count_band_inside",
+        "two_count_band_inside",
         "actionable",
         "actuation_authorized",
         "authorization_consumed",
@@ -3377,12 +2552,15 @@ def _check_tight_deadband_decision_v1(
         errors.append(
             f"row {row_number}: policy_id must equal {TIGHT_DEADBAND_POLICY_ID}"
         )
-    if not re.fullmatch(r"est:cx317:selected600:[0-9]+", row.get("estimate_id", "")):
+    if not re.fullmatch(r"est:frequency_regulation:[^:]+:[0-9]+", row.get("estimate_id", "")):
         errors.append(
-            f"row {row_number}: estimate_id must identify a selected600 CX317 estimate"
+            f"row {row_number}: estimate_id must identify a current frequency-regulation estimate"
         )
     _check_sha256(row, "policy_sha256", row_number, errors)
-    if row.get("policy_sha256") != expected_policy_sha256:
+    if (
+        expected_policy_sha256 is not None
+        and row.get("policy_sha256") != expected_policy_sha256
+    ):
         errors.append(
             f"row {row_number}: policy_sha256 must equal the expected "
             "tight-deadband policy hash"
@@ -3390,23 +2568,24 @@ def _check_tight_deadband_decision_v1(
     for field_name in ("actionable", "actuation_authorized", "authorization_consumed"):
         if row.get(field_name) != "false":
             errors.append(
-                f"row {row_number}: {field_name} must remain false for CX318 TDB"
+                f"row {row_number}: {field_name} must remain false for TDB"
             )
     if absolute_counts is not None:
-        expected_historical_v2 = absolute_counts <= 3
-        expected_symmetric = absolute_counts <= 2
-        if row.get("historical_v2_inside") in VALID_BOOLEAN_TEXT and (
-            (row.get("historical_v2_inside") == "true") != expected_historical_v2
+        expected_three_count_band = absolute_counts <= 3
+        expected_two_count_band = absolute_counts <= 2
+        if row.get("three_count_band_inside") in VALID_BOOLEAN_TEXT and (
+            (row.get("three_count_band_inside") == "true")
+            != expected_three_count_band
         ):
             errors.append(
-                f"row {row_number}: historical_v2_inside must equal "
+                f"row {row_number}: three_count_band_inside must equal "
                 "absolute_edge_error_counts <= 3"
             )
-        if row.get("symmetric_two_count_inside") in VALID_BOOLEAN_TEXT and (
-            (row.get("symmetric_two_count_inside") == "true") != expected_symmetric
+        if row.get("two_count_band_inside") in VALID_BOOLEAN_TEXT and (
+            (row.get("two_count_band_inside") == "true") != expected_two_count_band
         ):
             errors.append(
-                f"row {row_number}: symmetric_two_count_inside must equal "
+                f"row {row_number}: two_count_band_inside must equal "
                 "absolute_edge_error_counts <= 2"
             )
 
@@ -3505,45 +2684,26 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_dac_step(row, row_count, errors)
             if context.contract == "environment_v1":
                 _check_environment(row, row_count, errors)
-            if context.contract == "pseudo_pps_truth_v1":
-                _check_pseudo_pps_truth(row, row_count, errors)
-            if context.contract == "diagnostics_v1":
-                _check_diagnostics_v1(row, row_count, errors)
-            if context.contract == "reference_observations_v1":
-                _check_reference_observation_v1(row, row_count, errors)
             if context.contract == "estimates_v2":
                 _check_estimate_v2(row, row_count, errors)
             if context.contract == "control_previews_v1":
                 _check_control_preview_v1(row, row_count, errors)
-            if context.contract == "active_transactions_v1":
-                _check_active_transaction_v1(row, row_count, errors)
             if context.contract == "active_transactions_v2":
                 _check_active_transaction_v2(row, row_count, errors)
-            if context.contract == "active_hybrid_decisions_v1":
-                _check_active_hybrid_decision_v1(row, row_count, errors)
             if context.contract == "active_hybrid_decisions_v2":
                 _check_active_hybrid_decision_v2(row, row_count, errors)
             if context.contract == "active_hybrid_maintenance_v1":
                 _check_active_hybrid_maintenance_v1(row, row_count, errors)
-            if context.contract == "plant_sign_qualification_v1":
-                _check_plant_sign_qualification_v1(
-                    row, row_count, errors
-                )
             if context.contract == "relative_phase_observations_v1":
                 _check_relative_phase_observation_v1(row, row_count, errors)
             if context.contract == "phase_estimator_outputs_v1":
                 _check_phase_estimator_output_v1(row, row_count, errors)
-            if context.contract == "hybrid_preview_decisions_v1":
-                _check_hybrid_preview_decision_v1(row, row_count, errors)
             if context.contract == "tight_deadband_decisions_v1":
                 _check_tight_deadband_decision_v1(
                     row,
                     row_count,
                     errors,
-                    expected_policy_sha256=(
-                        context.tight_deadband_policy_sha256
-                        or TIGHT_DEADBAND_POLICY_SHA256
-                    ),
+                    expected_policy_sha256=context.expected_policy_sha256,
                 )
 
     if row_count == 0:

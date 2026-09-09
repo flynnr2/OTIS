@@ -28,32 +28,3 @@ def test_only_successful_explicit_code_write_establishes_applied_code() -> None:
     validity = setter.index("dac_applied_code_known = true;")
     assert assignment < validity
     assert setter[:assignment].rfind("if (dac_last_write_ok)") >= 0
-
-
-def test_preview_and_status_fail_unavailable_before_explicit_write() -> None:
-    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
-
-    # Six legacy/static consumers plus the Core-0 immutable DAC metadata
-    # publisher must all preserve the explicit-write validity requirement.
-    assert sketch.count("applied_code_known &&") == 7
-    assert "applied.dac.requested_applied_match" in sketch
-    assert "OtisCx317StaticCodeState cx317_static_code_state" in sketch
-    assert 'emit_status(component, "applied_code_known"' in sketch
-    assert 'emit_status(component, "last_applied_code", "unavailable"' in sketch
-
-
-def test_manual_write_emits_structured_requested_applied_acknowledgement() -> None:
-    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
-    start = sketch.index("void handle_dac_set(uint16_t requested_code)")
-    end = sketch.index("#if OTIS_ENABLE_H1_DAC_SWEEP", start)
-    handler = sketch[start:end]
-
-    assert "otis_emit_dac_step(" in handler
-    assert "requested_code," in handler
-    assert "clamped, false" in handler
-    assert 'ok ? "manual_apply" : "manual_write_failed"' in handler
-    assert "OTIS_FLAG_SOURCE_HEALTH_SUSPECT" in handler

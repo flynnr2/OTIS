@@ -1,9 +1,10 @@
-# Firmware Validation
+# Arduino Validation
 
-Current validation targets `CX319_EVIDENCE_EPOCH_1` only. The firmware matrix
-contains `cx319_tight_lower`, `cx319_tight_upper`, and five current
-expected-failure guards. Historical H0/SW1, Phase 4/5, CX317, and CX318 profiles
-and golden-wire workflows are not executable from current HEAD.
+Current validation targets the single fixed firmware image
+`adaptive_hybrid_regulation`. Historical firmware programmes and negative
+profile matrices are not part of current HEAD.
+
+Run a no-hardware tier with:
 
 ```bash
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier fast
@@ -11,9 +12,15 @@ and golden-wire workflows are not executable from current HEAD.
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier release
 ```
 
-`fast` builds the lower profile; `campaign` builds both current profiles;
-`release` builds both and proves all five expected-failure guards. These are
-offline checks and perform no serial access or flashing.
+Each tier builds the same image through `tools/build_firmware.py`. Fast selects
+the current architecture, policy, transaction, timing, channel-isolation, and
+native parity checks. Campaign adds operational host-path checks. Release runs
+every retained current test. `--list` prints the exact commands without running
+them.
 
-For a historical reproduction, check out the exact source revision recorded by
-the package or reviewed report and run that revision's validation instructions.
+The fixed build manifest pins image identity, board, core, toolchain, source
+provenance, required binary markers, and resource budgets. Build artifacts are
+ignored local outputs and are not scientific evidence until bound into a
+frozen run bundle.
+
+See `END_TO_END_VALIDATION_PLAN.md` for the rehearsal and bench boundary.

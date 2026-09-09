@@ -41,8 +41,6 @@
           "role": {
             "enum": [
               "run_manifest",
-              "configuration",
-              "profile_snapshot",
               "raw_evidence",
               "declared_artifact"
             ]
@@ -77,7 +75,7 @@
         "fqbn",
         "git_commit",
         "invocation_id",
-        "profile_id",
+        "image_id",
         "provenance_format",
         "source_sha256",
         "source_state",
@@ -129,12 +127,12 @@
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },
-        "profile_id": {
+        "image_id": {
           "type": "string",
           "minLength": 1
         },
         "provenance_format": {
-          "const": "otis_generated_build_v1"
+          "const": "otis_fixed_firmware_build_v1"
         },
         "source_state": {
           "enum": ["clean", "dirty"]

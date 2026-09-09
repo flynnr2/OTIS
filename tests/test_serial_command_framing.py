@@ -78,7 +78,7 @@ def test_one_byte_overflow_discards_prefix_and_suffix(framing_harness: Path) -> 
     assert _events(framing_harness, payload) == ["DIAG_REJECTED_TOO_LONG"]
 
 
-@pytest.mark.parametrize("suffix", [b"DAC SET 0x8000", b"SWEEP START"])
+@pytest.mark.parametrize("suffix", [b"DAC SET 0x8000", b"ACTIVE ABORT"])
 def test_very_long_line_never_executes_command_suffix(
     framing_harness: Path, suffix: bytes
 ) -> None:
@@ -101,16 +101,12 @@ def test_dual_core_fixture_commands_have_closed_firmware_vocabulary(
         framing_harness,
         b"DUALCORE?\nDUALCORE INVALIDATE_GNSS\nDUALCORE RECOVER\n"
         b"DUALCORE ARBITRARY\n",
-    ) == ["EXEC_OTHER", "EXEC_OTHER", "EXEC_OTHER", "EXEC_OTHER"]
-
-
-def test_q2_diagnostic_command_has_closed_firmware_vocabulary(
-    framing_harness: Path,
-) -> None:
-    assert _events(
-        framing_harness,
-        b"Q2 CASE 1362166001 38\nQ2 ARBITRARY\n",
-    ) == ["EXEC_OTHER", "EXEC_OTHER"]
+    ) == [
+        "EXEC_OTHER",
+        "DIAG_REJECTED_UNKNOWN",
+        "DIAG_REJECTED_UNKNOWN",
+        "DIAG_REJECTED_UNKNOWN",
+    ]
 
 
 def test_commas_and_quotes_are_not_echoed_in_diagnostic(
@@ -141,14 +137,14 @@ def test_valid_command_recovers_after_rejected_line(framing_harness: Path) -> No
 def test_no_command_executes_from_any_part_of_rejected_line(
     framing_harness: Path,
 ) -> None:
-    payload = b"DAC SET 0x8000 " + (b"P" * 200) + b" SWEEP START\n"
+    payload = b"DAC SET 0x8000 " + (b"P" * 200) + b" ACTIVE ABORT\n"
     assert _events(framing_harness, payload) == ["DIAG_REJECTED_TOO_LONG"]
 
 
 def test_invalid_control_byte_is_rejected_before_parsing(
     framing_harness: Path,
 ) -> None:
-    assert _events(framing_harness, b"HELP\x00SWEEP START\n") == [
+    assert _events(framing_harness, b"HELP\x00ACTIVE ABORT\n") == [
         "DIAG_REJECTED_INVALID_CHARACTER"
     ]
 

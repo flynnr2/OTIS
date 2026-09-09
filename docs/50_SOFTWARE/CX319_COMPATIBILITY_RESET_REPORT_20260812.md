@@ -1,5 +1,8 @@
 # CX319 Compatibility Reset Report — 2026-08-12
 
+> Historical reset report. Statements about “current HEAD” apply only to the
+> recorded 2026-08-12 revision, not to the present fixed-programme tree.
+
 ## Outcome
 
 Current HEAD now supports only `CX319_EVIDENCE_EPOCH_1`. It has one canonical

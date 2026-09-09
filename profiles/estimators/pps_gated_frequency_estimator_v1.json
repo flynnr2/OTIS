@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "profile_id": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
+  "status": "selected_production_estimator",
+  "method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+  "base_estimator": {
+    "counter_direction": "down",
+    "counter_width_bits": 32,
+    "accumulator_width_bits": 64,
+    "nominal_reference_interval_s": 1.0,
+    "timer_domain": "rp2040_monotonic_us32",
+    "timer_nominal_hz": 1000000,
+    "maximum_captured_edge_rate_hz": 133000000,
+    "uncertainty_policy": "unknown_components_unavailable",
+    "criteria_rationale_document": "docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md"
+  },
+  "expected_snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1",
+  "authoritative_denominator": "nominal_accepted_D14_interval_count",
+  "authoritative_policy": {
+    "span_s": 600,
+    "output_mode": "non_overlapping",
+    "output_cadence_s": 600,
+    "fresh_support_recovery_time_s": 600,
+    "count_increment_hz": 0.0016666666666666668
+  },
+  "invalidation_policy": {
+    "reset_on": [
+      "invalid_adjacent_D14_D8_interval",
+      "capture_session_boundary",
+      "sequence_discontinuity",
+      "reference_association_failure",
+      "snapshot_or_counter_fault",
+      "parser_or_transport_loss",
+      "dac_control_epoch",
+      "declared_settling_exclusion"
+    ],
+    "D10_external_event_anomaly_resets_estimator": false
+  }
+}

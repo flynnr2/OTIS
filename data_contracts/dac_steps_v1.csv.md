@@ -2,11 +2,11 @@
 
 ## Purpose
 
-`dac_steps_v1.csv` records H1 open-loop DAC sweep lifecycle, bounded manual
-setup applications, and step telemetry. It is actuator/application evidence;
-the row's event and bound profile determine whether it is a sweep step, setup
-stimulus, or automatic transaction observation. A `manual_apply` row is not a
-closed-loop decision, PPS lock state, or automatic frequency correction.
+`dac_steps_v1.csv` records physical DAC application attempts made by the fixed
+adaptive-hybrid image. It is actuator evidence, not controller authority or a
+lock claim. `manual_apply` identifies the single setup transaction;
+`active_apply` identifies an accepted automatic transaction. Their matching
+failure events preserve an unsuccessful or ambiguous physical attempt.
 
 ## Schema
 
@@ -14,34 +14,32 @@ closed-loop decision, PPS lock state, or automatic frequency correction.
 |---|---|---|
 | `record_type` | enum | compact record tag; `DAC` |
 | `schema_version` | uint | schema revision; currently `1` |
-| `seq` | uint64 | monotonic DAC/sweep telemetry sequence within the run |
+| `seq` | uint64 | monotonic DAC telemetry sequence within the run |
 | `elapsed_ms` | uint64 | firmware elapsed milliseconds at emission |
-| `step_index` | int | active sweep step index, or `-1` for run-level events |
+| `step_index` | int | setup command sequence or adaptive request sequence |
 | `dac_code_requested` | uint16 | requested DAC code for this event |
 | `dac_code_applied` | uint16 | accepted/applied DAC code, after safety validation |
 | `dac_code_clamped` | bool | `1` when the request would have crossed clamps; such rows are safety rejections |
 | `dac_voltage_measured_v` | decimal/null | manual measured DAC output voltage, empty until recorded |
 | `ocxo_tune_voltage_measured_v` | decimal/null | manual measured OCXO tune voltage, empty until recorded |
-| `dwell_ms` | uint32 | requested dwell time for the step |
-| `event` | string | event name such as `start`, `profile_loaded`, `manual_apply`, `step_apply`, `dwell_start`, `fc0_window`, `dwell_complete`, `stop`, `complete`, or `safety_reject` |
+| `dwell_ms` | uint32 | zero in the fixed transaction path |
+| `event` | enum | `manual_apply`, `manual_write_failed`, `active_apply`, or `active_write_failed` |
 | `flags` | uint32 | numeric bitmask from `capture_flags_v1` |
 
 ## Example
 
 ```csv
 record_type,schema_version,seq,elapsed_ms,step_index,dac_code_requested,dac_code_applied,dac_code_clamped,dac_voltage_measured_v,ocxo_tune_voltage_measured_v,dwell_ms,event,flags
-DAC,1,7,12000,1,32769,32769,0,,,5000,fc0_window,16
+DAC,1,7,12000,42,43085,43085,0,,,0,active_apply,0
 ```
 
-## Count Attribution
+## Transaction attribution
 
-During an active sweep, firmware should emit a `DAC` row with event
-`fc0_window` near each `CNT` observation. That row provides the active step
-index and DAC code for reconstructing DAC setting versus FC0 count without
-changing the stable `count_observations_v1` schema.
+Every row joins a current setup or adaptive transaction by the sequence in
+`step_index`. Requested/applied code, the exact transaction record,
+acknowledgement, DAC epoch, and first dependent decision are the authoritative
+causal chain; proximity to a `CNT` row is not sufficient attribution.
 
-In the `cx319_range_map_part_a` profile, each accepted bounded `DAC SET`
-produces exactly one `manual_apply` row with requested and applied codes equal
-and `dac_code_clamped=0`. A same-code application is still an externally
-commanded setup transition: it opens a new DAC epoch and downstream frequency,
-phase, tight-deadband, and hybrid consumers must requalify against that epoch.
+A same-code setup application is still a physical transition. It opens a new
+DAC epoch and frequency, phase, tight-band, and adaptive-hybrid consumers must
+requalify against that epoch.

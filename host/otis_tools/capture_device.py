@@ -25,13 +25,12 @@ from .active_status_live_state import (
 )
 from .contracts import CONTRACT_FIELDS
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
-from .run_paths import default_csv_files, ensure_run_layout
+from .run_paths import ensure_run_layout
 from .serial_commands import (
     CommandFifo,
     parse_serial_command,
     parse_timestamped_command_line,
 )
-from .time_domains import canonical_domain_declaration
 
 
 LOGGER = logging.getLogger("otis.capture_device")
@@ -41,9 +40,33 @@ CAPTURE_STATE_HEARTBEAT_S = 5.0
 SEGMENT_REQUEST = Path("request.json")
 SEGMENT_CARRIER_STATE = Path("carrier_state.json")
 SEGMENT_RESPONSE_DIR = Path("responses")
-SEGMENT_TRANSITION_STAGE = "CX318_STAGE5_TRANSITION_SPOOL"
+SEGMENT_TRANSITION_STAGE = "OTIS_ADAPTIVE_HYBRID_TRANSITION_SPOOL"
 SEGMENT_PROTOCOL_ID = "otis_same_owner_logical_segment_rotation_v1"
 SEGMENT_CLOSURE = Path("reports/capture_segment_closure_v1.json")
+
+
+def _serial_owner_pids(device: str) -> set[int]:
+    result = subprocess.run(
+        ["lsof", "-t", device], text=True, capture_output=True, check=False
+    )
+    if result.returncode not in {0, 1}:
+        raise ValueError(f"cannot inspect serial owners: {result.stderr.strip()}")
+    return {
+        int(line) for line in result.stdout.splitlines() if line.strip().isdigit()
+    }
+
+
+def _capture_state_ready(run_dir: Path, pid: int) -> bool:
+    path = run_dir / CAPTURE_STATE
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        state.get("pid") == pid
+        and state.get("capture_active") is True
+        and state.get("serial_open") is True
+    )
 
 
 @dataclass(frozen=True)
@@ -53,7 +76,6 @@ class CaptureDeviceConfig:
     run_dir: Path
     command_fifo: Path | None = None
     emergency_command_fifo: Path | None = None
-    manifest_template: Path | None = None
     read_size: int = 4096
     read_timeout_s: float = 1.0
     write_timeout_s: float = 1.0
@@ -264,117 +286,17 @@ def _resolve_requested_device(
     return device
 
 
-def _create_manifest_if_missing(
-    run_dir: Path,
-    device: str,
-    baud: int,
-    manifest_template: Path | None = None,
-) -> None:
+def _require_exact_manifest(run_dir: Path) -> None:
     manifest_path = find_manifest_path(run_dir)
     if manifest_path is not None:
         return
-    if manifest_template is not None:
-        with manifest_template.open("r", encoding="utf-8") as handle:
-            manifest = json.load(handle)
-        if (
-            not isinstance(manifest, dict)
-            or manifest.get("schema_version") != 1
-            or manifest.get("template") is not True
-            or not isinstance(manifest.get("files"), list)
-            or not manifest["files"]
-        ):
-            raise ValueError("capture manifest template is invalid")
-        now = _utc_now()
-        manifest["run_id"] = run_dir.name
-        manifest["created_utc"] = now
-        manifest["started_at_utc"] = now
-        manifest["template"] = False
-        host = manifest.setdefault("host", {})
-        if not isinstance(host, dict):
-            raise ValueError("capture manifest template host field is invalid")
-        host["serial_device"] = device
-        host["baud"] = baud
-        with (run_dir / "run_manifest.json").open("x", encoding="utf-8") as handle:
-            json.dump(manifest, handle, indent=2)
-            handle.write("\n")
-        return
-    manifest = {
-        "schema_version": 1,
-        "compatibility_floor": "CX319_EVIDENCE_EPOCH_1",
-        "run_id": run_dir.name,
-        "created_utc": _utc_now(),
-        "started_at_utc": _utc_now(),
-        "template": False,
-        "stage": "CX319_CURRENT_CAPTURE",
-        "cx319": {"profile_id": "cx319_tight_lower"},
-        "host": {
-            "tool": "host.otis_tools.capture_device",
-            "version": "0",
-            "serial_device": device,
-            "baud": baud,
-        },
-        "profile": {
-            "name": "cx319_tight_lower",
-            "version": 1,
-        },
-        "domains": [
-            canonical_domain_declaration("rp2040_monotonic_us32")
-        ],
-        "channels": [
-            {"channel_id": 1, "role": "authoritative_pps_reference", "record_family": "raw_events_v1"},
-            {"channel_id": 2, "role": "pps_gated_oscillator_count", "record_family": "count_observations_v1"},
-            {
-                "channel_id": 3,
-                "role": "diagnostic_forwarded_d9_clock_monitor",
-                "record_family": "forwarded_monitor_snapshots_v1",
-                "capture_domain": "rp2040_monotonic_us32",
-                "reference_channel_id": 1,
-                "reference_event": "d14_accepted_pps_boundary",
-                "authority": "diagnostic_only",
-                "control_authority": False,
-                "terminal_authority": False,
-            },
-        ],
-        "contracts": {
-            "raw_events_v1": 1,
-            "count_observations_v1": 1,
-            "pps_snapshots_v1": 1,
-            "forwarded_monitor_snapshots_v1": 1,
-            "association_loss_decisions_v1": 1,
-            "health_v1": 1,
-            "dac_steps_v1": 1,
-            "environment_v1": 1,
-            "reference_observations_v1": 1,
-            "diagnostics_v1": 1,
-            "estimates_v2": 2,
-            "control_previews_v1": 1,
-            "active_transactions_v1": 1,
-            "relative_phase_observations_v1": 1,
-            "phase_estimator_outputs_v1": 1,
-            "hybrid_preview_decisions_v1": 1,
-            "tight_deadband_decisions_v1": 1,
-            "pseudo_pps_truth_v1": 1,
-            "run_manifest_v1": 1,
-        },
-        "files": default_csv_files(),
-        "expected_artifacts": [entry["path"] for entry in default_csv_files() if not entry.get("optional")],
-        "environment_sources": [
-            {"source": "sht4x", "role": "vcocxo_near", "primary_temperature": True},
-            {"source": "bmp280", "role": "pressure_reference", "primary_temperature": False},
-        ],
-        "known_limitations": [
-            "Host serial ingest is archival only; RP2040-side hardware remains the timing authority.",
-        ],
-    }
-    with (run_dir / "run_manifest.json").open("x", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=2)
-        handle.write("\n")
+    raise ValueError("capture requires an existing exact run manifest")
 
 
 def _split_targets(run_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[str, Path]]]:
     manifest_path = find_manifest_path(run_dir)
     if manifest_path is None:
-        return {entry["contract"]: run_dir / entry["path"] for entry in default_csv_files()}, {}
+        raise ValueError("capture requires an existing exact run manifest")
     with manifest_path.open("r", encoding="utf-8") as handle:
         manifest = json.load(handle)
     return _split_targets_from_manifest(manifest, run_dir)
@@ -440,19 +362,13 @@ class CaptureSegmentSink:
         run_dir: Path,
         command_fifo_path: Path | None,
         emergency_fifo_path: Path | None,
-        manifest_template: Path | None = None,
     ) -> None:
         self.runner = runner
         self.run_dir = run_dir.resolve()
         self.command_fifo_path = command_fifo_path
         self.emergency_fifo_path = emergency_fifo_path
         paths = ensure_run_layout(self.run_dir)
-        _create_manifest_if_missing(
-            self.run_dir,
-            runner.config.device,
-            runner.config.baud,
-            manifest_template,
-        )
+        _require_exact_manifest(self.run_dir)
         if (self.run_dir / SEGMENT_CLOSURE).exists():
             raise FileExistsError(
                 "refusing to reopen a logically or physically closed capture segment: "
@@ -1119,14 +1035,14 @@ class CaptureDeviceRunner:
             ):
                 raise ValueError("transition segment is not exact no-authority drainage")
         elif mode == "live":
-            from .bounded_tight_deadband_activation import (
+            from .adaptive_hybrid_activation import (
                 LIVE_STAGE,
                 validate_frozen_run_manifest,
             )
 
             validated = validate_frozen_run_manifest(manifest_path)
             if validated.get("stage") != LIVE_STAGE:
-                raise ValueError("live segment is not a validated current CX319 manifest")
+                raise ValueError("live segment is not a validated adaptive-hybrid manifest")
             command_value = request.get("command_fifo")
             emergency_value = request.get("emergency_command_fifo")
             if not isinstance(command_value, str) or not isinstance(emergency_value, str):
@@ -1244,7 +1160,6 @@ class CaptureDeviceRunner:
             run_dir=self.current_run_dir,
             command_fifo_path=self.config.command_fifo,
             emergency_fifo_path=self.config.emergency_command_fifo,
-            manifest_template=self.config.manifest_template,
         )
         self.capture_active = True
         self._emit_status()
@@ -1565,11 +1480,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--manifest-template",
-        type=Path,
-        help="Optional immutable JSON template used only when the run has no manifest; run_id is the run-directory name.",
-    )
-    parser.add_argument(
         "--segment-control-dir",
         type=Path,
         help=(
@@ -1661,7 +1571,6 @@ def main() -> None:
         run_dir=args.run_dir,
         command_fifo=args.command_fifo,
         emergency_command_fifo=args.emergency_command_fifo,
-        manifest_template=args.manifest_template,
         read_size=args.read_size,
         write_timeout_s=args.write_timeout_s,
         normal_command_max_age_s=args.normal_command_max_age_s,

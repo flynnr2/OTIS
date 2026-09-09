@@ -23,22 +23,19 @@ RECORD_CONTRACTS = {
     "STS": "health_v1",
     "DAC": "dac_steps_v1",
     "ENV": "environment_v1",
-    "RFO": "reference_observations_v1",
-    "DIAG": "diagnostics_v1",
     "EST": "estimates_v2",
     "CTL": "control_previews_v1",
-    "PGT": "pseudo_pps_truth_v1",
-    "ACT": "active_transactions_v1",
-    "AT2": "active_transactions_v2",
-    "AHY": "active_hybrid_decisions_v1",
-    "AH2": "active_hybrid_decisions_v2",
+    "ACT": "active_transactions_v2",
+    "AHY": "active_hybrid_decisions_v2",
     "AHM": "active_hybrid_maintenance_v1",
     "RPH": "relative_phase_observations_v1",
     "PHE": "phase_estimator_outputs_v1",
-    "HPR": "hybrid_preview_decisions_v1",
     "TDB": "tight_deadband_decisions_v1",
-    "PSQ": "plant_sign_qualification_v1",
 }
+
+# Hardware channel assignment is architectural, not caller-selected. EVT is
+# optional D10 evidence on CH0; REF is the sole D14 reference on CH1.
+RAW_EVENT_CHANNELS = {"EVT": "0", "REF": "1"}
 
 
 class CsvRecordSplitter:
@@ -108,6 +105,16 @@ class CsvRecordSplitter:
             if self.on_parser_error is not None:
                 self.on_parser_error(f"{record_type} column count {len(row)} does not match {expected_columns}")
             return None
+        expected_channel = RAW_EVENT_CHANNELS.get(record_type)
+        if expected_channel is not None:
+            channel_index = CONTRACT_FIELDS[contract].index("channel_id")
+            if row[channel_index] != expected_channel:
+                if self.on_parser_error is not None:
+                    self.on_parser_error(
+                        f"{record_type} must use channel_id={expected_channel}; "
+                        f"got {row[channel_index]}"
+                    )
+                return None
         handle.write(clean + "\n")
         handle.flush()
         return contract
@@ -126,6 +133,28 @@ def _load_template(template_dir: Path, run_id: str) -> dict:
 
 
 def _split_targets_from_manifest(manifest: dict, run_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[str, Path]]]:
+    channels = {
+        int(item["channel_id"]): item
+        for item in manifest.get("channels", [])
+        if isinstance(item, dict) and "channel_id" in item
+    }
+    expected_channels = {
+        0: {"pin": "D10", "role": "external_event", "record_type": "EVT"},
+        1: {"pin": "D14", "role": "authoritative_pps_reference", "record_type": "REF"},
+    }
+    for channel_id, expected in expected_channels.items():
+        observed = channels.get(channel_id)
+        if observed is None or any(observed.get(key) != value for key, value in expected.items()):
+            raise ValueError(
+                f"manifest channel CH{channel_id} must declare {expected}; got {observed}"
+            )
+    d10 = channels[0]
+    if (
+        d10.get("control_authority") is not False
+        or d10.get("terminal_authority") is not False
+        or d10.get("authority") != "evidence_only"
+    ):
+        raise ValueError("D10/CH0 must remain optional zero-authority evidence")
     file_by_contract: dict[str, Path] = {}
     file_by_record_type: dict[str, tuple[str, Path]] = {}
     raw_entries = [entry for entry in manifest["files"] if entry.get("contract") == "raw_events_v1"]
@@ -134,11 +163,12 @@ def _split_targets_from_manifest(manifest: dict, run_dir: Path) -> tuple[dict[st
         contract = entry["contract"]
         path = run_dir / entry["path"]
         if contract == "raw_events_v1" and len(raw_entries) > 1:
+            record_type = entry.get("record_type")
             name = path.name.lower()
-            if "evt" in name:
+            if record_type == "EVT" or "external" in name or "evt" in name:
                 file_by_record_type["EVT"] = (contract, path)
                 continue
-            if "ref" in name:
+            if record_type == "REF" or "reference" in name or "ref" in name:
                 file_by_record_type["REF"] = (contract, path)
                 continue
         file_by_contract[contract] = path

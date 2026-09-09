@@ -2,7 +2,7 @@
 
 ## Status
 
-Normative for current `CX319_EVIDENCE_EPOCH_1` validators, estimators,
+Normative for current `adaptive_hybrid_regulation` validators, estimators,
 supervisors, replay, analysis, and sealing paths. The executable authority is
 `host/otis_tools/time_domains.py`.
 
@@ -17,7 +17,7 @@ closed.
 |---|---:|---|---:|---|
 | `rp2040_monotonic_us32` | 1,000,000 us/s | native RP2040 `micros()`/`timerawl`; 1 us quantum | 32 bits; `2^32` us | modular forward; any interval at least half the modulus is ambiguous and rejected |
 | `rp2040_monotonic_us64` | 1,000,000 us/s | session-bound reconstruction of `rp2040_monotonic_us32`; same 1 us quantum | 64-bit current wire value | strict non-wrapping |
-| `h1_cx317_ocxo_10mhz` | 10,000,000 edges/s | counted D8 edges; 1 edge quantum | unbounded in current host evidence | strict non-wrapping |
+| `h1_oscillator_10mhz` | 10,000,000 edges/s | counted D8 edges from the physical CX317 oscillator; 1 edge quantum | unbounded in current host evidence | strict non-wrapping |
 | `host_elapsed_ms` | 1,000 ticks/s | host-local elapsed-time projection; 1 ms quantum | unbounded in current host evidence | strict non-wrapping |
 | `fixture`, `fixture_100hz` | fixture-defined | fixture-defined | unbounded | strict non-wrapping test domains only |
 

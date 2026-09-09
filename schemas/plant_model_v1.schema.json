@@ -1,643 +1,105 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://otis.local/schemas/plant_model_v1.schema.json",
-  "title": "OTIS plant_model_v1",
+  "title": "OTIS selected oscillator plant model v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "model_id",
-    "model_version",
     "status",
     "oscillator",
-    "hardware_topology",
-    "dac",
-    "control_path",
-    "plant_response",
-    "source_evidence",
+    "topology",
+    "control_range",
+    "response",
     "invalidation_conditions",
-    "unresolved_fields"
+    "limitations"
   ],
   "properties": {
-    "schema_version": { "const": 1 },
-    "model_id": { "type": "string", "minLength": 1 },
-    "model_version": { "type": "integer", "minimum": 1 },
-    "status": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["control_ready", "actuation_enabled", "readiness"],
-      "properties": {
-        "control_ready": { "type": "boolean" },
-        "actuation_enabled": { "type": "boolean" },
-        "readiness": { "type": "string", "minLength": 1 }
-      }
-    },
-    "oscillator": { "$ref": "#/$defs/oscillator" },
-    "hardware_topology": { "$ref": "#/$defs/hardware_topology" },
-    "dac": { "$ref": "#/$defs/dac" },
-    "control_path": { "$ref": "#/$defs/control_path" },
-    "plant_response": { "$ref": "#/$defs/plant_response" },
-    "source_evidence": { "$ref": "#/$defs/source_evidence" },
-    "invalidation_conditions": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1 },
-      "minItems": 1,
-      "uniqueItems": true
-    },
-    "unresolved_fields": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1 },
-      "uniqueItems": true
-    }
-  },
-  "$defs": {
-    "nullable_number": { "type": ["number", "null"] },
-    "nullable_string": { "type": ["string", "null"] },
-    "nullable_git_commit": {
-      "oneOf": [
-        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-        { "type": "null" }
-      ]
-    },
-    "code_range": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["min", "max"],
-      "properties": {
-        "min": { "type": "integer", "minimum": 0, "maximum": 65535 },
-        "max": { "type": "integer", "minimum": 0, "maximum": 65535 }
-      }
-    },
-    "voltage_range": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["min_v", "max_v"],
-      "properties": {
-        "min_v": { "$ref": "#/$defs/nullable_number" },
-        "max_v": { "$ref": "#/$defs/nullable_number" }
-      }
-    },
+    "schema_version": {"const": 1},
+    "model_id": {"const": "OTIS_PPS_GATED_OSCILLATOR_PLANT_V1"},
+    "status": {"const": "selected_production_model"},
     "oscillator": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["part", "type", "nominal_frequency_hz", "supply_voltage_v", "control_voltage_range_v", "pinout_source"],
+      "required": ["part", "nominal_frequency_hz", "supply_voltage_v"],
       "properties": {
-        "part": { "type": "string", "minLength": 1 },
-        "type": { "type": "string", "minLength": 1 },
-        "nominal_frequency_hz": { "type": "number", "exclusiveMinimum": 0 },
-        "supply_voltage_v": { "$ref": "#/$defs/nullable_number" },
-        "control_voltage_range_v": { "$ref": "#/$defs/voltage_range" },
-        "datasheet_tuning_range_ppm": {
-          "$ref": "#/$defs/historical_datasheet_tuning_range_ppm",
-          "deprecated": true
-        },
-        "pinout_source": { "type": "string", "minLength": 1 }
+        "part": {"const": "CX317 VCOCXO"},
+        "nominal_frequency_hz": {"const": 10000000},
+        "supply_voltage_v": {"const": 3.292}
       }
     },
-    "historical_datasheet_tuning_range_ppm": {
+    "topology": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "min_abs_ppm",
-        "max_abs_ppm",
-        "control_voltage_min_v",
-        "control_voltage_nominal_v",
-        "control_voltage_max_v",
-        "implied_hz_per_v_min",
-        "implied_hz_per_v_max"
+        "reference_input",
+        "oscillator_count_input",
+        "external_event_input",
+        "external_event_authority",
+        "dac",
+        "dac_i2c_address"
       ],
       "properties": {
-        "min_abs_ppm": { "type": "number", "minimum": 0 },
-        "max_abs_ppm": { "type": "number", "minimum": 0 },
-        "control_voltage_min_v": { "type": "number" },
-        "control_voltage_nominal_v": { "type": "number" },
-        "control_voltage_max_v": { "type": "number" },
-        "implied_hz_per_v_min": { "type": "number" },
-        "implied_hz_per_v_max": { "type": "number" }
+        "reference_input": {"const": "D14"},
+        "oscillator_count_input": {"const": "D8"},
+        "external_event_input": {"const": "D10"},
+        "external_event_authority": {"const": false},
+        "dac": {"const": "AD5693R"},
+        "dac_i2c_address": {"const": "0x4C"}
       }
     },
-    "hardware_topology": {
+    "control_range": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["topology_id", "board", "power_path", "conditioning"],
+      "required": ["minimum_code", "maximum_code", "nominal_code"],
       "properties": {
-        "topology_id": { "type": "string", "minLength": 1 },
-        "board": { "type": "string", "minLength": 1 },
-        "power_path": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["description", "dirty_supply_source", "clean_supply_node", "filtering", "measured_dirty_voltage_v", "measured_clean_voltage_v", "measured_clean_ripple_mvpp"],
-          "properties": {
-            "description": { "type": "string", "minLength": 1 },
-            "dirty_supply_source": { "$ref": "#/$defs/nullable_string" },
-            "clean_supply_node": { "$ref": "#/$defs/nullable_string" },
-            "filtering": { "$ref": "#/$defs/nullable_string" },
-            "measured_dirty_voltage_v": { "$ref": "#/$defs/nullable_number" },
-            "measured_clean_voltage_v": { "$ref": "#/$defs/nullable_number" },
-            "measured_clean_ripple_mvpp": { "$ref": "#/$defs/nullable_number" }
-          }
-        },
-        "conditioning": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["oscillator_output_conditioner", "rp2040_pin", "logic_voltage_v"],
-          "properties": {
-            "oscillator_output_conditioner": { "type": "string", "minLength": 1 },
-            "rp2040_pin": { "type": "string", "minLength": 1 },
-            "logic_voltage_v": { "$ref": "#/$defs/nullable_number" }
-          }
-        },
-        "pps_witness": {
-          "$ref": "#/$defs/historical_pps_witness",
-          "deprecated": true
-        }
+        "minimum_code": {"const": 43008},
+        "maximum_code": {"const": 43776},
+        "nominal_code": {"const": 43344}
       }
     },
-    "historical_pps_witness": {
+    "response": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "primary_ref_pin",
-        "witness_pin",
-        "run_017_final_d14_raw_count",
-        "run_017_final_d10_raw_count",
-        "run_017_d14_minus_d10_delta",
-        "d10_short_rows",
-        "d10_buffer_overflow_rows",
-        "d10_burst_rows"
+        "gain_sign",
+        "minimum_hz_per_code",
+        "nominal_hz_per_code",
+        "maximum_hz_per_code",
+        "settling_exclusion_s",
+        "selected_control_cadence_s",
+        "observed_temperature_min_c",
+        "observed_temperature_max_c",
+        "temperature_role"
       ],
       "properties": {
-        "primary_ref_pin": { "type": "string", "minLength": 1 },
-        "witness_pin": { "type": "string", "minLength": 1 },
-        "run_017_final_d14_raw_count": { "type": "integer", "minimum": 0 },
-        "run_017_final_d10_raw_count": { "type": "integer", "minimum": 0 },
-        "run_017_d14_minus_d10_delta": { "type": "integer" },
-        "d10_short_rows": { "type": "integer", "minimum": 0 },
-        "d10_buffer_overflow_rows": { "type": "integer", "minimum": 0 },
-        "d10_burst_rows": { "type": "integer", "minimum": 0 }
+        "gain_sign": {"const": "positive"},
+        "minimum_hz_per_code": {"const": 0.00016357422282453626},
+        "nominal_hz_per_code": {"const": 0.00017008467693813145},
+        "maximum_hz_per_code": {"const": 0.00017334010044578463},
+        "settling_exclusion_s": {"const": 900},
+        "selected_control_cadence_s": {"const": 1800},
+        "observed_temperature_min_c": {"const": 27.259},
+        "observed_temperature_max_c": {"const": 30.851},
+        "temperature_role": {"const": "nearby_air_telemetry_covariate_only"}
       }
     },
-    "dac": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["part", "resolution_bits", "interface", "i2c_address", "reference_voltage_v", "gain_mode", "nominal_code", "manual_safe_range_codes", "automatic_control_range_codes", "manual_preview_max_step_codes"],
-      "properties": {
-        "part": { "type": "string", "minLength": 1 },
-        "resolution_bits": { "type": "integer", "const": 16 },
-        "interface": { "type": "string", "minLength": 1 },
-        "i2c_address": { "type": "string", "pattern": "^0x[0-9A-Fa-f]+$" },
-        "reference_voltage_v": { "$ref": "#/$defs/nullable_number" },
-        "gain_mode": { "type": "string", "minLength": 1 },
-        "nominal_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-        "manual_safe_range_codes": { "$ref": "#/$defs/code_range" },
-        "automatic_control_range_codes": { "$ref": "#/$defs/code_range" },
-        "manual_preview_max_step_codes": { "type": "integer", "minimum": 0, "maximum": 65535 }
-      }
+    "invalidation_conditions": {
+      "const": [
+        "physical oscillator DAC conditioning D14 D8 or shared power topology changes",
+        "DAC code leaves 0xA800..0xAB00",
+        "measurement backend or selected estimator semantics change",
+        "a span crosses a DAC epoch settling exclusion invalid interval session boundary sequence discontinuity or capture fault",
+        "D10 is used as a PPS observer reference witness control input health veto or run terminal"
+      ]
     },
-    "control_path": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["network", "measured_control_voltage_at_nominal_v", "measured_connected_voltage_span_v", "estimated_v_per_code", "voltage_model"],
-      "properties": {
-        "network": { "type": "string", "minLength": 1 },
-        "measured_control_voltage_at_nominal_v": { "$ref": "#/$defs/nullable_number" },
-        "measured_connected_voltage_span_v": { "$ref": "#/$defs/voltage_range" },
-        "estimated_v_per_code": { "$ref": "#/$defs/nullable_number" },
-        "voltage_model": { "type": "string", "minLength": 1 }
-      }
-    },
-    "plant_response": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["local_slope", "valid_neighborhood", "settling_evidence", "temperature_range_c", "warmup_drift"],
-      "properties": {
-        "local_slope": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["hz_per_v", "ppm_per_v", "hz_per_code", "ppm_per_code", "sign", "sample_count", "uncertainty"],
-          "properties": {
-            "hz_per_v": { "$ref": "#/$defs/nullable_number" },
-            "ppm_per_v": { "$ref": "#/$defs/nullable_number" },
-            "hz_per_code": { "$ref": "#/$defs/nullable_number" },
-            "ppm_per_code": { "$ref": "#/$defs/nullable_number" },
-            "sign": { "enum": ["positive", "negative", "unknown"] },
-            "sample_count": { "type": "integer", "minimum": 0 },
-            "uncertainty": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["method", "hz_per_v_min", "hz_per_v_max"],
-              "properties": {
-                "method": { "type": "string", "minLength": 1 },
-                "hz_per_v_stdev": { "$ref": "#/$defs/nullable_number" },
-                "hz_per_v_iqr": { "$ref": "#/$defs/nullable_number" },
-                "hz_per_v_min": { "$ref": "#/$defs/nullable_number" },
-                "hz_per_v_max": { "$ref": "#/$defs/nullable_number" },
-                "hz_per_v_span": {
-                  "$ref": "#/$defs/nullable_number",
-                  "deprecated": true
-                },
-                "positive_0x0800_hz_per_v": {
-                  "$ref": "#/$defs/nullable_number",
-                  "deprecated": true
-                },
-                "negative_0x0800_hz_per_v": {
-                  "$ref": "#/$defs/nullable_number",
-                  "deprecated": true
-                },
-                "positive_0x1000_hz_per_v": {
-                  "$ref": "#/$defs/nullable_number",
-                  "deprecated": true
-                },
-                "negative_0x1000_hz_per_v": {
-                  "$ref": "#/$defs/nullable_number",
-                  "deprecated": true
-                }
-              }
-            }
-          }
-        },
-        "valid_neighborhood": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["basis", "center_code", "target_codes", "voltage_span_v"],
-          "properties": {
-            "basis": { "type": "string", "minLength": 1 },
-            "center_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-            "target_codes": {
-              "type": "array",
-              "items": { "type": "integer", "minimum": 0, "maximum": 65535 },
-              "minItems": 1
-            },
-            "voltage_span_v": { "$ref": "#/$defs/voltage_range" }
-          }
-        },
-        "settling_evidence": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["characterized", "method", "settling_discard_s", "t95_s_min", "t95_s_max", "selected_control_cadence_s"],
-          "properties": {
-            "characterized": { "type": "boolean" },
-            "method": { "type": "string", "minLength": 1 },
-            "settling_discard_s": { "$ref": "#/$defs/nullable_number" },
-            "t95_s_min": { "$ref": "#/$defs/nullable_number" },
-            "t95_s_max": { "$ref": "#/$defs/nullable_number" },
-            "selected_control_cadence_s": { "$ref": "#/$defs/nullable_number" }
-          }
-        },
-        "temperature_range_c": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["min_c", "max_c"],
-          "properties": {
-            "min_c": { "$ref": "#/$defs/nullable_number" },
-            "max_c": { "$ref": "#/$defs/nullable_number" },
-            "role": { "type": "string", "minLength": 1 }
-          }
-        },
-        "warmup_drift": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["warmup_s", "drift_after_warmup_ppm_per_hour"],
-          "properties": {
-            "warmup_s": { "$ref": "#/$defs/nullable_number" },
-            "drift_after_warmup_ppm_per_hour": { "$ref": "#/$defs/nullable_number" }
-          }
-        },
-        "observed_frequency_range": {
-          "$ref": "#/$defs/historical_observed_frequency_range",
-          "deprecated": true
-        },
-        "run_017_settled_outputs_mhz": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/historical_settled_output" },
-          "minItems": 1,
-          "deprecated": true
-        },
-        "reference_integrity": {
-          "$ref": "#/$defs/historical_reference_integrity",
-          "deprecated": true
-        },
-        "startup_control_eligibility": {
-          "$ref": "#/$defs/historical_startup_control_eligibility",
-          "deprecated": true
-        },
-        "crossing_estimate": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "target_frequency_hz",
-            "code",
-            "code_min",
-            "code_max",
-            "estimated_voltage_v",
-            "estimated_voltage_min_v",
-            "estimated_voltage_max_v",
-            "method",
-            "uncertainty_scope",
-            "observed_bracket"
-          ],
-          "properties": {
-            "target_frequency_hz": { "type": "number", "exclusiveMinimum": 0 },
-            "code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-            "code_min": { "type": "integer", "minimum": 0, "maximum": 65535 },
-            "code_max": { "type": "integer", "minimum": 0, "maximum": 65535 },
-            "estimated_voltage_v": { "$ref": "#/$defs/nullable_number" },
-            "estimated_voltage_min_v": { "$ref": "#/$defs/nullable_number" },
-            "estimated_voltage_max_v": { "$ref": "#/$defs/nullable_number" },
-            "method": { "type": "string", "minLength": 1 },
-            "uncertainty_scope": { "type": "string", "minLength": 1 },
-            "observed_bracket": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["below_code", "below_frequency_hz", "above_code", "above_frequency_hz"],
-              "properties": {
-                "below_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-                "below_frequency_hz": { "type": "number" },
-                "above_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-                "above_frequency_hz": { "type": "number" }
-              }
-            }
-          }
-        },
-        "repeatability_evidence": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "center_code",
-            "clean_center_dwell_count",
-            "center_median_min_hz",
-            "center_median_max_hz",
-            "center_span_hz",
-            "center_stdev_hz",
-            "up_down_center_delta_hz",
-            "endpoint_bidirectional_hysteresis_measured"
-          ],
-          "properties": {
-            "center_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-            "clean_center_dwell_count": { "type": "integer", "minimum": 1 },
-            "center_median_min_hz": { "type": "number" },
-            "center_median_max_hz": { "type": "number" },
-            "center_span_hz": { "type": "number", "minimum": 0 },
-            "center_stdev_hz": { "type": "number", "minimum": 0 },
-            "up_down_center_delta_hz": { "type": "number" },
-            "endpoint_bidirectional_hysteresis_measured": { "type": "boolean" }
-          }
-        },
-        "applicability": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "mode",
-            "dac_code_range",
-            "measurement_backend",
-            "gate_duration_s",
-            "settling_exclusion_s",
-            "temperature_range_c",
-            "excluded_count_sequences",
-            "limitations"
-          ],
-          "properties": {
-            "mode": { "const": "observe_only" },
-            "dac_code_range": { "$ref": "#/$defs/code_range" },
-            "measurement_backend": { "type": "string", "minLength": 1 },
-            "estimator_method_contract": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "boundary_interpolation",
-                "count_window_semantics",
-                "estimator_method_id",
-                "extrapolation_policy",
-                "measurement_backend",
-                "method_definition_hash",
-                "reference_acceptance",
-                "reference_interval_max_s",
-                "reference_interval_min_s",
-                "reference_invalid_flag_mask",
-                "reference_time_mapping",
-                "required_timing_domain"
-              ],
-              "properties": {
-                "boundary_interpolation": { "type": "string", "minLength": 1 },
-                "count_window_semantics": { "type": "string", "minLength": 1 },
-                "estimator_method_id": { "type": "string", "minLength": 1 },
-                "extrapolation_policy": { "type": "string", "minLength": 1 },
-                "measurement_backend": { "type": "string", "minLength": 1 },
-                "method_definition_hash": {
-                  "type": "string",
-                  "pattern": "^[0-9a-f]{64}$"
-                },
-                "reference_acceptance": { "type": "string", "minLength": 1 },
-                "reference_interval_max_s": {
-                  "type": "number",
-                  "exclusiveMinimum": 0
-                },
-                "reference_interval_min_s": {
-                  "type": "number",
-                  "exclusiveMinimum": 0
-                },
-                "reference_invalid_flag_mask": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "reference_time_mapping": { "type": "string", "minLength": 1 },
-                "required_timing_domain": { "type": "string", "minLength": 1 }
-              }
-            },
-            "gate_duration_s": { "type": "number", "exclusiveMinimum": 0 },
-            "settling_exclusion_s": { "type": "number", "minimum": 0 },
-            "temperature_range_c": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["min_c", "max_c"],
-              "properties": {
-                "min_c": { "type": "number" },
-                "max_c": { "type": "number" },
-                "role": { "type": "string", "minLength": 1 }
-              }
-            },
-            "temperature_policy": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "required_for_frequency_measurement",
-                "required_for_model_applicability",
-                "required_for_control_eligibility",
-                "out_of_observed_context_action",
-                "basis"
-              ],
-              "properties": {
-                "required_for_frequency_measurement": { "type": "boolean" },
-                "required_for_model_applicability": { "type": "boolean" },
-                "required_for_control_eligibility": { "type": "boolean" },
-                "out_of_observed_context_action": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "basis": { "type": "string", "minLength": 1 }
-              }
-            },
-            "excluded_count_sequences": {
-              "type": "array",
-              "items": { "type": "integer", "minimum": 1 },
-              "uniqueItems": true
-            },
-            "limitations": {
-              "type": "array",
-              "items": { "type": "string", "minLength": 1 },
-              "minItems": 1,
-              "uniqueItems": true
-            }
-          }
-        }
-      }
-    },
-    "historical_observed_frequency_range": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "min_code",
-        "min_output_mhz",
-        "max_code",
-        "max_output_mhz",
-        "span_hz"
-      ],
-      "properties": {
-        "min_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-        "min_output_mhz": { "type": "number", "exclusiveMinimum": 0 },
-        "max_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-        "max_output_mhz": { "type": "number", "exclusiveMinimum": 0 },
-        "span_hz": { "type": "number", "minimum": 0 }
-      }
-    },
-    "historical_settled_output": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["dac_code_hex", "dac_code", "output_mhz"],
-      "properties": {
-        "dac_code_hex": { "type": "string", "pattern": "^0x[0-9A-Fa-f]{4}$" },
-        "dac_code": { "type": "integer", "minimum": 0, "maximum": 65535 },
-        "output_mhz": { "type": "number", "exclusiveMinimum": 0 }
-      }
-    },
-    "historical_reference_integrity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "ref_rows",
-        "ref_raw_duration_s",
-        "timestamp_wrap_count",
-        "raw_timestamp_monotonic",
-        "unwrapped_timestamp_monotonic",
-        "host_pps_anomalies",
-        "d14_rejected_long_count",
-        "d14_rejected_long_count_interpretation"
-      ],
-      "properties": {
-        "ref_rows": { "type": "integer", "minimum": 0 },
-        "ref_raw_duration_s": { "type": "number", "minimum": 0 },
-        "timestamp_wrap_count": { "type": "integer", "minimum": 0 },
-        "raw_timestamp_monotonic": { "type": "boolean" },
-        "unwrapped_timestamp_monotonic": { "type": "boolean" },
-        "host_pps_anomalies": { "type": "integer", "minimum": 0 },
-        "d14_rejected_long_count": { "type": "integer", "minimum": 0 },
-        "d14_rejected_long_count_interpretation": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
-    "historical_startup_control_eligibility": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "count_path_control_eligible",
-        "count_path_fault_latched",
-        "count_windows",
-        "invalid_count_windows",
-        "first_control_eligible_elapsed_s"
-      ],
-      "properties": {
-        "count_path_control_eligible": { "type": "boolean" },
-        "count_path_fault_latched": { "type": "boolean" },
-        "count_windows": { "type": "integer", "minimum": 0 },
-        "invalid_count_windows": { "type": "integer", "minimum": 0 },
-        "first_control_eligible_elapsed_s": { "type": "number", "minimum": 0 }
-      }
-    },
-    "source_evidence": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["source_run_ids", "source_artifacts", "source_commits", "source_versions"],
-      "properties": {
-        "source_run_ids": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1,
-          "uniqueItems": true
-        },
-        "source_artifacts": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        },
-        "source_hashes": {
-          "type": "object",
-          "propertyNames": {
-            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+"
-          },
-          "additionalProperties": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "minProperties": 1
-        },
-        "source_commits": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "model_created_from_repo_commit": { "$ref": "#/$defs/nullable_git_commit" },
-            "model_updated_from_repo_commit": {
-              "$ref": "#/$defs/nullable_git_commit",
-              "deprecated": true
-            },
-            "run_manifest_host_git_commit": { "$ref": "#/$defs/nullable_git_commit" },
-            "run_manifest_firmware_git_commit": { "$ref": "#/$defs/nullable_git_commit" }
-          },
-          "required": [
-            "run_manifest_host_git_commit",
-            "run_manifest_firmware_git_commit"
-          ],
-          "oneOf": [
-            { "required": ["model_created_from_repo_commit"] },
-            { "required": ["model_updated_from_repo_commit"] }
-          ]
-        },
-        "source_versions": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["run_manifest_host_tool_version", "run_manifest_firmware_version"],
-          "properties": {
-            "run_manifest_host_tool_version": {
-              "oneOf": [
-                { "type": "string", "minLength": 1 },
-                { "type": "null" }
-              ]
-            },
-            "run_manifest_firmware_version": {
-              "oneOf": [
-                { "type": "string", "minLength": 1 },
-                { "type": "null" }
-              ]
-            }
-          }
-        }
-      }
+    "limitations": {
+      "const": [
+        "calibrated connected control voltage and combined uncertainty are unavailable",
+        "nearby air temperature is context and not a control eligibility bound",
+        "D10 is optional external event evidence only"
+      ]
     }
   }
 }

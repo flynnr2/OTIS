@@ -1,0 +1,1617 @@
+"""Execute, finalize, seal, and register one exact ADAPTIVE_HYBRID physical campaign.
+
+The runner owns process lifecycle, not the serial device.  ``capture_device``
+remains the sole serial owner and exposes separate normal and priority-abort
+FIFOs.  The runner performs one manifest-bound upload and has no controller
+retry or restoration path.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+from datetime import datetime, timezone
+from hashlib import sha256
+import json
+import os
+from pathlib import Path, PurePosixPath
+import signal
+import stat
+import subprocess
+import sys
+import time
+from typing import Any, Callable, IO
+
+from . import adaptive_hybrid_monitor as _adaptive_hybrid_monitor
+
+from .adaptive_hybrid_activation import (
+    EXPECTED_BOARD_SERIAL,
+    EXPECTED_BAUD,
+    OPERATION,
+    RUN_ACTIVATION_PATH,
+    RUN_BUNDLE_PATH,
+    RUN_MANIFEST_PATH,
+    RUN_PROPOSAL_PATH,
+    create_run_manifest,
+    validate_activation,
+    validate_frozen_run_manifest,
+)
+from .active_status_contract import complete_active_status_snapshots
+from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
+from .adaptive_hybrid_contract import (
+    AdaptiveHybridProgramme,
+    ADAPTIVE_HYBRID_PROGRAMME,
+    programme_from_mapping,
+)
+from .capture_device import _capture_state_ready, _detect_single_device, _serial_owner_pids
+from .contracts import HEALTH_FIELDS
+from .evidence import (
+    EVIDENCE_MANIFEST,
+    create_evidence_snapshot,
+    validate_evidence_snapshot,
+)
+from .evidence_finalization import (
+    advance_phase,
+    begin_finalization,
+    journal_path_for,
+    record_failure,
+    recover_registration,
+    set_registration_intent,
+)
+from .evidence_index import DEFAULT_INDEX, package_identity, register_package
+from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
+from .serial_commands import send_timestamped_command_to_fifo
+
+
+TOOL_ID = "adaptive_hybrid_hybrid_physical_runner_v1"
+HOST_MARKER_PREFIX = "# OTIS_HOST "
+CAPTURE_LOG = Path("reports/adaptive_hybrid_hybrid_capture.log")
+SUPERVISOR_LOG = Path("reports/adaptive_hybrid_hybrid_supervisor.log")
+SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
+ORCHESTRATION_FAILURE = Path("reports/adaptive_hybrid_hybrid_orchestration_failure_v1.json")
+HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
+ABORT_DELIVERY_FAILURE = Path(
+    "reports/adaptive_hybrid_hybrid_abort_delivery_failure_v1.json"
+)
+FLASH_RECORD = Path("reports/adaptive_hybrid_hybrid_firmware_entry_v1.json")
+FINALIZATION_FAILURE = Path("reports/adaptive_hybrid_hybrid_finalization_failure_v1.json")
+LIVE_SEAL = Path("reports/adaptive_hybrid_hybrid_physical_seal_v1.json")
+
+EXPECTED_BOARD_VID = "0x2341"
+EXPECTED_BOARD_PID = "0x005E"
+EXPECTED_BOARD_FQBN = "rp2040:rp2040:arduino_nano_connect"
+
+
+def read_board_identity(
+    device: str, *, arduino_cli: str = "arduino-cli"
+) -> dict[str, str]:
+    """Read and bind the one accepted bench-board identity."""
+
+    value = json.loads(
+        subprocess.run(
+            [arduino_cli, "board", "list", "--format", "json"],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout
+    )
+    matches = [
+        item
+        for item in value.get("detected_ports", [])
+        if item.get("port", {}).get("address") == device
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"expected exactly one board at {device}, got {len(matches)}")
+    item = matches[0]
+    port = item["port"]
+    properties = port.get("properties", {})
+    boards = item.get("matching_boards", [])
+    identity = {
+        "address": str(port.get("address", "")),
+        "hardware_id": str(port.get("hardware_id", item.get("hardware_id", ""))),
+        "serial_number": str(properties.get("serialNumber", "")),
+        "vid": str(properties.get("vid", "")),
+        "pid": str(properties.get("pid", "")),
+        "product": str(properties.get("product", "")),
+        "board_name": str(boards[0].get("name", "")) if len(boards) == 1 else "",
+        "board_fqbn": str(boards[0].get("fqbn", "")) if len(boards) == 1 else "",
+    }
+    if (
+        identity["serial_number"] != EXPECTED_BOARD_SERIAL
+        or identity["hardware_id"] != EXPECTED_BOARD_SERIAL
+        or identity["vid"].lower() != EXPECTED_BOARD_VID.lower()
+        or identity["pid"].lower() != EXPECTED_BOARD_PID.lower()
+        or identity["board_fqbn"] != EXPECTED_BOARD_FQBN
+    ):
+        raise ValueError("connected board identity differs from the accepted OTIS bench board")
+    return identity
+COMPLETE = Path("COMPLETE")
+NORMAL_FIFO = Path("control/normal_commands.fifo")
+EMERGENCY_FIFO = Path("control/emergency_abort.fifo")
+HOST_ABORT_FIFO = Path("control/host_abort.fifo")
+ACTIVATION_ATTEMPT_RESERVATION_SUFFIX = ".attempt-reservation-v1.json"
+PROCESS_START_TIMEOUT_S = 30.0
+ABORT_DELIVERY_TIMEOUT_S = 15.0
+CAPTURE_STOP_TIMEOUT_S = 30.0
+COMPLETED_INDEX_CLASSIFICATION = "completed_campaign"
+INTERRUPTED_INDEX_CLASSIFICATION = "interrupted_campaign"
+def _utc_now() -> str:
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = (
+        json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    ).encode("utf-8")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        if os.write(descriptor, payload) != len(payload):
+            raise OSError(f"short immutable JSON write: {path}")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _copy_immutable(source: Path, destination: Path) -> None:
+    payload = source.resolve().read_bytes()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(
+        destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444
+    )
+    try:
+        if os.write(descriptor, payload) != len(payload):
+            raise OSError(f"short immutable copy: {destination}")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _activation_attempt_reservation_path(
+    activation: dict[str, Any],
+) -> Path:
+    """Return one caller-independent reservation path for an activation.
+
+    The activation pathname is deliberately not part of this identity: an
+    exact byte-for-byte copy must not acquire a second upload attempt.  The
+    activation's immutable bundle binding supplies the common namespace and
+    its semantic SHA supplies the unique consumption key.
+    """
+
+    bundle = activation.get("bundle")
+    activation_sha256 = activation.get("activation_sha256")
+    if (
+        not isinstance(bundle, dict)
+        or not isinstance(bundle.get("path"), str)
+        or not isinstance(activation_sha256, str)
+        or len(activation_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in activation_sha256)
+    ):
+        raise ValueError("active-hybrid activation lacks a global attempt identity")
+    bundle_path = Path(bundle["path"]).resolve()
+    return bundle_path.parent / (
+        f".{bundle_path.name}.{activation_sha256}"
+        f"{ACTIVATION_ATTEMPT_RESERVATION_SUFFIX}"
+    )
+
+
+def _reserve_activation_attempt(
+    *,
+    activation_path: Path,
+    activation: dict[str, Any],
+    programme: AdaptiveHybridProgramme,
+    run_dir: Path,
+) -> Path:
+    """Consume one activation globally before any hardware-side operation."""
+
+    reservation_path = _activation_attempt_reservation_path(activation)
+    reservation = {
+        "schema_version": 1,
+        "record_type": "active_hybrid_activation_attempt_reservation_v1",
+        "created_utc": _utc_now(),
+        "status": "irreversibly_reserved_before_hardware",
+        "activation_path": str(activation_path.resolve()),
+        "activation_file_sha256": _sha256_file(activation_path.resolve()),
+        "activation_sha256": activation.get("activation_sha256"),
+        "activation_id": activation.get("activation_id"),
+        "programme_id": programme.programme_id,
+        "run_identity": activation.get("run_identity"),
+        "intended_run_directory": str(run_dir.resolve()),
+        "automatic_retry": False,
+        "reusable_across_run_directories": False,
+    }
+    try:
+        _atomic_new_json(reservation_path, reservation)
+    except FileExistsError as exc:
+        prior = _read_json(reservation_path)
+        prior_run = (
+            prior.get("intended_run_directory")
+            if isinstance(prior, dict)
+            else "unreadable_reservation"
+        )
+        raise RuntimeError(
+            "active-hybrid activation is already irreversibly reserved by "
+            f"physical attempt {prior_run}"
+        ) from exc
+    parent_descriptor = os.open(reservation_path.parent, os.O_RDONLY)
+    try:
+        os.fsync(parent_descriptor)
+    finally:
+        os.close(parent_descriptor)
+    return reservation_path
+
+
+def _wait_until(
+    predicate: Callable[[], bool], timeout_s: float, description: str
+) -> None:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.1)
+    raise TimeoutError(f"timed out waiting for {description}")
+
+
+def _fresh_auto_detect_device() -> str:
+    """Resolve the current sole USB CDC path without retaining an old path."""
+
+    try:
+        return _detect_single_device()
+    except SystemExit as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def _upload_exact_firmware(
+    *,
+    run_dir: Path,
+    activation: dict[str, Any],
+    device: str,
+    board_before: dict[str, str],
+    arduino_cli: str,
+    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
+) -> tuple[str, dict[str, str], dict[str, Any]]:
+    authority = activation["authority"]
+    firmware = activation["firmware"]
+    if authority.get("firmware_flash_limit") != 1:
+        raise ValueError("ADAPTIVE_HYBRID activation does not grant exactly one firmware upload")
+    command = [
+        arduino_cli,
+        "upload",
+        "--port",
+        device,
+        "--fqbn",
+        str(firmware["fqbn"]),
+        "--input-file",
+        str(firmware["uf2"]["path"]),
+    ]
+    started_utc = _utc_now()
+    completed = subprocess.run(
+        command, text=True, capture_output=True, check=False, timeout=120
+    )
+    device_after: str | None = None
+    board_after: dict[str, str] | None = None
+    reappearance_error = ""
+    if completed.returncode == 0:
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            try:
+                device_after = _fresh_auto_detect_device()
+                board_after = read_board_identity(
+                    device_after, arduino_cli=arduino_cli
+                )
+                break
+            except (
+                OSError,
+                ValueError,
+                subprocess.SubprocessError,
+                json.JSONDecodeError,
+            ) as exc:
+                reappearance_error = str(exc)
+                time.sleep(0.5)
+    expected_serial = None
+    passed = (
+        completed.returncode == 0
+        and device_after is not None
+        and board_after is not None
+        and board_before.get("serial_number")
+        == board_after.get("serial_number")
+    )
+    record = {
+        "schema_version": 1,
+        "tool": TOOL_ID,
+        "operation": f"exact_{programme.key}_firmware_upload",
+        "status": "passed" if passed else "failed",
+        "started_utc": started_utc,
+        "completed_utc": _utc_now(),
+        "firmware_flash_count": 1,
+        "command": command,
+        "exit_code": completed.returncode,
+        "stdout_sha256": sha256(completed.stdout.encode()).hexdigest(),
+        "stderr_sha256": sha256(completed.stderr.encode()).hexdigest(),
+        "stdout_tail": completed.stdout[-4000:],
+        "stderr_tail": completed.stderr[-4000:],
+        "expected_board_serial": expected_serial,
+        "device_selection": "fresh_capture_device_--auto-detect",
+        "board_identity_confirmed_before": True,
+        "board_identity_confirmed_after": passed,
+        "usb_reenumerated": board_after is not None,
+        "device_before": device,
+        "device_after": device_after,
+        "serial_path_changed": device_after not in {None, device},
+        "board_before": board_before,
+        "board_after": board_after,
+        "board_reappearance_error": reappearance_error,
+        "bundle_sha256": activation["bundle"]["bundle_sha256"],
+        "build_identity": firmware["build_identity"],
+        "uf2_sha256": firmware["uf2"]["sha256"],
+        "image_identity": firmware["image_id"],
+        "dac_boot_operation": "i2c_address_probe_only",
+        "dac_value_write_attempts": 0,
+    }
+    record["record_sha256"] = sha256(
+        json.dumps(
+            record, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+    ).hexdigest()
+    _atomic_new_json(run_dir / FLASH_RECORD, record)
+    if not passed:
+        raise RuntimeError(
+            "exact ADAPTIVE_HYBRID upload or board re-enumeration failed; automatic retry is forbidden"
+        )
+    assert device_after is not None and board_after is not None
+    return device_after, board_after, record
+
+
+def _capture_command(
+    *,
+    device: str,
+    run_dir: Path,
+    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
+) -> list[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "host.otis_tools.capture_device",
+    ]
+    command.extend(
+        [
+            "--auto-detect",
+            "--expected-auto-detect-device",
+            device,
+        ]
+    )
+    command.extend([
+        "--baud",
+        str(EXPECTED_BAUD),
+        "--run-dir",
+        str(run_dir),
+        "--duration-s",
+        str(programme.capture_duration_s),
+        "--status-interval",
+        "5",
+        "--command-fifo",
+        str(run_dir / NORMAL_FIFO),
+        "--emergency-command-fifo",
+        str(run_dir / EMERGENCY_FIFO),
+        "--write-timeout-s",
+        "1",
+        "--normal-command-max-age-s",
+        "2",
+    ])
+    return command
+
+
+def _supervisor_command(
+    *,
+    run_dir: Path,
+    build_identity: str,
+    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
+) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "host.otis_tools.adaptive_hybrid_supervisor",
+        "--manifest",
+        str(run_dir / RUN_MANIFEST_PATH),
+        "--run-dir",
+        str(run_dir),
+        "--command-fifo",
+        str(run_dir / NORMAL_FIFO),
+        "--emergency-command-fifo",
+        str(run_dir / EMERGENCY_FIFO),
+        "--abort-fifo",
+        str(run_dir / HOST_ABORT_FIFO),
+        "--expected-build-identity",
+        build_identity,
+        "--duration-s",
+        str(programme.supervisor_duration_s),
+    ]
+
+
+def _launch_process(command: list[str], log: IO[str]) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        command,
+        cwd=Path(__file__).resolve().parents[2],
+        stdout=log,
+        stderr=log,
+        text=True,
+        start_new_session=True,
+    )
+
+
+def _terminal(run_dir: Path) -> dict[str, Any] | None:
+    state = _read_json(run_dir / SUPERVISOR_STATE)
+    terminal = state.get("terminal") if state else None
+    return terminal if isinstance(terminal, dict) else None
+
+
+def _terminal_expected(
+    terminal: dict[str, Any] | None,
+    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
+) -> bool:
+    if terminal is None:
+        return False
+    result = terminal.get("result")
+    decision_is_valid = (
+        terminal.get("preliminary_decision")
+        in programme.healthy_preliminary_decisions
+        if result == "healthy_stop"
+        else terminal.get("primary_decision") in programme.terminal_decisions
+    )
+    static_code = terminal.get("last_confirmed_code")
+    static_code_is_valid = type(static_code) is int or (
+        result == "aborted" and static_code is None
+    )
+    return bool(
+        result in {"healthy_stop", "nonpass", "aborted"}
+        and decision_is_valid
+        and static_code_is_valid
+    )
+
+
+def _record_abort_delivery_failure(
+    run_dir: Path,
+    *,
+    terminal: dict[str, Any] | None,
+    error: Exception,
+) -> Path:
+    path = run_dir / ABORT_DELIVERY_FAILURE
+    if path.exists():
+        return path
+    _atomic_new_json(
+        path,
+        {
+            "schema_version": 1,
+            "report_type": "adaptive_hybrid_hybrid_abort_delivery_failure_v1",
+            "tool": TOOL_ID,
+            "recorded_utc": _utc_now(),
+            "bounded_delivery_wait_s": ABORT_DELIVERY_TIMEOUT_S,
+            "terminal": terminal,
+            "capture_state": _read_json(
+                run_dir / "reports/capture_device_state.json"
+            ),
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "delivery_status": "bounded_failure",
+            "claims_boundary": (
+                "Priority abort delivery plus a complete resulting firmware "
+                "ABORTED/fail-static snapshot was not confirmed before the "
+                "bounded deadline. This record does not claim that firmware "
+                "consumed and applied the abort."
+            ),
+        },
+    )
+    return path
+
+
+def _retained_abort_consumption_health(run_dir: Path) -> dict[tuple[str, str], str] | None:
+    """Return a complete post-abort firmware snapshot from canonical records.
+
+    The live reducer deliberately latches ``invalid`` when an ordinary
+    supervisor snapshot overlaps a prior incomplete generation.  That remains
+    a control-plane fault, but it must not erase a later complete, retained
+    ABORTED/fail-static snapshot when deciding whether the independent abort
+    reached firmware before the sole capture owner may close.
+    """
+    raw_path = run_dir / "raw/serial.log"
+    if not raw_path.is_file():
+        return None
+    abort_sent = False
+    rows: list[dict[str, str]] = []
+    with raw_path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if line.startswith(HOST_MARKER_PREFIX):
+                try:
+                    marker = json.loads(line[len(HOST_MARKER_PREFIX) :])
+                except json.JSONDecodeError:
+                    continue
+                if marker.get("event") == "emergency_abort_sent":
+                    # Reset at the independently retained transmission marker:
+                    # only a causally later firmware snapshot can prove that
+                    # this abort reached and was consumed by the device.
+                    abort_sent = True
+                    rows = []
+                continue
+            if not abort_sent or not line.startswith("STS,"):
+                continue
+            try:
+                values = next(csv.reader([line.rstrip("\r\n")]))
+            except csv.Error:
+                continue
+            if len(values) != len(HEALTH_FIELDS):
+                continue
+            rows.append(dict(zip(HEALTH_FIELDS, values, strict=True)))
+    snapshots, newest_started_generation = complete_active_status_snapshots(rows)
+    if not snapshots:
+        return None
+    latest = snapshots[-1]
+    if int(latest["snapshot_generation_complete"]) != newest_started_generation:
+        return None
+    return {("adaptive_hybrid", key): value for key, value in latest.items()}
+
+
+def _wait_for_terminal_abort_delivery(
+    run_dir: Path, terminal: dict[str, Any]
+) -> None:
+    if terminal.get("result") != "aborted":
+        return
+
+    def delivered() -> bool:
+        state = _read_json(run_dir / "reports/capture_device_state.json")
+        if not (
+            state
+            and state.get("capture_active") is True
+            and state.get("emergency_abort_latched") is True
+            and int(state.get("emergency_aborts_sent", 0)) == 1
+        ):
+            return False
+        live = read_live_health_state(run_dir / LIVE_STATE_PATH)
+        # Prefer the atomic live state.  On its explicitly-invalid branch,
+        # use only a complete retained firmware abort snapshot—not a partial
+        # health prefix and never a fresh query/nonce request.
+        health = (
+            live.health
+            if live.state == "complete"
+            else _retained_abort_consumption_health(run_dir)
+        )
+        if health is None:
+            return False
+        if not (
+            health.get(("adaptive_hybrid", "state")) == "ABORTED"
+            and health.get(("adaptive_hybrid", "fail_static")) == "true"
+            and health.get(("adaptive_hybrid", "evidence_pending")) == "false"
+            and health.get(("adaptive_hybrid", "evidence_phase")) == "evidence_clear"
+            and health.get(("adaptive_hybrid", "evidence_request_sequence")) == "0"
+        ):
+            return False
+        static_code = terminal.get("last_confirmed_code")
+        if type(static_code) is int:
+            return bool(
+                health.get(("adaptive_hybrid", "confirmed_applied_code_known"))
+                == "true"
+                and int(
+                    health.get(("adaptive_hybrid", "confirmed_applied_code"), "-1")
+                )
+                == static_code
+            )
+        return static_code is None
+
+    try:
+        _wait_until(
+            delivered,
+            ABORT_DELIVERY_TIMEOUT_S,
+            "priority abort delivery before sole-owner capture close",
+        )
+    except (OSError, TimeoutError, TypeError, ValueError) as exc:
+        _record_abort_delivery_failure(
+            run_dir,
+            terminal=terminal,
+            error=exc,
+        )
+        raise
+
+
+def _graceful_capture_stop(capture: subprocess.Popen[str]) -> int:
+    if capture.poll() is None:
+        capture.send_signal(signal.SIGINT)
+    try:
+        return capture.wait(timeout=CAPTURE_STOP_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        capture.send_signal(signal.SIGINT)
+        try:
+            return capture.wait(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            capture.terminate()
+            return capture.wait(timeout=5.0)
+
+
+def _bounded_priority_abort(
+    run_dir: Path,
+    emergency_fifo: Path,
+    capture: subprocess.Popen[str],
+) -> None:
+    if capture.poll() is not None:
+        return
+    try:
+        state_path = run_dir / "reports/capture_device_state.json"
+        state = _read_json(state_path) or {}
+        if not emergency_fifo.exists():
+            raise FileNotFoundError(f"priority abort FIFO unavailable: {emergency_fifo}")
+        if not state.get("emergency_abort_latched"):
+            send_timestamped_command_to_fifo(emergency_fifo, "ACTIVE ABORT")
+        _wait_until(
+            lambda: bool(
+                (_read_json(state_path) or {}).get("emergency_abort_latched")
+                and int(
+                    (_read_json(state_path) or {}).get("emergency_aborts_sent", 0)
+                )
+                == 1
+            ),
+            ABORT_DELIVERY_TIMEOUT_S,
+            "best-effort priority abort delivery",
+        )
+    except (OSError, SystemExit, TimeoutError, TypeError, ValueError) as exc:
+        error = exc if isinstance(exc, Exception) else RuntimeError(str(exc))
+        _record_abort_delivery_failure(
+            run_dir,
+            terminal=_terminal(run_dir),
+            error=error,
+        )
+
+
+def _write_failure(
+    *,
+    run_dir: Path,
+    activation: dict[str, Any],
+    error: Exception,
+    phase: str,
+) -> Path:
+    path = run_dir / ORCHESTRATION_FAILURE
+    if path.exists():
+        return path
+    _atomic_new_json(
+        path,
+        {
+            "schema_version": 1,
+            "report_type": "adaptive_hybrid_hybrid_orchestration_failure_v1",
+            "tool": TOOL_ID,
+            "recorded_utc": _utc_now(),
+            "phase": phase,
+            "failure_class": "platform_or_live_stop_rule_failure",
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "terminal": _terminal(run_dir),
+            "activation_sha256": activation["activation_sha256"],
+            "bundle_sha256": activation["bundle"]["bundle_sha256"],
+            "automatic_retry": False,
+            "automatic_restore": False,
+            "claims_boundary": (
+                "Retained physical or prewrite terminal evidence only; this "
+                "artifact grants no retry, tuning, extension, or restoration."
+            ),
+        },
+    )
+    return path
+
+
+def _retain_live_capture_for_host_review(
+    *,
+    run_dir: Path,
+    activation: dict[str, Any],
+    error: Exception,
+    capture: subprocess.Popen[str],
+    supervisor: subprocess.Popen[str] | None,
+) -> dict[str, object]:
+    """Retain sole-owner capture until an operator ends it after review.
+
+    This path deliberately sends neither a priority abort nor a process signal.
+    The capture process continues draining serial while firmware independently
+    enforces its lease/evidence timeouts and fail-static behavior.
+    """
+    capture_alive_at_entry = capture.poll() is None
+    try:
+        path = run_dir / HOST_REVIEW_HOLD
+        if not path.exists():
+            _atomic_new_json(
+                path,
+                {
+                    "schema_version": 1,
+                    "report_type": "adaptive_hybrid_hybrid_host_review_hold_v1",
+                    "tool": TOOL_ID,
+                    "recorded_utc": _utc_now(),
+                    "review_status": "operator_review_required",
+                    "host_abort_authority_exercised": False,
+                    "capture_alive_at_entry": capture_alive_at_entry,
+                    "capture_and_serial_owner_retained": capture_alive_at_entry,
+                    "new_controller_authority": False,
+                    "firmware_fail_static_independent": True,
+                    "error_type": type(error).__name__,
+                    "error": str(error),
+                    "capture_pid": capture.pid,
+                    "supervisor_pid": (
+                        supervisor.pid if supervisor is not None else None
+                    ),
+                    "supervisor_exit": (
+                        supervisor.poll() if supervisor is not None else None
+                    ),
+                },
+            )
+    except (OSError, TypeError, ValueError):
+        # Evidence publication failure cannot authorize teardown either.
+        pass
+    while capture.poll() is None:
+        time.sleep(1.0)
+    return {
+        "capture_alive_at_entry": capture_alive_at_entry,
+        "capture_exit": capture.poll(),
+    }
+
+
+def _registration(
+    *,
+    activation: dict[str, Any],
+    status: str,
+    reason: str,
+    analyzer_identity: str,
+) -> dict[str, str]:
+    classification = (
+        COMPLETED_INDEX_CLASSIFICATION
+        if status in {"passed", "bounded_nonpass"}
+        else INTERRUPTED_INDEX_CLASSIFICATION
+    )
+    return {
+        "source_revision": str(activation["firmware"]["source_revision"]),
+        "build_identity": str(activation["firmware"]["build_identity"]),
+        "image_identity": str(activation["image_identity"]),
+        "attempt_classification": classification,
+        "result_or_failure_reason": reason,
+        "analyzer_identity": analyzer_identity,
+    }
+
+
+def _register_unfinalized(
+    *,
+    run_dir: Path,
+    activation: dict[str, Any],
+    evidence_index_path: Path,
+    error: Exception,
+) -> dict[str, Any]:
+    return register_package(
+        index_path=evidence_index_path,
+        package_path=run_dir,
+        **_registration(
+            activation=activation,
+            status="failed",
+            reason=f"ADAPTIVE_HYBRID retained unfinalized terminal: {error}",
+            analyzer_identity=_sha256_file(Path(__file__)),
+        ),
+    )
+
+
+def _write_complete(
+    run_dir: Path,
+    *,
+    terminal: dict[str, Any] | None,
+    orchestration_error: Exception | None,
+) -> Path:
+    path = run_dir / COMPLETE
+    if path.exists():
+        return path
+    _atomic_new_json(
+        path,
+        {
+            "completed_utc": _utc_now(),
+            "completion": "adaptive_hybrid_finite_physical_campaign",
+            "terminal": terminal,
+            "orchestration_error": (
+                None if orchestration_error is None else str(orchestration_error)
+            ),
+        },
+    )
+    return path
+
+
+def _create_partial_evidence_snapshot(run_dir: Path) -> Path:
+    """Freeze every available declared artifact after a partial terminal.
+
+    The generic snapshot creator correctly rejects missing required artifacts.
+    A stopped physical attempt still needs an immutable, explicitly partial
+    inventory so offline analysis can report those absences without losing the
+    evidence that did arrive.
+    """
+
+    manifest = load_manifest(run_dir)
+    sources: dict[str, dict[str, str]] = {
+        manifest.path.relative_to(run_dir).as_posix(): {"role": "run_manifest"}
+    }
+    raw_dir = run_dir / "raw"
+    if raw_dir.is_dir():
+        for path in sorted(raw_dir.rglob("*")):
+            if path.is_file():
+                sources[path.relative_to(run_dir).as_posix()] = {
+                    "role": "raw_evidence"
+                }
+    for entry in manifest.files:
+        relative = entry.get("path")
+        if not isinstance(relative, str):
+            continue
+        path = PurePosixPath(relative)
+        if path.is_absolute() or ".." in path.parts or path.as_posix() != relative:
+            raise ValueError(f"unsafe partial evidence path: {relative!r}")
+        metadata = {"role": "declared_artifact"}
+        contract = entry.get("contract")
+        if isinstance(contract, str) and contract:
+            metadata["contract"] = contract
+        if (run_dir / relative).is_file():
+            sources[relative] = metadata
+    evidence_artifacts = manifest.data.get("evidence_artifacts", [])
+    if not isinstance(evidence_artifacts, list):
+        raise ValueError("ADAPTIVE_HYBRID evidence_artifacts must be a list")
+    for relative in evidence_artifacts:
+        if not isinstance(relative, str):
+            raise ValueError("ADAPTIVE_HYBRID evidence artifact path must be a string")
+        path = PurePosixPath(relative)
+        if path.is_absolute() or ".." in path.parts or path.as_posix() != relative:
+            raise ValueError(f"unsafe partial evidence path: {relative!r}")
+        if (run_dir / relative).is_file():
+            sources[relative] = {"role": "declared_artifact"}
+
+    artifacts: list[dict[str, Any]] = []
+    for relative, metadata in sorted(sources.items()):
+        path = run_dir / relative
+        try:
+            path.resolve(strict=True).relative_to(run_dir)
+        except ValueError as exc:
+            raise ValueError(
+                f"partial evidence artifact escapes through a symlink: {relative}"
+            ) from exc
+        current = run_dir
+        if any(
+            (current := current / part).is_symlink()
+            for part in PurePosixPath(relative).parts
+        ):
+            raise ValueError(f"partial evidence artifact is a symlink: {relative}")
+        artifacts.append(
+            {
+                "path": relative,
+                **metadata,
+                "size_bytes": path.stat().st_size,
+                "sha256": _sha256_file(path),
+            }
+        )
+    snapshot: dict[str, Any] = {
+        "schema_version": 1,
+        "run_id": manifest.run_id,
+        "run_state": "partial",
+        "digest_algorithm": "sha256",
+        "artifacts": artifacts,
+    }
+    snapshot["snapshot_digest"] = sha256(
+        json.dumps(
+            snapshot,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    destination = run_dir / EVIDENCE_MANIFEST
+    _atomic_new_json(destination, snapshot)
+    return destination
+
+
+def _snapshotted_artifact_identities(
+    run_dir: Path, snapshot_path: Path
+) -> dict[str, str | None]:
+    snapshot = _read_json(snapshot_path)
+    if snapshot is None or not isinstance(snapshot.get("artifacts"), list):
+        raise ValueError("ADAPTIVE_HYBRID evidence snapshot is malformed")
+    identities: dict[str, str | None] = {}
+    for entry in snapshot["artifacts"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise ValueError("ADAPTIVE_HYBRID evidence snapshot artifact is malformed")
+        relative = str(entry["path"])
+        pure = PurePosixPath(relative)
+        if pure.is_absolute() or ".." in pure.parts or pure.as_posix() != relative:
+            raise ValueError(f"unsafe snapshotted artifact path: {relative!r}")
+        path = run_dir / relative
+        identities[relative] = _sha256_file(path) if path.is_file() else None
+    return identities
+
+
+def _analyze(run_dir: Path) -> tuple[Path, dict[str, Any]]:
+    from .adaptive_hybrid_analyze import analyze
+
+    return analyze(run_dir)
+
+
+def _require_exact_lifecycle_records(manifest: Any) -> dict[str, Any]:
+    from .adaptive_hybrid_analyze import (
+        require_exact_lifecycle_records,
+    )
+
+    return require_exact_lifecycle_records(manifest)
+
+
+def _finalize_and_register(
+    *,
+    run_dir: Path,
+    activation: dict[str, Any],
+    evidence_index_path: Path,
+    finalization_journal: Path,
+    orchestration_error: Exception | None,
+) -> dict[str, Any]:
+    terminal = _terminal(run_dir)
+    _write_complete(
+        run_dir,
+        terminal=terminal,
+        orchestration_error=orchestration_error,
+    )
+    advance_phase(
+        finalization_journal,
+        "completion",
+        {"terminal": terminal, "orchestration_error": str(orchestration_error or "")},
+    )
+    snapshot_creation_error: str | None = None
+    try:
+        snapshot = create_evidence_snapshot(
+            run_dir, allow_incomplete=orchestration_error is not None
+        )
+    except Exception as exc:
+        if orchestration_error is None:
+            raise
+        snapshot_creation_error = str(exc)
+        snapshot = _create_partial_evidence_snapshot(run_dir)
+    loaded = load_manifest(run_dir)
+    failures, warnings = validate_evidence_snapshot(run_dir, loaded)
+    if orchestration_error is None and (failures or warnings):
+        raise RuntimeError(
+            "ADAPTIVE_HYBRID evidence snapshot validation failed: "
+            + json.dumps({"failures": failures, "warnings": warnings})
+        )
+    advance_phase(
+        finalization_journal,
+        "snapshot",
+        {
+            "path": str(snapshot),
+            "failures": failures,
+            "warnings": warnings,
+            "generic_snapshot_error": snapshot_creation_error,
+        },
+    )
+    frozen_acquisition_identities = _snapshotted_artifact_identities(
+        run_dir, snapshot
+    )
+    exact_lifecycle_records = _require_exact_lifecycle_records(loaded)
+    seal_path, seal = _analyze(run_dir)
+    if frozen_acquisition_identities != _snapshotted_artifact_identities(
+        run_dir, snapshot
+    ):
+        raise RuntimeError("ADAPTIVE_HYBRID analyzer changed snapshotted acquisition evidence")
+    advance_phase(
+        finalization_journal,
+        "analysis",
+        {
+            "status": seal["status"],
+            "primary_decision": seal["primary_decision"],
+            "tool_sha256": seal["tool_sha256"],
+            "exact_lifecycle_records": exact_lifecycle_records,
+        },
+    )
+    advance_phase(
+        finalization_journal,
+        "seal",
+        {"path": str(seal_path), "seal_sha256": seal["seal_sha256"]},
+    )
+    registration = _registration(
+        activation=activation,
+        status=str(seal["status"]),
+        reason=(
+            f"ADAPTIVE_HYBRID {seal['status']}: {seal['primary_decision']}"
+            + (
+                f"; orchestration={orchestration_error}"
+                if orchestration_error is not None
+                else ""
+            )
+        ),
+        analyzer_identity=str(seal["tool_sha256"]),
+    )
+    set_registration_intent(
+        finalization_journal,
+        registration=registration,
+        expected_content_sha256=package_identity(run_dir)["content_sha256"],
+    )
+    indexed = recover_registration(finalization_journal)
+    return {
+        "status": seal["status"],
+        "primary_decision": seal["primary_decision"],
+        "run_dir": str(run_dir),
+        "seal": str(seal_path),
+        "seal_sha256": seal["seal_sha256"],
+        "evidence_snapshot": str(snapshot),
+        "evidence_content_sha256": indexed["content_sha256"],
+        "evidence_index": str(evidence_index_path.expanduser().resolve()),
+        "orchestration_error": (
+            None if orchestration_error is None else str(orchestration_error)
+        ),
+    }
+
+
+def run_adaptive_hybrid_qualification(
+    *,
+    activation_path: Path,
+    run_dir: Path,
+    evidence_index_path: Path = DEFAULT_INDEX,
+    arduino_cli: str = "arduino-cli",
+) -> dict[str, Any]:
+    activation_path = activation_path.resolve()
+    activation_value = _read_json(activation_path)
+    if activation_value is None:
+        raise ValueError("active-hybrid activation is unreadable")
+    programme = programme_from_mapping(activation_value)
+    activation, bundle, _proposal = validate_activation(activation_path)
+    run_dir = run_dir.resolve()
+    if run_dir.exists():
+        raise FileExistsError(f"ADAPTIVE_HYBRID live run already exists: {run_dir}")
+    activation_reservation_path = _reserve_activation_attempt(
+        activation_path=activation_path,
+        activation=activation,
+        programme=programme,
+        run_dir=run_dir,
+    )
+    device = _fresh_auto_detect_device()
+    owners = _serial_owner_pids(device)
+    if owners:
+        raise ValueError(f"serial device already has owners: {sorted(owners)}")
+    board = read_board_identity(device, arduino_cli=arduino_cli)
+    run_dir.mkdir(parents=True)
+    (run_dir / "reports").mkdir()
+    (run_dir / "control").mkdir()
+    run_activation = run_dir / programme.run_activation_path
+    run_bundle = run_dir / programme.run_bundle_path
+    run_proposal = run_dir / programme.run_proposal_path
+    _copy_immutable(activation_path, run_activation)
+    _copy_immutable(Path(activation["bundle"]["path"]), run_bundle)
+    _copy_immutable(Path(activation["proposal"]["path"]), run_proposal)
+    try:
+        upload_args = {
+            "run_dir": run_dir,
+            "activation": activation,
+            "device": device,
+            "board_before": board,
+            "arduino_cli": arduino_cli,
+        }
+        device, board, _flash = _upload_exact_firmware(**upload_args)
+    except (Exception, KeyboardInterrupt) as caught:
+        exc = (
+            caught
+            if isinstance(caught, Exception)
+            else RuntimeError("operator interrupted ADAPTIVE_HYBRID firmware entry")
+        )
+        _write_failure(
+            run_dir=run_dir,
+            activation=activation,
+            error=exc,
+            phase="firmware_entry",
+        )
+        indexed = _register_unfinalized(
+            run_dir=run_dir,
+            activation=activation,
+            evidence_index_path=evidence_index_path,
+            error=exc,
+        )
+        raise RuntimeError(
+            "ADAPTIVE_HYBRID firmware entry failed; retained evidence "
+            f"{indexed['content_sha256']}: {exc}"
+        ) from exc
+
+    manifest_path = run_dir / RUN_MANIFEST_PATH
+    try:
+        freshly_detected = _fresh_auto_detect_device()
+        if freshly_detected != device:
+            raise RuntimeError("fresh serial path changed before capture ownership")
+        created_manifest = create_run_manifest(
+            activation_path=run_activation,
+            bundle_path=run_bundle,
+            proposal_path=run_proposal,
+            run_dir=run_dir,
+            output_path=manifest_path,
+            serial_device=device,
+        )
+        generic_manifest = load_manifest(run_dir)
+        if generic_manifest.data != created_manifest:
+            raise RuntimeError(
+                "live manifest differs across producer and evidence loader"
+            )
+        finalization_journal = begin_finalization(
+            run_dir=run_dir,
+            index_path=evidence_index_path,
+            required_seal=programme.physical_seal_path,
+            registration=_registration(
+                activation=activation,
+                status="failed",
+                reason="pending ADAPTIVE_HYBRID physical finalization",
+                analyzer_identity=_sha256_file(Path(__file__)),
+            ),
+        )
+    except (Exception, KeyboardInterrupt) as caught:
+        exc = (
+            caught
+            if isinstance(caught, Exception)
+            else RuntimeError("operator interrupted ADAPTIVE_HYBRID post-flash preparation")
+        )
+        _write_failure(
+            run_dir=run_dir,
+            activation=activation,
+            error=exc,
+            phase="post_flash_prewrite",
+        )
+        indexed = _register_unfinalized(
+            run_dir=run_dir,
+            activation=activation,
+            evidence_index_path=evidence_index_path,
+            error=exc,
+        )
+        raise RuntimeError(
+            "ADAPTIVE_HYBRID post-flash preparation failed; retained evidence "
+            f"{indexed['content_sha256']}: {exc}"
+        ) from exc
+
+    capture_log: IO[str] | None = None
+    supervisor_log: IO[str] | None = None
+    capture: subprocess.Popen[str] | None = None
+    supervisor: subprocess.Popen[str] | None = None
+    orchestration_error: Exception | None = None
+    capture_closed = False
+    abort_delivery_resolved_or_bounded = False
+    try:
+        capture_log = (run_dir / CAPTURE_LOG).open("x", encoding="utf-8")
+        supervisor_log = (run_dir / SUPERVISOR_LOG).open("x", encoding="utf-8")
+        capture = _launch_process(
+            _capture_command(
+                device=device, run_dir=run_dir, programme=programme
+            ),
+            capture_log,
+        )
+        normal_fifo = run_dir / NORMAL_FIFO
+        emergency_fifo = run_dir / EMERGENCY_FIFO
+        host_abort_fifo = run_dir / HOST_ABORT_FIFO
+        _wait_until(
+            lambda: (
+                capture.poll() is None
+                and normal_fifo.exists()
+                and emergency_fifo.exists()
+                and stat.S_ISFIFO(normal_fifo.stat().st_mode)
+                and stat.S_ISFIFO(emergency_fifo.stat().st_mode)
+                and _capture_state_ready(run_dir, capture.pid)
+            ),
+            PROCESS_START_TIMEOUT_S,
+            "sole-owner capture and bounded command paths",
+        )
+        if _serial_owner_pids(device) != {capture.pid}:
+            raise RuntimeError("capture_device is not the sole serial owner")
+        supervisor = _launch_process(
+            _supervisor_command(
+                run_dir=run_dir,
+                build_identity=str(bundle["firmware"]["build_identity"]),
+                programme=programme,
+            ),
+            supervisor_log,
+        )
+        _wait_until(
+            lambda: (
+                supervisor is not None
+                and supervisor.poll() is None
+                and host_abort_fifo.exists()
+                and stat.S_ISFIFO(host_abort_fifo.stat().st_mode)
+            ),
+            PROCESS_START_TIMEOUT_S,
+            "live supervisor and independent host abort path",
+        )
+        _wait_until(
+            lambda: _terminal(run_dir) is not None
+            or (supervisor is not None and supervisor.poll() is not None),
+            programme.supervisor_duration_s,
+            "finite ADAPTIVE_HYBRID supervisor terminal",
+        )
+        terminal = _terminal(run_dir)
+        if not _terminal_expected(terminal, programme):
+            raise RuntimeError(
+                "ADAPTIVE_HYBRID supervisor reached a non-canonical terminal: "
+                + json.dumps(terminal, sort_keys=True)
+            )
+        assert supervisor is not None and terminal is not None
+        supervisor_exit = supervisor.wait(timeout=15.0)
+        valid_exits = {0} if terminal["result"] == "healthy_stop" else {2, 3, 4, 5}
+        if supervisor_exit not in valid_exits:
+            raise RuntimeError(
+                f"ADAPTIVE_HYBRID supervisor exited {supervisor_exit}, expected {sorted(valid_exits)}"
+            )
+        try:
+            _wait_for_terminal_abort_delivery(run_dir, terminal)
+        finally:
+            # A failed check writes the bounded delivery-failure record before
+            # raising.  Either result satisfies the required ordering gate for
+            # the subsequent retained close path; it must not be retried.
+            abort_delivery_resolved_or_bounded = True
+        capture_exit = _graceful_capture_stop(capture)
+        capture_closed = True
+        advance_phase(
+            finalization_journal, "capture_closed", {"capture_exit": capture_exit}
+        )
+        if capture_exit != 0:
+            raise RuntimeError(f"ADAPTIVE_HYBRID capture exited with status {capture_exit}")
+    except (Exception, KeyboardInterrupt) as caught:
+        operator_interrupted = not isinstance(caught, Exception)
+        exc = (
+            caught
+            if isinstance(caught, Exception)
+            else RuntimeError("operator interrupted ADAPTIVE_HYBRID live orchestration")
+        )
+        orchestration_error = exc
+        if capture is not None:
+            caught_terminal = _terminal(run_dir)
+            if (
+                (caught_terminal or {}).get("result") == "aborted"
+                and not abort_delivery_resolved_or_bounded
+            ):
+                try:
+                    _wait_for_terminal_abort_delivery(run_dir, caught_terminal)
+                except (OSError, TimeoutError, TypeError, ValueError):
+                    # The helper has already retained a bounded delivery-
+                    # failure artifact.  Preserve the original orchestration
+                    # failure and proceed to bounded capture closure.
+                    pass
+                finally:
+                    abort_delivery_resolved_or_bounded = True
+            elif operator_interrupted:
+                _bounded_priority_abort(
+                    run_dir,
+                    run_dir / EMERGENCY_FIFO,
+                    capture,
+                )
+            elif (caught_terminal or {}).get("result") != "aborted":
+                review_hold = _retain_live_capture_for_host_review(
+                    run_dir=run_dir,
+                    activation=activation,
+                    error=exc,
+                    capture=capture,
+                    supervisor=supervisor,
+                )
+                capture_closed = True
+                advance_phase(
+                    finalization_journal,
+                    "capture_closed",
+                    {
+                        **review_hold,
+                        "host_review_required": True,
+                        "automatic_abort_or_teardown": False,
+                    },
+                )
+                complete = _write_complete(
+                    run_dir,
+                    terminal=None,
+                    orchestration_error=None,
+                )
+                return {
+                    "status": "pending_review",
+                    "primary_decision": "operator_review_required",
+                    "run_dir": str(run_dir),
+                    "complete": str(complete),
+                    "host_review_hold": str(
+                        run_dir / HOST_REVIEW_HOLD
+                    ),
+                    "firmware_flashes": 1,
+                }
+        _write_failure(
+            run_dir=run_dir,
+            activation=activation,
+            error=exc,
+            phase="live_orchestration_after_review_hold",
+        )
+        if capture is None:
+            capture_closed = True
+            advance_phase(
+                finalization_journal,
+                "capture_closed",
+                {"capture_not_started": True, "after_error": str(exc)},
+            )
+        elif not capture_closed:
+            try:
+                capture_exit = _graceful_capture_stop(capture)
+                capture_closed = True
+                advance_phase(
+                    finalization_journal,
+                    "capture_closed",
+                    {"capture_exit": capture_exit, "after_error": str(exc)},
+                )
+            except Exception as close_error:
+                record_failure(
+                    finalization_journal,
+                    phase="capture_closed",
+                    error=close_error,
+                )
+    finally:
+        if capture_log is not None:
+            capture_log.close()
+        if supervisor_log is not None:
+            supervisor_log.close()
+        if supervisor is not None and supervisor.poll() is None:
+            supervisor.terminate()
+            try:
+                supervisor.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                supervisor.kill()
+                supervisor.wait(timeout=5.0)
+        if capture is not None and capture.poll() is None:
+            capture.terminate()
+            try:
+                capture.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                capture.kill()
+                capture.wait(timeout=5.0)
+
+    # The finally block is the last bounded process-reaping path.  If it had to
+    # reap capture after an earlier close failure, retain and finalize that
+    # partial terminal instead of stranding it as an unfinalized package.
+    if capture is not None and not capture_closed and capture.poll() is not None:
+        capture_closed = True
+        advance_phase(
+            finalization_journal,
+            "capture_closed",
+            {
+                "capture_exit": capture.poll(),
+                "forced_after_error": str(orchestration_error or ""),
+            },
+        )
+
+    if not capture_closed:
+        indexed = _register_unfinalized(
+            run_dir=run_dir,
+            activation=activation,
+            evidence_index_path=evidence_index_path,
+            error=orchestration_error or RuntimeError("capture closure failed"),
+        )
+        raise RuntimeError(
+            "ADAPTIVE_HYBRID capture closure failed; retained evidence "
+            f"{indexed['content_sha256']}"
+        )
+    try:
+        result = _finalize_and_register(
+            run_dir=run_dir,
+            activation=activation,
+            evidence_index_path=evidence_index_path,
+            finalization_journal=finalization_journal,
+            orchestration_error=orchestration_error,
+        )
+    except Exception as exc:
+        record_failure(finalization_journal, phase="seal", error=exc)
+        if not (run_dir / EVIDENCE_MANIFEST).is_file():
+            _atomic_new_json(
+                run_dir / FINALIZATION_FAILURE,
+                {
+                    "schema_version": 1,
+                    "report_type": "adaptive_hybrid_hybrid_finalization_failure_v1",
+                    "recorded_utc": _utc_now(),
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "physical_rerun_required": False,
+                },
+            )
+        indexed = _register_unfinalized(
+            run_dir=run_dir,
+            activation=activation,
+            evidence_index_path=evidence_index_path,
+            error=exc,
+        )
+        raise RuntimeError(
+            "ADAPTIVE_HYBRID finalization failed over retained evidence "
+            f"{indexed['content_sha256']}: {exc}"
+        ) from exc
+    result.update(
+        {
+            "activation_sha256": activation["activation_sha256"],
+            "activation_attempt_reservation": {
+                "path": str(activation_reservation_path),
+                "sha256": _sha256_file(activation_reservation_path),
+            },
+            "bundle_sha256": activation["bundle"]["bundle_sha256"],
+            "build_identity": activation["firmware"]["build_identity"],
+            "firmware_flashes": 1,
+            "flash_record": str(
+                run_dir / FLASH_RECORD
+            ),
+            "board": board,
+        }
+    )
+    if orchestration_error is not None:
+        raise RuntimeError(
+            "ADAPTIVE_HYBRID physical orchestration reached a retained terminal: "
+            f"{orchestration_error}; evidence {result['evidence_content_sha256']}"
+        ) from orchestration_error
+    if result["status"] == "failed":
+        raise RuntimeError(
+            "ADAPTIVE_HYBRID integrity analysis failed; retained evidence "
+            f"{result['evidence_content_sha256']}"
+        )
+    return result
+
+
+def _journal_phase_complete(journal: dict[str, Any], phase: str) -> bool:
+    return journal.get("phases", {}).get(phase) is not None
+
+
+def recover_adaptive_hybrid_finalization(
+    *, run_dir: Path, evidence_index_path: Path | None = None
+) -> dict[str, Any]:
+    """Resume deterministic finalization without board, serial, or actuator I/O."""
+
+    run_dir = run_dir.resolve()
+    if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
+        raise ValueError("cannot recover finalization while capture is active")
+    if not (run_dir / COMPLETE).is_file():
+        raise ValueError("ADAPTIVE_HYBRID retained run is not marked complete")
+    manifest_path = run_dir / RUN_MANIFEST_PATH
+    manifest = validate_frozen_run_manifest(manifest_path)
+    activation_path = Path(manifest["activation"]["path"])
+    activation = _read_json(activation_path)
+    if activation is None:
+        raise ValueError("ADAPTIVE_HYBRID retained activation is unavailable")
+    try:
+        programme = programme_from_mapping(manifest)
+    except ValueError:
+        programme = programme_from_mapping(activation)
+    raw_path = run_dir / "raw/serial.log"
+
+    def retained_identity(path: Path) -> str | None:
+        return _sha256_file(path) if path.is_file() else None
+
+    identities = {
+        "manifest": retained_identity(manifest_path),
+        "raw": retained_identity(raw_path),
+    }
+    journal_path = journal_path_for(run_dir)
+    journal = _read_json(journal_path)
+    if journal is None:
+        raise ValueError("ADAPTIVE_HYBRID finalization journal is unavailable")
+    index_path = (
+        evidence_index_path.expanduser().resolve()
+        if evidence_index_path is not None
+        else Path(journal["index_path"])
+    )
+    snapshot = run_dir / EVIDENCE_MANIFEST
+    if not snapshot.is_file():
+        try:
+            snapshot = create_evidence_snapshot(run_dir, allow_incomplete=True)
+        except Exception:
+            snapshot = _create_partial_evidence_snapshot(run_dir)
+    if not _journal_phase_complete(journal, "snapshot"):
+        advance_phase(journal_path, "snapshot", {"path": str(snapshot)})
+    frozen_acquisition_identities = _snapshotted_artifact_identities(
+        run_dir, snapshot
+    )
+    loaded = load_manifest(run_dir)
+    exact_lifecycle_records = _require_exact_lifecycle_records(loaded)
+    seal_path = run_dir / programme.physical_seal_path
+    if seal_path.is_file():
+        seal = _read_json(seal_path)
+        if seal is None:
+            raise ValueError("ADAPTIVE_HYBRID retained physical seal is malformed")
+    else:
+        seal_path, seal = _analyze(run_dir)
+    journal = _read_json(journal_path) or journal
+    if not _journal_phase_complete(journal, "analysis"):
+        advance_phase(
+            journal_path,
+            "analysis",
+            {
+                "status": seal["status"],
+                "primary_decision": seal["primary_decision"],
+                "tool_sha256": seal["tool_sha256"],
+                "exact_lifecycle_records": exact_lifecycle_records,
+            },
+        )
+    journal = _read_json(journal_path) or journal
+    if not _journal_phase_complete(journal, "seal"):
+        advance_phase(
+            journal_path,
+            "seal",
+            {"path": str(seal_path), "seal_sha256": seal["seal_sha256"]},
+        )
+    if identities != {
+        "manifest": retained_identity(manifest_path),
+        "raw": retained_identity(raw_path),
+    } or frozen_acquisition_identities != _snapshotted_artifact_identities(
+        run_dir, snapshot
+    ):
+        raise RuntimeError("offline recovery changed frozen acquisition evidence")
+    registration = _registration(
+        activation=activation,
+        status=str(seal["status"]),
+        reason=f"ADAPTIVE_HYBRID offline finalization recovery: {seal['primary_decision']}",
+        analyzer_identity=str(seal["tool_sha256"]),
+    )
+    set_registration_intent(
+        journal_path,
+        registration=registration,
+        expected_content_sha256=package_identity(run_dir)["content_sha256"],
+    )
+    indexed = recover_registration(journal_path)
+    return {
+        "status": seal["status"],
+        "primary_decision": seal["primary_decision"],
+        "run_dir": str(run_dir),
+        "seal": str(seal_path),
+        "seal_sha256": seal["seal_sha256"],
+        "evidence_snapshot": str(snapshot),
+        "evidence_content_sha256": indexed["content_sha256"],
+        "evidence_index": str(index_path),
+        "physical_rerun": False,
+        "device_or_actuator_io": False,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    execute = commands.add_parser("run")
+    execute.add_argument("--activation", type=Path, required=True)
+    execute.add_argument("--run-dir", type=Path, required=True)
+    execute.add_argument("--evidence-index", type=Path, default=DEFAULT_INDEX)
+    execute.add_argument("--arduino-cli", default="arduino-cli")
+    recover = commands.add_parser("recover-finalization")
+    recover.add_argument("--run-dir", type=Path, required=True)
+    recover.add_argument("--evidence-index", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "run":
+            result = run_adaptive_hybrid_qualification(
+                activation_path=args.activation,
+                run_dir=args.run_dir,
+                evidence_index_path=args.evidence_index,
+                arduino_cli=args.arduino_cli,
+            )
+        else:
+            result = recover_adaptive_hybrid_finalization(
+                run_dir=args.run_dir,
+                evidence_index_path=args.evidence_index,
+            )
+    except (
+        FileExistsError,
+        FileNotFoundError,
+        KeyError,
+        OSError,
+        RuntimeError,
+        subprocess.SubprocessError,
+        TimeoutError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        parser.error(str(exc))
+    print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

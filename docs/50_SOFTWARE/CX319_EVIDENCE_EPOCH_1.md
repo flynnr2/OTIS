@@ -1,5 +1,8 @@
 # CX319 Evidence Epoch 1 Compatibility Floor
 
+> Historical compatibility contract. It is retained as a record only and is
+> not loaded, validated, built, or supported by current HEAD.
+
 ## Decision
 
 Current HEAD supports one operational and evidence epoch:

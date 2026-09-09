@@ -223,12 +223,12 @@ From the repository root:
 ```sh
 python3 tools/verify_pio_snapshot.py \
   --pioasm /Users/richardflynn/Library/Arduino15/packages/rp2040/tools/pqt-pioasm/5.0.0-9576866/pioasm
-python3 tools/firmware_matrix.py --profile phase5_qualification
+python3 tools/build_firmware.py
 ```
 
 The first command must report 7,936 cases, 55,552 intervals, only `-1/0/+1`
 boundary errors, a four-clock maximum, and the installed configuration above.
-The second must compile the backend at the pinned 133 MHz board setting.
+The second must compile the fixed image at the pinned 133 MHz board setting.
 
 ## Remaining physical characterization
 

@@ -115,7 +115,6 @@ struct OtisPpsCountWindowValidity {
   bool counter_window_valid;
   bool observation_pair_valid;
   bool fifo_continuous;
-  bool backend_qualified;
   bool control_eligible;
 };
 
@@ -129,27 +128,11 @@ otis_boundary_sequence_relation(uint32_t previous, uint32_t current) {
                                   : OtisBoundarySequenceRelation::Gap;
 }
 
-// Increasing-counter helper retained for other backends and historical tests.
-// The PPS snapshot backend must use otis_down_counter_snapshot_delta_u32.
-static inline OtisCounterSnapshotDelta otis_counter_snapshot_delta_u32(
-    uint32_t previous, uint32_t current, uint32_t maximum_window_count) {
-  uint32_t count = current - previous;
-  bool wrapped = current < previous;
-  bool ambiguous = count > maximum_window_count;
-  return {
-      count,
-      !ambiguous,
-      wrapped && !ambiguous,
-      wrapped && ambiguous,
-  };
-}
-
 static inline OtisPpsCountWindowValidity
 otis_pps_count_window_validity(bool have_previous_boundary,
                                bool reference_interval_valid,
                                OtisBoundarySequenceRelation sequence_relation,
                                uint32_t aperture_flags,
-                               bool backend_qualified,
                                bool existing_control_gates_valid) {
   constexpr uint32_t kCounterWindowInvalidMask =
       OTIS_PPS_APERTURE_PREVIOUS_BOUNDARY_UNAVAILABLE |
@@ -170,14 +153,13 @@ otis_pps_count_window_validity(bool have_previous_boundary,
       (aperture_flags & OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) == 0u;
   bool eligible = reference_interval_valid && boundary_valid &&
                   counter_window_valid && pair_valid && fifo_continuous &&
-                  backend_qualified && existing_control_gates_valid;
+                  existing_control_gates_valid;
   return {
       reference_interval_valid,
       boundary_valid,
       counter_window_valid,
       pair_valid,
       fifo_continuous,
-      backend_qualified,
       eligible,
   };
 }

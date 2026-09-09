@@ -33,7 +33,7 @@ CSV records carry numeric bitmasks. Documentation, tooling, and reports may rend
 | 12 | `0x00001000` | `GATE_INCOMPLETE` | count observation gate did not complete cleanly |
 | 13 | `0x00002000` | `COUNT_SATURATED` | counter saturated or exceeded representable range |
 | 14 | `0x00004000` | `HOST_DERIVED` | record was produced by host tooling rather than directly emitted by capture firmware |
-| 15 | `0x00008000` | `PROFILE_ASSUMPTION` | result depends on a profile assumption rather than a directly observed fact |
+| 15 | `0x00008000` | `CONFIGURATION_ASSUMPTION` | result depends on the fixed instrument configuration rather than a directly observed fact |
 
 Bits 16-31 are reserved for future v1-compatible allocation.
 

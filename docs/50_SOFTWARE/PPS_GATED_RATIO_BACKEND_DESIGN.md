@@ -2,10 +2,10 @@
 
 ## Scope and invariant
 
-`OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO` counts oscillator rising edges on
-`D8` / GPIO20 between PPS events on `D14` / GPIO26. It emits raw `REF` and
-`CNT` evidence; frequency, ratio, ppm, estimation, and actuation remain outside
-this backend.
+The fixed `pio_wait_cumulative_snapshot_dma_v1` mechanism counts oscillator
+rising edges on `D8` / GPIO20 between PPS events on `D14` / GPIO26. It emits
+raw `REF` and `CNT` evidence; frequency estimation and actuation remain outside
+the capture mechanism.
 
 Qualification status: accepted on 2026-08-01 for observe-only measurement
 after the Phase 5 clean, fault, real-GPS, load, extended, and sealed overnight
@@ -116,15 +116,13 @@ Foreground derives and reports these conclusions independently:
 | counter window | snapshot is available, aperture complete, wrap unambiguous, count nonsaturated and physically possible |
 | observation pair | a previous atomic boundary exists and sequence is continuous |
 | FIFO continuity | no sequence discontinuity or boundary-ring overflow |
-| backend qualification | `OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=1` |
+| mechanism identity | fixed image manifest names `pio_wait_cumulative_snapshot_dma_v1` |
 
 Measurement validity requires the first five dimensions. Control eligibility
-additionally requires a build/profile that reflects backend qualification plus
-the existing startup, recovery, and clean-window gates. The checked-in
-qualification candidate and all sealed campaign evidence set
-`OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`; they remain immutable and cannot
-authorize control. The later acceptance decision does not retroactively change
-those artifacts or authorize DAC actuation.
+also requires the fixed image identity plus its startup, recovery, receiver,
+and clean-window gates. Historical qualification artifacts remain immutable;
+their authority is interpreted at their recorded Git revision, never by a
+compatibility branch in current firmware.
 
 Typed reasons include:
 
@@ -155,10 +153,10 @@ reason transition, unpairable boundary, missing-PPS timeout, or explicit query.
 Every repeated bounded anomaly still emits its flagged `CNT`; rate limiting
 never suppresses the raw evidence.
 
-`CONFIG?` emits one bounded, begin/end-delimited snapshot of compile-time and
-backend metadata. Serial command intake is byte-bounded and processes at most
+`CONFIG?` emits one bounded, begin/end-delimited snapshot of image and
+mechanism metadata. Serial command intake is byte-bounded and processes at most
 one complete command per loop pass. Boundary-ring draining precedes command,
-DAC-sweep, environment, and periodic-status service. None of these service
+actuation, environment, and periodic-status service. None of these service
 paths can alter the PIO-owned aperture.
 
 The CSV schema remains v1. Added `pps_gate` status keys are additive:
@@ -181,10 +179,9 @@ The backend claims:
 - one dynamically allocated high-priority DMA channel and an aligned
   128-word SRAM snapshot ring.
 
-The PIO and GPIO claims remain conflict-checked and visible through the resource
-registry. A gated build with the CPU-timestamped PIO edge-queue capture backend
-is rejected at compile time because that backend cannot provide an immediate
-PPS-owned count boundary.
+The PIO, DMA, and GPIO claims remain conflict-checked and visible through the
+resource registry. Current source contains no alternate capture or count
+backend.
 
 Remaining limitations are explicit:
 

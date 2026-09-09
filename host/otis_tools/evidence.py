@@ -7,7 +7,6 @@ import csv
 import json
 import os
 import re
-import shutil
 
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, load_manifest
 
@@ -15,8 +14,6 @@ from .run_loader import CAPTURE_IN_PROGRESS_FLAG, COMPLETE_MARKER, load_manifest
 EVIDENCE_MANIFEST = "evidence_manifest.json"
 EVIDENCE_SCHEMA_VERSION = 1
 DIGEST_ALGORITHM = "sha256"
-PROFILE_SNAPSHOT = "selected_profile.yaml"
-REPO_ROOT = Path(__file__).resolve().parents[2]
 FIRMWARE_PROVENANCE_STATUS_FIELDS = {
     ("firmware", "git_commit"): "git_commit",
     ("firmware", "source_state"): "source_state",
@@ -28,7 +25,7 @@ FIRMWARE_PROVENANCE_STATUS_FIELDS = {
     ("system", "arduino_core_provider"): "core_provider",
     ("system", "arduino_core_version"): "core_version",
     ("system", "arduino_core_installed_hash"): "core_installed_sha256",
-    ("build", "profile_id"): "profile_id",
+    ("build", "image_id"): "image_id",
     ("build", "toolchain"): "toolchain",
     ("build", "compiler"): "compiler",
     ("build", "toolchain_installed_hash"): "toolchain_installed_sha256",
@@ -36,7 +33,7 @@ FIRMWARE_PROVENANCE_STATUS_FIELDS = {
     ("build", "invocation_id"): "invocation_id",
 }
 FIRMWARE_PROVENANCE_SENTINEL = ("build", "provenance_format")
-FIRMWARE_PROVENANCE_FORMAT = "otis_generated_build_v1"
+FIRMWARE_PROVENANCE_FORMAT = "otis_fixed_firmware_build_v1"
 LOWER_HEX_40 = re.compile(r"^[0-9a-f]{40}$")
 LOWER_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -97,37 +94,20 @@ def _snapshot_digest(snapshot: dict) -> str:
     return sha256(canonical).hexdigest()
 
 
-def _copy_profile_snapshot(run_dir: Path, manifest) -> None:
-    profile = manifest.data.get("profile")
-    if not isinstance(profile, dict) or not profile.get("name"):
-        return
-    destination = run_dir / PROFILE_SNAPSHOT
-    if destination.exists():
-        return
-    source = REPO_ROOT / "profiles" / f"{profile['name']}.yaml"
-    if not source.is_file():
-        raise EvidenceError(f"cannot snapshot missing profile: {source}")
-    shutil.copyfile(source, destination)
-
-
 def _artifact_sources(run_dir: Path, manifest) -> dict[str, dict[str, object]]:
     sources: dict[str, dict[str, object]] = {
         manifest.path.relative_to(run_dir).as_posix(): {"role": "run_manifest"}
     }
-
-    for name, role in (("config.env", "configuration"), (PROFILE_SNAPSHOT, "profile_snapshot")):
-        if _artifact_path(run_dir, name).is_file():
-            sources[name] = {"role": role}
 
     raw_dir = run_dir / "raw"
     if raw_dir.is_dir():
         for path in sorted(raw_dir.rglob("*")):
             if path.is_file():
                 sources[path.relative_to(run_dir).as_posix()] = {"role": "raw_evidence"}
-    for legacy_name in ("serial_raw.log", "raw_serial.log"):
-        if _artifact_path(run_dir, legacy_name).is_file():
+    for superseded_name in ("serial_raw.log", "raw_serial.log"):
+        if _artifact_path(run_dir, superseded_name).is_file():
             raise EvidenceError(
-                f"legacy root evidence file {legacy_name!r} is unsupported; "
+                f"superseded root evidence file {superseded_name!r} is unsupported; "
                 "use the package's recorded Git revision or an archival checkout"
             )
 
@@ -294,8 +274,6 @@ def create_evidence_snapshot(run_dir: Path, allow_incomplete: bool = False) -> P
     manifest = load_manifest(run_dir)
     if manifest.is_template:
         raise EvidenceError("template directories cannot be sealed as run evidence")
-    _copy_profile_snapshot(run_dir, manifest)
-
     artifacts = []
     for rel_path, metadata in sorted(_artifact_sources(run_dir, manifest).items()):
         path = _artifact_path(run_dir, rel_path)
@@ -403,8 +381,6 @@ def validate_evidence_snapshot(run_dir: Path, manifest) -> tuple[list[str], list
             )
         if artifact.get("role") not in {
             "run_manifest",
-            "configuration",
-            "profile_snapshot",
             "raw_evidence",
             "declared_artifact",
         }:

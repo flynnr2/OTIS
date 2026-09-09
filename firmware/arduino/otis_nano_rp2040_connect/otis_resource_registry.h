@@ -7,12 +7,8 @@
 #define OTIS_OWNER_ARDUINO_TIMEBASE "arduino_timebase"
 #define OTIS_OWNER_FORWARDED_CLOCK_OUTPUT "forwarded_clock_output"
 #define OTIS_OWNER_FORWARDED_CLOCK_MONITOR "forwarded_clock_monitor"
-#define OTIS_OWNER_DIAGNOSTIC_CLOCK "diagnostic_clock"
-#define OTIS_OWNER_STATUS_LED "status_led"
 #define OTIS_OWNER_EDGE_CAPTURE "edge_capture"
-#define OTIS_OWNER_LOOPBACK_OUTPUT "loopback_output"
 #define OTIS_OWNER_COUNT_OBSERVATION "count_observation"
-#define OTIS_OWNER_PSEUDO_PPS "pseudo_pps_generator"
 #define OTIS_OWNER_I2C_BUS "i2c_bus"
 #define OTIS_OWNER_DAC "dac_ad5693r"
 #define OTIS_OWNER_ENV_SHT4X "environment_sht4x"
@@ -24,7 +20,6 @@ enum class OtisResourceType : uint8_t {
   GpioIrq,
   PioStateMachine,
   PioInstructionMemory,
-  PioIrqFlag,
   DmaChannel,
   Timer,
   Clock,

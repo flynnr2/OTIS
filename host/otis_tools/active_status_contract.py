@@ -1,4 +1,4 @@
-"""Complete-generation contract for command-bearing active status."""
+"""Complete-generation contract for adaptive-hybrid active status."""
 
 from __future__ import annotations
 
@@ -6,130 +6,36 @@ import csv
 from pathlib import Path
 from typing import Iterable, Mapping
 
-
-ACTIVE_STATUS_SNAPSHOT_CONTRACT = "cx317_active_status_snapshot_v1"
-CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT = "cx321_active_status_snapshot_v2"
-SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT = (
-    "otis_sustained_hybrid_active_status_snapshot_v1"
-)
-ACTIVE_STATUS_COMPONENT = "cx317_active"
+ACTIVE_STATUS_SNAPSHOT_CONTRACT = "adaptive_hybrid_active_status_snapshot_v1"
+ACTIVE_STATUS_COMPONENT = "adaptive_hybrid"
 SNAPSHOT_BEGIN_KEY = "snapshot_generation_begin"
 SNAPSHOT_CONTRACT_KEY = "snapshot_contract"
 SNAPSHOT_COMPLETE_KEY = "snapshot_generation_complete"
 
 ACTIVE_STATUS_KEYS = (
-    "enabled",
-    "run_identity",
-    "build_identity",
-    "profile_identity",
-    "estimator_sha256",
-    "model_sha256",
-    "active_policy_sha256",
-    "response_policy_sha256",
-    "numerical_policy_sha256",
-    "state",
-    "reason",
-    "evidence_pending",
-    "evidence_phase",
-    "capture_lease_live",
-    "manual_start_confirmed",
-    "arm_eligible",
-    "fail_static",
-    "setup_gnss_eligible",
-    "setup_reference_eligible",
-    "setup_partition_healthy",
-    "gnss_metadata_hold_active",
-    "gnss_metadata_hold_transaction_pending",
-    "gnss_metadata_hold_entry_sequence",
-    "gnss_metadata_requalification_sequence",
-    "gnss_metadata_qualification_frontier",
-    "d14_d8_observation_sequence",
-    "hybrid_state",
-    "hybrid_reason",
-    "first_phase_checkpoint_passed",
-    "phase_nonzero_application_count",
-    "phase_material_application_count",
-    "frequency_only_application_count",
-    "session_id",
-    "query_nonce",
-    "uptime_s",
-    "evidence_request_sequence",
-    "expected_setup_code",
-    "confirmed_applied_code_known",
-    "confirmed_applied_code",
-    "correction_count",
-    "cumulative_movement_codes",
-    "dac_epoch",
-    "selected_interval_count",
-    "automatic_retry",
-    "automatic_restore",
+    "enabled", "run_identity", "build_identity", "image_identity",
+    "estimator_sha256", "model_sha256", "active_policy_sha256",
+    "response_policy_sha256", "numerical_policy_sha256", "state", "reason",
+    "evidence_pending", "evidence_phase", "capture_lease_live",
+    "manual_start_confirmed", "arm_eligible", "fail_static",
+    "setup_gnss_eligible", "setup_reference_eligible", "setup_partition_healthy",
+    "gnss_metadata_hold_active", "gnss_metadata_hold_transaction_pending",
+    "gnss_metadata_hold_entry_sequence", "gnss_metadata_requalification_sequence",
+    "gnss_metadata_qualification_frontier", "d14_d8_observation_sequence",
+    "hybrid_state", "hybrid_reason", "first_phase_checkpoint_passed",
+    "phase_nonzero_application_count", "phase_material_application_count",
+    "frequency_only_application_count", "session_id", "query_nonce",
+    "uptime_s", "evidence_request_sequence", "expected_setup_code",
+    "confirmed_applied_code_known", "confirmed_applied_code", "correction_count",
+    "cumulative_movement_codes", "dac_epoch", "selected_interval_count",
+    "automatic_retry", "automatic_restore",
 )
-SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS = (
-    *ACTIVE_STATUS_KEYS,
-    "automatic_application_count",
-    "natural_reversal_observed",
-    "deliberate_challenge_applied",
-    "deliberate_challenge_cancelled",
-    "deliberate_challenge_unexercised",
-    "deliberate_challenge_recovery_applied",
-    "deliberate_challenge_direction",
-    "deliberate_challenge_code",
-    "deliberate_challenge_dac_epoch",
-    "deliberate_challenge_application_ticks",
-)
-CX321_ACTIVE_STATUS_KEYS = (
-    *ACTIVE_STATUS_KEYS,
-    "plant_sign_state",
-    "plant_sign_pre_window_count",
-    "plant_sign_accumulator_accepted_intervals",
-    "plant_sign_arm_window_eligible",
-    "plant_sign_gate_sha256",
-    "identification_estimator_sha256",
-    "identification_estimator_config_sha256",
-    "natural_frequency_estimator_sha256",
-)
-ACTIVE_STATUS_CONTRACT_KEYS = {
-    ACTIVE_STATUS_SNAPSHOT_CONTRACT: ACTIVE_STATUS_KEYS,
-    SUSTAINED_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT: (
-        SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS
-    ),
-    CX321_ACTIVE_STATUS_SNAPSHOT_CONTRACT: CX321_ACTIVE_STATUS_KEYS,
-}
+ACTIVE_STATUS_CONTRACT_KEYS = {ACTIVE_STATUS_SNAPSHOT_CONTRACT: ACTIVE_STATUS_KEYS}
 ACTIVE_STATUS_WIRE_KEYS = (
-    SNAPSHOT_BEGIN_KEY,
-    SNAPSHOT_CONTRACT_KEY,
-    *ACTIVE_STATUS_KEYS,
-    SNAPSHOT_COMPLETE_KEY,
+    SNAPSHOT_BEGIN_KEY, SNAPSHOT_CONTRACT_KEY, *ACTIVE_STATUS_KEYS, SNAPSHOT_COMPLETE_KEY
 )
-CX321_ACTIVE_STATUS_WIRE_KEYS = (
-    SNAPSHOT_BEGIN_KEY,
-    SNAPSHOT_CONTRACT_KEY,
-    *CX321_ACTIVE_STATUS_KEYS,
-    SNAPSHOT_COMPLETE_KEY,
-)
-SUSTAINED_HYBRID_ACTIVE_STATUS_WIRE_KEYS = (
-    SNAPSHOT_BEGIN_KEY,
-    SNAPSHOT_CONTRACT_KEY,
-    *SUSTAINED_HYBRID_ACTIVE_STATUS_KEYS,
-    SNAPSHOT_COMPLETE_KEY,
-)
-ALL_ACTIVE_STATUS_WIRE_KEYS = frozenset(
-    (
-        *ACTIVE_STATUS_WIRE_KEYS,
-        *CX321_ACTIVE_STATUS_WIRE_KEYS,
-        *SUSTAINED_HYBRID_ACTIVE_STATUS_WIRE_KEYS,
-    )
-)
-# The frozen CX321 firmware transports status keys through a 40-byte
-# cross-core field.  This one 41-character semantic key is therefore observed
-# on the wire with its last two characters truncated.  Preserve the raw CSV,
-# but canonicalize the known one-to-one spelling in derived status state.
-ACTIVE_STATUS_WIRE_KEY_ALIASES = {
-    "plant_sign_accumulator_accepted_interva": (
-        "plant_sign_accumulator_accepted_intervals"
-    ),
-}
-
+ALL_ACTIVE_STATUS_WIRE_KEYS = frozenset(ACTIVE_STATUS_WIRE_KEYS)
+ACTIVE_STATUS_WIRE_KEY_ALIASES: dict[str, str] = {}
 
 def canonical_active_status_key(key: str) -> str:
     return ACTIVE_STATUS_WIRE_KEY_ALIASES.get(key, key)

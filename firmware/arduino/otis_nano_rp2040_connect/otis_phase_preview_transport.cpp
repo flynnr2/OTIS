@@ -29,43 +29,28 @@ bool format_current_phase(void) {
   if (record_phase == 1u)
     return otis_phase_preview_format_phe(&active_message, frame, sizeof(frame),
                                  &frame_length);
-  if (record_phase == 2u)
-    return otis_phase_preview_format_hpr(&active_message, frame, sizeof(frame),
-                                 &frame_length);
   return false;
 }
 
 }  // namespace
 
 void otis_phase_preview_transport_emit_headers(void) {
-#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
   otis_transport_write_cstr(otis_phase_preview_rph_header());
   otis_transport_write_cstr(otis_phase_preview_phe_header());
-  otis_transport_write_cstr(otis_phase_preview_hpr_header());
-#endif
 }
 
 bool otis_phase_preview_transport_busy(void) {
-#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
   if (message_active) return true;
   OtisDualCoreQueueStats stats = {};
   otis_dual_core_get_stats(&stats);
   return stats.phase_preview_depth != 0u;
-#else
-  return false;
-#endif
 }
 
 bool otis_phase_preview_transport_frame_active(void) {
-#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
   return message_active;
-#else
-  return false;
-#endif
 }
 
 bool otis_phase_preview_transport_abandon_active_frame(void) {
-#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
   const bool abandoned = message_active;
   active_message = {};
   frame_length = 0u;
@@ -73,13 +58,9 @@ bool otis_phase_preview_transport_abandon_active_frame(void) {
   record_phase = 0u;
   message_active = false;
   return abandoned;
-#else
-  return false;
-#endif
 }
 
 void otis_phase_preview_transport_service(void) {
-#if OTIS_ENABLE_PHASE_FREQUENCY_PREVIEW
   if (!message_active) {
     if (!otis_dual_core_take_phase_preview(&active_message)) return;
     record_phase = 0u;
@@ -103,7 +84,7 @@ void otis_phase_preview_transport_service(void) {
   ++record_phase;
   frame_length = 0u;
   frame_sent = 0u;
-  if (record_phase < 3u) {
+  if (record_phase < 2u) {
     if (!format_current_phase()) {
       otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
       active_message = {};
@@ -114,5 +95,4 @@ void otis_phase_preview_transport_service(void) {
   active_message = {};
   record_phase = 0u;
   message_active = false;
-#endif
 }

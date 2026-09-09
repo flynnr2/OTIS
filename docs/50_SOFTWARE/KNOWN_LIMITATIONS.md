@@ -1,5 +1,29 @@
 # Current Known Limitations
 
+Current HEAD has one fixed `adaptive_hybrid_regulation` image and no historical
+programme execution surface. The most important present limitations are:
+
+- D10/channel 0 is reserved for external-event evidence, and the host contract
+  preserves ingest, storage, replay, and zero-authority isolation, but firmware
+  does not yet implement a capture backend that is safely isolated from D14;
+- the current code reset has no new physical qualification; its claims are
+  limited to deterministic no-hardware verification and exact fixed-image
+  compilation;
+- live activation is intentionally fail-closed because the current-only host
+  does not yet implement the genuine process/FIFO/command/acknowledgement/
+  obstruction/abort/analysis/sealing rehearsal required for bench entry; the
+  retained structural preflight is explicitly non-authorizing;
+- D9/D6 evidence establishes digital forwarding/monitor behavior only; it does
+  not qualify analog waveform shape, jitter, loading, or independent frequency;
+- the supported instrument still requires a continuously drained sole-owner
+  host carrier; and
+- source edits after this reset require a new exact build identity and the
+  proportionate rehearsal/physical gate before live use.
+
+The remaining entries preserve limitations of historical evidence. They are
+scientific context only and do not imply that their profiles, programme CLIs,
+compatibility readers, or authority exist on current HEAD.
+
 - The supported current instrument includes a continuously draining sole-owner
   host carrier. Indefinite hostless operation, an on-device durable spool, and
   continuity-preserving generalized detach/reattach are not implemented.

@@ -1,619 +1,90 @@
-# OTIS Arduino Nano RP2040 Connect sketch
+# OTIS Nano RP2040 Connect Firmware
 
-This folder is the Arduino IDE entrypoint for OTIS firmware smoke tests on the
-Arduino Nano RP2040 Connect.
+This sketch builds one production image: `adaptive_hybrid_regulation`, version
+`OTIS_ADAPTIVE_HYBRID_REGULATION_V1`. It is a fixed instrument configuration,
+not a firmware profile matrix.
 
-## Board setup
+## Build
 
-- Board: **Arduino Nano RP2040 Connect**
-- Core package: **Raspberry Pi Pico/RP2040/RP2350** by Earle F. Philhower, III
-- Boards Manager URL:
-  `https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`
-- Expected FQBN: `rp2040:rp2040:arduino_nano_connect`
-- Serial monitor baud rate: `115200`
-
-The sketch intentionally rejects Arduino Mbed OS Nano Boards at compile time.
-OTIS targets the Philhower Arduino-Pico core because it exposes the RP2040/Pico
-SDK surface, supports `setup1()` / `loop1()` multicore sketches, and leaves a
-practical route to PIO-backed capture while retaining an Arduino entrypoint.
-
-All evidentiary builds use `tools/firmware_matrix.py`. The builder verifies the
-pinned Arduino CLI, core archive metadata, and deterministic hashes of the
-functional installed core and compiler-toolchain bytes (excluding only local
-package-manager/Finder metadata and Python bytecode caches); derives board identity from
-`arduino-cli board details`; computes the exact Git commit, clean/dirty state,
-canonical build-input and profile configuration hashes, and invocation
-identity; and writes `firmware_build_manifest.json` next to each successful
-binary. The manifest also hashes the `.bin`, `.elf`, `.map`, and `.uf2`
-artifacts. Every profile rechecks the matrix-wide source identity and installed
-package bytes before and after compilation. Direct Arduino IDE compilation is
-available through an explicit generated profile for interactive bench work.
-Because the IDE does not produce the builder's artifact manifest or perform its
-post-compile checks, use the matrix-built artifact for qualification evidence.
-
-The current matrix includes `cx319_tight_lower`, `cx319_tight_upper`, and
-`cx319_range_map_part_a` as stabilized-platform profiles. They are compiled in
-current Campaign, Release and Bench verification because their
-firmware/contract boundaries are active development surfaces. The range-map
-profile permits only externally commanded, bounded manual setup applications;
-automatic frequency control is compiled out and phase/hybrid output remains
-non-actionable. A successful build alone is never hardware authority.
-
-GPIO, GPIO IRQ, PIO, DMA, timer, clock, and shared-I2C ownership is defined and
-enforced by `otis_resource_registry.*`. The normative ownership ledger,
-diagnostic keys, compatibility notes, and risk assessment are in
-[`../../../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md`](../../../docs/50_SOFTWARE/HARDWARE_RESOURCE_OWNERSHIP.md).
-
-If the local Arduino CLI uses a different board identifier, confirm it with:
+From the repository root:
 
 ```bash
-arduino-cli board listall | grep -i "Nano RP2040"
+.venv/bin/python tools/build_firmware.py
 ```
 
-## SW1 bring-up modes
+The builder consumes `firmware/arduino/firmware_build_manifest.json`, verifies
+the pinned Arduino CLI, board core, compiler, installed-byte hashes, exact
+source identity and Git state, required binary markers, and memory budget, then writes
+ignored artifacts under `build/`.
 
-Select one bring-up mode in `otis_config.h` with `OTIS_SW1_BRINGUP_MODE`.
-The header defaults describe the observe-only Phase 5 PPS-gated qualification
-candidate in `H1_OCXO_OBSERVE_OPEN_LOOP`. The pinned matrix makes every
-supported profile selector explicit, so a build never relies on an operator
-remembering which defaults or `-D` overrides were active.
+There is no profile selector or compatibility build. Historical images must be
+reproduced from their recorded Git revision.
 
-| Mode | Purpose | Records |
+## Fixed topology
+
+| Signal | Pin/channel | Current role |
 |---|---|---|
-| `SW1_SYNTHETIC_USB` | USB serial, framing, parser, and validation sanity | synthetic `STS`, `EVT`, `REF`, `CNT` |
-| `SW1_GPIO_LOOPBACK` | prove GPIO edge capture before external hardware | live `EVT` on `CH0` |
-| `SW1_GPS_PPS` | capture Adafruit Ultimate GPS PPS | live `REF` on `CH1` |
-| `SW1_TCXO_OBSERVE` | observe the TCXO on `D8` / `GPIO20` / `GPIN0`, with PPS capture if wired | selected count-observation backend emits `CNT` on `CH2`, `REF` on `CH1` |
-| `OTIS_SW1_MODE_H1_OCXO_OBSERVE` (`H1_OCXO_OBSERVE_OPEN_LOOP`) | manual H1 OCXO lab observation with optional AD5693R DAC commands and explicit open-loop sweeps | selected count-observation backend emits `CNT` on `CH2`, `REF` on `CH1`, DAC `STS`/`DAC` telemetry |
+| D14 | GPIO26 / CH1 | sole authoritative PPS/reference input |
+| D8 | GPIO20 / CH2 | oscillator count input; sole regulation measurement |
+| D10 | GPIO5 / CH0 | reserved optional external-event evidence input |
+| D9 | GPIO21 | forwarded oscillator clock output |
+| D6 | GPIO18 / CH3 | fail-local forwarded-clock diagnostic monitor |
+| GNSS RX/TX | GPIO1/GPIO0 | receiver metadata and bounded configuration |
 
-The live GPIO/PPS paths are first bring-up interrupt captures. Their emitted
-timestamps use `rp2040_monotonic_us32` and carry `TIMESTAMP_RECONSTRUCTED`; they are not
-yet the later PIO/DMA hardware-latched path. TCXO observe uses the RP2040
-frequency counter on `GPIN0` by default so a raw 16 MHz signal does not create a
-GPIO interrupt storm. The alternate `OTIS_TCXO_COUNTER_BACKEND_GPIO_IRQ`
-backend is only for deliberately divided, interrupt-safe test signals.
+D10 is never a PPS witness and cannot affect reference validity, setup
+authority, regulation eligibility, actuation, or a run terminal. Its channel
+and resource seams are preserved, but this image does not claim an implemented
+or safely isolated D10 capture backend. The build manifest records
+`status: not_implemented` and `isolation_claimed: false`.
 
-`H1_OCXO_OBSERVE_OPEN_LOOP` keeps the same architecture boundary: sparse PPS
-edges, if wired, use the normal edge-capture backend, while the raw OCXO input
-on `D8` / `GPIO20` / `GPIN0` uses the selected count-observation backend and
-emits `CNT` records. The full backend contract is documented in
-`../../../docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md`. H1 is an
-open-loop lab instrument mode only. Firmware does not implement PPS-derived
-steering, GPSDO locking, holdover, PI/PID correction, or temperature
-compensation.
+## Timing path
 
-The PPS-gated ratio count backend is documented in
-`../../../docs/50_SOFTWARE/PPS_GATED_RATIO_BACKEND_DESIGN.md`. Select it with:
+D14 edges are timestamped from the RP2040 monotonic microsecond counter and
+published as compact reference observations. The qualified PIO/DMA snapshot
+backend continuously counts D8 oscillator edges and snapshots the cumulative
+down-counter at D14 boundaries. Core1 services hardware capture and publishes
+bounded messages; Core0 is the sole serial owner and emits canonical records.
 
-```cpp
-#define OTIS_TCXO_COUNTER_BACKEND OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO
-```
+The CPU does not define timestamps. Queueing, logging, USB, and host scheduling
+remain outside timing truth.
 
-That backend uses PPS on `D14` / GPIO26 to define the count gate and the
-oscillator input on `D8` / GPIO20 / `GPIN0` as the counted source. It still
-emits raw `CNT` rows and ordinary `STS` telemetry; host analysis derives
-frequency, ratio, and ppm. Selecting it must not enable DAC steering.
+## Regulation
 
-The corrected implementation uses one PIO0 state machine to alternate
-oscillator `WAIT` instructions, decrement a cumulative 32-bit counter on each
-recognized rise, test PPS through the independent `JMP PIN` mapping, and
-autopush `X` on the PPS boundary. A joined RX FIFO and DMA move immutable
-snapshots into a 128-word ring. The D14 IRQ remains only an independent
-reconstructed REF timestamp observer. Foreground code associates and
-differences adjacent snapshots; serial, status, DAC-sweep, environment and
-capture-backlog service cannot define the physical aperture.
+The fixed image contains the current PPS-gated frequency estimator, adaptive
+FLL/PLL policy, persistent tagged correction debt, exact transaction identity,
+bounded AD5693R actuation, and post-application response tracking. The fixed
+actuator envelope is `0xA800..0xAB00`.
 
-The checked-in candidate sets
-`OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`, so raw evidence is emitted while
-control eligibility remains structurally false. The observe-only measurement
-campaign was accepted on 2026-08-01 after clean, fault, real-GPS, load,
-extended, and sealed overnight evidence. The accepted limitations are one
-width-only rising-edge fault miss and an untested physical phase/duty sweep on
-the incapable ECS fixture. Reflecting acceptance in an operational profile is
-a separate reviewed change and must not authorize DAC actuation. The
-authoritative digital listing and timing proof are in
-`docs/50_SOFTWARE/PPS_PIO_PROOF_AND_VERIFICATION.md`.
+The active policy ID is `OTIS_ADAPTIVE_HYBRID_REGULATION_V1`; the estimator ID
+is `OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1`; the active-status contract is
+`adaptive_hybrid_active_status_snapshot_v1`. Run duration and campaign stop
+conditions are supplied by the frozen host run manifest.
 
-The exact qualification-v4 ELF was also audited for CPU/ISR latency and
-compiled call ordering. The conclusion is intentionally stronger than a coding
-style preference: the PIO state machine is the only count-aperture owner, DMA
-is transport only, and the D14 ISR is diagnostic only. Later firmware must not
-move counter stop/read/reset/snapshot work into an IRQ, another core, DMA, or a
-second state machine. It must not disable the asynchronous input synchronizers
-to save latency. See
-`../../../docs/50_SOFTWARE/PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md` for the
-proof-bound regression checklist and the distinction between diagnostic REF
-timestamp optimization and raw-count improvement.
+## GNSS behavior
 
-SW1 capture mode: irq_reconstructed. Timestamps are suitable for bench
-validation and protocol bring-up, not final PIO/DMA metrology.
+The receiver uses the fixed bounded 115200-baud operational path. Serial
+metadata qualifies the receiver that supplies D14 PPS; it never replaces D14.
+A recoverable stale, missing, malformed, or checksum-unqualified metadata
+condition holds new corrections at the last confirmed DAC code while D14/D8
+capture and evidence continue. Fresh causal qualification is required before
+regulation resumes.
 
-## SW1.5a PIO FIFO capture
+## Diagnostics and evidence
 
-SW1.5a adds an opt-in PIO FIFO backend for the live edge-capture modes. IRQ
-capture remains the default rollback path:
+D9 forwarding and D6 monitoring are always present in the fixed image. D6 is
+diagnostic-only and fail-local. Canonical raw observations, derived estimates,
+requested/applied controls, acknowledgements, policy and estimator identity,
+and resulting state are emitted separately so host replay can reconstruct each
+decision without overwriting source evidence.
 
-```cpp
-#define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_IRQ
-```
-
-The experimental PIO selector is:
-
-```cpp
-#define OTIS_CAPTURE_BACKEND OTIS_CAPTURE_BACKEND_PIO_FIFO
-```
-
-Build the intentional sparse loopback tuple through the matrix:
+## Verification
 
 ```bash
-python3 tools/firmware_matrix.py --profile gpio_loopback_pio_capture
+.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier fast
+.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier campaign
+.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier release
 ```
 
-The SW1.5a PIO backend claims one unused PIO0 state machine and observes rising
-edges only. It does not assume ownership of SM0; this permits a selected
-PIO-backed count-observation backend to claim a different state machine in the
-same PIO block. It pushes compact edge words into the PIO RX FIFO; firmware
-drains the FIFO in `loop()` and emits the same `EVT` or `REF` records used by
-the IRQ backend. The emitted timestamp is attached by firmware when the FIFO is
-drained, so metadata reports `capture_mode=pio_fifo_cpu_timestamped` and
-`timestamp_latch=pio_edge_detect_cpu_timestamped`. This is not final
-hardware-latched timestamping.
-
-Guardrail: the PIO FIFO backend is only for sparse edge streams such as GPS PPS,
-slow GPIO loopback, or future low-rate event inputs. It must not be used to
-enqueue raw 10 MHz / 16 MHz CXO edges. Raw oscillator input on `D8` / `GPIO20` /
-`GPIN0` should be observed with a count-observation backend instead.
-
-PIO input selection follows the selected bring-up mode:
-
-| Mode | PIO input | Expected records |
-|---|---|---|
-| `SW1_GPIO_LOOPBACK` | `D10` / GPIO5 / `CH0` | rising-edge `EVT` rows |
-| `SW1_GPS_PPS` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows |
-| `SW1_TCXO_OBSERVE` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus existing `CNT` rows when TCXO counting is configured |
-| `H1_OCXO_OBSERVE_OPEN_LOOP` | `D14` / GPIO26 / `CH1` | rising-edge `REF` rows plus selected count-observation `CNT` rows for raw OCXO observation |
-
-Sparse edges map to the PIO FIFO edge backend. Raw CXO on `GPIN0` maps to a
-count-observation backend and emits `CNT`, not one FIFO event per oscillator
-edge.
-
-The boot/status stream includes `capture_backend`, `pio_init`, `pio_gpio`,
-`pio_block`, `pio_sm`, `pio_edge`, `pio_fifo_drained_event_count`,
-`pio_fifo_empty_count`, `pio_fifo_overflow_drop_count`, and
-`pio_fifo_max_drain_batch`. A nonzero overflow/drop count means the PIO RX FIFO
-was not drained fast enough; the count is a status indicator, not a precise
-missing-edge total.
-
-Suggested first bench sequence:
-
-1. GPIO loopback: jumper `D7` to `D10`, build `SW1_GPIO_LOOPBACK` with
-   `OTIS_CAPTURE_BACKEND_PIO_FIFO`, and confirm `EVT` rows and PIO counters.
-2. GPS PPS: wire conditioned GPS PPS to `D14`, build `SW1_GPS_PPS` with the PIO
-   backend, and confirm `REF` rows and host PPS cadence checks.
-3. TCXO/count observation: use `SW1_TCXO_OBSERVE` with the selected
-   count-observation backend; do not feed raw high-rate oscillator edges into
-   the SW1.5a PIO FIFO edge path.
-
-DMA, hardware-latched timestamp transfer, both-edge capture, and higher-rate
-capture fabric work are intentionally deferred to SW1.5b and later.
-
-## H1 open-loop DAC and FC0 commands
-
-H1 DAC support is compile-time gated:
-
-```cpp
-#define OTIS_SW1_BRINGUP_MODE OTIS_SW1_MODE_H1_OCXO_OBSERVE
-#define OTIS_ENABLE_DAC_AD5693R 1
-```
-
-### Serial command framing and CSV text policy
-
-The command service treats CR, LF, and CRLF as physical-line delimiters. A
-command may contain at most 63 bytes before its delimiter. Once a 64th byte is
-observed, the complete physical line is discarded through its CR or LF; no
-prefix or suffix is parsed or executed. The service emits one bounded
-`command,line,rejected_too_long` status when that delimiter arrives, then
-accepts the next physical line. Empty delimiters, including the LF half of
-CRLF, do not produce a command or diagnostic.
-
-Collection, printable-ASCII/tab frame validation, command parsing, and command
-execution are separate steps. Invalid frames and unknown commands emit fixed
-symbolic reason codes; rejected command text is never copied into status
-records.
-
-Firmware CSV remains one physical record per line and does not use quoted
-multiline fields. Every textual field is emitted with reversible `%HH`
-encoding for `%`, comma, double quote, CR, and LF (for example, comma becomes
-`%2C`). Consequently external text cannot introduce an unquoted field or
-record boundary. Existing symbolic firmware values contain none of these bytes
-and therefore retain their wire representation.
-
-The firmware uses a minimal direct I2C write path for AD5693R rather than adding
-an Arduino library dependency. The default I2C address is `0x4C`; `0x4E` is also
-accepted:
-
-```cpp
-#define OTIS_DAC_AD5693R_I2C_ADDRESS 0x4Cu
-```
-
-When DAC support and the sweep are explicitly re-enabled, the DAC output is
-bounded by the retained focused `run_020` crossing-profile constants:
-
-```cpp
-#define OTIS_DAC_MIN_CODE 0x6000u
-#define OTIS_DAC_MAX_CODE 0xFC00u
-#define OTIS_H1_DAC_SWEEP_TINY_STEP_CODES 0x0300u
-#define OTIS_H1_LONG_GATE_PERIOD_US 300000000u
-#define OTIS_H1_DAC_SWEEP_DEFAULT_DWELL_MS 2400000u
-#define OTIS_H1_DAC_SWEEP_SLOPE_DWELL_MS 2400000u
-```
-
-This is a characterization envelope, not an authorized automatic-control
-envelope or a statement that every sweep visits both endpoints. `run_020`
-completed the intended focused profile and located the 10 MHz crossing near
-`0xA950`, with a conservative within-run band `0xA840..0xAA00`. The versioned
-observe-only plant model records a disabled candidate automatic range
-`0xA800..0xAB00`; firmware clamps remain separate and do not authorize
-steering. The AD5693R breakout is
-observed in 1x mode with an approximately 2.5 V full-scale output, while the
-CX317 datasheet specifies a normal `Vc` operating range of 0.0 V to 3.3 V and
-a nominal point of 1.65 V. DMM readings from H1 `run_018` give:
-
-| DAC code | Measured CX317 `Vc` |
-| ---: | ---: |
-| `0x8000` | 1.247 V |
-| `0x9000` | 1.402 V |
-| `0x9800` | 1.480 V |
-| `0xA000` | 1.557 V |
-| `0xA800` | 1.635 V |
-| `0xAC00` | 1.674 V |
-| `0xAE00` | 1.693 V |
-
-A least-squares fit to those readings is:
-
-```text
-Vc ~= 0.005348 V + (37.8905 uV/code * DAC_code)
-R^2 ~= 0.999998
-```
-
-That fit predicts about 0.015 V at `0x0100` and 2.479 V at `0xFF00`.
-Those endpoint values are extrapolations, not direct DMM measurements, but they
-agree with the breakout's approximately 2.5 V 1x output span and remain inside
-the CX317 normal control-voltage range. The small endpoint margins also satisfy
-the firmware sweep guard, which treats exact `0x0000`/`0xFFFF` clamps as
-unconfigured sentinels.
-
-Automatic open-loop sweep execution is not automatic oscillator steering:
-sweeps must still be loaded and explicitly started, and no PPS/count feedback
-changes the DAC. These defaults do not enable or authorize SW2 closed-loop
-control.
-
-The built-in `tiny_plus_minus_1` and `tiny_plus_minus_2` profiles use small
-bench-visible steps around the clamp midpoint, not 1-LSB metrology steps.
-The `slope_center_edge_300s` and `slope_repeat_300s` profiles are autonomous
-VCOCXO slope-metrology runs. They use 300 s raw-edge count gates and 900 s DAC
-dwell so each DAC code gets three independent long-gate `CNT` observations.
-For analysis that discards 900 s of settling and requires three complete
-post-settling gates that do not straddle a DAC transition, use at least a
-2100 s dwell (2400 s is a conservative choice) or synchronize changes
-to count-gate boundaries.
-
-Manual commands are read from the USB serial monitor. Terminate each command
-with newline or carriage return:
-
-```text
-HELP
-CONFIG?
-DAC?
-DAC LIMITS?
-DAC SET 0x8000
-DAC SET 32768
-DAC MID
-DAC ZERO
-FC0?
-SWEEP?
-SWEEP LOAD center_only
-SWEEP LOAD tiny_plus_minus_1
-SWEEP LOAD tiny_plus_minus_2
-SWEEP LOAD slope_center_edge_300s
-SWEEP LOAD slope_repeat_300s
-SWEEP START
-SWEEP STOP
-SWEEP STEP
-SWEEP CLEAR
-SWEEP ADD 0x8000 5000
-```
-
-`DAC SET <code>` accepts decimal or hex raw 16-bit DAC codes. Values outside
-`OTIS_DAC_MIN_CODE` and `OTIS_DAC_MAX_CODE` are rejected and logged with `STS`
-warning rows; firmware does not silently move to a clamped value. `DAC ZERO`
-sets the configured minimum clamp, not electrical ground unless the clamp is
-explicitly configured that way. `DAC MID` sets the midpoint of the configured
-clamp window.
-
-The boot/status stream reports H1 open-loop mode, counter measurement mode,
-gate period, nominal OCXO frequency assumption, DAC enable state, I2C address,
-clamp values, DAC init success/failure, and accepted/rejected DAC command
-telemetry. `CONFIG?` repeats the run-critical build configuration on demand,
-including the sweep centre, dwell, and tiny-step values. `FC0?` prints the
-latest count-observation summary as structured `STS` rows. The regular `CNT`
-records remain the primary oscillator observation output.
-
-`OTIS_ENABLE_H1_DAC_SWEEP` adds deterministic open-loop sweep commands. Sweeps
-are never started on boot; `SWEEP START` is required. Built-in profiles are
-either deliberately tiny and centered inside the configured DAC clamps or
-bounded long-dwell slope profiles that only visit the configured min/mid/max
-codes. Requests that would cross clamps are rejected and logged as `DAC` rows
-with `safety_reject`.
-If `SWEEP START` is sent before `control_eligible=true`, the sweep enters
-`pending_start` and begins automatically after the startup inhibit has expired
-and enough clean long-gate windows have been observed.
-During an active sweep, firmware emits `DAC` rows for `dwell_start`,
-`fc0_window`, and `dwell_complete` so each nearby `CNT` observation can be
-attributed to the active step index and DAC code without changing the `CNT`
-schema. Loading a built-in profile also emits one non-actuating `profile_step`
-row per planned step, allowing the complete code and dwell sequence to be
-verified before `SWEEP START`.
-
-Wiring summary for H1:
-
-| Signal | Arduino Nano RP2040 Connect pin |
-|---|---:|
-| sparse PPS/reference input, optional | `D14` / GPIO26 / `CH1` |
-| raw OCXO observation input | `D8` / GPIO20 / `GPIN0` / `CH2` |
-| AD5693R DAC I2C SDA/SCL | board I2C pins for `Wire` |
-| SHT4x environmental sensor I2C SDA/SCL | board I2C pins for `Wire`, default address `0x44` |
-| BMP280 environmental sensor I2C SDA/SCL | board I2C pins for `Wire`, default address `0x77` |
-
-Do not route the raw OCXO into the PIO FIFO edge path. Raw OCXO observation is
-count-observation only.
-
-Environmental telemetry is optional and compile-time gated:
-
-```cpp
-#define OTIS_ENABLE_ENV_SENSORS 1
-#define OTIS_ENABLE_ENV_SHT4X 1
-#define OTIS_ENABLE_ENV_BMP280 1
-#define OTIS_ENV_SAMPLE_PERIOD_MS 1000u
-```
-
-The firmware emits `ENV` rows to `environment_v1.csv`. For VCOCXO
-characterization, mount the SHT4x near the VCOCXO can/control-node area and use
-`source=sht4x,role=vcocxo_near` as the primary temperature signal. BMP280
-temperature is secondary; BMP280 pressure is useful bench context.
-
-During the boot banner, firmware emits `STS` provenance rows for schema version,
-firmware name/version, exact Git commit and clean/dirty state, deterministic
-configuration hash, build profile/invocation identity, FQBN/board, exact
-Arduino core and compiler/toolchain, bring-up mode, capture mode, nominal
-reference frequencies, pin mapping, and compile-time feature flags. These
-identity fields are required build-generated inputs; source literals and
-operator overrides are rejected by the supported build path.
-
-Status LED support is compiled out by default. Set
-`OTIS_ENABLE_STATUS_LED` to `1` in `otis_config.h` only for local bring-up
-visibility; the disabled path does not require any additional LED libraries.
-When enabled, this smoke sketch uses the plain RP2040-accessible `LED_BUILTIN`
-for a brief boot indication and later USB/config/debug status indication.
-The startup self-test is enabled by default whenever status LED support is
-enabled. It blinks `LED_BUILTIN`. Set `OTIS_ENABLE_STATUS_LED_BOOT_TEST` to `0`
-to skip the self-test while keeping later status LED behavior.
-
-RP2040 raw boot diagnostics are controlled by `OTIS_ENABLE_RP2040_BOOT_DIAG`.
-When enabled, firmware captures one `BOOTDIAG,v=1` register snapshot before it
-updates the boot breadcrumb scratch registers, then emits that preserved
-snapshot after USB serial is ready and before normal OTIS records. See
-`docs/50_SOFTWARE/RP2040_BOOT_DIAGNOSTICS.md` for the field schema and reset
-forensics limits.
-
-The boot path also emits compact `BOOT` telemetry when USB serial is available.
-Serial startup is bounded by `OTIS_SERIAL_WAIT_MS` and defaults to 250 ms after
-`Serial.begin(115200)`. If the host has not opened USB serial by then, firmware
-continues booting and capture setup is not held indefinitely waiting for USB
-enumeration. The one-shot `BOOTDIAG`, CSV headers, and provenance banner are
-deferred until USB serial becomes ready, so a late host still receives a
-complete record boundary and banner.
-
-Safe mode is controlled by persistent boot breadcrumbs. A successful boot is
-defined as reaching and completing `RunMode`; that clears the consecutive
-failure count. A boot that stops before `RunMode` records a fatal code and
-increments the count. Once the stored count reaches
-`OTIS_SAFE_MODE_FAILURE_THRESHOLD` on the next reset, firmware enters
-diagnostics-only safe mode instead of starting normal capture services.
-
-Boot-hardening test knobs are disabled by default:
-
-- `OTIS_FORCE_BOOT_FAIL_BEFORE_CLOCKS`
-- `OTIS_FORCE_BOOT_FAIL_BEFORE_CAPTURE`
-- `OTIS_FORCE_BOOT_FAIL_BEFORE_RUN_MODE`
-
-For bench testing, upload one forced-failure build and reset the board repeatedly.
-The default threshold is 3 recorded failed boots. Upload a build with all forced
-failure knobs disabled to return to normal boot; the next successful `RunMode`
-boot clears the failure count.
-
-## Frozen SW1 channel pin convention
-
-The SW1 live-capture pass uses this Arduino pin convention:
-
-| OTIS channel | Role | Arduino pin |
-|---:|---|---:|
-| `CH0` | generic pulse/event input | `D10` |
-| `CH1` | PPS/reference input | `D14` |
-| `CH2` | divided/gated oscillator observation | `D8` / `GPIO20` / `GPIN0` |
-
-`SW1_GPIO_LOOPBACK` additionally drives `D7` as a local output. Jumper `D7` to
-`D10` for that mode only.
-
-D10 remains the external event/edge input. It is not a PPS witness and is not
-claimed by the TCXO/OCXO PPS-gated profiles. A future D10 measurement profile
-must capture or count its external edges against the disciplined D8 oscillator
-under an explicit event-measurement contract.
-
-These are frozen firmware conventions for SW1 on the H0 prototype. Electrical
-conditioning, voltage limits, and final bench wiring remain hardware
-responsibilities.
-
-`D9` / `GPIO21` / `GPOUT0` is reserved for internal clock visibility.
-`D2` / `GPIO25` / `GPOUT3` is reserved for the secondary diagnostic clock.
-Do not assign either pin to general live-capture inputs.
-
-## Phase 4 observe-only preview
-
-The minimum live Phase 4 estimator and preview state machine is an opt-in build:
-
-```cpp
-#define OTIS_ENABLE_OBSERVE_ONLY_DISCIPLINE_PREVIEW 1
-```
-
-It emits normative `EST v2`, `RFO v1`, `DIAG v1`, and `CTL v1` rows derived
-from canonical live `REF`, `CNT`, diagnostic, and evidence-backed DAC state. It
-is preview-only:
-`actuation_authorized=false` and `actionable=false` are compile/runtime
-invariants. The preview module has no DAC-driver dependency or write callback;
-manual DAC and explicitly started sweep commands remain separately owned by the
-H1 open-loop command path.
-
-The complete derived frame is queued in a fixed-capacity ring and serviced only
-after capture. Queue drops are visible through `phase4_preview` status keys,
-diagnosed after recovery, and do not feed back into the estimator. A fixed
-384-point support array implements
-`LOCAL_PPS_BOUNDARY_INTERPOLATED_V1`; non-aligned count closes wait in one
-bounded pending slot for their following PPS bracket. No extrapolation or
-dynamic allocation is used. Model-version-4 identity, method-contract hash,
-topology/backend applicability, gain, DAC range, disabled candidate range, and
-maximum preview step are recorded with every decision.
-
-Those plant-model constants come from
-`otis_plant_model_v4_generated.h`, which is generated only after structural and
-semantic validation of
-`profiles/plant_models/cx317_h1_bench_v3.json`. Check the exact artifact
-binding before a preview build:
-
-```bash
-python3 tools/generate_plant_model_binding.py --check
-```
-
-Generation also requires exact compatibility with the estimator implemented by
-the current source. The generated binding carries the model topology,
-observe-only mode, measurement backend, gate and settling durations,
-temperature limits, source-evidence exclusions, estimator timing constraints,
-and DAC ranges. The preview compares those values with the compiled
-configuration and live gate/DAC observations. The configured gate must exactly
-match the artifact; the observed PIO aperture may differ by at most
-`OTIS_OBSERVE_ONLY_DISCIPLINE_OBSERVED_GATE_TOLERANCE_US` (50 ms by default, five times the
-known 10 ms blocking SHT4x conversion). Larger errors invalidate observation
-quality rather than changing the model identity.
-
-Successful manual and sweep DAC writes notify the preview with their capture
-timestamp. A measured window is settled only when its opening boundary is at
-least the generated settling exclusion after the last changed code. Successful
-near-VCXO SHT4x samples are timestamped and range-checked. Missing or failed
-reads invalidate the input immediately; samples older than
-`OTIS_OBSERVE_ONLY_DISCIPLINE_TEMPERATURE_MAX_AGE_MS` (three sample periods by default) report
-`temperature_not_observed` and block preview applicability. Run-local
-count-sequence exclusions are not applied to unrelated live sequence numbers.
-
-The checked-in default remains disabled. Build the explicit preview variant
-with exact provenance:
-
-```bash
-python3 tools/firmware_matrix.py --profile phase4_observe_only
-```
-
-See
-`../../../docs/50_SOFTWARE/PHASE_4_LIVE_OBSERVE_ONLY_ENGINEERING_NOTE.md`
-for parity results, the selector matrix, and the still-open live bench gate.
-
-## Pinned compile matrix and upload
-
-```bash
-python3 tools/firmware_matrix.py --check-environment
-python3 tools/firmware_matrix.py --list
-python3 tools/firmware_matrix.py
-python3 tools/firmware_matrix.py --all-profiles --list
-```
-
-The default command executes the current Release tier: 18 expected-pass
-profiles and 14 structural expected-fail guards. `--tier fast` builds only the
-selected fast profile. `--all-profiles` is an explicit historical matrix of 26
-expected-pass and 15 expected-fail tuples; it is not a current support claim.
-Lifecycle metadata is embedded in each matrix profile. Build one
-qualification binary with:
-
-```bash
-python3 tools/firmware_matrix.py --profile phase5_qualification
-```
-
-For an interactive Arduino IDE compile/upload of the same supported profile,
-generate the local sketch header first:
-
-```bash
-python3 tools/firmware_matrix.py \
-  --prepare-ide \
-  --profile phase5_qualification
-```
-
-Then open `otis_nano_rp2040_connect.ino` in the IDE, select **Arduino Nano
-RP2040 Connect** from the Philhower **Raspberry Pi Pico/RP2040/RP2350 6.0.0**
-core, and compile or upload normally. The command validates the pinned CLI,
-board/core, and compiler installation before writing
-`otis_build_profile.generated.h` beside the sketch. The header is ignored by
-Git and deliberately excluded from the source-input hash. Regenerate it after
-every checkout, source edit, profile change, or Arduino core/toolchain change;
-do not hand-edit or commit it.
-
-The ignored `build/firmware_matrix/<profile>/artifacts/` directory contains the
-binary and its full build manifest. Matrix compilation copies the sketch,
-replaces any local IDE header in that copy with a one-use header, and removes
-the temporary source and compiler-copied header before returning. A fresh
-builder session ID is bound between the one-use header and the sole non-profile
-compiler flag. This is an unsigned anti-staleness binding, not a secret or
-signature: a caller that deliberately reads the header and reconstructs the
-matching invocation is outside the stated trust boundary. Upload the
-already-built qualification artifact without recompiling:
-
-```bash
-arduino-cli upload -p /dev/cu.usbmodemXXXX \
-  --fqbn rp2040:rp2040:arduino_nano_connect \
-  --input-dir build/firmware_matrix/phase5_qualification/artifacts
-```
-
-Sandboxed automation must be granted access to both the USB serial device and
-the temporary `/Volumes/RPI-RP2` BOOTSEL volume. The core's `uf2conv.py`
-silently ignores serial-open exceptions; without device permission it may print
-`Resetting ...` followed by `No drive to deploy` even though no reset occurred.
-Retry with explicit device/volume access before diagnosing the cable or
-bootloader. To remove artifact-directory ambiguity during interactive bring-up,
-`arduino-cli upload --input-file <exact.uf2>` is also supported; preserve the
-matching `firmware_build_manifest.json` separately when using that form.
-
-Capture serial into a run directory by piping monitor output through the host
-splitter:
-
-```bash
-arduino-cli monitor -p /dev/cu.usbmodemXXXX -c baudrate=115200 \
-  | python3 -m host.otis_tools.capture_serial \
-      --template examples/h0_gps_pps \
-      --run-dir runs/h0_gps_pps_001 \
-      --run-id h0_gps_pps_001
-
-python3 -m host.otis_tools.validate_run runs/h0_gps_pps_001
-python3 -m host.otis_tools.report_run runs/h0_gps_pps_001
-```
-
-For a SW1.5a PIO run directory, keep the same host pipeline and set the
-manifest capture mode to `pio_fifo_cpu_timestamped`, for example:
-
-```bash
-python3 -m host.otis_tools.capture_serial \
-  --template examples/h0_gps_pps \
-  --run-dir runs/h0_sw1_5a_pio/gps_pps/run_001 \
-  --run-id h0_sw1_5a_pio_gps_pps_run_001
-
-python3 -m host.otis_tools.validate_run runs/h0_sw1_5a_pio/gps_pps/run_001
-python3 -m host.otis_tools.report_run runs/h0_sw1_5a_pio/gps_pps/run_001
-```
-
-For committed representative runs, generate the report, remove
-`capture_in_progress.flag` if present, and create `COMPLETE` after validation.
+All three tiers are no-hardware checks and build the same fixed image. See
+`firmware/arduino/validation/END_TO_END_VALIDATION_PLAN.md` for the rehearsal
+and bench boundary.

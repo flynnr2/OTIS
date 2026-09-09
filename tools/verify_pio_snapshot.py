@@ -407,7 +407,7 @@ def verify_assembled_words(pioasm: Path, source: Path) -> None:
 
 
 def verify_repository_installation(
-    backend_source: Path, generated_header: Path, firmware_matrix: Path
+    backend_source: Path, generated_header: Path, firmware_manifest: Path
 ) -> dict[str, object]:
     """Bind the instruction proof to the configuration installed by firmware.
 
@@ -418,7 +418,7 @@ def verify_repository_installation(
 
     backend = backend_source.read_text(encoding="utf-8")
     header = generated_header.read_text(encoding="utf-8")
-    matrix = json.loads(firmware_matrix.read_text(encoding="utf-8"))
+    manifest = json.loads(firmware_manifest.read_text(encoding="utf-8"))
 
     required_backend_fragments = {
         "pio_block": "backend.pio = pio0;",
@@ -473,25 +473,23 @@ def verify_repository_installation(
     if generated_words != PROGRAM_WORDS:
         raise ProofFailure("checked-in generated header words differ from proof")
 
-    if matrix.get("target", {}).get("fqbn") != (
+    if manifest.get("target", {}).get("fqbn") != (
         "rp2040:rp2040:arduino_nano_connect:freq=133"
     ):
-        raise ProofFailure("firmware matrix does not pin Nano RP2040 clk_sys to 133 MHz")
-    pps_profiles = [
-        profile["id"]
-        for profile in matrix.get("profiles", [])
-        if profile.get("defines", {}).get("OTIS_TCXO_COUNTER_BACKEND")
-        == "OTIS_TCXO_COUNTER_BACKEND_PPS_GATED_RATIO"
-        and profile.get("expect") == "pass"
-    ]
-    if not pps_profiles:
-        raise ProofFailure("no passing firmware profile installs the PPS snapshot backend")
+        raise ProofFailure(
+            "fixed firmware manifest does not pin Nano RP2040 clk_sys to 133 MHz"
+        )
+    image = manifest.get("image", {})
+    if image.get("id") != "adaptive_hybrid_regulation":
+        raise ProofFailure("fixed firmware manifest selects an unexpected image")
+    if image.get("firmware_version") != "OTIS_ADAPTIVE_HYBRID_REGULATION_V1":
+        raise ProofFailure("fixed firmware manifest selects an unexpected version")
 
     return {
         "backend_source": str(backend_source),
         "generated_header": str(generated_header),
-        "matrix_fqbn": matrix["target"]["fqbn"],
-        "pps_profiles": pps_profiles,
+        "manifest_fqbn": manifest["target"]["fqbn"],
+        "image_id": image["id"],
         "pio_block": 0,
         "in_base_gpio": 20,
         "jmp_pin_gpio": 26,
@@ -638,9 +636,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--firmware-matrix",
+        "--firmware-manifest",
         type=Path,
-        default=Path("firmware/arduino/firmware_matrix.json"),
+        default=Path("firmware/arduino/firmware_build_manifest.json"),
     )
     return parser
 
@@ -654,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
     result = run_phase_sweep()
     result["fault_paths"] = verify_fault_paths()
     result["repository_installation"] = verify_repository_installation(
-        args.backend_source, args.generated_header, args.firmware_matrix
+        args.backend_source, args.generated_header, args.firmware_manifest
     )
     result["dma_ring"] = verify_dma_ring_model()
     result.update(

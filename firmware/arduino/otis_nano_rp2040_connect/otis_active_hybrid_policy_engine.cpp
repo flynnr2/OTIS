@@ -27,11 +27,6 @@ constexpr uint16_t kMaximumAutomaticApplications =
     OTIS_ACTIVE_HYBRID_MAX_AUTOMATIC_APPLICATIONS;
 constexpr uint16_t kMaximumCumulativeMovementCodes =
     OTIS_ACTIVE_HYBRID_MAX_CUMULATIVE_MOVEMENT_CODES;
-constexpr uint64_t kNaturalReversalWindowTicks =
-    43200ull * kMonotonicUsPerSecond;
-constexpr uint64_t kChallengeLatestTicks =
-    50400ull * kMonotonicUsPerSecond;
-constexpr int32_t kChallengeStepCodes = 21;
 
 double clamp_double(double value, double lower, double upper) {
   return value < lower ? lower : (value > upper ? upper : value);
@@ -107,12 +102,6 @@ const char *chatter_reason(const OtisActiveHybridEngine *engine,
   return nullptr;
 }
 
-uint16_t automatic_application_count(const OtisActiveHybridEngine *engine) {
-  return OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE
-             ? engine->automatic_application_count
-             : engine->correction_count;
-}
-
 }  // namespace
 
 void otis_active_hybrid_engine_init(OtisActiveHybridEngine *engine,
@@ -138,44 +127,6 @@ void otis_active_hybrid_engine_init_at_ticks(
   engine->last_application_ticks = setup_application_ticks;
 }
 
-bool otis_active_hybrid_engine_rebase_after_plant_sign(
-    OtisActiveHybridEngine *engine, uint16_t applied_code, uint32_t dac_epoch,
-    uint16_t global_correction_count,
-    uint16_t global_cumulative_movement_codes,
-    uint64_t identification_application_ticks,
-    uint64_t response_acknowledgement_ticks) {
-  if (engine == nullptr || applied_code < kMinimumCode ||
-      applied_code > kMaximumCode || dac_epoch == 0u ||
-      global_correction_count != 1u ||
-      global_cumulative_movement_codes != 21u ||
-      identification_application_ticks == 0u ||
-      response_acknowledgement_ticks < identification_application_ticks) {
-    if (engine != nullptr) fault(engine, "invalid_plant_sign_handoff");
-    return false;
-  }
-  *engine = {};
-  engine->state = OtisActiveHybridState::PhaseQualify;
-  engine->reason = "plant_sign_acknowledged_phase_qualification_started";
-  engine->applied_code = applied_code;
-  engine->dac_epoch = dac_epoch;
-  engine->correction_count = global_correction_count;
-  engine->automatic_application_count = global_correction_count;
-  engine->cumulative_movement_codes = global_cumulative_movement_codes;
-  engine->natural_chatter_origin_code = applied_code;
-  engine->natural_cumulative_movement_codes = 0u;
-  engine->last_application_available = true;
-  engine->last_application_s = static_cast<uint32_t>(
-      identification_application_ticks / kMonotonicUsPerSecond);
-  engine->exact_tick_timing_required = true;
-  engine->last_application_ticks = identification_application_ticks;
-  engine->phase_qualification_started = true;
-  engine->phase_qualification_started_s = static_cast<uint32_t>(
-      response_acknowledgement_ticks / kMonotonicUsPerSecond);
-  engine->phase_qualification_started_ticks =
-      response_acknowledgement_ticks;
-  return true;
-}
-
 namespace {
 
 bool decide_impl(
@@ -197,7 +148,6 @@ bool decide_impl(
       engine->cumulative_movement_codes;
   const bool phase_is_exact = phase_exact(observation);
   bool progressive_release_transition = false;
-  bool deliberate_challenge_decision = false;
   const char *reason = engine->reason;
 
   if (engine->state == OtisActiveHybridState::FailStatic) {
@@ -231,11 +181,6 @@ bool decide_impl(
              observation->outstanding_response) {
     reason = "request_or_response_checkpoint_outstanding";
   } else {
-    if (OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE &&
-        observation_ticks_available && !engine->qualified_origin_available) {
-      engine->qualified_origin_available = true;
-      engine->qualified_origin_ticks = observation_ticks;
-    }
     bool phase_qualified = phase_is_exact;
     if (phase_qualified) {
       if (!engine->phase_identity_available) {
@@ -352,7 +297,7 @@ bool decide_impl(
         const uint16_t counterfactual_movement = static_cast<uint16_t>(
             counterfactual < 0 ? -counterfactual : counterfactual);
         if (counterfactual != 0 &&
-            (automatic_application_count(engine) + 1u >
+            (engine->correction_count + 1u >
                  kMaximumAutomaticApplications ||
              engine->cumulative_movement_codes + counterfactual_movement >
                  kMaximumCumulativeMovementCodes ||
@@ -360,56 +305,13 @@ bool decide_impl(
           counterfactual = 0;
         }
         int32_t &delta = decision->requested_delta_codes;
-        const int8_t natural_direction = delta > 0 ? 1 : (delta < 0 ? -1 : 0);
-        const bool natural_reversal_ready =
-            natural_direction != 0 && engine->natural_direction_available &&
-            natural_direction != engine->natural_initial_direction;
-        const uint64_t qualified_elapsed_ticks =
-            engine->qualified_origin_available &&
-                    observation_ticks >= engine->qualified_origin_ticks
-                ? observation_ticks - engine->qualified_origin_ticks
-                : 0u;
-        const bool challenge_due =
-            OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE &&
-            engine->qualified_origin_available &&
-            qualified_elapsed_ticks >= kNaturalReversalWindowTicks &&
-            qualified_elapsed_ticks <= kChallengeLatestTicks &&
-            !engine->natural_reversal_observed &&
-            !engine->deliberate_challenge_applied &&
-            !engine->deliberate_challenge_cancelled &&
-            !engine->deliberate_challenge_unexercised &&
-            !natural_reversal_ready;
-        if (challenge_due) {
-          const int8_t challenge_direction =
-              engine->natural_direction_available
-                  ? engine->natural_initial_direction
-                  : -1;
-          const int32_t challenge_code =
-              static_cast<int32_t>(observation->applied_code) +
-              challenge_direction * kChallengeStepCodes;
-          if (challenge_code < kMinimumCode || challenge_code > kMaximumCode ||
-              engine->cumulative_movement_codes + kChallengeStepCodes >
-                  kMaximumCumulativeMovementCodes) {
-            engine->deliberate_challenge_unexercised = true;
-            delta = 0;
-            reason = "deliberate_reversal_challenge_budget_or_range_unavailable";
-          } else {
-            delta = challenge_direction * kChallengeStepCodes;
-            decision->requested_code = static_cast<uint16_t>(challenge_code);
-            decision->raw_combined_delta_codes =
-                static_cast<double>(delta);
-            decision->step_limited = false;
-            decision->range_clamped = false;
-            deliberate_challenge_decision = true;
-            reason = "deliberate_reversal_challenge_request_ready";
-          }
-        } else if (delta != 0 && phase_authorized &&
+        if (delta != 0 && phase_authorized &&
             delta * decision->phase_term_hz < 0.0) {
           delta = 0;
           reason = "phase_direction_coherence_hold";
         } else if (delta == 0) {
           reason = "zero_rounded_or_range_hold";
-        } else if (automatic_application_count(engine) + 1u >
+        } else if (engine->correction_count + 1u >
                    kMaximumAutomaticApplications) {
           decision->count_limited = true;
           delta = 0;
@@ -420,7 +322,7 @@ bool decide_impl(
           decision->cumulative_budget_limited = true;
           delta = 0;
           reason = "global_cumulative_movement_budget_hold";
-        } else if (!deliberate_challenge_decision) {
+        } else {
           const char *chatter = chatter_reason(engine, delta);
           if (chatter != nullptr) {
             fault(engine, chatter);
@@ -436,27 +338,12 @@ bool decide_impl(
             reason = "frequency_acquisition_request_ready";
           }
         }
-        if (delta != 0 && !deliberate_challenge_decision &&
-            engine->deliberate_challenge_applied &&
-            (delta > 0 ? 1 : -1) ==
-                -engine->deliberate_challenge_direction) {
-          reason = "deliberate_reversal_challenge_recovery_request_ready";
-        }
       }
-    }
-    if (OTIS_ACTIVE_HYBRID_ENABLE_REVERSAL_CHALLENGE &&
-        engine->qualified_origin_available && observation_ticks_available &&
-        observation_ticks - engine->qualified_origin_ticks >
-            kChallengeLatestTicks &&
-        !engine->natural_reversal_observed &&
-        !engine->deliberate_challenge_applied &&
-        !engine->deliberate_challenge_cancelled) {
-      engine->deliberate_challenge_unexercised = true;
     }
   }
 
   decision->phase_materially_influenced =
-      !deliberate_challenge_decision && decision->phase_term_hz != 0.0 &&
+      decision->phase_term_hz != 0.0 &&
       decision->requested_delta_codes !=
           decision->counterfactual_frequency_only_delta_codes;
   decision->requested_code = static_cast<uint16_t>(
@@ -490,21 +377,14 @@ bool note_application_impl(
   }
   engine->applied_code = applied_code;
   engine->dac_epoch = dac_epoch;
-  const bool deliberate_challenge =
-      decision->reason != nullptr &&
-      strcmp(decision->reason,
-             "deliberate_reversal_challenge_request_ready") == 0;
   engine->correction_count++;
   const uint16_t movement = static_cast<uint16_t>(
       decision->requested_delta_codes < 0 ? -decision->requested_delta_codes
                                           : decision->requested_delta_codes);
   engine->cumulative_movement_codes = static_cast<uint16_t>(
       engine->cumulative_movement_codes + movement);
-  if (!deliberate_challenge) {
-    engine->automatic_application_count++;
-    engine->natural_cumulative_movement_codes = static_cast<uint16_t>(
-        engine->natural_cumulative_movement_codes + movement);
-  }
+  engine->natural_cumulative_movement_codes = static_cast<uint16_t>(
+      engine->natural_cumulative_movement_codes + movement);
   engine->last_application_available = true;
   if (engine->exact_tick_timing_required) {
     engine->last_application_ticks = application_ticks;
@@ -514,42 +394,19 @@ bool note_application_impl(
     engine->last_application_s = decision->timestamp_s;
   }
   engine->transaction_outstanding = true;
-  engine->outstanding_deliberate_challenge = deliberate_challenge;
-  engine->outstanding_phase_material =
-      deliberate_challenge || decision->phase_materially_influenced;
+  engine->outstanding_phase_material = decision->phase_materially_influenced;
   const int8_t direction = decision->requested_delta_codes > 0 ? 1 : -1;
-  if (deliberate_challenge) {
-    engine->deliberate_challenge_applied = true;
-    engine->deliberate_challenge_direction = direction;
-    engine->deliberate_challenge_code = applied_code;
-    engine->deliberate_challenge_dac_epoch = dac_epoch;
-    engine->deliberate_challenge_application_ticks =
-        engine->exact_tick_timing_required ? application_ticks : 0u;
-    engine->reason = "deliberate_reversal_challenge_applied_response_required";
+  if (engine->direction_count < 4u) {
+    engine->direction_history[engine->direction_count++] = direction;
   } else {
-    if (!engine->natural_direction_available) {
-      engine->natural_direction_available = true;
-      engine->natural_initial_direction = direction;
-    } else if (direction != engine->natural_initial_direction) {
-      engine->natural_reversal_observed = true;
-      if (!engine->deliberate_challenge_applied)
-        engine->deliberate_challenge_cancelled = true;
-    }
-    if (engine->deliberate_challenge_applied &&
-        direction == -engine->deliberate_challenge_direction)
-      engine->deliberate_challenge_recovery_applied = true;
-    if (engine->direction_count < 4u) {
-      engine->direction_history[engine->direction_count++] = direction;
-    } else {
-      engine->direction_history[0] = engine->direction_history[1];
-      engine->direction_history[1] = engine->direction_history[2];
-      engine->direction_history[2] = engine->direction_history[3];
-      engine->direction_history[3] = direction;
-    }
+    engine->direction_history[0] = engine->direction_history[1];
+    engine->direction_history[1] = engine->direction_history[2];
+    engine->direction_history[2] = engine->direction_history[3];
+    engine->direction_history[3] = direction;
   }
-  if (!deliberate_challenge && decision->phase_term_hz != 0.0)
+  if (decision->phase_term_hz != 0.0)
     engine->phase_nonzero_application_count++;
-  if (!deliberate_challenge && decision->phase_materially_influenced) {
+  if (decision->phase_materially_influenced) {
     engine->phase_material_application_count++;
     if (engine->phase_material_application_count == 1u) {
       engine->state = OtisActiveHybridState::FirstPhaseTransaction;
@@ -557,7 +414,7 @@ bool note_application_impl(
       engine->first_checkpoint_observation_only = false;
       engine->reason = "first_phase_application_checkpoint_required";
     }
-  } else if (!deliberate_challenge) {
+  } else {
     engine->frequency_only_application_count++;
     engine->reason = "application_confirmed_response_required";
   }
@@ -609,20 +466,15 @@ bool otis_active_hybrid_engine_note_response(
     return false;
   }
   const bool was_phase_material = engine->outstanding_phase_material;
-  const bool was_deliberate_challenge =
-      engine->outstanding_deliberate_challenge;
   engine->transaction_outstanding = false;
   engine->outstanding_phase_material = false;
-  engine->outstanding_deliberate_challenge = false;
   if (!(healthy_classification &&
         (observation_only || predicted_sign_observed) &&
         exact_replay && support_fresh && applied_epoch_exact)) {
     fault(engine, "hybrid_response_wrong_or_checkpoint_evidence_invalid");
     return false;
   }
-  if (was_deliberate_challenge) {
-    engine->reason = "deliberate_reversal_challenge_response_observation_recorded";
-  } else if (was_phase_material && engine->phase_material_application_count == 1u) {
+  if (was_phase_material && engine->phase_material_application_count == 1u) {
     engine->first_checkpoint_response_passed = true;
     engine->first_checkpoint_observation_only = observation_only;
     engine->reason = observation_only

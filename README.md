@@ -7,111 +7,61 @@ timing truth; host services preserve, validate, replay, and analyze evidence.
 The design principles are in
 [`docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md`](docs/00_FOUNDATIONS/OTIS_DESIGN_PRINCIPLES.md).
 
-## Current support boundary
+## Current operating surface
 
-Current HEAD preserves `CX319_EVIDENCE_EPOCH_1` as its physical evidence floor
-and retains the active-hybrid implementation, evidence readers, and offline
-replay tooling with all physical live authority disabled. The retained deployed
-CX319 wire identities, fail-closed rules, and historical reproduction procedure are in
-[`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`](docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md).
+Current HEAD contains one instrument programme and one buildable fixed
+firmware image: `adaptive_hybrid_regulation`, policy
+`OTIS_ADAPTIVE_HYBRID_REGULATION_V1`. The firmware configuration is not a
+selectable profile matrix. Run duration and experiment-specific stop conditions
+belong in the frozen run manifest, not in the product or policy identity.
 
-H0/SW1, H1, Phase 4/5, CX317, and CX318 operational readers, profiles, campaign
-CLIs, and regression obligations are retired from current HEAD. Their reviewed
-reports and provenance remain scientific records under `docs/60_EXPERIMENTS/`
-and Git history. Reproduce a historical package from the exact revision named
-by its manifest, bundle, index record, or report; do not treat a successful
-historical reproduction as current validation or authority.
+The invariant bench topology is:
 
-The CX319 range-spanning programme is complete and frozen. Its mapping-informed
-Part B seal binds two physical acquisitions; the lower reacquisition remains an
-inference, the original upper traversal remains a right-censored bounded
-non-pass, and its completion is preserved as a separate acquisition plus a
-host-only finalizer supersession. The terminal report and exact claims boundary
-are in
-[`43_MAPPING_INFORMED_PART_B_TERMINAL_REPORT.md`](docs/60_EXPERIMENTS/CX319_STABILIZED_TIGHT_DEADBAND_PROGRAMME/43_MAPPING_INFORMED_PART_B_TERMINAL_REPORT.md).
+- D14 is the sole authoritative PPS/reference input;
+- D8 is the sole oscillator/count input used for regulation;
+- D10 / channel 0 is reserved for optional external-event evidence and has no
+  validity, setup, control, actuation, or terminal authority;
+- D9 forwards the oscillator clock; and
+- D6 is a fail-local diagnostic monitor.
 
-CX320 bounded active-hybrid qualification reached a decision-bearing physical
-terminal. The firmware applied one genuine combined phase-frequency correction
-from `0xA83C` to `0xA836`, but the exact 1,500-second response was below the
-frozen empirical detection floor and did not establish the required positive
-plant-response sign. The programme is therefore a bounded non-pass; its
-single-use activation is consumed and CX320 is historical only. The last
-confirmed code is `0xA836` in `FAIL_STATIC`. Any future flash or
-reset makes the physical code unknown until a new exact setup acknowledgement
-is captured. See the
-[`attempt-9 terminal report`](docs/60_EXPERIMENTS/CX320_ACTIVE_HYBRID_PROGRAMME/12_STAGE5_ATTEMPT9_RESPONSE_OBSERVABILITY_TERMINAL.md).
+D10's pin, channel, host ingest, storage, and replay contract are preserved,
+but the fixed firmware does not yet claim a safely isolated D10 capture backend.
+The build manifest records that limitation explicitly.
 
-The OTIS sustained-hybrid V1 programme is closed after Attempt 4. Its physical
-qualification failed because eleven required contemporaneous pre-phase-4 replay
-attestations were absent; that missing source evidence cannot be recreated as a
-pass. Separately, the retained controller path reached the prospectively frozen
-`prospective_low_efficiency_path` terminal after 52 decisions and eleven
-automatic applications. The unchanged V1 controller is therefore scientifically
-rejected and no Attempt 5 or V1 live operation is authorized. See the
-[Attempt 4 terminal report](docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_REGULATION_V1/04_ATTEMPT4_PHASE4_ATTESTATION_AND_SCIENTIFIC_TERMINAL.md).
+GNSS serial metadata qualifies the receiver that supplies D14 PPS. A
+recoverable metadata anomaly holds correction at the last confirmed DAC code
+while D14/D8 acquisition and canonical evidence continue.
 
-The offline sustained-hybrid successor study rejected three simple deadband
-variants because none preserved the early phase behavior. A subsequent frozen
-mode-separation architecture study preserved that behavior and cleared the
-phase gate, but all three architectures lost too much tight-band occupancy and
-used 28 to 32 path codes. It therefore also selected no successor. Attempt 4
-authority remains consumed, V1 remains closed, and there is no active
-programme or physical authority on current HEAD. The separately frozen
-equilibrium-estimator feasibility study first stopped on a missing Stage 5
-plan. The exact bound bytes were subsequently recovered, and a separately
-frozen zero-I/O attempt reconstructed all 18 Stage 5 identification supports
-and 52 held-out Attempt 4 supports. All three frozen equilibrium models have
-empty complete identification sets at minimum, nominal, and maximum gain. The
-current terminal is
-`equilibrium_state_not_observable_targeted_characterization_required`; no
-estimator, trajectory study, or authority was selected. The next gate is one
-separately authorized, prospectively frozen targeted characterization. See the
-[equilibrium-estimator decision](docs/60_EXPERIMENTS/OTIS_SUSTAINED_HYBRID_EQUILIBRIUM_ESTIMATOR_FEASIBILITY_STUDY/DECISION.md).
+Historical experiments and reviewed conclusions remain under
+`docs/60_EXPERIMENTS/`, local evidence remains under ignored `runs/`, and the
+recorded Git revision is the compatibility mechanism. Current HEAD does not
+build, load, rehearse, or validate retired campaign programmes.
 
-The targeted-characterization programme consumed six separately authorized
-physical attempts. Attempt 4 exposed an over-strong GNSS/support coupling and
-attempt 5 exposed a compiled-command/preflight escape. Attempt 6 then completed
-all twelve dwells and all 36 prospectively frozen supports without a live
-platform fault. The corrected receiver transitioned from retained 115200 to
-9600 baud and remained qualified through the terminal. All three frozen model
-families had empty complete identification intervals at minimum, nominal, and
-maximum gain, so no model was eligible. The valid scientific terminal is
-`equilibrium_state_not_observable`; no control authority or automatic successor
-was created. See the
-[targeted-characterization report](docs/60_EXPERIMENTS/OTIS_TARGETED_EQUILIBRIUM_CHARACTERIZATION_V1/README.md).
+## Fixed firmware build
 
-The resulting architecture decision is positive: OTIS will stop treating one
-permanent equilibrium DAC code as the foundation of steering. The selected
-end-state is one coherent adaptive FLL/PLL policy, with bounded reactive
-frequency discipline as its first dependable baseline and a later bounded
-phase-bias term through the same command path. It carries an evolving DAC state
-plus explicit correction debt; prediction is optional. Existing sealed FLL
-qualification and coherent FLL/PLL integration evidence are reused; unchanged
-architecture and plumbing are not requalified. Every unpromoted future
-estimator is zero-authority and must fail only itself; it cannot invalidate
-canonical evidence, inhibit the reactive baseline, or fail current physical
-reality. CX322 already supplies positive physical combined-control evidence:
-four phase-material corrections approximately halved the matched relative-phase
-ramp while frequency stayed within the frozen comparison limits. The remaining
-work is the smallest sustained-operation policy delta, followed by use of the
-existing platform—not a new steering or platform qualification programme. The
-same decision makes recoverable GNSS serial-metadata glitches a bounded static
-control hold with continuing D14/D8 acquisition, never a failed physical run.
-The decision and reuse ledger are in the
-[adaptive-frequency-steering architecture](docs/10_REFERENCE_ARCHITECTURE/ADAPTIVE_FREQUENCY_STEERING.md).
+The pinned build contract is
+[`firmware/arduino/firmware_build_manifest.json`](firmware/arduino/firmware_build_manifest.json).
+Build it with:
 
-The scientific claim remains limited to bounded experimental frequency and
-arbitrary-epoch relative-phase evidence. OTIS does not claim traceable absolute
-frequency, calibrated phase, UTC, lock, or holdover.
+```bash
+.venv/bin/python tools/build_firmware.py
+```
+
+The builder verifies the pinned board, core, toolchain, source provenance,
+binary identity, required markers, and memory budget. Artifacts are written to
+ignored local build storage.
+
+The current host structural preflight is deliberately non-authorizing. Live
+activation remains fail-closed until a genuine process/FIFO/command/
+acknowledgement/obstruction/abort/analysis/sealing rehearsal producer is
+implemented and verified. A successful build or structural preflight is not a
+claim that the programme is ready for bench entry.
 
 ## Evidence policy
 
-`runs/` is intentionally ignored and contains local scientific evidence. Never
-force-add it or weaken `.gitignore`. Preserve raw packages unchanged; promote
-only reviewed conclusions, contracts, models, schemas, and small purpose-built
-fixtures. Every current non-template package requires canonical
-`run_manifest.json`, `raw/serial.log`, and immutable
-`evidence_manifest.json`.
+`runs/` is intentionally ignored local scientific evidence. Never force-add it
+or weaken `.gitignore`. Preserve raw packages unchanged; promote only reviewed
+conclusions, contracts, models, schemas, and small purpose-built fixtures.
 
 ## Verification
 
@@ -123,21 +73,21 @@ python3 -m venv .venv
 .venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier release
 ```
 
-The `historical` tier prints revision-checkout guidance and runs no current
-compatibility tests. See
-[`docs/50_SOFTWARE/VERIFICATION_AND_PROFILE_LIFECYCLE.md`](docs/50_SOFTWARE/VERIFICATION_AND_PROFILE_LIFECYCLE.md).
+All tiers are no-hardware checks and build the same fixed image. Historical
+reproduction uses the recorded historical revision and that revision's own
+instructions; there is no historical compatibility tier on current HEAD.
 
 ## Repository map
 
 | Directory | Purpose |
 |---|---|
 | `data_contracts/` | current deployed contract documentation |
-| `firmware/arduino/otis_nano_rp2040_connect/` | current firmware platform |
-| `host/otis_tools/` | current capture, control, replay, and evidence tools |
-| `profiles/` | current evidence, closed programme status, offline study, policy, model, estimator, and authority bindings |
+| `firmware/arduino/otis_nano_rp2040_connect/` | current fixed-image firmware |
+| `host/otis_tools/` | current capture, regulation, replay, and evidence tools |
+| `profiles/` | current policy, model, and estimator bindings |
 | `schemas/` | current machine-readable schemas |
-| `tests/` | current platform, evidence, policy, authority, and replay regressions |
-| `docs/60_EXPERIMENTS/` | reviewed current and historical scientific record |
+| `tests/` | current architecture, policy, firmware, and evidence regressions |
+| `docs/60_EXPERIMENTS/` | reviewed scientific record |
 
 ## License
 

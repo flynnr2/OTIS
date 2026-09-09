@@ -39,11 +39,12 @@ def test_configuration_query_reports_snapshot_queue_capacity() -> None:
     assert '"snapshot_ring_capacity"' in configuration_status
 
 
-def test_explicit_count_query_reports_live_pps_queue_state() -> None:
+def test_explicit_count_query_requests_the_core1_runtime_snapshot() -> None:
     sketch = SKETCH.read_text(encoding="utf-8")
     query_handler = sketch.split(
-        "command.kind == OtisSerialCommandKind::Fc0Query", 1
-    )[1].split("#if OTIS_ENABLE_CX317_BOUNDED_ACTIVE", 1)[0]
+        "command.kind == OtisSerialCommandKind::CountQuery", 1
+    )[1].split("command.kind == OtisSerialCommandKind::ActiveQuery", 1)[0]
 
-    assert "otis_count_observation_emit_runtime_status(" in query_handler
-    assert "otis_count_observation_emit_status(" in query_handler
+    assert "OtisRunControlKind::DiagnosticRuntimeQuery" in query_handler
+    assert '"timing_runtime_snapshot"' in query_handler
+    assert "queued_to_core1" in query_handler

@@ -6,8 +6,8 @@
 interpret timing behavior without making those observations part of the capture
 channel model.
 
-For H1 VCOCXO characterization, near-oscillator temperature is the primary
-thermal proxy for warm-up, settling, DAC sweep, and drift analysis.
+Near-oscillator temperature is contextual evidence for warm-up, settling, and
+drift analysis. It has no timing, validity, setup, or regulation authority.
 
 ## Schema
 

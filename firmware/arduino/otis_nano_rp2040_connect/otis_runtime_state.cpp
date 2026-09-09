@@ -29,22 +29,6 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->boot.safe_mode_warn_pending = false;
   state->boot.degraded = false;
 
-  state->loopback.last_toggle_ms = 0;
-  state->loopback.output_high = false;
-
-  state->tcxo.last_measure_ms = 0;
-  state->tcxo.gate_open_us = 0;
-  state->tcxo.fc0_accum_gate_open_ticks = 0;
-  state->tcxo.fc0_accum_weighted_khz_us = 0;
-  state->tcxo.fc0_accum_elapsed_us = 0;
-  state->tcxo.fc0_accum_sample_count = 0;
-  state->tcxo.fc0_accum_zero_sample_count = 0;
-  state->tcxo.fc0_accum_first_sample_khz = 0;
-  state->tcxo.fc0_accum_last_sample_khz = 0;
-  state->tcxo.fc0_accum_min_sample_khz = 0;
-  state->tcxo.fc0_accum_max_sample_khz = 0;
-  state->tcxo.fc0_accum_flags = 0;
-  state->tcxo.fc0_accum_active = false;
   state->tcxo.last_gate_open_ticks = 0;
   state->tcxo.last_gate_close_ticks = 0;
   state->tcxo.last_counted_edges = 0;
@@ -70,5 +54,4 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->tcxo.fault_after_startup = false;
   state->tcxo.last_observation_valid = false;
 
-  state->active_mode = OTIS_SW1_BRINGUP_MODE;
 }

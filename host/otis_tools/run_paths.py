@@ -9,7 +9,8 @@ RAW_DIR = "raw"
 CSV_DIR = "csv"
 REPORTS_DIR = "reports"
 RAW_SERIAL_LOG = "serial.log"
-RAW_EVENTS_CSV = "raw_events.csv"
+EXTERNAL_EVENTS_CSV = "external_events.csv"
+REFERENCE_EVENTS_CSV = "reference_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 PPS_SNAPSHOTS_CSV = "pps_snapshots.csv"
 # This is deliberately distinct from the D8 PIO/DMA snapshot evidence above.
@@ -20,21 +21,14 @@ ASSOCIATION_LOSS_DECISIONS_CSV = "association_loss_decisions_v1.csv"
 HEALTH_CSV = "health.csv"
 DAC_STEPS_CSV = "dac_steps.csv"
 ENVIRONMENT_CSV = "environment.csv"
-REFERENCE_OBSERVATIONS_CSV = "reference_observations_v1.csv"
-DIAGNOSTICS_CSV = "diagnostics_v1.csv"
 ESTIMATES_CSV = "estimates_v2.csv"
 CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
-ACTIVE_TRANSACTIONS_CSV = "active_transactions_v1.csv"
-ACTIVE_TRANSACTIONS_V2_CSV = "active_transactions_v2.csv"
-ACTIVE_HYBRID_DECISIONS_CSV = "active_hybrid_decisions_v1.csv"
-ACTIVE_HYBRID_DECISIONS_V2_CSV = "active_hybrid_decisions_v2.csv"
+ACTIVE_TRANSACTIONS_CSV = "active_transactions_v2.csv"
+ACTIVE_HYBRID_DECISIONS_CSV = "active_hybrid_decisions_v2.csv"
 ACTIVE_HYBRID_MAINTENANCE_CSV = "active_hybrid_maintenance_v1.csv"
-PLANT_SIGN_QUALIFICATION_CSV = "plant_sign_qualification_v1.csv"
 RELATIVE_PHASE_OBSERVATIONS_CSV = "relative_phase_observations_v1.csv"
 PHASE_ESTIMATOR_OUTPUTS_CSV = "phase_estimator_outputs_v1.csv"
-HYBRID_PREVIEW_DECISIONS_CSV = "hybrid_preview_decisions_v1.csv"
 TIGHT_DEADBAND_DECISIONS_CSV = "tight_deadband_decisions_v1.csv"
-PSEUDO_PPS_TRUTH_CSV = "pseudo_pps_truth.csv"
 
 
 @dataclass(frozen=True)
@@ -62,8 +56,12 @@ class RunPaths:
         return self.raw_dir / RAW_SERIAL_LOG
 
     @property
-    def raw_events_csv(self) -> Path:
-        return self.csv_dir / RAW_EVENTS_CSV
+    def external_events_csv(self) -> Path:
+        return self.csv_dir / EXTERNAL_EVENTS_CSV
+
+    @property
+    def reference_events_csv(self) -> Path:
+        return self.csv_dir / REFERENCE_EVENTS_CSV
 
     @property
     def count_observations_csv(self) -> Path:
@@ -94,32 +92,16 @@ class RunPaths:
         return self.csv_dir / DAC_STEPS_CSV
 
     @property
-    def pseudo_pps_truth_csv(self) -> Path:
-        return self.csv_dir / PSEUDO_PPS_TRUTH_CSV
-
-    @property
     def active_transactions_csv(self) -> Path:
         return self.csv_dir / ACTIVE_TRANSACTIONS_CSV
-
-    @property
-    def active_transactions_v2_csv(self) -> Path:
-        return self.csv_dir / ACTIVE_TRANSACTIONS_V2_CSV
 
     @property
     def active_hybrid_decisions_csv(self) -> Path:
         return self.csv_dir / ACTIVE_HYBRID_DECISIONS_CSV
 
     @property
-    def active_hybrid_decisions_v2_csv(self) -> Path:
-        return self.csv_dir / ACTIVE_HYBRID_DECISIONS_V2_CSV
-
-    @property
     def active_hybrid_maintenance_csv(self) -> Path:
         return self.csv_dir / ACTIVE_HYBRID_MAINTENANCE_CSV
-
-    @property
-    def plant_sign_qualification_csv(self) -> Path:
-        return self.csv_dir / PLANT_SIGN_QUALIFICATION_CSV
 
     @property
     def relative_phase_observations_csv(self) -> Path:
@@ -130,17 +112,29 @@ class RunPaths:
         return self.csv_dir / PHASE_ESTIMATOR_OUTPUTS_CSV
 
     @property
-    def hybrid_preview_decisions_csv(self) -> Path:
-        return self.csv_dir / HYBRID_PREVIEW_DECISIONS_CSV
-
-    @property
     def tight_deadband_decisions_csv(self) -> Path:
         return self.csv_dir / TIGHT_DEADBAND_DECISIONS_CSV
 
 
 def default_csv_files() -> list[dict[str, str]]:
     return [
-        {"path": f"{CSV_DIR}/{RAW_EVENTS_CSV}", "contract": "raw_events_v1"},
+        {
+            "path": f"{CSV_DIR}/{EXTERNAL_EVENTS_CSV}",
+            "contract": "raw_events_v1",
+            "record_type": "EVT",
+            "channel_id": 0,
+            "pin": "D10",
+            "role": "external_event",
+            "optional": True,
+        },
+        {
+            "path": f"{CSV_DIR}/{REFERENCE_EVENTS_CSV}",
+            "contract": "raw_events_v1",
+            "record_type": "REF",
+            "channel_id": 1,
+            "pin": "D14",
+            "role": "authoritative_reference",
+        },
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
         {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v1", "optional": True},
         {
@@ -157,16 +151,6 @@ def default_csv_files() -> list[dict[str, str]]:
         {"path": f"{CSV_DIR}/{DAC_STEPS_CSV}", "contract": "dac_steps_v1", "optional": True},
         {"path": f"{CSV_DIR}/{ENVIRONMENT_CSV}", "contract": "environment_v1", "optional": True},
         {
-            "path": f"{CSV_DIR}/{REFERENCE_OBSERVATIONS_CSV}",
-            "contract": "reference_observations_v1",
-            "optional": True,
-        },
-        {
-            "path": f"{CSV_DIR}/{DIAGNOSTICS_CSV}",
-            "contract": "diagnostics_v1",
-            "optional": True,
-        },
-        {
             "path": f"{CSV_DIR}/{ESTIMATES_CSV}",
             "contract": "estimates_v2",
             "optional": True,
@@ -178,13 +162,15 @@ def default_csv_files() -> list[dict[str, str]]:
         },
         {
             "path": f"{CSV_DIR}/{ACTIVE_TRANSACTIONS_CSV}",
-            "contract": "active_transactions_v1",
-            "optional": True,
+            "contract": "active_transactions_v2",
         },
         {
             "path": f"{CSV_DIR}/{ACTIVE_HYBRID_DECISIONS_CSV}",
-            "contract": "active_hybrid_decisions_v1",
-            "optional": True,
+            "contract": "active_hybrid_decisions_v2",
+        },
+        {
+            "path": f"{CSV_DIR}/{ACTIVE_HYBRID_MAINTENANCE_CSV}",
+            "contract": "active_hybrid_maintenance_v1",
         },
         {
             "path": f"{CSV_DIR}/{RELATIVE_PHASE_OBSERVATIONS_CSV}",
@@ -197,68 +183,17 @@ def default_csv_files() -> list[dict[str, str]]:
             "optional": True,
         },
         {
-            "path": f"{CSV_DIR}/{HYBRID_PREVIEW_DECISIONS_CSV}",
-            "contract": "hybrid_preview_decisions_v1",
-            "optional": True,
-        },
-        {
             "path": f"{CSV_DIR}/{TIGHT_DEADBAND_DECISIONS_CSV}",
             "contract": "tight_deadband_decisions_v1",
             "optional": True,
         },
-        {"path": f"{CSV_DIR}/{PSEUDO_PPS_TRUTH_CSV}", "contract": "pseudo_pps_truth_v1", "optional": True},
     ]
 
 
-def cx321_csv_files() -> list[dict[str, str]]:
-    """Current capture files plus the dedicated CX321 lifecycle evidence."""
+def adaptive_hybrid_csv_files() -> list[dict[str, str]]:
+    """Return the sole current adaptive-hybrid capture-product inventory."""
 
-    return [
-        *default_csv_files(),
-        {
-            "path": f"{CSV_DIR}/{PLANT_SIGN_QUALIFICATION_CSV}",
-            "contract": "plant_sign_qualification_v1",
-            "optional": True,
-        },
-    ]
-
-
-def exact_active_timing_csv_files() -> list[dict[str, str]]:
-    """Base capture products plus revised long-run exact timing sidecars.
-
-    Keeping this inventory distinct prevents historical ACT/AHY campaigns
-    from acquiring empty v2 products or implying exact-counter coverage.
-    """
-
-    return [
-        *default_csv_files(),
-        {
-            "path": f"{CSV_DIR}/{ACTIVE_TRANSACTIONS_V2_CSV}",
-            "contract": "active_transactions_v2",
-        },
-        {
-            "path": f"{CSV_DIR}/{ACTIVE_HYBRID_DECISIONS_V2_CSV}",
-            "contract": "active_hybrid_decisions_v2",
-            "optional": True,
-        },
-    ]
-
-
-def cx323_active_timing_csv_files() -> list[dict[str, str]]:
-    """Exact active timing plus required CX323 maintenance-state evidence.
-
-    AHM is decision-bearing only for the CX323 policy.  This distinct
-    inventory prevents historical Campaign18 packages from acquiring an empty
-    successor product or being reinterpreted under the new contract.
-    """
-
-    return [
-        *exact_active_timing_csv_files(),
-        {
-            "path": f"{CSV_DIR}/{ACTIVE_HYBRID_MAINTENANCE_CSV}",
-            "contract": "active_hybrid_maintenance_v1",
-        },
-    ]
+    return default_csv_files()
 
 
 def ensure_run_layout(run_dir: Path) -> RunPaths:

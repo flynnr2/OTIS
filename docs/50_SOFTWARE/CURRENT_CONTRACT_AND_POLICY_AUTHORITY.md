@@ -1,69 +1,55 @@
 # Current Contract and Policy Authority
 
-## Status
+Current HEAD supports one instrument path: `adaptive_hybrid_regulation`.
+Historical profiles, campaign registries, compatibility readers, and
+programme-specific authority records are not current authority.
 
-Normative for the stabilized platform and CX319 offline preparation. OTIS has
-no external contract consumer and does not accept compatibility aliases as
-current inputs.
+## Bound identities
 
-## Wire contracts
+- firmware image: `adaptive_hybrid_regulation`;
+- firmware/policy version: `OTIS_ADAPTIVE_HYBRID_REGULATION_V1`;
+- frequency estimator: `OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1`;
+- relative-phase estimator: `OTIS_RELATIVE_PHASE_ESTIMATOR_V1`;
+- plant model: `OTIS_PPS_GATED_OSCILLATOR_PLANT_V1`; and
+- active status: `adaptive_hybrid_active_status_snapshot_v1`.
 
-`host/otis_tools/contracts.py` is the single executable authority for current
-CSV wire-contract names, ordered fields, record types, schema versions,
-sequence semantics, domains, and row validation. Documents in
-`data_contracts/` explain those contracts but do not create additional
-accepted versions.
+The machine-readable sources are the five files retained under `profiles/`
+and the seven current schemas under `schemas/`. The fixed firmware build identity and
+resource contract are in `firmware/arduino/firmware_build_manifest.json`.
 
-The current diagnostic contract is `diagnostics_v1`; draft v0 is unsupported.
-Current H1 count observations use source domain
-`h1_cx317_ocxo_10mhz`. Current count readiness uses component `count_path`.
-No reader substitutes the retired H1 domain or `fc0` status aliases.
+## Measurement authority
 
-Command-bearing active status additionally obeys
-`cx317_active_status_snapshot_v1`: only one complete generation may contribute
-to a decision. A newer incomplete generation invalidates the older complete
-generation. Setup authority additionally requires a solicited post-attachment
-`query_nonce`; buffered records preceding that nonce cannot establish current
-readiness.
+D14 is the sole PPS/reference authority. D8 is the sole oscillator-count input
+used for regulation. GNSS metadata may qualify the receiver that supplies D14,
+but never replaces D14. A recoverable metadata anomaly holds new corrections
+at the last confirmed code while capture continues.
 
-`CONFIG?` and `FC0?` in dual-core profiles are Core 0 request messages, not
-permission for Core 0 to inspect a timing backend. Core 1 emits
-`core1_timing_diagnostic_snapshot_v1` with matching generation, query sequence,
-nonce, query kind, and completion marker.
+D10/channel 0 is optional external-event evidence. D6 is diagnostic evidence.
+Neither can enter setup authority, D14/D8 validity, regulation eligibility,
+actuation, or a run terminal. The current firmware records that isolated D10
+capture is not yet implemented.
 
-The current bounded-active setup command is `ACTIVE SETUP`. Its firmware
-authority is the two-phase `otis_setup_authority` contract and its retained
-host replay input is `cx319_setup_authority_input_v1`. The generic `DAC SET`
-surface is non-actuating in the dual-core bounded-active profile.
+## Actuation authority
 
-## Active policy
+The characterized DAC envelope is `0xA800..0xAB00`. Every requested and applied
+code must be joined to exact observation, policy, estimator, diagnostic gate,
+request sequence, acknowledgement, DAC epoch, and resulting state identities.
+An acknowledgement establishes producer acceptance only; activation and
+rehearsal must verify propagation through the first dependent decision.
 
-`profiles/discipline/cx317_bounded_active_v2.json` is the single current active
-policy root. Its SHA-256 is the `active_policy_sha256` identity in firmware,
-host supervision, manifests, status, and transaction evidence. It binds the
-selected estimator, plant model, numerical preview policy, response policy,
-measurement backend, and snapshot backend by exact path and SHA-256.
+Repository state and passing offline tests do not authorize hardware use. Live
+operation additionally requires an exact frozen bundle, genuine operational-
+path rehearsal, and explicit operator authority.
 
-The component hashes remain explicit provenance; they are not independent
-policy authorities. `host.otis_tools.cx317_bounded_active.load_policy` accepts
-only `CX317_BOUNDED_ACTIVE_I_ONLY_V2`. Older policy files may remain as
-historical evidence but are not current runtime inputs.
+Current HEAD intentionally cannot create a live activation: its retained
+rehearsal is a non-authorizing structural preflight, and the validator rejects
+both that report and unverified claims to a process-level rehearsal. A genuine
+current-only rehearsal producer is a prerequisite for restoring live entry;
+historical campaign rehearsal code is not a compatibility fallback.
 
-Stage-specific rehearsal or suspended-programme policies have no authority to
-replace this root. A future policy change requires a new identified root,
-updated firmware constants, host bindings, manifests, and parity tests in one
-change.
+## Compatibility boundary
 
-`profiles/discipline/cx319_stabilized_tight_deadband_v1.json` is that new
-identified successor candidate. It binds `CX317_BOUNDED_ACTIVE_I_ONLY_V2` as
-its inherited frequency-control root and adds the selected integer-count tight
-band plus the non-actionable relative-phase and hybrid-preview identities. Its
-current status is offline-only: binding and compilation do not authorize a
-flash, rehearsal, command, arm or DAC write. A later authority transition must
-update the programme status and the complete operational bundle together.
-
-Programme authority is operation-scoped in
-`profiles/programme_status_v2.json`. The active programme may authorize
-offline preparation while the historical broad operational-execution guard
-continues to fail closed. New operational tools must request their exact
-operation rather than infer authority from an active programme name.
+Git history and preserved experimental evidence are the compatibility
+mechanism. Current HEAD must not build, load, validate, or silently translate a
+retired programme identity. A historical result is interpreted with the exact
+revision and manifest that created it.

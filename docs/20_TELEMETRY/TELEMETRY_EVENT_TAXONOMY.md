@@ -72,9 +72,9 @@ contextualize, or derive from those facts.
 | `DISCIPLINE_STATE` | state          | Discipline loop state and estimator status                 |
 | `DIAGNOSTIC_EVENT` | diagnostic     | Health, quality, confidence, reason, and control effect    |
 | `DAC_UPDATE`       | control_action | Oscillator steering command or applied control action    |
-| `ACTIVE_TRANSACTION_TIMING` | control_action | Exact counter-domain timing sidecar for an active transaction record |
-| `ACTIVE_HYBRID_DECISION_TIMING` | state | Exact counter-domain timing sidecar for a hybrid decision record |
-| `ACTIVE_HYBRID_MAINTENANCE` | state | Exact CX323 persistence, debt, request, propagation, response, metadata-hold, and fail-static lifecycle evidence |
+| `ACTIVE_TRANSACTION` | control_action | Complete exact counter-domain active transaction record |
+| `ACTIVE_HYBRID_DECISION` | state | Complete exact counter-domain adaptive-hybrid decision record |
+| `ACTIVE_HYBRID_MAINTENANCE` | state | Exact persistence, debt, request, propagation, response, metadata-hold, and fail-static lifecycle evidence |
 | `ENVIRONMENT`      | context        | Temperature, pressure, humidity, voltage, board context  |
 | `DEVICE_STATE`     | provenance     | Boot, firmware, hardware, clock-source, runtime state    |
 | `CONFIG_SNAPSHOT`  | provenance     | Run configuration, selected profile, calibration, schema |
@@ -180,35 +180,31 @@ qualify a D9 waveform. Missing, stale, corrupt, discontinuous, or overflowing
 monitor evidence remains D6-local unless the implementation demonstrably
 compromises the separate D14/D8 path.
 
-### Exact active-control timing sidecars
+### Exact active-control lifecycle records
 
-The long-run D9/D6 engineering profiles encode `ACTIVE_TRANSACTION_TIMING` as
-`AT2` in `active_transactions_v2.csv` and
-`ACTIVE_HYBRID_DECISION_TIMING` as `AH2` in
-`active_hybrid_decisions_v2.csv`. These are not new timing observations and do
-not replace D14 `REF` or D8 `CNT`. They bind each legacy `ACT1` transaction or
-`AHY1` decision one-to-one to a monotonic `rp2040_monotonic_us64` event or
-decision timestamp and repeat the complete run, build, profile, session and
-source-frontier identity needed for causal replay.
+The current programme encodes each complete transaction as `ACT` schema 2 in
+`active_transactions_v2.csv` and each complete controller decision as `AHY`
+schema 2 in `active_hybrid_decisions_v2.csv`. The records carry exact
+`rp2040_monotonic_us64` lifecycle timestamps together with their full content,
+identity and source frontier. There are no separate timing records or
+compatibility products.
 
-The original records remain canonical for transaction and controller content;
-the sidecars are canonical for their exact lifecycle timing in the activated
-24-hour and 72-hour programmes. A verifier must reject a missing, duplicate,
-reordered or identity-inconsistent join and must not substitute the legacy
-whole-second display fields for cadence, response-reserve, right-censor,
+These are not new timing observations and do not replace D14 `REF` or D8
+`CNT`. A verifier must reject missing, malformed, backward, duplicate or
+identity-inconsistent ACT/AHY records and must not substitute the retained
+whole-second policy fields for cadence, response-reserve, right-censor,
 endpoint or terminal decisions.
 
-### CX323 active-hybrid maintenance evidence
+### Adaptive-hybrid maintenance evidence
 
 `ACTIVE_HYBRID_MAINTENANCE` is encoded as `AHM` under
 `active_hybrid_maintenance_v1`. It is non-actionable state evidence for
-`CX323_PHASE_PRIORITY_PERSISTENT_MAINTENANCE_V1`; it is not a raw timing
-observation and does not replace D14 `REF`, D8 `CNT`, `AHY`, `AH2`, `ACT`, or
-`AT2`.
+`OTIS_ADAPTIVE_HYBRID_REGULATION_V1`; it is not a raw timing observation and
+does not replace D14 `REF`, D8 `CNT`, `AHY`, or `ACT`.
 
-Every CX323 decision has exactly one AHM decision row joined to its exact AHY
-content row and AH2 `rp2040_monotonic_us64` timing row. Request-producing
-decisions additionally join the exact ACT/AT2 request record. Separate AHM
+Every adaptive-hybrid decision has exactly one AHM decision row joined to its
+complete exact AHY row. Request-producing decisions additionally join the
+complete exact ACT request record. Separate AHM
 lifecycle events record unaccepted request rejection or expiry, application
 plus first-dependent-consumer propagation, response completion, recoverable
 GNSS-metadata hold and causal requalification, and a fail-static latch. An
@@ -224,14 +220,14 @@ unchanged state.
 
 Each row also declares its complete firmware evidence-burst sequence, ordinal,
 and cardinality. The producer must reserve capacity for the whole causal burst
-before emitting its first AHY/AH2/AHM or ACT/AT2/AHM member. A partial burst is
+before emitting its first AHY/AHM or ACT/AHM member. A partial burst is
 a maintenance-evidence fault; the row-level contract cannot by itself prove
 cross-core queue admission, which remains a native integration and rehearsal
 requirement.
 
 The exact fields, event cardinalities, identity joins, debt transitions, GNSS
 hold semantics, and verifier obligations are frozen in
-[`CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md`](../50_SOFTWARE/CX323_ACTIVE_HYBRID_MAINTENANCE_EVIDENCE_CONTRACT.md).
+[`active_hybrid_maintenance_v1.csv.md`](../../data_contracts/active_hybrid_maintenance_v1.csv.md).
 
 ---
 
@@ -256,10 +252,8 @@ Avoid a single ambiguous confidence field. Observation validity, source quality,
 estimate uncertainty, model applicability, control eligibility, and confidence
 in a diagnosis are distinct concepts.
 
-The additive draft CSV contract is documented in
-`data_contracts/diagnostics_v1.csv.md`. Existing `health_v1` / `STS` rows
-remain valid low-level status and migration inputs; draft `DIAG` rows are the
-first-class diagnostic findings used by replay tests.
+The current wire representation is `health_v1` / `STS`. Richer findings are
+offline derived products; there is no separate `DIAG` wire contract.
 
 ### PPS REF/SNP association taxonomy
 

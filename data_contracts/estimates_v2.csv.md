@@ -2,10 +2,9 @@
 
 ## Status and scope
 
-Normative Phase 4 estimator contract for deterministic host replay and live
-observe-only firmware. Version 2 corrects the version-1 field that labelled
-sample dispersion as frequency uncertainty. Historical version-1 rows retain
-their documented meaning and are never silently reinterpreted.
+Normative current estimator contract for deterministic host replay and live
+frequency estimation. Sample dispersion is distinct from frequency
+uncertainty; the current reader accepts only this version-2 layout.
 
 `EST` records are derived metrology products. They cannot authorize or perform
 actuation.
@@ -59,5 +58,5 @@ eligibility fields except `frequency_uncertainty_hz`, and adds:
 | `correlation_policy` | Versioned treatment of component correlation. |
 | `uncertainty_model_ref` | Exact uncertainty-model/configuration identity or explicit unavailable reference. |
 
-All other fields retain their version-1 definitions. `drift_enabled=false`,
-`preview_only=true`, and the observe-only control boundary remain unchanged.
+`drift_enabled=false` and `preview_only=true` identify estimator output as
+zero-authority evidence. `EST` records cannot request or authorize actuation.

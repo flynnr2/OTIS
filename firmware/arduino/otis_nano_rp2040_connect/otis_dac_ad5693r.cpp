@@ -1,9 +1,7 @@
 #include "otis_dac_ad5693r.h"
 
-#if OTIS_ENABLE_DAC_AD5693R
 #include <Arduino.h>
 #include <Wire.h>
-#endif
 
 #include "otis_i2c_bus.h"
 
@@ -41,7 +39,6 @@ void fill_status(OtisDacAd5693rStatus *out) {
 }  // namespace
 
 bool otis_dac_ad5693r_begin(void) {
-#if OTIS_ENABLE_DAC_AD5693R
   if (!otis_i2c_bus_begin()) {
     dac_initialized = false;
     dac_last_write_ok = false;
@@ -57,16 +54,9 @@ bool otis_dac_ad5693r_begin(void) {
   dac_last_write_ok = false;
   dac_applied_code_known = false;
   return dac_initialized;
-#else
-  dac_initialized = false;
-  dac_last_write_ok = false;
-  dac_applied_code_known = false;
-  return false;
-#endif
 }
 
 bool otis_dac_ad5693r_reset(void) {
-#if OTIS_ENABLE_DAC_AD5693R
   Wire.beginTransmission(0x00);
   Wire.write(0x06);
   uint8_t result = Wire.endTransmission();
@@ -78,11 +68,6 @@ bool otis_dac_ad5693r_reset(void) {
   // explicit code write.  Never infer an applied code from it.
   dac_applied_code_known = false;
   return dac_last_write_ok;
-#else
-  dac_last_write_ok = false;
-  dac_applied_code_known = false;
-  return false;
-#endif
 }
 
 uint16_t otis_dac_ad5693r_clamp_code(uint16_t code) {
@@ -99,7 +84,6 @@ bool otis_dac_ad5693r_set_raw(uint16_t code) {
   dac_last_requested_code = code;
   uint16_t clamped_code = otis_dac_ad5693r_clamp_code(code);
 
-#if OTIS_ENABLE_DAC_AD5693R
   if (!dac_initialized) {
     dac_last_write_ok = false;
     return false;
@@ -116,20 +100,10 @@ bool otis_dac_ad5693r_set_raw(uint16_t code) {
     dac_applied_code_known = true;
   }
   return dac_last_write_ok;
-#else
-  (void)clamped_code;
-  dac_last_write_ok = false;
-  dac_applied_code_known = false;
-  return false;
-#endif
 }
 
 bool otis_dac_ad5693r_is_enabled(void) {
-#if OTIS_ENABLE_DAC_AD5693R
   return true;
-#else
-  return false;
-#endif
 }
 
 bool otis_dac_ad5693r_is_initialized(void) {

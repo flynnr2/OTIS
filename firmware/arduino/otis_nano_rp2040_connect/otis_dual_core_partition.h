@@ -8,85 +8,84 @@
 constexpr uint32_t OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
 constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
-// A selected CX323 boundary publishes three estimator/deadband frames before
-// active control and one control frame after it.  The largest active-control
-// request burst is five frames; a response boundary instead publishes a
-// three-frame decision burst followed by a three-frame response burst.  Core
+// A selected ADAPTIVE_HYBRID boundary publishes three estimator/deadband frames before
+// active control and one control frame after it.  The active-control request
+// burst is three frames; a response boundary instead publishes a two-frame
+// decision burst followed by a two-frame response burst.  Core
 // 1 produces each complete boundary synchronously, so the evidence queue must
 // absorb the exact largest producer frontier without relying on concurrent
 // Core 0 drainage.
-constexpr uint32_t OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT = 3u;
-constexpr uint32_t OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT = 1u;
-constexpr uint32_t OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT = 5u;
-constexpr uint32_t OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT = 3u;
-constexpr uint32_t OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT = 3u;
-constexpr uint32_t OTIS_CX323_FAIL_TRANSITION_EVIDENCE_COUNT = 1u;
-constexpr uint32_t OTIS_CX323_REQUEST_EVIDENCE_FRONTIER =
-    OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT +
-    OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT +
-    OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT;
-constexpr uint32_t OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER =
-    OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT +
-    OTIS_CX323_RESPONSE_DECISION_EVIDENCE_COUNT +
-    OTIS_CX323_RESPONSE_COMPLETION_EVIDENCE_COUNT +
-    OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT;
-constexpr uint32_t OTIS_CX323_REQUEST_FAIL_EVIDENCE_FRONTIER =
-    OTIS_CX323_SELECTED_EVIDENCE_PREFIX_COUNT +
-    OTIS_CX323_REQUEST_DECISION_EVIDENCE_COUNT +
-    OTIS_CX323_FAIL_TRANSITION_EVIDENCE_COUNT +
-    OTIS_CX323_SELECTED_EVIDENCE_SUFFIX_COUNT;
-constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 10u;
-static_assert(OTIS_CX323_REQUEST_EVIDENCE_FRONTIER == 9u,
-              "CX323 selected request frontier must remain exact");
-static_assert(OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER == 10u,
-              "CX323 selected response frontier must remain exact");
-static_assert(OTIS_CX323_REQUEST_FAIL_EVIDENCE_FRONTIER == 10u,
-              "CX323 selected request/fail frontier must remain exact");
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_PREFIX_COUNT = 3u;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_SUFFIX_COUNT = 1u;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_REQUEST_DECISION_EVIDENCE_COUNT = 3u;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_RESPONSE_DECISION_EVIDENCE_COUNT = 2u;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_RESPONSE_COMPLETION_EVIDENCE_COUNT = 2u;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_FAIL_TRANSITION_EVIDENCE_COUNT = 1u;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_REQUEST_EVIDENCE_FRONTIER =
+    OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_PREFIX_COUNT +
+    OTIS_ADAPTIVE_HYBRID_REQUEST_DECISION_EVIDENCE_COUNT +
+    OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_SUFFIX_COUNT;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_RESPONSE_EVIDENCE_FRONTIER =
+    OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_PREFIX_COUNT +
+    OTIS_ADAPTIVE_HYBRID_RESPONSE_DECISION_EVIDENCE_COUNT +
+    OTIS_ADAPTIVE_HYBRID_RESPONSE_COMPLETION_EVIDENCE_COUNT +
+    OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_SUFFIX_COUNT;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_REQUEST_FAIL_EVIDENCE_FRONTIER =
+    OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_PREFIX_COUNT +
+    OTIS_ADAPTIVE_HYBRID_REQUEST_DECISION_EVIDENCE_COUNT +
+    OTIS_ADAPTIVE_HYBRID_FAIL_TRANSITION_EVIDENCE_COUNT +
+    OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_SUFFIX_COUNT;
+constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH = 8u;
+static_assert(OTIS_ADAPTIVE_HYBRID_REQUEST_EVIDENCE_FRONTIER == 7u,
+              "ADAPTIVE_HYBRID selected request frontier must remain exact");
+static_assert(OTIS_ADAPTIVE_HYBRID_RESPONSE_EVIDENCE_FRONTIER == 8u,
+              "ADAPTIVE_HYBRID selected response frontier must remain exact");
+static_assert(OTIS_ADAPTIVE_HYBRID_REQUEST_FAIL_EVIDENCE_FRONTIER == 8u,
+              "ADAPTIVE_HYBRID selected request/fail frontier must remain exact");
 static_assert(OTIS_EVIDENCE_QUEUE_DEPTH >=
-                  OTIS_CX323_REQUEST_EVIDENCE_FRONTIER,
-              "evidence queue must absorb one complete CX323 request boundary");
+                  OTIS_ADAPTIVE_HYBRID_REQUEST_EVIDENCE_FRONTIER,
+              "evidence queue must absorb one complete ADAPTIVE_HYBRID request boundary");
 static_assert(OTIS_EVIDENCE_QUEUE_DEPTH >=
-                  OTIS_CX323_RESPONSE_EVIDENCE_FRONTIER,
-              "evidence queue must absorb one complete CX323 response boundary");
+                  OTIS_ADAPTIVE_HYBRID_RESPONSE_EVIDENCE_FRONTIER,
+              "evidence queue must absorb one complete ADAPTIVE_HYBRID response boundary");
 static_assert(OTIS_EVIDENCE_QUEUE_DEPTH >=
-                  OTIS_CX323_REQUEST_FAIL_EVIDENCE_FRONTIER,
-              "evidence queue must absorb a CX323 request/fail boundary");
+                  OTIS_ADAPTIVE_HYBRID_REQUEST_FAIL_EVIDENCE_FRONTIER,
+              "evidence queue must absorb a ADAPTIVE_HYBRID request/fail boundary");
 constexpr uint32_t OTIS_PHASE_PREVIEW_QUEUE_DEPTH = 32u;
 constexpr uint32_t OTIS_MONITOR_OBSERVATION_QUEUE_DEPTH = 16u;
-// The non-active portion of Stage 7 timing health reaches 67 telemetry
-// messages. ACTIVE status has a maximum 63-field vocabulary across the base,
-// sustained-hybrid, and CX321 contracts, plus three complete-generation
-// envelope records in both the direct and cross-core publishers. Reserve the
-// union because the visitor is shared and compile-time profile fields must not
-// make admission smaller than the burst it actually emits. A periodic health
+// The non-regulation portion of periodic timing health reaches 67 telemetry
+// messages. The sole current ADAPTIVE_HYBRID status contract has exactly 45
+// fields plus three complete-generation envelope records in both the direct
+// and cross-core publishers. Reserve the
+// union because the visitor is shared and message-kind fields must not make
+// admission smaller than the burst it actually emits. A periodic health
 // burst and one ACTIVE? response can align while Core 0 is occupied with
 // serial transport.
-constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT = 63u;
-constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT = 3u;
-constexpr uint32_t OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST =
-    OTIS_CX317_ACTIVE_STATUS_FIELD_COUNT +
-    OTIS_CX317_ACTIVE_STATUS_ENVELOPE_COUNT;
+constexpr uint32_t OTIS_REGULATION_STATUS_FIELD_COUNT = 45u;
+constexpr uint32_t OTIS_REGULATION_STATUS_ENVELOPE_COUNT = 3u;
+constexpr uint32_t OTIS_REGULATION_STATUS_TELEMETRY_BURST =
+    OTIS_REGULATION_STATUS_FIELD_COUNT +
+    OTIS_REGULATION_STATUS_ENVELOPE_COUNT;
 constexpr uint32_t OTIS_FORWARDED_MONITOR_HEALTH_TELEMETRY_BURST = 13u;
 constexpr uint32_t OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST =
     67u + OTIS_FORWARDED_MONITOR_HEALTH_TELEMETRY_BURST;
 constexpr uint32_t OTIS_TIMING_HEALTH_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +
-    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
+    OTIS_REGULATION_STATUS_TELEMETRY_BURST;
 constexpr uint32_t OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_TELEMETRY_BURST +
-    OTIS_CX317_ACTIVE_STATUS_TELEMETRY_BURST;
-static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 212u,
-              "Stage 7 health plus one ACTIVE? response must remain exact");
-// Retain the already-proven conservative split-boot capacity after removing
-// the obsolete D10 witness records; a smaller exact startup count is not
-// needed to protect the finite queue.
+    OTIS_REGULATION_STATUS_TELEMETRY_BURST;
+static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 176u,
+              "periodic health plus one ACTIVE? response must remain exact");
+// Retain conservative split-boot capacity; a smaller exact startup count is
+// not needed to protect the finite queue.
 constexpr uint32_t OTIS_MAXIMUM_BOOT_TELEMETRY_BURST = 169u;
-constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 212u;
+constexpr uint32_t OTIS_TELEMETRY_QUEUE_DEPTH = 176u;
 static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >=
                   OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST,
               "telemetry queue must absorb concurrent health and ACTIVE? bursts");
 static_assert(OTIS_TELEMETRY_QUEUE_DEPTH >= OTIS_MAXIMUM_BOOT_TELEMETRY_BURST,
-              "telemetry queue must absorb the Stage 4 split-boot burst");
+              "telemetry queue must absorb the split-boot burst");
 
 enum class OtisPartitionFault : uint8_t {
   None,
@@ -111,16 +110,15 @@ enum class OtisTimingProgressPhase : uint8_t {
   Reset,
   LoopEnter,
   ServiceInput,
-  CaptureBackend,
   BoundaryDrain,
   CaptureDrain,
   GateService,
-  Cx317EstimatePrepare,
-  Cx317EstimateFormat,
-  Cx317EstimatePublish,
-  Cx317ActivePrepare,
-  Cx317ActiveFormat,
-  Cx317ActivePublish,
+  FrequencyEstimatePrepare,
+  FrequencyEstimateFormat,
+  FrequencyEstimatePublish,
+  AdaptiveHybridPrepare,
+  AdaptiveHybridFormat,
+  AdaptiveHybridPublish,
   PhasePreview,
   TimingHealth,
   LoopIdle,
@@ -256,7 +254,7 @@ bool otis_dual_core_publish_boot_telemetry(
     const OtisTelemetryMessage *message);
 bool otis_dual_core_take_telemetry(OtisTelemetryMessage *message);
 
-// Core 1 producer / Core 0 consumer. Numerical Stage 4 evidence is
+// Core 1 producer / Core 0 consumer. Numerical phase-preview evidence is
 // non-droppable and is formatted only after it crosses this value queue.
 bool otis_dual_core_publish_phase_preview(
     const OtisPhasePreviewRecordMessage *message);

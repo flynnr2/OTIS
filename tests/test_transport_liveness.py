@@ -44,10 +44,7 @@ def test_obstructed_frame_still_services_rx_and_fault_drains() -> None:
         encoding="utf-8"
     )
     loop = sketch[sketch.index("void loop()") :]
-    dual = loop[
-        loop.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
-        loop.index("// Capture service always runs first.")
-    ]
+    dual = loop
     first_observe = dual.index("bool transport_live = otis_transport_liveness_observe(")
     service = dual.index("frame_active = service_dual_core_serial_frame_transport();")
     second_observe = dual.index(
@@ -70,10 +67,7 @@ def test_absent_carrier_abandons_only_outbound_framing_before_liveness() -> None
         encoding="utf-8"
     )
     loop = sketch[sketch.index("void loop()") :]
-    dual = loop[
-        loop.index("#if OTIS_ENABLE_DUAL_CORE_PARTITION") :
-        loop.index("// Capture service always runs first.")
-    ]
+    dual = loop
     carrier = dual.index("if (!otis_transport_ready())")
     liveness = dual.index("bool transport_live = otis_transport_liveness_observe(")
     assert carrier < liveness
@@ -88,7 +82,6 @@ def test_absent_carrier_abandons_only_outbound_framing_before_liveness() -> None
         sketch.index("void publish_dual_core_association_loss_decision(")
     ]
     assert "dual_core_evidence_transport_active = false;" in abandon
-    assert "otis_observe_only_discipline_live_abandon_transport();" in abandon
     assert "otis_phase_preview_transport_abandon_active_frame()" in abandon
     assert "otis_serial_frame_arbiter_reset(" in abandon
     assert "config_query_provenance_emitted = false;" in abandon

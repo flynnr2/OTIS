@@ -18,9 +18,9 @@ constexpr uint32_t kNominalFrequencyHz = 10000000u;
 constexpr uint32_t kDriveStrengthMa = 2u;
 constexpr gpio_drive_strength kDriveStrength = GPIO_DRIVE_STRENGTH_2MA;
 constexpr gpio_slew_rate kSlewRate = GPIO_SLEW_RATE_SLOW;
-constexpr char kContractId[] = "OTIS_D9_D6_READINESS_CONTRACT_V1";
+constexpr char kContractId[] = OTIS_BUILD_FORWARDED_CLOCK_CONTRACT_ID;
 constexpr char kContractSha256[] =
-    "a6a08d14a03a87b5e0308880c64799baf2e7afecc23cad22d1532f297960de4d";
+    OTIS_BUILD_FORWARDED_CLOCK_CONTRACT_SHA256;
 constexpr uint32_t kGpout0CtrlAuxsrcMask = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_BITS;
 constexpr uint32_t kGpout0CtrlAuxsrcGpin0 =
     CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0;
@@ -86,20 +86,6 @@ void disable_output_after_contradiction(const char *reason) {
 }  // namespace
 
 bool otis_forwarded_clock_output_begin(void) {
-#if !OTIS_ENABLE_FORWARDED_D9_OUTPUT
-  clock_stop(clk_gpout0);
-  gpio_init(OTIS_GPIO_FORWARDED_CLOCK_OUTPUT);
-  gpio_set_dir(OTIS_GPIO_FORWARDED_CLOCK_OUTPUT, false);
-  gpio_disable_pulls(OTIS_GPIO_FORWARDED_CLOCK_OUTPUT);
-  output_status.selected = false;
-  output_status.configured = false;
-  output_status.readback_valid = false;
-  output_status.valid = false;
-  output_status.destination_gpio_function =
-      gpio_get_function(OTIS_GPIO_FORWARDED_CLOCK_OUTPUT);
-  output_status.reason = "disabled";
-  return true;
-#else
   output_status.selected = true;
   output_status.reason = "invalid_or_transitioning";
   // Keep D9 input/high impedance until the fixed source and divider have been
@@ -113,7 +99,7 @@ bool otis_forwarded_clock_output_begin(void) {
   gpio_set_outover(OTIS_GPIO_FORWARDED_CLOCK_OUTPUT, GPIO_OVERRIDE_NORMAL);
 
   // PIO sees the pad independently of its GPIO function. This is deliberately
-  // the sole post-PIO GPIO20 mux write in an output-enabled profile.
+  // the sole post-PIO GPIO20 mux write in an output-enabled image.
   gpio_set_function(OTIS_GPIO_OSC_OBSERVATION, GPIO_FUNC_GPCK);
   clock_gpio_init_int_frac16(OTIS_GPIO_FORWARDED_CLOCK_OUTPUT,
                              kGpout0CtrlAuxsrcGpin0, kIntegerDivider,
@@ -129,7 +115,6 @@ bool otis_forwarded_clock_output_begin(void) {
   output_status.first_valid_ticks = otis_monotonic_us32_now();
   output_status.reason = "configured_10mhz_forwarded_unqualified";
   return output_status.valid;
-#endif
 }
 
 void otis_forwarded_clock_output_get_status(OtisForwardedClockOutputStatus *out) {

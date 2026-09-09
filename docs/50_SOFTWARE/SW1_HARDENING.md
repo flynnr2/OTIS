@@ -1,5 +1,9 @@
 # SW1 Hardening Before PIO/DMA
 
+> Historical engineering note. SW1 profiles and commands are not present on
+> current HEAD. Reproduce this work only from its recorded Git revision; the
+> command examples below intentionally describe that historical checkout.
+
 SW1 is the first H0 capture firmware stage. It proves that the Arduino Nano
 RP2040 Connect firmware can emit parseable OTIS telemetry, that the host can
 split and validate run artifacts, and that GPS PPS / TCXO observe runs can be

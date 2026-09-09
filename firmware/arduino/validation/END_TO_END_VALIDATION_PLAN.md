@@ -1,41 +1,50 @@
-# Current End-to-End Validation Plan
+# Fixed-Image End-to-End Validation Plan
 
-## Scope
+This plan covers the current `adaptive_hybrid_regulation` operating path only.
+It does not provide compatibility validation for historical programmes.
 
-This plan covers only `CX319_EVIDENCE_EPOCH_1`. It is an offline verification
-plan and grants no hardware authority.
+## No-hardware release gate
 
-## Fast
+Run:
 
-Run current contract, authority, source-guard, replay-policy, time-domain, and
-range-programme tests. Smoke-build the lower and range-map profiles.
+```bash
+.venv/bin/python firmware/arduino/validation/scripts/run_no_hardware_checks.py --tier release
+```
 
-## Campaign
+The release gate must establish:
 
-Run the current capture and serial-owner topology, bounded command and timeout
-behavior, independent abort under obstruction, owner-preserving rotation,
-transaction acknowledgement, deterministic replay/native parity, CX319
-analyzers, range-spanning operational path, domain-aware rollover consumers,
-evidence snapshot, crash-recoverable finalization, sealing, and registration
-simulations. Build all three supported profiles.
+1. one fixed build manifest and one fixed-image builder;
+2. no retired campaign identity, selector, executable, or host import path;
+3. exact firmware, policy, estimator, status-contract, board, core, toolchain,
+   source, binary, and resource identity;
+4. D14 reference authority and D8 count/control authority;
+5. GNSS qualification plus bounded recoverable metadata hold;
+6. D9 forwarding and D6 fail-local diagnostics;
+7. the reserved D10/channel 0 external-event contract, host ingest/storage/replay,
+   and zero authority, without claiming an unimplemented isolated backend;
+8. controller Python/native parity and exact transaction/evidence formats;
+9. singular serial ownership, bounded command waits, independent abort delivery,
+   and producer-to-first-consumer identity propagation; and
+10. bundle, proposal, structural preflight, run-manifest, supervisor, analyzer,
+    and evidence-sealing interoperability, plus rejection of activation without
+    a genuine process-level rehearsal result.
 
-## Release
+## Operational-path rehearsal
 
-Run the complete current Python/native suite. Build all three supported profiles and
-all current expected-failure guards. Confirm the firmware resource budget,
-deployed wire-row contracts, authority boundaries, current programme status,
-and fail-static paths.
+Current HEAD does not yet provide this rehearsal producer and therefore keeps
+live activation fail-closed. Before bench entry, use the exact frozen current
+bundle and exercise the real host process topology with deterministic or
+accelerated evidence. Rehearsal
+must cover progressive commands and acknowledgements, the first dependent
+decision, transport obstruction, priority abort delivery, serial-owner
+handoff, clean stop, analyzer replay, and evidence sealing.
 
-## Bench
+The rehearsal does not prove physical capture, cross-core electrical behavior,
+or plant response. Those remaining boundaries belong to a separately
+authorized finite bench run.
 
-A separate exact-bundle operational-path rehearsal and authorized finite
-physical qualification are required before any live campaign. They must use the
-same operationally significant bundle and preserve one serial owner, bounded
-drainage, independent abort, exact acknowledgements, analyzer, seal, and
-registration path.
+## Historical evidence
 
-## Historical
-
-Current HEAD does not validate historical formats or profiles. Use the exact
-recorded Git revision in a separate checkout. Historical results are not part
-of a current release claim.
+Validate a historical package with the exact revision and instructions bound
+by that package. Current HEAD deliberately contains no historical build or
+execution surface.

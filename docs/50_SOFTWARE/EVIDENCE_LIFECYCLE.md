@@ -2,15 +2,15 @@
 
 ## Current policy
 
-Current HEAD reads only `CX319_EVIDENCE_EPOCH_1` packages. Every non-template
-package requires canonical `run_manifest.json`, `raw/serial.log`, and immutable
-`evidence_manifest.json`; see
-`docs/50_SOFTWARE/CX319_EVIDENCE_EPOCH_1.md`. Historical packages remain
-immutable and are interpreted with their recorded source revision.
+Current HEAD creates and reads only the `adaptive_hybrid_regulation` package
+contract. Every non-template package requires canonical `run_manifest.json`,
+`raw/serial.log`, and immutable `evidence_manifest.json`. Historical packages
+remain immutable and are interpreted only with their recorded source revision;
+current HEAD deliberately provides no compatibility reader.
 
 Raw OTIS evidence remains outside Git. Each retained package is registered in
 the external content-addressed `otis_evidence_index_v1` with its content hash,
-per-file manifest, storage location, source revision, build identity, profile
+per-file manifest, storage location, source revision, build identity, image
 identity, attempt classification, result or failure reason, and analyzer
 identity.
 
@@ -33,6 +33,8 @@ Every package uses one explicit classification:
 
 - `successful_rehearsal`
 - `failed_rehearsal`
+- `successful_qualification`
+- `failed_qualification`
 - `completed_campaign`
 - `interrupted_campaign`
 - `diagnostic`
@@ -41,6 +43,19 @@ Every package uses one explicit classification:
 Failure or interruption is evidence, not absence. The result field records the
 concrete result or failure reason rather than implying that an unsealed attempt
 passed.
+
+The success-bearing classifications `successful_rehearsal`,
+`successful_qualification`, and `completed_campaign` are fail-closed. Direct
+registration and crash recovery require the exact current run manifest, a
+complete and valid immutable evidence snapshot, a passing content-hashed
+analyzer seal, and agreement between the package's source, build, image,
+analyzer, terminal, and primary-decision identities and the proposed index
+metadata. The current repository has no operational-rehearsal producer or seal,
+so `successful_rehearsal` cannot currently be registered.
+
+Failed, interrupted, diagnostic, and historical classifications remain the
+explicit raw-inventory path. They preserve content and supplied provenance but
+do not claim that current package validation or analysis passed.
 
 ## Mothball gate
 
@@ -88,10 +103,10 @@ and the tracked summary and content identity normally remain permanently.
 .venv/bin/python -m host.otis_tools.evidence_index register /absolute/run/path \
   --source-revision GIT_REVISION \
   --build-identity FIRMWARE_MANIFEST_SHA256 \
-  --profile-identity PROFILE_ID \
-  --attempt-classification successful_rehearsal \
-  --result-or-failure-reason "all exact-bundle rehearsal gates passed" \
-  --analyzer-identity ANALYZER_SHA256
+  --image-identity adaptive_hybrid_regulation \
+  --attempt-classification diagnostic \
+  --result-or-failure-reason "retained diagnostic evidence" \
+  --analyzer-identity PRODUCING_TOOL_SHA256
 ```
 
 The external index is mutable stewardship metadata; each raw package remains
@@ -100,7 +115,7 @@ identity and must be registered as a new package.
 
 ## Crash-recoverable finalization
 
-Current G1/G2 runners create an external
+The current adaptive-regulation runner creates an external
 `otis_evidence_finalization_v1` journal before finalization. It records the
 ordered phases `capture_closed`, `completion`, `snapshot`, `analysis`, `seal`,
 and `registration`, plus an immutable registration intent and expected sealed
@@ -130,8 +145,9 @@ the package:
 
 Recovery requires `COMPLETE`, `evidence_manifest.json`, the declared seal, and
 an exact match to the content identity recorded before the failed registration.
-It then performs the same idempotent locked registration. A mutation is
-rejected as a different package.
+It then performs the same package, seal, metadata, and idempotent locked
+registration validation as direct registration. A mutation or unsupported
+success claim is rejected without being indexed as a successful package.
 
 ## Host-only reanalysis and supersession
 

@@ -84,7 +84,7 @@ def test_registry_preflight_precedes_safe_mode_and_hardware_mode_setup() -> None
     assert "otis_resource_registry_begin()" in source[early_start:early_end]
 
     run_mode_start = source.index("void boot_phase_run_mode(void)")
-    run_mode_end = source.index("void service_loopback_output(void)", run_mode_start)
+    run_mode_end = source.index("\nvoid ", run_mode_start + 1)
     run_mode = source[run_mode_start:run_mode_end]
     assert "setup_mode();" not in run_mode
     assert run_mode.index("otis_boot_capability_mark_run_mode(") < run_mode.index(
@@ -109,24 +109,21 @@ def test_registry_preflight_precedes_safe_mode_and_hardware_mode_setup() -> None
 
 
 def test_pio_allocations_are_bound_to_the_registry() -> None:
-    edge_source = (FIRMWARE / "otis_capture_pio.cpp").read_text(encoding="utf-8")
-    count_source = (FIRMWARE / "otis_count_observation.cpp").read_text(
+    snapshot_source = (FIRMWARE / "otis_pps_snapshot_backend.cpp").read_text(
         encoding="utf-8"
     )
 
-    for source, owner in (
-        (edge_source, "OTIS_OWNER_EDGE_CAPTURE"),
-        (count_source, "OTIS_OWNER_COUNT_OBSERVATION"),
-    ):
-        claim_index = source.index("pio_claim_unused_sm")
-        bind_sm_index = source.index(
-            "otis_resource_registry_bind_pio_state_machine", claim_index
-        )
-        bind_program_index = source.index(
-            "otis_resource_registry_bind_pio_program", bind_sm_index
-        )
-        assert claim_index < bind_sm_index < bind_program_index
-        assert owner in source[bind_sm_index:bind_program_index + 300]
+    claim_index = snapshot_source.index("pio_claim_unused_sm")
+    bind_sm_index = snapshot_source.index(
+        "otis_resource_registry_bind_pio_state_machine", claim_index
+    )
+    bind_program_index = snapshot_source.index(
+        "otis_resource_registry_bind_pio_program", bind_sm_index
+    )
+    assert claim_index < bind_sm_index < bind_program_index
+    assert "OTIS_OWNER_COUNT_OBSERVATION" in snapshot_source[
+        bind_sm_index : bind_program_index + 300
+    ]
 
 
 def test_i2c_controller_has_one_initializer() -> None:
@@ -166,18 +163,25 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
     assert "otis_monotonic_us32_now()" not in emit_body
 
     drain_start = sketch_source.index("void drain_pps_count_boundary_ring(")
-    drain_end = sketch_source.index("void emit_common_boot_status(", drain_start)
+    drain_end = sketch_source.index("void emit_build_provenance_status(", drain_start)
     drain_body = sketch_source[drain_start:drain_end]
     assert "otis_pps_snapshot_backend_pop" in drain_body
-    assert "otis_emit_pps_snapshot" in drain_body
+    assert "snapshot_message.kind = OtisObservationMessageKind::PpsSnapshot" in drain_body
+    assert "otis_dual_core_publish_observation(&snapshot_message)" in drain_body
     assert "another_reference_waiting" in drain_body
+
+    consumer_start = sketch_source.index("void service_dual_core_outputs(void)")
+    consumer_end = sketch_source.index(
+        "void service_dual_core_evidence_transport", consumer_start
+    )
+    consumer = sketch_source[consumer_start:consumer_end]
+    assert "otis_dual_core_take_observation(&observation)" in consumer
+    assert "OtisObservationMessageKind::PpsSnapshot" in consumer
+    assert "otis_emit_pps_snapshot(" in consumer
 
     loop1 = sketch_source[
         sketch_source.index("void loop1()") : sketch_source.index("void loop()")
     ]
-    assert loop1.index("otis_capture_backend_service()") < loop1.index(
-        "service_tcxo_gate()"
-    )
     assert loop1.index("drain_pps_count_boundary_ring()") < loop1.index(
         "service_tcxo_gate()"
     )
@@ -185,18 +189,6 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
         "service_tcxo_gate()"
     )
     assert "service_serial_commands()" not in loop1
-
-    loop_body = sketch_source[sketch_source.index("void loop()") :]
-    legacy = loop_body[loop_body.index("// Capture service always runs first") :]
-    assert legacy.index("otis_capture_backend_service()") < legacy.index(
-        "service_tcxo_gate()"
-    )
-    assert legacy.index("drain_pps_count_boundary_ring()") < legacy.index(
-        "service_serial_commands()"
-    )
-    assert legacy.index("drain_capture_ring()") < legacy.index(
-        "service_tcxo_gate()"
-    )
 
     reference_handler_start = count_source.index(
         "bool otis_count_observation_on_pps_boundary("
@@ -216,11 +208,11 @@ def test_irq_constructs_one_captured_event_for_diagnostics_and_ref() -> None:
 
     handler_start = irq_source.index("void handle_capture_edge(void)")
     handler_end = irq_source.index(
-        "void handle_tcxo_observation_edge(void)", handler_start
+        "}  // namespace", handler_start
     )
     handler = irq_source[handler_start:handler_end]
     assert handler.count("otis_monotonic_us32_now_from_isr()") == 1
-    assert handler.count("gpio_get(capture_gpio)") == 1
+    assert handler.count("gpio_get(OTIS_PIN_PPS_REFERENCE)") == 1
     assert "const OtisCapturedEdge captured_event" in handler
     assert "pps_count_boundary_handler" not in handler
     assert "pio_sm_" not in handler

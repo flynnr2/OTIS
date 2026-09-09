@@ -229,28 +229,24 @@ const char *otis_boot_capability_name(OtisBootCapability capability) {
       return "timebase";
     case OtisBootCapability::RingBuffers:
       return "ring_buffers";
-    case OtisBootCapability::SparseCapture:
-      return "sparse_capture";
     case OtisBootCapability::PpsCapture:
       return "pps_capture";
-    case OtisBootCapability::CountBackend:
-      return "count_backend";
+    case OtisBootCapability::OscillatorCount:
+      return "oscillator_count";
     case OtisBootCapability::ForwardedOutput:
       return "forwarded_clock_output";
     case OtisBootCapability::ForwardedMonitor:
       return "forwarded_clock_monitor";
-    case OtisBootCapability::PseudoPpsGenerator:
-      return "pseudo_pps_generator";
     case OtisBootCapability::Dac:
       return "dac";
     case OtisBootCapability::Sensors:
       return "sensors";
     case OtisBootCapability::GnssReceiver:
       return "gnss_receiver";
-    case OtisBootCapability::Phase4Preview:
-      return "phase4_preview";
-    case OtisBootCapability::PhasePreview:
-      return "cx318_preview";
+    case OtisBootCapability::FrequencyRegulation:
+      return "frequency_regulation";
+    case OtisBootCapability::PhaseFrequencyEstimate:
+      return "phase_frequency_estimate";
     case OtisBootCapability::Transport:
       return "transport";
     case OtisBootCapability::HostConnection:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import pytest
 
@@ -14,16 +15,54 @@ from host.otis_tools.evidence_finalization import (
     set_registration_intent,
 )
 from host.otis_tools.evidence_index import load_index, package_identity
+from host.otis_tools.evidence import (
+    FIRMWARE_PROVENANCE_FORMAT,
+    FIRMWARE_PROVENANCE_STATUS_FIELDS,
+)
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _registration() -> dict[str, str]:
     return {
         "source_revision": "revision",
         "build_identity": "build",
-        "profile_identity": "profile",
-        "attempt_classification": "completed_campaign",
-        "result_or_failure_reason": "primary acquisition verdict: passed",
+        "image_identity": "adaptive_hybrid_regulation",
+        "attempt_classification": "diagnostic",
+        "result_or_failure_reason": "retained diagnostic package",
         "analyzer_identity": "analyzer",
+    }
+
+
+def _completed_registration() -> dict[str, str]:
+    return {
+        **_registration(),
+        "attempt_classification": "completed_campaign",
+        "result_or_failure_reason": "adaptive_hybrid_qualified_complete",
+    }
+
+
+def test_evidence_provenance_uses_fixed_image_identity_without_profile_artifacts() -> None:
+    assert FIRMWARE_PROVENANCE_FORMAT == "otis_fixed_firmware_build_v1"
+    assert FIRMWARE_PROVENANCE_STATUS_FIELDS[("build", "image_id")] == (
+        "image_id"
+    )
+    assert all("profile" not in key and "profile" not in value for key, value in (
+        (field[1], output)
+        for field, output in FIRMWARE_PROVENANCE_STATUS_FIELDS.items()
+    ))
+
+    schema = json.loads(
+        (ROOT / "schemas/run_evidence_v1.schema.json").read_text(encoding="utf-8")
+    )
+    provenance = schema["properties"]["firmware_build_provenance"]
+    assert "image_id" in provenance["required"]
+    assert "profile_id" not in provenance["required"]
+    assert set(schema["properties"]["artifacts"]["items"]["properties"]["role"]["enum"]) == {
+        "run_manifest",
+        "raw_evidence",
+        "declared_artifact",
     }
 
 
@@ -118,3 +157,34 @@ def test_recovery_refuses_a_mutated_sealed_package(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="differs from registration intent"):
         recover_registration(journal)
+
+
+def test_recovery_cannot_promote_an_unvalidated_package_to_completed_campaign(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run"
+    index = tmp_path / "external" / "index.json"
+    seal = Path("reports/adaptive_hybrid_physical_seal_v1.json")
+    (run / seal.parent).mkdir(parents=True)
+    (run / "COMPLETE").write_text("{}\n", encoding="utf-8")
+    (run / "evidence_manifest.json").write_text("{}\n", encoding="utf-8")
+    (run / seal).write_text("{}\n", encoding="utf-8")
+    journal = begin_finalization(
+        run_dir=run,
+        index_path=index,
+        registration=_completed_registration(),
+        required_seal=seal,
+    )
+    for phase in PHASES[:-1]:
+        advance_phase(journal, phase, {})
+    set_registration_intent(
+        journal,
+        registration=_completed_registration(),
+        expected_content_sha256=package_identity(run)["content_sha256"],
+    )
+
+    with pytest.raises(
+        ValueError, match="successful evidence registration requires"
+    ):
+        recover_registration(journal)
+    assert not index.exists()

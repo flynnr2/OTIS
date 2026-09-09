@@ -1,5 +1,8 @@
 # Semantic Source Naming and Compatibility Reset
 
+> Historical migration record. Its “current HEAD” statements describe the
+> revision at which that migration was performed, not the present tree.
+
 ## Decision
 
 Current reusable source is named for its physical quantity or responsibility.

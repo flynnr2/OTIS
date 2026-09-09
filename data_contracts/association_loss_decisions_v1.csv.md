@@ -18,6 +18,6 @@ Boolean fields use lowercase `true`/`false`.
 - `no_unread_snapshot_healthy_backend`
 
 The record is diagnostic evidence only. It grants no DAC, active-control,
-phase, hybrid, or GPS authority. A Stage 5 candidate requires zero `ASL` rows;
+phase, hybrid, or GPS authority. The current programme requires zero `ASL` rows;
 if a row exists, the run is preserved for diagnosis and cannot seal as a
 healthy leg.

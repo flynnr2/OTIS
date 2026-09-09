@@ -41,9 +41,7 @@ void emitOtisBootWarnSerialAbsent(Stream &out, uint32_t wait_ms);
 void emitOtisBootWarnSafeMode(Stream &out);
 void emitOtisBootFatal(Stream &out, BootFatal fatal, BootPhase phase);
 
-#if OTIS_ENABLE_RP2040_BOOT_DIAG
 void captureRp2040BootDiag(void);
 void emitRp2040BootDiag(Stream &out);
-#endif
 
 #endif

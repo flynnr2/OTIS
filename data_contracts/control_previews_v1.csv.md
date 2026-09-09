@@ -2,8 +2,9 @@
 
 ## Status and scope
 
-Normative Phase 4 correction-preview contract for deterministic host replay and
-live observe-only firmware. `CTL` v1 is observe-only:
+Normative zero-authority frequency-regulation projection used for deterministic
+host replay beside the active adaptive-hybrid path. `CTL` v1 has no direct
+actuation authority:
 `preview_only=true`, `actuation_authorized=false`, and `actionable=false` are
 mandatory. No field in this contract is permission to write a DAC.
 
@@ -18,13 +19,13 @@ mandatory. No field in this contract is permission to write a DAC.
 | `decision_timestamp_ticks` | uint64 | Policy evaluation timestamp. |
 | `time_domain` | string | Native evaluation timestamp domain. |
 | `est_input_ref` | string | Exact `EST` input identifier. |
-| `plant_model_ref` | string | Plant-model content identity or explicit unavailable/invalid reference. |
-| `plant_model_id` | string/unavailable | Validated model identity. |
-| `plant_model_version` | uint/unavailable | Validated semantic model version. |
-| `plant_model_hash` | string/unavailable | SHA-256 of model bytes. |
+| `plant_model_ref` | string | Exact `model:pps_gated_oscillator_plant_v1`. |
+| `plant_model_id` | string | Exact `OTIS_PPS_GATED_OSCILLATOR_PLANT_V1`. |
+| `plant_model_version` | uint | Exact semantic version `1`. |
+| `plant_model_hash` | string | SHA-256 of the current plant-profile bytes. |
 | `policy_version` | string | Preview-policy identity. |
 | `config_hash` | string | SHA-256 of canonical replay configuration. |
-| `control_state` | enum | Roadmap-aligned observe-only operating state. |
+| `control_state` | enum | Current frequency-regulation projection state. |
 | `previous_control_state` | enum | State before this evaluation. |
 | `state_transition` | bool | Whether the state changed. |
 | `transition_reason_code` | string | Stable reason for the retained or new state. |
@@ -38,7 +39,7 @@ mandatory. No field in this contract is permission to write a DAC.
 | `hz_per_code` | decimal/unavailable | Evidence-backed local plant gain. |
 | `raw_delta_codes` | decimal/unavailable | Unclamped model inversion result. |
 | `limited_delta_codes` | int/unavailable | Signed delta after maximum preview-step and range limits. |
-| `proposed_dac_code` | uint16/unavailable | Observe-only proposal; unavailable when inhibited. |
+| `proposed_dac_code` | uint16/unavailable | Diagnostic projected code; unavailable when inhibited. |
 | `step_limited` | bool | Maximum manual preview step changed the proposal. |
 | `range_clamped` | bool | Disabled candidate envelope changed the proposal. |
 | `preview_available` | bool | A bounded proposal is available for inspection. |
@@ -49,19 +50,18 @@ mandatory. No field in this contract is permission to write a DAC.
 
 ## Policy semantics
 
-The policy consumes an eligible `EST`, a validated model-version-4 plant
+The policy consumes an eligible `EST`, the current validated plant
 model, latest applied DAC evidence, and versioned configuration. It enforces:
 
 - model topology/backend identity and explicit applicability;
 - exclusion and invalidation conditions represented by available evidence;
-- the disabled candidate automatic range;
-- `manual_preview_max_step_codes`;
-- observe-only status regardless of proposal availability.
+- the current finite code and step envelope;
+- exact model, DAC-epoch, estimator, and timing identities;
+- zero-authority status regardless of projection availability.
 
 An ineligible decision has no proposed DAC code. An eligible decision may have
-a proposal, but it remains non-actionable because Phase 4 contains no write
-path and model status remains `control_ready=false` and
-`actuation_enabled=false`.
+a projection, but it remains non-actionable because physical authority belongs
+only to the adaptive-hybrid transaction path.
 
 The live firmware emits `EST` and `CTL` as one bounded telemetry pair. If the
 derived queue is full, the pair is dropped and counted without feeding the loss
@@ -69,20 +69,13 @@ back into estimator state or changing raw capture/count truth.
 
 ## Stable initial reason codes
 
-Reason-code families include `startup_inhibit_active`,
-`clean_window_qualification_incomplete`, `reference_unavailable`,
-`reference_stale`, `reference_interval_outlier`, `count_unavailable`,
-`count_stale`, `count_zero`, `count_saturated`,
-`count_sequence_discontinuity`, `count_flagged_invalid`,
-`post_qualification_measurement_fault`,
-`plant_model_unavailable`, `plant_model_invalid`,
-`plant_model_version_not_4`, `plant_model_topology_mismatch`,
-`plant_model_backend_mismatch`, `plant_model_estimator_method_mismatch`,
-`input_outside_model_applicability`, `dac_settling_state_unverified`,
-`count_window_inside_model_settling_exclusion`, `temperature_not_observed`,
-`temperature_observation_stale`,
-`input_outside_model_temperature_range`,
-`plant_model_excluded_count_sequence`, `dac_state_unavailable`,
-`estimator_underqualified_sample_count`, `estimator_dispersion_exceeded`,
-`preview_step_limited`, `preview_range_clamped`,
-`preview_available_observe_only`, and `preview_inhibited`.
+Current reason-code families include `startup_warmup`,
+`dac_epoch_full_history_reset`, `fresh_estimator_support`,
+`dac_epoch_fresh_history_complete`, `reference_invalid`,
+`estimator_invalid_or_snapshot_gap`, `count_invalid`,
+`authoritative_integer_edge_error_unavailable`, `decision_cadence_hold`,
+`frequency_error_unavailable`, `plant_model_mismatch`,
+`requested_applied_mismatch`, `i2c_failure`,
+`current_code_outside_clamp`, `tight_deadband_evaluation_failed`,
+`preview_available`, `explicit_recovery_fresh_support`, and
+`operator_abort`.
