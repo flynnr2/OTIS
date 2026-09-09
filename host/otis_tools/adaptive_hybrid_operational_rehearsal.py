@@ -1725,7 +1725,7 @@ class DeterministicPtyInstrument:
             Path(str(binding.get("path", ""))).resolve(),
             "frozen firmware build manifest",
         )
-        provenance = build["build_provenance"]
+        provenance = build["provenance"]
         source = provenance["source"]
         configuration = provenance["configuration"]
         target = provenance["target"]
