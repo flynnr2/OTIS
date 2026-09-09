@@ -113,6 +113,29 @@ The external index is mutable stewardship metadata; each raw package remains
 immutable scientific evidence. If a package changes, it has a new content
 identity and must be registered as a new package.
 
+An interrupted finalizer can exceptionally register a package immediately
+before appending its final seal, then register the completed package at the same
+location. Do not delete the earlier registration or pretend its bytes still
+occupy that path. If the completed record proves that every predecessor file is
+retained byte-for-byte and only new files were added, preserve the earlier
+identity with an explicit append-only registration disposition:
+
+```bash
+.venv/bin/python -m host.otis_tools.evidence_index \
+  --index /absolute/path/to/evidence_index_v1.json \
+  supersede-append-only-registration PREDECESSOR_SHA256 SUCCESSOR_SHA256 \
+  --reason "offline finalization appended the retained seal" \
+  --confirm-all-predecessor-files-retained
+```
+
+This operation changes only index stewardship metadata. It records both
+registration times, the shared in-place location, the exact added paths, and
+explicit `evidence_preserved: true` / `data_deleted: false` assertions. Index
+validation remains fail-closed: the successor must be present under its exact
+standard record, the predecessor manifest must reconstruct its original
+content identity, and every predecessor file entry must occur unchanged in the
+successor. Changed or removed predecessor files cannot use this disposition.
+
 ## Crash-recoverable finalization
 
 The current adaptive-regulation runner creates an external
@@ -180,6 +203,25 @@ rewriting the acquisition package. The new product must record:
 - superseded product identity, supersession reason, review authority, and UTC;
 - `actionable: false`, `actuation_authorized: false`, and
   `hardware_interaction: false`.
+
+For the current adaptive-hybrid programme, publish that separate addendum with
+the offline-only supersession command:
+
+```bash
+.venv/bin/python -m host.otis_tools.adaptive_hybrid_supersede \
+  /absolute/path/to/the/registered-diagnostic-run \
+  --evidence-index /absolute/path/to/evidence_index_v1.json
+```
+
+The command requires the unchanged diagnostic package, its completed external
+finalization journal, original review-required seal, and exact diagnostic index
+record. It reruns only deterministic analyzer consumers, writes the corrected
+seal and canonical supersession manifest to a separate content-addressed
+addendum directory, and registers that addendum without changing or
+reclassifying the original package. The addendum binds the original failure,
+old and new analyzer/replay identities, frozen source-file identities, and the
+explicit no-I/O/no-authority conditions. An exact retry is idempotent; a
+conflicting second result for the same source seal is rejected.
 
 If any condition is not met, repeat the
 shortest affected operational gate: a short operational-path rehearsal for

@@ -19,9 +19,7 @@ import tempfile
 import time
 
 from .contracts import CsvValidationContext, validate_csv
-from .abort_transport import AbortFifo
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
-from .serial_commands import send_command_to_fifo
 
 ACTIVE_CSV = Path("csv/active_transactions_v2.csv")
 HEALTH_CSV = Path("csv/health.csv")
@@ -368,10 +366,14 @@ class AdaptiveHybridTransactionSupervisor:
            print(json.dumps(payload, sort_keys=True), flush=True)
 
    def _command(self, command: str) -> None:
+       from .serial_commands import send_command_to_fifo
+
        send_command_to_fifo(self.command_fifo, command)
        self._event("command_submitted", command=command)
 
    def _abort(self, reason: str) -> None:
+       from .serial_commands import send_command_to_fifo
+
        try:
            if self.emergency_command_fifo is not None:
                send_command_to_fifo(
@@ -723,6 +725,8 @@ class AdaptiveHybridTransactionSupervisor:
            )
 
    def run(self) -> int:
+       from .abort_transport import AbortFifo
+
        capture_flag = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
        if not capture_flag.exists():
            raise RuntimeError("capture is not marked in progress")

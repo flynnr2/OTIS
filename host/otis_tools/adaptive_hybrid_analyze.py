@@ -100,6 +100,16 @@ def _explicit_utc(value: object) -> bool:
     return parsed.tzinfo is not None
 
 
+def _sha256_text(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return value == value.lower()
+
+
 def _normalize_terminal(
     terminal: object,
     programme: AdaptiveHybridProgramme,
@@ -168,6 +178,7 @@ def _validated_host_review_resolution(
     manifest: dict[str, Any],
     bench_attempt: object,
     supervisor_state: dict[str, Any],
+    prior_review_seal: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, bool, dict[str, Any] | None]:
     """Consume only the immutable resolution of the exact zero-write hold."""
 
@@ -273,6 +284,17 @@ def _validated_host_review_resolution(
     expected_review_tools = {
         name: _sha256_file(module_root / f"{name}.py") for name in tool_names
     }
+    if prior_review_seal is not None:
+        retained_review_tools = resolution.get("review_tool_sha256")
+        if (
+            not isinstance(retained_review_tools, dict)
+            or set(retained_review_tools) != set(tool_names)
+            or not all(_sha256_text(value) for value in retained_review_tools.values())
+            or retained_review_tools.get("adaptive_hybrid_analyze")
+            != prior_review_seal.get("tool_sha256")
+        ):
+            raise ValueError("prior analyzer seal review-tool identity differs")
+        expected_review_tools = retained_review_tools
     if (
         any(not isinstance(value, str) for value in expected_original_tools.values())
         or resolution.get("original_tool_sha256") != expected_original_tools
@@ -303,6 +325,11 @@ def _validated_host_review_resolution(
         "resolution_sha256": resolution["resolution_sha256"],
         "source_sha256": expected_source_sha256,
     }
+    if (
+        prior_review_seal is not None
+        and prior_review_seal.get("host_review_resolution") != identity
+    ):
+        raise ValueError("prior analyzer seal review-resolution identity differs")
     return resolved_terminal, True, identity
 
 
@@ -616,8 +643,85 @@ def replay_current_adaptive_hybrid_host_consumers(
     }
 
 
+def _inhibited_zero_write_maintenance_replay(
+    record_replay: dict[str, Any], *, authority_exact: bool
+) -> dict[str, Any]:
+    """Make an empty controller history exact only when authority forbids one."""
+
+    replay = record_replay["maintenance_replay"]
+    if not authority_exact:
+        return replay
+    if any(
+        record_replay.get(field) != 0
+        for field in (
+            "transaction_row_count",
+            "decision_row_count",
+            "maintenance_row_count",
+        )
+    ):
+        return replay
+    return {
+        **replay,
+        "exact": True,
+        "applicability": "not_applicable",
+        "reason": "inhibited_zero_write_frozen_authority_forbids_controller_records",
+        "replay_mode": "not_applicable_no_controller_authority",
+        "controller_state_authority": "none",
+    }
+
+
+def _validated_prior_review_seal(
+    *,
+    run_dir: Path,
+    path: Path,
+    manifest: dict[str, Any],
+    source_sha256: dict[str, str],
+) -> dict[str, Any]:
+    """Validate the immutable diagnostic seal that authorizes offline replay."""
+
+    prior = _read_object(path)
+    claimed = prior.get("seal_sha256")
+    unsigned = {key: value for key, value in prior.items() if key != "seal_sha256"}
+    checks = prior.get("checks")
+    false_checks = (
+        sorted(key for key, value in checks.items() if value is not True)
+        if isinstance(checks, dict)
+        else []
+    )
+    expected_false_checks = [
+        "D14_D8_measurement_replay_exact",
+        "maintenance_replay_exact",
+    ]
+    if (
+        prior.get("schema_version") != 1
+        or prior.get("seal_type") != SEAL_TYPE
+        or prior.get("tool") != TOOL_ID
+        or not isinstance(claimed, str)
+        or claimed != _canonical_sha256(unsigned)
+        or prior.get("status") != "review_required"
+        or prior.get("primary_decision") != "operator_review_required"
+        or false_checks != expected_false_checks
+        or prior.get("source_sha256") != source_sha256
+        or prior.get("run_id") != manifest.get("run_id")
+        or prior.get("run_identity") != manifest.get("run_identity")
+        or prior.get("build_identity")
+        != manifest.get("firmware", {}).get("build_identity")
+        or prior.get("image_identity") != manifest.get("image_identity")
+        or not isinstance(prior.get("host_review_resolution"), dict)
+    ):
+        raise ValueError(
+            "offline analysis supersession requires the exact two-check diagnostic seal"
+        )
+    if path.resolve() != (run_dir / DEFAULT_SEAL).resolve():
+        raise ValueError("prior analyzer seal must be the canonical source-run seal")
+    return prior
+
+
 def analyze(
-    run_dir: Path, *, output_path: Path | None = None,
+    run_dir: Path,
+    *,
+    output_path: Path | None = None,
+    prior_review_seal_path: Path | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """Replay unchanged current evidence and publish one immutable seal."""
 
@@ -630,6 +734,16 @@ def analyze(
     programme = programme_from_mapping(manifest_value)
     manifest = RunManifest(run_dir, run_dir / "run_manifest.json", manifest_value)
     before_hashes = _source_hashes(manifest)
+    prior_review_seal = (
+        _validated_prior_review_seal(
+            run_dir=run_dir,
+            path=prior_review_seal_path.resolve(),
+            manifest=manifest_value,
+            source_sha256=before_hashes,
+        )
+        if prior_review_seal_path is not None
+        else None
+    )
 
     frozen_inputs = manifest_value.get("authoritative_inputs")
     validate_authoritative_inputs(frozen_inputs)
@@ -702,7 +816,10 @@ def analyze(
         programme=programme,
     )
     record_replay = shared_consumers["record_replay"]
-    maintenance_replay = record_replay["maintenance_replay"]
+    maintenance_replay = _inhibited_zero_write_maintenance_replay(
+        record_replay,
+        authority_exact=inhibited_zero_write and inhibited_authority_exact,
+    )
     transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
     measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value)
     responses = shared_consumers["response_replay"]
@@ -716,6 +833,7 @@ def analyze(
         manifest=manifest_value,
         bench_attempt=bench_attempt,
         supervisor_state=supervisor_state,
+        prior_review_seal=prior_review_seal,
     )
 
     d10_isolated = _d10_isolated(section, measurement)
@@ -733,9 +851,7 @@ def analyze(
         "transactions_exact": shared_consumers["checks"][
             "transaction_history_exact"
         ],
-        "maintenance_replay_exact": shared_consumers["checks"][
-            "maintenance_replay_exact"
-        ],
+        "maintenance_replay_exact": maintenance_replay.get("exact") is True,
         "D14_D8_measurement_replay_exact": measurement_exact,
         "response_replay_exact": shared_consumers["checks"][
             "response_replay_exact"
@@ -824,8 +940,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--prior-review-seal", type=Path)
     args = parser.parse_args(argv)
-    path, seal = analyze(args.run_dir, output_path=args.output)
+    path, seal = analyze(
+        args.run_dir,
+        output_path=args.output,
+        prior_review_seal_path=args.prior_review_seal,
+    )
     print(json.dumps({"path": str(path), **seal}, indent=2, sort_keys=True))
     return 0 if seal["status"] == "passed" else 1
 

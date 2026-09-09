@@ -268,6 +268,42 @@ def test_shared_analyzer_record_replay_has_no_manifest_or_authority_input(
     assert replay_kwargs["expected_image_identity"] == "image"
 
 
+def test_empty_maintenance_is_exact_only_for_proven_zero_write_authority() -> None:
+    empty_replay = {
+        "transaction_row_count": 0,
+        "decision_row_count": 0,
+        "maintenance_row_count": 0,
+        "maintenance_replay": {
+            "exact": False,
+            "decision_count": 0,
+            "comparisons": [],
+        },
+    }
+
+    retained = analyze_module._inhibited_zero_write_maintenance_replay(
+        empty_replay, authority_exact=False
+    )
+    assert retained["exact"] is False
+    exempt = analyze_module._inhibited_zero_write_maintenance_replay(
+        empty_replay, authority_exact=True
+    )
+    assert exempt["exact"] is True
+    assert exempt["applicability"] == "not_applicable"
+    assert "frozen_authority_forbids" in exempt["reason"]
+    assert exempt["replay_mode"] == "not_applicable_no_controller_authority"
+    assert exempt["controller_state_authority"] == "none"
+
+    for count_field in (
+        "transaction_row_count",
+        "decision_row_count",
+        "maintenance_row_count",
+    ):
+        with_record = {**empty_replay, count_field: 1}
+        assert analyze_module._inhibited_zero_write_maintenance_replay(
+            with_record, authority_exact=True
+        )["exact"] is False
+
+
 def test_shared_analyzer_host_consumers_recompute_every_applicable_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1507,6 +1543,54 @@ def test_analyzer_consumes_exact_zero_write_host_review_resolution(
     assert identity is not None
     assert identity["path"] == str(analyze_module.HOST_REVIEW_RESOLUTION)
     assert len(identity["source_sha256"]) == 7
+
+
+def test_analyzer_reanalysis_binds_prior_review_tool_without_weakening_resolution(
+    tmp_path: Path,
+) -> None:
+    manifest, supervisor_state, resolution_path = (
+        _write_host_review_resolution_fixture(tmp_path)
+    )
+    resolution = json.loads(resolution_path.read_text(encoding="utf-8"))
+    prior_analyzer = "f" * 64
+    resolution["review_tool_sha256"]["adaptive_hybrid_analyze"] = prior_analyzer
+    unsigned = {
+        key: value
+        for key, value in resolution.items()
+        if key != "resolution_sha256"
+    }
+    resolution["resolution_sha256"] = _canonical(unsigned)
+    _write_json(resolution_path, resolution)
+    identity = {
+        "path": str(analyze_module.HOST_REVIEW_RESOLUTION),
+        "resolution_sha256": resolution["resolution_sha256"],
+        "source_sha256": resolution["source_sha256"],
+    }
+
+    with pytest.raises(ValueError, match="tool identity differs"):
+        analyze_module._validated_host_review_resolution(
+            run_dir=tmp_path,
+            manifest=manifest,
+            bench_attempt=envelope_for_purpose(INHIBITED_ZERO_WRITE).as_dict(),
+            supervisor_state=supervisor_state,
+        )
+
+    terminal, exact, observed_identity = (
+        analyze_module._validated_host_review_resolution(
+            run_dir=tmp_path,
+            manifest=manifest,
+            bench_attempt=envelope_for_purpose(INHIBITED_ZERO_WRITE).as_dict(),
+            supervisor_state=supervisor_state,
+            prior_review_seal={
+                "tool_sha256": prior_analyzer,
+                "host_review_resolution": identity,
+            },
+        )
+    )
+    assert exact is True
+    assert terminal is not None
+    assert terminal["reason"] == "inhibited_zero_write_complete"
+    assert observed_identity == identity
 
 
 def test_analyzer_rejects_tampered_zero_write_host_review_resolution(

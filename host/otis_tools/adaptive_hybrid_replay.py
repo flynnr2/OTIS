@@ -123,8 +123,16 @@ def _measurement_replay(
         source_exact = len(sources) == 600 and all(sources)
         if source_exact:
             total = sum(int(item["counted_edges"]) for item in sources if item)
-            frequency = Decimal(total) / Decimal(600)
-            error = frequency - Decimal(10_000_000)
+            # The selected firmware estimator performs both operations in its
+            # declared binary64 implementation domain before serializing each
+            # result to 12 decimal places.  Replaying the rational quotient
+            # instead invents precision that the producer never possessed at
+            # a 10 MHz magnitude (and can reject its separately computed error
+            # even when the source edge total is exact).
+            frequency_binary64 = float(total) / 600.0
+            error_binary64 = frequency_binary64 - 10_000_000.0
+            frequency = Decimal.from_float(frequency_binary64)
+            error = Decimal.from_float(error_binary64)
             frequency_difference = abs(Decimal(row["frequency_estimate_hz"]) - frequency)
             error_difference = abs(Decimal(row["frequency_error_hz"]) - error)
         else:
@@ -164,6 +172,7 @@ def _measurement_replay(
     exact &= nonoverlap
     return bool(exact), {
         "estimate_sequence_exact": sequence_exact,
+        "calculation_domain": "firmware_ieee754_binary64_then_fixed_12_decimal",
         "selected_count": len(selected_windows),
         "selected_nonoverlap": nonoverlap,
         "D10": {
