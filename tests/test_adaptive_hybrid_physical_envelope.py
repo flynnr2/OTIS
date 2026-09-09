@@ -8,15 +8,27 @@ from types import SimpleNamespace
 import pytest
 
 from host.otis_tools import adaptive_hybrid_activation as activation_module
+from host.otis_tools import adaptive_hybrid_proposal as proposal_module
 from host.otis_tools import adaptive_hybrid_run as run_module
 from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
+    ARM_OPPORTUNITY_INTERVAL_S,
+    ARM_SUBMISSION_LIMIT,
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
     CONTINGENT_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
     envelope_for_purpose,
 )
+
+
+def test_proposal_requests_the_same_finite_arm_envelope_as_physical_entry() -> None:
+    requested = proposal_module._requested_authority(ADAPTIVE_HYBRID_PROGRAMME)
+
+    assert "control_arm_limit" not in requested
+    assert requested["arm_submission_limit"] == ARM_SUBMISSION_LIMIT == 468
+    assert requested["arm_opportunity_interval_s"] == ARM_OPPORTUNITY_INTERVAL_S == 600
+    assert requested["maximum_outstanding_requests"] == 1
 
 
 def _board_listing(*, product: str = "Nano RP2040 Connect") -> dict[str, object]:
