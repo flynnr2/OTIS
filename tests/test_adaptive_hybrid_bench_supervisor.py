@@ -702,6 +702,47 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
     assert supervisor.state["bench_attempt_arm_submission_count"] == 1
 
 
+def test_contingent_arm_waits_for_first_natural_opportunity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    supervisor.state.update(
+        {
+            "manual_start_sent": True,
+            "setup_confirmed_utc": "2026-09-09T00:00:00Z",
+            "setup_confirmation": {
+                "session_id": 5,
+                "applied_code": ADAPTIVE_HYBRID_PROGRAMME.setup_code,
+                "dac_epoch": 1,
+            },
+            "initial_session_id": 5,
+        }
+    )
+    supervisor._identity_ready = lambda _health: True
+    supervisor._close_bench_arm_admission_if_required = lambda _health: False
+    supervisor._arm_progress_epoch_ready = lambda *_args: (_ for _ in ()).throw(
+        AssertionError("ARM progress evaluated without a natural opportunity")
+    )
+    supervisor._command = lambda _command: (_ for _ in ()).throw(
+        AssertionError("ARM submitted without a natural opportunity")
+    )
+    monkeypatch.setattr(supervisor_module, "_read_csv", lambda _path: [])
+    health = {
+        ("adaptive_hybrid", "state"): "DISARMED",
+        ("adaptive_hybrid", "manual_start_confirmed"): "true",
+        ("adaptive_hybrid", "hybrid_state"): "PHASE_QUALIFY",
+        ("adaptive_hybrid", "first_phase_checkpoint_passed"): "false",
+        ("adaptive_hybrid", "correction_count"): "0",
+        ("adaptive_hybrid", "selected_interval_count"): "600",
+    }
+
+    supervisor._maybe_start_or_arm(health)
+
+    assert supervisor.state["authorization_sequence"] == 0
+    assert supervisor.state["bench_attempt_arm_submission_count"] == 0
+    assert supervisor.state["bench_attempt_arm_admissions"] == []
+
+
 def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> None:
     supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     limits = supervisor.envelope.bench_attempt.limits

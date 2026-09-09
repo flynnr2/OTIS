@@ -3044,6 +3044,12 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         preview_rows = _read_csv(self.run_dir / CONTROL_CSV)
         preview = preview_rows[-1] if preview_rows else None
+        if bench_attempt is not None and preview is None:
+            # Immediately after setup there is no natural correction
+            # opportunity yet.  Absence grants no ARM authority; wait for the
+            # first durable preview instead of treating the expected prefix as
+            # malformed evidence.
+            return
         if not self._arm_progress_epoch_ready(preview, progress):
             return
         opportunity = None
