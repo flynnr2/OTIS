@@ -115,11 +115,15 @@ class AdaptiveHybridSupervisorBase(ControlSupervisorBase):
         qualified_timeout_s: int,
         **kwargs: object,
     ) -> None:
-        if not bool(kwargs.get("allow_manual_start")) or not bool(
-            kwargs.get("allow_arm")
+        allow_manual_start = kwargs.get("allow_manual_start")
+        allow_arm = kwargs.get("allow_arm")
+        if (
+            type(allow_manual_start) is not bool
+            or type(allow_arm) is not bool
+            or allow_manual_start != allow_arm
         ):
             raise ValueError(
-                "adaptive-hybrid live supervisor requires setup and arm authority"
+                "adaptive-hybrid live supervisor requires matched setup/ARM authority"
             )
         if prewrite_contract_startup_grace_s <= 0:
             raise ValueError("pre-write startup grace must be positive")
@@ -156,6 +160,8 @@ class AdaptiveHybridSupervisorBase(ControlSupervisorBase):
         health: dict[tuple[str, str], str],
         elapsed_monotonic_s: float,
     ) -> PrewriteReadiness | None:
+        if not self.allow_manual_start and not self.allow_arm:
+            return None
         # After the one setup stimulus, the transaction and terminal gates own
         # the remaining run. The prewrite contract cannot authorize a retry.
         if self.state["manual_start_sent"]:

@@ -68,6 +68,7 @@ HOST_TOOL_MODULES = (
     "adaptive_hybrid_transport.py",
     "adaptive_hybrid_health.py",
     "adaptive_hybrid_activation.py",
+    "adaptive_hybrid_operational_rehearsal.py",
     "adaptive_hybrid_supervisor.py",
     "adaptive_hybrid_run.py",
     "adaptive_hybrid_analyze.py",

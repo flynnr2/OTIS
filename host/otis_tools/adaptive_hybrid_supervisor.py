@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 from pathlib import Path
 import secrets
@@ -26,6 +27,14 @@ from .adaptive_hybrid_contract import (
     AdaptiveHybridProgramme,
     ADAPTIVE_HYBRID_PROGRAMME,
     programme_from_mapping,
+)
+from .adaptive_hybrid_contract import (
+    CAUSAL_STATE_CONTRACT_ID,
+    CAUSAL_STATE_SCHEMA_VERSION,
+    INHIBITED_ZERO_WRITE,
+    SINGLE_AUTOMATIC_APPLICATION,
+    BenchAttemptEnvelope,
+    validate_bench_attempt_envelope,
 )
 from .adaptive_hybrid_policy import AdaptiveHybridPolicy, policy_from_mapping
 from .authoritative_inputs import (
@@ -72,6 +81,10 @@ from .adaptive_hybrid_health import (
     DAC_CSV,
     DECISION_CADENCE_S,
     SELECTED_INTERVAL_S,
+    SETUP_AUTHORITY_CONTRACT,
+    SETUP_AUTHORITY_LIFETIME_S,
+    SETUP_AUTHORITY_PATH,
+    SETUP_RESULT_GRACE_S,
     AdaptiveHybridSupervisorBase,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
@@ -251,6 +264,45 @@ HYBRID_STATES = frozenset(
 ARMABLE_HYBRID_STATES = frozenset(
     {"FREQUENCY_ACQUIRE", "PHASE_QUALIFY", "HYBRID_TRACKING"}
 )
+
+# This object is deliberately unavailable through the physical supervisor CLI.
+# The private PTY producer may import it only after its own exact, nonphysical
+# manifest validator has succeeded.  A Boolean would make accidental bypass at
+# another call site too easy.
+_VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY = object()
+_NONPHYSICAL_REHEARSAL_STAGE = "OTIS_ADAPTIVE_HYBRID_OPERATIONAL_REHEARSAL_PTY"
+_NONPHYSICAL_REHEARSAL_MODE = (
+    "adaptive_hybrid_deterministic_process_topology_rehearsal_pty_v1"
+)
+_NONPHYSICAL_REHEARSAL_SCENARIO = (
+    "adaptive_hybrid_two_transaction_metadata_hold_abort_rotation_v1"
+)
+
+
+def _nonphysical_rehearsal_boundary_exact(
+    manifest: dict[str, Any], *, expected_stage: str
+) -> bool:
+    return (
+        manifest.get("stage") == expected_stage
+        and manifest.get("closed_loop_control") is False
+        and manifest.get("actuation_authorized") is False
+        and manifest.get("authority_effective") is False
+        and manifest.get("actionable") is False
+        and manifest.get("qualification_evidence") is False
+        and manifest.get("physical_actions_performed") == 0
+        and manifest.get("board") == "deterministic_pty_no_physical_hardware"
+        and manifest.get("capture_mode")
+        == "real_capture_device_process_over_pty"
+        and manifest.get("mode") == _NONPHYSICAL_REHEARSAL_MODE
+        and manifest.get("scenario") == _NONPHYSICAL_REHEARSAL_SCENARIO
+        and manifest.get("activation")
+        == {
+            "activation_sha256": "0" * 64,
+            "status": "rehearsal_no_physical_authority",
+        }
+    )
+
+
 def _sha256_identity(value: object, label: str) -> str:
     if not isinstance(value, str) or len(value) != 64:
         raise ValueError(f"ADAPTIVE_HYBRID manifest {label} is not a SHA-256 identity")
@@ -265,6 +317,7 @@ def _sha256_identity(value: object, label: str) -> str:
 @dataclass(frozen=True)
 class RuntimeEnvelope:
     programme: AdaptiveHybridProgramme
+    bench_attempt: BenchAttemptEnvelope | None
     manifest_sha256: str
     bundle_sha256: str
     policy_sha256: str
@@ -287,7 +340,11 @@ def _profile_binding_sha256(
     return str(authoritative_binding(frozen_inputs, binding)["sha256"])
 
 
-def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
+def _runtime_envelope(
+    manifest: dict[str, Any],
+    *,
+    private_rehearsal_capability: object | None = None,
+) -> RuntimeEnvelope:
     """Extract the one current manifest and policy envelope."""
 
     programme = programme_from_mapping(manifest)
@@ -296,6 +353,29 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
     binding = manifest.get("policy", {})
     if not isinstance(section, dict) or not isinstance(firmware, dict) or not isinstance(binding, dict):
         raise ValueError("adaptive-hybrid manifest envelope is malformed")
+    raw_bench_attempt = manifest.get("bench_attempt")
+    if raw_bench_attempt is None:
+        if private_rehearsal_capability is not _VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY:
+            raise ValueError(
+                "adaptive-hybrid physical manifest lacks an exact bench-attempt envelope"
+            )
+        if not _nonphysical_rehearsal_boundary_exact(
+            manifest, expected_stage=programme.live_stage
+        ):
+            raise ValueError(
+                "private rehearsal capability was used outside the exact "
+                "zero-authority PTY boundary"
+            )
+        bench_attempt = None
+    else:
+        if private_rehearsal_capability is not None:
+            raise ValueError(
+                "private rehearsal capability cannot replace a physical "
+                "bench-attempt envelope"
+            )
+        if not isinstance(raw_bench_attempt, dict):
+            raise ValueError("adaptive-hybrid bench-attempt envelope is malformed")
+        bench_attempt = validate_bench_attempt_envelope(raw_bench_attempt)
     frozen_inputs = manifest.get("authoritative_inputs")
     validate_authoritative_inputs(frozen_inputs)
     policy = authoritative_document(frozen_inputs, ROOT_PROFILE)
@@ -320,6 +400,7 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
         raise ValueError("adaptive-hybrid manifest identity or policy differs")
     return RuntimeEnvelope(
         programme=programme,
+        bench_attempt=bench_attempt,
         manifest_sha256=_sha256_identity(manifest.get("manifest_sha256"), "manifest_sha256"),
         bundle_sha256=_sha256_identity(manifest.get("bundle", {}).get("bundle_sha256"), "bundle.bundle_sha256"),
         policy_sha256=selected.policy_sha256,
@@ -340,10 +421,15 @@ def _runtime_envelope(manifest: dict[str, Any]) -> RuntimeEnvelope:
 
 def load_active_hybrid_spec(
     manifest: dict[str, Any],
+    *,
+    private_rehearsal_capability: object | None = None,
 ) -> tuple[CampaignSpec, dict[str, str]]:
     """Load the exact runtime contract from a validated live manifest."""
 
-    envelope = _runtime_envelope(manifest)
+    envelope = _runtime_envelope(
+        manifest,
+        private_rehearsal_capability=private_rehearsal_capability,
+    )
     programme = envelope.programme
     policy = envelope.policy_document
     frozen_inputs = manifest["authoritative_inputs"]
@@ -366,7 +452,11 @@ def load_active_hybrid_spec(
             profile=programme.profile_id,
             run_identity=programme.runtime_run_identity,
             start_code=programme.setup_code,
-            correction_limit=programme.authorized_maximum_physical_applications,
+            correction_limit=(
+                programme.authorized_maximum_physical_applications
+                if envelope.bench_attempt is None
+                else envelope.bench_attempt.limits.automatic_application_limit
+            ),
             cumulative_limit=(
                 programme.authorized_maximum_cumulative_movement_codes
             ),
@@ -450,9 +540,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         *,
         manifest: dict[str, Any],
         manifest_path: Path,
+        private_rehearsal_capability: object | None = None,
         **kwargs: object,
     ) -> None:
-        envelope = _runtime_envelope(manifest)
+        envelope = _runtime_envelope(
+            manifest,
+            private_rehearsal_capability=private_rehearsal_capability,
+        )
         spec = kwargs.get("spec")
         if not isinstance(spec, CampaignSpec):
             raise ValueError("ADAPTIVE_HYBRID supervisor requires its manifest-derived spec")
@@ -462,9 +556,21 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         ):
             raise ValueError("ADAPTIVE_HYBRID supervisor inputs differ from the live manifest")
         self.programme = envelope.programme
+        limits = envelope.bench_attempt.limits if envelope.bench_attempt else None
+        if limits is not None and (
+            spec.correction_limit != limits.automatic_application_limit
+            or spec.start_code != self.programme.setup_code
+        ):
+            raise ValueError(
+                "ADAPTIVE_HYBRID supervisor spec differs from the bench-attempt envelope"
+            )
         super().__init__(
-            allow_manual_start=True,
-            allow_arm=True,
+            allow_manual_start=(
+                True if limits is None else limits.setup_application_limit == 1
+            ),
+            allow_arm=(
+                True if limits is None else limits.arm_submission_limit > 0
+            ),
             # The installed profile deliberately inhibits D14/D8 control
             # eligibility for 600 s.  Prior physical adaptive-hybrid evidence first
             # observed the same predicate at 612 s, so retain its frozen
@@ -473,7 +579,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             prewrite_contract_startup_grace_s=(
                 RAW_PPS_QUALIFICATION_DEADLINE_S
             ),
-            qualified_timeout_s=self.programme.qualified_duration_s,
+            qualified_timeout_s=(
+                self.programme.qualified_duration_s
+                if envelope.bench_attempt is None
+                else int(
+                    envelope.bench_attempt.as_dict()["timing"][
+                        "absolute_wall_limit_s"
+                    ]
+                )
+            ),
             observational_responses=(
                 self.programme.response_checkpoint_observational
             ),
@@ -499,6 +613,16 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "runtime_run_identity": self.spec.run_identity,
             "wall_origin_utc": envelope.wall_origin_utc,
         }
+        if envelope.bench_attempt is not None:
+            exact_state.update(
+                {
+                    "bench_attempt": envelope.bench_attempt.as_dict(),
+                    "bench_attempt_purpose": envelope.bench_attempt.purpose,
+                    "bench_attempt_envelope_sha256": (
+                        envelope.bench_attempt.as_dict()["envelope_sha256"]
+                    ),
+                }
+            )
         for key, value in exact_state.items():
             prior = self.state.get(key)
             if prior is not None and prior != value:
@@ -534,6 +658,68 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.state.setdefault("controller_authority_inhibited_reason", None)
         self.state.setdefault("controller_authority_inhibited_utc", None)
         self.state.setdefault("persistent_wrong_direction_terminal", False)
+        if envelope.bench_attempt is not None:
+            initial_closed = bool(limits.authority_initially_closed)
+            initial_causal_state = {
+                "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
+                "contract": CAUSAL_STATE_CONTRACT_ID,
+                "durable_ACT_application_count": 0,
+                "firmware_correction_count": 0,
+                "authority_closed": initial_closed,
+                "closure": (
+                    {
+                        "trigger": "initial_contract_state",
+                        "bench_attempt_purpose": envelope.bench_attempt.purpose,
+                        "bench_attempt_envelope_sha256": (
+                            envelope.bench_attempt.as_dict()["envelope_sha256"]
+                        ),
+                    }
+                    if initial_closed
+                    else None
+                ),
+            }
+            retained_causal_state = self.state.get("bench_attempt_causal_state")
+            if retained_causal_state is None:
+                self.state["bench_attempt_causal_state"] = initial_causal_state
+            else:
+                self._validate_bench_attempt_causal_state(retained_causal_state)
+            self.state.setdefault(
+                "bench_attempt_arm_admission_closed", initial_closed
+            )
+            self.state.setdefault("bench_attempt_arm_admission_closed_utc", None)
+            self.state.setdefault("bench_attempt_arm_admission_endpoint", None)
+            self.state.setdefault("bench_attempt_arm_submission_count", 0)
+            self.state.setdefault("bench_attempt_last_arm_opportunity", None)
+            self.state.setdefault("bench_attempt_arm_admissions", [])
+            arm_count = self.state.get("bench_attempt_arm_submission_count")
+            admission_closed = self.state.get(
+                "bench_attempt_arm_admission_closed"
+            )
+            if (
+                type(arm_count) is not int
+                or not 0 <= arm_count <= limits.arm_submission_limit
+                or type(admission_closed) is not bool
+                or (
+                    self._bench_authority_closed()
+                    and not admission_closed
+                )
+            ):
+                raise ValueError(
+                    "retained ARM authority differs from the bench-attempt envelope"
+                )
+            self._validate_bench_attempt_arm_admissions()
+            if (
+                envelope.bench_attempt.purpose == INHIBITED_ZERO_WRITE
+                and (
+                    self.state.get("manual_start_sent") is not False
+                    or self.state.get("arm_pending") is not False
+                    or self.state.get("authorization_sequence") != 0
+                    or self.state.get("bench_attempt_arm_submission_count") != 0
+                )
+            ):
+                raise ValueError(
+                    "inhibited zero-write retained state contains control authority"
+                )
         # The attachment nonce is immutable package identity. Runtime queries
         # rotate a separate nonce so a fresh file cannot masquerade as the
         # causally requested post-frontier snapshot.
@@ -542,6 +728,304 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             int(self.state["host_attach_query_nonce"]),
         )
         self._save()
+
+    def _validate_bench_attempt_arm_admissions(self) -> None:
+        """Validate every durable host authorization decision on restart."""
+
+        bench_attempt = self.envelope.bench_attempt
+        if bench_attempt is None:
+            return
+        admissions = self.state.get("bench_attempt_arm_admissions")
+        count = self.state.get("bench_attempt_arm_submission_count")
+        expected_fields = {
+            "authorization_sequence",
+            "arm_nonce",
+            "expiry_s",
+            "authorizing_snapshot_generation",
+            "authorizing_query_nonce",
+            "accepted_D14_D8_apertures",
+            "admission_deadline_delta",
+            "natural_opportunity",
+            "admitted_utc",
+        }
+        if (
+            not isinstance(admissions, list)
+            or type(count) is not int
+            or len(admissions) != count
+            or count > bench_attempt.limits.arm_submission_limit
+        ):
+            raise ValueError("retained bench-attempt ARM admissions differ")
+        prior_sequence = 0
+        prior_coordinate = -1
+        opportunities: set[str] = set()
+        for admission in admissions:
+            if not isinstance(admission, dict) or set(admission) != expected_fields:
+                raise ValueError("retained bench-attempt ARM admission is malformed")
+            sequence = admission.get("authorization_sequence")
+            generation = admission.get("authorizing_snapshot_generation")
+            query_nonce = admission.get("authorizing_query_nonce")
+            coordinate = admission.get("accepted_D14_D8_apertures")
+            deadline = admission.get("admission_deadline_delta")
+            opportunity = admission.get("natural_opportunity")
+            if (
+                type(sequence) is not int
+                or sequence <= prior_sequence
+                or type(admission.get("arm_nonce")) is not int
+                or admission["arm_nonce"] <= 0
+                or type(admission.get("expiry_s")) is not int
+                or admission["expiry_s"] <= 0
+                or type(generation) is not int
+                or generation <= 0
+                or type(query_nonce) is not int
+                or query_nonce <= 0
+                or type(coordinate) is not int
+                or not prior_coordinate <= coordinate < deadline
+                or deadline
+                != bench_attempt.limits.automatic_application_admission_deadline_apertures
+                or not isinstance(opportunity, str)
+                or not opportunity
+                or opportunity in opportunities
+                or not isinstance(admission.get("admitted_utc"), str)
+                or not admission["admitted_utc"]
+            ):
+                raise ValueError("retained bench-attempt ARM admission differs")
+            prior_sequence = sequence
+            prior_coordinate = coordinate
+            opportunities.add(opportunity)
+        expected_last = admissions[-1]["natural_opportunity"] if admissions else None
+        if (
+            self.state.get("bench_attempt_last_arm_opportunity") != expected_last
+            or (admissions and self.state.get("authorization_sequence", 0) < prior_sequence)
+        ):
+            raise ValueError("retained bench-attempt ARM admission order differs")
+
+    def _validate_bench_attempt_causal_state(self, value: object) -> None:
+        bench_attempt = self.envelope.bench_attempt
+        if bench_attempt is None:
+            raise ValueError(
+                "private nonphysical rehearsal cannot retain a physical causal state"
+            )
+        if not isinstance(value, dict) or set(value) != {
+            "schema_version",
+            "contract",
+            "durable_ACT_application_count",
+            "firmware_correction_count",
+            "authority_closed",
+            "closure",
+        }:
+            raise ValueError("bench-attempt causal state is malformed")
+        limits = bench_attempt.limits
+        durable_count = value.get("durable_ACT_application_count")
+        firmware_count = value.get("firmware_correction_count")
+        authority_closed = value.get("authority_closed")
+        closure = value.get("closure")
+        if (
+            value.get("schema_version") != CAUSAL_STATE_SCHEMA_VERSION
+            or value.get("contract") != CAUSAL_STATE_CONTRACT_ID
+            or type(durable_count) is not int
+            or type(firmware_count) is not int
+            or type(authority_closed) is not bool
+            or not 0 <= durable_count <= limits.automatic_application_limit
+            or not 0 <= firmware_count <= limits.automatic_application_limit
+            or durable_count != firmware_count
+            or authority_closed != (closure is not None)
+        ):
+            raise ValueError("bench-attempt causal state differs from its contract")
+        if bench_attempt.purpose == INHIBITED_ZERO_WRITE:
+            expected = {
+                "trigger": "initial_contract_state",
+                "bench_attempt_purpose": bench_attempt.purpose,
+                "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
+                    "envelope_sha256"
+                ],
+            }
+            if durable_count != 0 or not authority_closed or closure != expected:
+                raise ValueError(
+                    "inhibited zero-write causal state grants application authority"
+                )
+            return
+        if authority_closed:
+            required_closure_fields = {
+                "trigger",
+                "bench_attempt_purpose",
+                "bench_attempt_envelope_sha256",
+                "request_sequence",
+                "transaction_record_sequence",
+                "decision_sequence",
+                "application_sequence",
+                "snapshot_generation",
+                "query_nonce",
+                "accepted_D14_D8_apertures_at_application",
+                "closed_utc",
+            }
+            if (
+                durable_count != 1
+                or not isinstance(closure, dict)
+                or set(closure) != required_closure_fields
+                or closure.get("trigger") != "first_validated_ACT_application"
+                or closure.get("bench_attempt_purpose") != bench_attempt.purpose
+                or closure.get("bench_attempt_envelope_sha256")
+                != bench_attempt.as_dict()["envelope_sha256"]
+                or type(closure.get("request_sequence")) is not int
+                or type(closure.get("transaction_record_sequence")) is not int
+                or type(closure.get("decision_sequence")) is not int
+                or type(closure.get("application_sequence")) is not int
+                or type(closure.get("snapshot_generation")) is not int
+                or type(closure.get("query_nonce")) is not int
+                or any(
+                    closure.get(field, 0) <= 0
+                    for field in (
+                        "request_sequence",
+                        "transaction_record_sequence",
+                        "decision_sequence",
+                        "application_sequence",
+                        "snapshot_generation",
+                        "query_nonce",
+                    )
+                )
+                or (
+                    closure.get("accepted_D14_D8_apertures_at_application")
+                    is not None
+                    and type(
+                        closure.get("accepted_D14_D8_apertures_at_application")
+                    )
+                    is not int
+                )
+                or (
+                    isinstance(
+                        closure.get("accepted_D14_D8_apertures_at_application"),
+                        int,
+                    )
+                    and closure["accepted_D14_D8_apertures_at_application"] < 0
+                )
+                or not isinstance(closure.get("closed_utc"), str)
+            ):
+                raise ValueError("closed bench-attempt causal state is malformed")
+            try:
+                _parse_utc_epoch(closure["closed_utc"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "closed bench-attempt causal timestamp is malformed"
+                ) from exc
+        elif durable_count != 0 or closure is not None:
+            raise ValueError("open bench-attempt causal state has application evidence")
+
+    def _bench_authority_closed(self) -> bool:
+        if self.envelope.bench_attempt is None:
+            return False
+        causal_state = self.state.get("bench_attempt_causal_state")
+        self._validate_bench_attempt_causal_state(causal_state)
+        return bool(causal_state["authority_closed"])
+
+    def _close_bench_authority_before_application_acknowledgement(
+        self,
+        row: dict[str, str],
+        health: dict[tuple[str, str], str],
+    ) -> dict[str, object]:
+        """Persist the one physical application frontier before phase-3 ACK."""
+
+        bench_attempt = self.envelope.bench_attempt
+        if bench_attempt is None:
+            return {}
+        if bench_attempt.purpose != SINGLE_AUTOMATIC_APPLICATION:
+            raise ValueError(
+                "inhibited zero-write attempt observed an ACT application"
+            )
+        if row.get("event") != "application":
+            raise ValueError(
+                "bench-attempt phase-3 evidence is not a successful application"
+            )
+        rows = _read_csv(self.run_dir / ACTIVE_CSV)
+        application_rows = [item for item in rows if item.get("event") == "application"]
+        record_sequence = int(row["transaction_record_sequence"])
+        if (
+            len(application_rows) != 1
+            or application_rows[0] != row
+            or int(application_rows[0]["transaction_record_sequence"])
+            != record_sequence
+        ):
+            raise ValueError(
+                "durable ACT application prefix differs from the one-application envelope"
+            )
+        durable_count = len(application_rows)
+        firmware_count = int(
+            health.get(("adaptive_hybrid", "correction_count"), "-1")
+        )
+        row_count = int(row["correction_count"])
+        if durable_count != 1 or row_count != 1 or firmware_count != 1:
+            raise ValueError(
+                "durable ACT and causally complete firmware correction counts differ: "
+                f"ACT={durable_count} row={row_count} firmware={firmware_count}"
+            )
+        accepted_apertures = self._qualified_d14_apertures(health)
+        closure = {
+            "trigger": "first_validated_ACT_application",
+            "bench_attempt_purpose": bench_attempt.purpose,
+            "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
+                "envelope_sha256"
+            ],
+            "request_sequence": int(row["request_sequence"]),
+            "transaction_record_sequence": record_sequence,
+            "decision_sequence": int(row["decision_sequence"]),
+            "application_sequence": int(row["application_sequence"]),
+            "snapshot_generation": int(
+                health[("adaptive_hybrid", "snapshot_generation_complete")]
+            ),
+            "query_nonce": int(health[("adaptive_hybrid", "query_nonce")]),
+            "accepted_D14_D8_apertures_at_application": accepted_apertures,
+            "closed_utc": _utc_now(),
+        }
+        retained = self.state.get("bench_attempt_causal_state")
+        self._validate_bench_attempt_causal_state(retained)
+        if retained["authority_closed"]:
+            retained_closure = retained["closure"]
+            stable_fields = {
+                "trigger",
+                "bench_attempt_purpose",
+                "bench_attempt_envelope_sha256",
+                "request_sequence",
+                "transaction_record_sequence",
+                "decision_sequence",
+                "application_sequence",
+                "accepted_D14_D8_apertures_at_application",
+            }
+            if any(
+                retained_closure.get(field) != closure.get(field)
+                for field in stable_fields
+            ):
+                raise ValueError(
+                    "retained bench-attempt authority closure changed identity"
+                )
+            return {
+                "bench_attempt_authority_closed": True,
+                "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
+                    "envelope_sha256"
+                ],
+            }
+
+        causal_state = {
+            "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
+            "contract": CAUSAL_STATE_CONTRACT_ID,
+            "durable_ACT_application_count": durable_count,
+            "firmware_correction_count": firmware_count,
+            "authority_closed": True,
+            "closure": closure,
+        }
+        self._validate_bench_attempt_causal_state(causal_state)
+        self.state["bench_attempt_causal_state"] = causal_state
+        self.state["bench_attempt_arm_admission_closed"] = True
+        self.state["arm_pending"] = False
+        self.state["arm_sent_at_utc"] = None
+        self._save()
+        # Event append is itself fsynced.  The phase-3 command is submitted by
+        # the base transaction layer only after this method returns.
+        self._programme_event("bench_attempt_authority_closed", **closure)
+        return {
+            "bench_attempt_authority_closed": True,
+            "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
+                "envelope_sha256"
+            ],
+        }
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
         self._event(f"{self.programme.key}_{suffix}", **payload)
@@ -641,12 +1125,19 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 observed_phase == expected_phase
                 and observed_request == request_sequence
             ):
-                return {
+                preparation = {
                     "pre_submit_snapshot_generation": int(
                         health[("adaptive_hybrid", "snapshot_generation_complete")]
                     ),
                     "pre_submit_evidence_phase": expected_phase,
                 }
+                if phase == 3 and self.envelope.bench_attempt is not None:
+                    preparation.update(
+                        self._close_bench_authority_before_application_acknowledgement(
+                            row, health
+                        )
+                    )
+                return preparation
             if observed_phase == "evidence_clear" and observed_request == 0:
                 pass
             elif (
@@ -927,6 +1418,26 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return False
         return True
 
+    def _validate_bench_transaction_prefix(self) -> None:
+        bench_attempt = self.envelope.bench_attempt
+        if bench_attempt is None:
+            return
+        rows = _read_csv(self.run_dir / ACTIVE_CSV)
+        manual_count = sum(row.get("event") == "manual_start" for row in rows)
+        application_count = sum(row.get("event") == "application" for row in rows)
+        limits = bench_attempt.limits
+        if (
+            manual_count > limits.setup_application_limit
+            or application_count > limits.automatic_application_limit
+            or (
+                bench_attempt.purpose == INHIBITED_ZERO_WRITE
+                and bool(rows)
+            )
+        ):
+            raise ValueError(
+                "ACT transaction prefix exceeds the physical bench-attempt envelope"
+            )
+
     def _process_transactions(self) -> None:
         if self.state.get("host_verification_hold") is not None:
             self._process_transactions_during_host_verification_hold()
@@ -935,6 +1446,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return
         prior_terminal = self.state.get("terminal")
         try:
+            self._validate_bench_transaction_prefix()
             super()._process_transactions()
         except IndependentReplayMismatch as exc:
             self._enter_host_verification_hold(exc)
@@ -956,6 +1468,18 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
             self._enter_host_verification_hold(
                 exc, source="response_checkpoint_replay"
+            )
+            return
+        except (OSError, RuntimeError, TimeoutError, UnicodeError, ValueError) as exc:
+            self._enter_host_verification_hold(
+                exc, source="transaction_evidence_validation"
+            )
+            return
+        try:
+            self._latch_setup_confirmation()
+        except (OSError, RuntimeError, TimeoutError, UnicodeError, ValueError) as exc:
+            self._enter_host_verification_hold(
+                exc, source="setup_first_consumer_confirmation"
             )
             return
         if self.state.get("inflight_evidence_acknowledgement") is not None:
@@ -1018,6 +1542,214 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     )
         self._validate_hybrid_decisions_or_hold()
 
+    def _latch_setup_confirmation(self) -> None:
+        """Bind the validated leading ``manual_start`` to setup authority.
+
+        The base transaction consumer durably records that it has observed the
+        leading manual-start row, but the concrete supervisor also needs an
+        explicit setup frontier before qualification and recoverable GNSS
+        metadata holds may be consumed.  Only the exact firmware row emitted
+        for the one retained setup request can open that frontier.
+        """
+
+        retained_timestamp = self.state.get("setup_confirmed_utc")
+        retained_confirmation = self.state.get("setup_confirmation")
+        if (retained_timestamp is None) != (retained_confirmation is None):
+            raise ValueError(
+                "ADAPTIVE_HYBRID retained setup confirmation presence differs"
+            )
+
+        rows = _read_csv(self.run_dir / ACTIVE_CSV)
+        manual_rows = [row for row in rows if row.get("event") == "manual_start"]
+        if not manual_rows:
+            return
+        if len(manual_rows) != 1 or manual_rows[0] is not rows[0]:
+            raise ValueError("ADAPTIVE_HYBRID setup evidence is not one leading row")
+        row = manual_rows[0]
+        record_sequence = int(row["transaction_record_sequence"])
+        if record_sequence not in set(self.state["observed_manual_record_sequences"]):
+            return
+
+        authority_relative = self.state.get("setup_authority_path")
+        if authority_relative != str(SETUP_AUTHORITY_PATH):
+            raise ValueError("ADAPTIVE_HYBRID setup confirmation lacks retained authority")
+        authority_path = (self.run_dir / authority_relative).resolve()
+        try:
+            authority_path.relative_to(self.run_dir.resolve())
+            authority = json.loads(authority_path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "ADAPTIVE_HYBRID retained setup authority is unreadable"
+            ) from exc
+        unsigned_authority = {
+            key: value for key, value in authority.items() if key != "record_sha256"
+        }
+        authority_sha256 = sha256(
+            json.dumps(
+                unsigned_authority, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+        request = authority.get("request")
+        authority_fields = {
+            "contract",
+            "created_utc",
+            "request",
+            "health",
+            "active_row_count",
+            "dac_row_count",
+            "telemetry_drop_baseline",
+            "record_sha256",
+        }
+        request_fields = {
+            "authorization_sequence",
+            "status_generation",
+            "query_nonce",
+            "expires_s",
+            "session_id",
+            "requested_code",
+            "one_shot_ordinal",
+            "configuration_identity",
+        }
+        if (
+            set(authority) != authority_fields
+            or authority.get("contract") != SETUP_AUTHORITY_CONTRACT
+            or authority.get("record_sha256") != authority_sha256
+            or not isinstance(request, dict)
+            or set(request) != request_fields
+        ):
+            raise ValueError("ADAPTIVE_HYBRID retained setup authority differs")
+        try:
+            _parse_utc_epoch(str(authority["created_utc"]))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "ADAPTIVE_HYBRID retained setup authority timestamp differs"
+            ) from exc
+
+        retained_health = authority.get("health")
+        if not isinstance(retained_health, list) or not all(
+            isinstance(item, dict) and set(item) == {"component", "key", "value"}
+            for item in retained_health
+        ):
+            raise ValueError("ADAPTIVE_HYBRID setup authority health is malformed")
+        health_keys = [
+            (str(item["component"]), str(item["key"]))
+            for item in retained_health
+        ]
+        if health_keys != sorted(health_keys) or len(health_keys) != len(set(health_keys)):
+            raise ValueError("ADAPTIVE_HYBRID setup authority health is not canonical")
+        authority_health = {
+            key: str(item["value"])
+            for key, item in zip(health_keys, retained_health, strict=True)
+        }
+        expected_identity = {
+            "run_identity": self.spec.run_identity,
+            "build_identity": self.expected_build_identity,
+            "image_identity": self.spec.profile,
+            **self.identities,
+        }
+        readiness = evaluate_setup_prewrite_readiness(
+            authority_health,
+            expected_identity=expected_identity,
+            planned_live_stimulus_code=self.spec.start_code,
+            active_row_count=int(authority.get("active_row_count", -1)),
+            dac_row_count=int(authority.get("dac_row_count", -1)),
+            telemetry_drop_baseline=int(
+                authority.get("telemetry_drop_baseline", -1)
+            ),
+        )
+        if not readiness.ready:
+            raise ValueError(
+                "ADAPTIVE_HYBRID retained setup authority prewrite differs: "
+                + readiness.diagnostic()
+            )
+
+        session_id = int(row["session_id"])
+        application_timestamp_s = int(row["application_timestamp_s"])
+        event_timestamp_ticks = int(row["event_timestamp_ticks"])
+        setup_code = self.programme.setup_code
+        exact = {
+            "authorization_sequence": "0",
+            "nonce": "0",
+            "request_sequence": "0",
+            "decision_sequence": "0",
+            "current_applied_code": str(setup_code),
+            "requested_delta_codes": "0",
+            "requested_code": str(setup_code),
+            "correction_ordinal": "0",
+            "cumulative_after_codes": "0",
+            "accepted_code": str(setup_code),
+            "applied_code": str(setup_code),
+            "application_sequence": "0",
+            "i2c_ok": "true",
+            "clamped": "false",
+            "ambiguous": "false",
+            "dac_epoch": "1",
+            "estimator_history_reset": "false",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "active_state": "DISARMED",
+            "response_class": "unavailable",
+            "reason": "manual_start_established",
+            "evidence_state": "evidence_clear",
+        }
+        mismatched = sorted(
+            field for field, expected in exact.items() if row.get(field) != expected
+        )
+        if (
+            mismatched
+            or session_id <= 0
+            or event_timestamp_ticks <= 0
+            or event_timestamp_ticks
+            != application_timestamp_s * RP2040_MONOTONIC_US_PER_SECOND
+            or request.get("session_id") != session_id
+            or request.get("requested_code") != setup_code
+            or request.get("one_shot_ordinal") != 1
+            or request.get("authorization_sequence")
+            != self.state.get("setup_authorization_sequence")
+            or request.get("configuration_identity")
+            != self.expected_build_identity.split(":", 1)[1]
+            or authority.get("active_row_count") != 0
+            or authority.get("dac_row_count") != 0
+            or authority.get("telemetry_drop_baseline") != 0
+            or authority_health.get(
+                ("adaptive_hybrid", "snapshot_generation_complete")
+            )
+            != str(request.get("status_generation"))
+            or authority_health.get(("adaptive_hybrid", "query_nonce"))
+            != str(request.get("query_nonce"))
+            or authority_health.get(("adaptive_hybrid", "session_id"))
+            != str(request.get("session_id"))
+            or int(request.get("expires_s", 0))
+            <= int(authority_health.get(("adaptive_hybrid", "uptime_s"), "0"))
+            or self.state.get("initial_session_id") != session_id
+        ):
+            detail = ", ".join(mismatched) or "authority/session/time binding"
+            raise ValueError(
+                "ADAPTIVE_HYBRID setup confirmation differs: " + detail
+            )
+
+        confirmation = {
+            "transaction_record_sequence": record_sequence,
+            "event_timestamp_ticks": event_timestamp_ticks,
+            "time_domain": row["time_domain"],
+            "session_id": session_id,
+            "applied_code": setup_code,
+            "dac_epoch": 1,
+            "setup_authorization_sequence": int(request["authorization_sequence"]),
+            "setup_status_generation": int(request["status_generation"]),
+            "setup_query_nonce": int(request["query_nonce"]),
+            "setup_authority_record_sha256": authority_sha256,
+        }
+        retained = self.state.get("setup_confirmation")
+        if retained is not None and retained != confirmation:
+            raise ValueError("ADAPTIVE_HYBRID retained setup confirmation changed")
+        if self.state.get("setup_confirmed_utc") is None:
+            self.state["setup_confirmed_utc"] = _utc_now()
+            self.state["setup_confirmation"] = confirmation
+            self.state["terminal_static_code"] = setup_code
+            self._save()
+            self._programme_event("setup_first_consumer_confirmed", **confirmation)
+
     def _runtime_health_integrity(
         self, health: dict[tuple[str, str], str]
     ):  # type: ignore[no-untyped-def]
@@ -1025,9 +1757,61 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         # authority are checked separately below.
         return super()._runtime_health_integrity(health)
 
+    def _check_setup_transaction_timeout(
+        self,
+        health: dict[tuple[str, str], str],
+        now_epoch: float,
+    ) -> None:
+        """Turn physical setup-observation discrepancies into review holds."""
+
+        if self.envelope.bench_attempt is None:
+            super()._check_setup_transaction_timeout(health, now_epoch)
+            return
+        if not self.state["manual_start_sent"]:
+            return
+        if self.envelope.bench_attempt.purpose == INHIBITED_ZERO_WRITE:
+            self._enter_host_verification_hold(
+                ValueError("zero-write attempt retained an impossible setup request"),
+                source="setup_transaction_observer",
+            )
+            return
+        if health.get(("adaptive_hybrid", "manual_start_confirmed")) == "true":
+            return
+        requested = self.state.get("setup_requested_utc")
+        if not isinstance(requested, str) or not requested:
+            self._enter_host_verification_hold(
+                ValueError("setup transaction lacks its host timestamp"),
+                source="setup_transaction_observer",
+            )
+            return
+        if now_epoch - _parse_utc_epoch(requested) >= (
+            SETUP_AUTHORITY_LIFETIME_S + SETUP_RESULT_GRACE_S
+        ):
+            self._enter_host_verification_hold(
+                TimeoutError("setup transaction expired without an observed result"),
+                source="setup_transaction_observer",
+            )
+
     def _check_fail_static_health(
         self, health: dict[tuple[str, str], str]
     ) -> None:
+        bench_attempt = self.envelope.bench_attempt
+        if bench_attempt is not None:
+            self._validate_bench_attempt_causal_state(
+                self.state.get("bench_attempt_causal_state")
+            )
+            dac_write_count = len(_read_csv(self.run_dir / DAC_CSV))
+            if (
+                dac_write_count
+                > bench_attempt.limits.total_dac_value_write_limit
+                or (
+                    bench_attempt.purpose == INHIBITED_ZERO_WRITE
+                    and self.state.get("manual_start_sent") is not False
+                )
+            ):
+                raise ValueError(
+                    "physical DAC evidence exceeds the bench-attempt envelope"
+                )
         # Preview streams remain zero-authority; the combined controller has a
         # separate explicit transaction boundary.
         hybrid_state = health.get(("adaptive_hybrid", "hybrid_state"))
@@ -1192,10 +1976,14 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         # The mutually exclusive partition is phase_material versus
         # frequency_only; each individual count must remain bounded by the
         # global correction count.
+        maximum_applications = (
+            self.programme.authorized_maximum_physical_applications
+            if bench_attempt is None
+            else bench_attempt.limits.automatic_application_limit
+        )
         if (
-            corrections
-            > self.programme.authorized_maximum_physical_applications
-            or corrections > self.programme.authorized_maximum_applications
+            corrections > maximum_applications
+            or corrections > self.spec.correction_limit
             or movement
             > self.programme.authorized_maximum_cumulative_movement_codes
             or material > phase_nonzero
@@ -1375,6 +2163,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _maybe_qualify(self, health: dict[tuple[str, str], str]) -> None:
         if self.state["qualification_started_utc"] is not None:
             return
+        bench_attempt = self.envelope.bench_attempt
+        if (
+            bench_attempt is not None
+            and bench_attempt.purpose == INHIBITED_ZERO_WRITE
+        ):
+            self._maybe_establish_zero_write_aperture_origin(health)
+            return
         if self.state["setup_confirmed_utc"] is None or not self._identity_ready(health):
             return
         if (
@@ -1548,6 +2343,61 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             ),
         )
 
+    def _maybe_establish_zero_write_aperture_origin(
+        self, health: dict[tuple[str, str], str]
+    ) -> None:
+        """Establish the zero-write endpoint without inventing a DAC epoch."""
+
+        if (
+            not self._identity_ready(health)
+            or _authoritative_capture_health_faults(health)
+            or health.get(("adaptive_hybrid", "state")) != "DISARMED"
+            or _truth(health, "manual_start_confirmed")
+            or _truth(health, "evidence_pending")
+            or health.get(("adaptive_hybrid", "evidence_phase")) != "evidence_clear"
+        ):
+            return
+        try:
+            session_id = int(health[("pps_gate", "snapshot_session")])
+            accepted_origin = int(health[("pps_gate", "accepted_window_count")])
+            reference_origin = int(
+                health[("pps_gate", "boundary_reference_sequence")]
+            )
+            baseline = {
+                key: int(health[("pps_gate", key)])
+                for key in _authoritative_capture_counters(self.programme)
+            }
+        except (KeyError, TypeError, ValueError):
+            return
+        if (
+            session_id <= 0
+            or not 0 <= accepted_origin < 1 << 32
+            or not 0 <= reference_origin < 1 << 32
+            or any(value < 0 for value in baseline.values())
+        ):
+            return
+        self.state["qualification_started_utc"] = _utc_now()
+        self.state["qualified_origin_estimate_id"] = (
+            "bench_attempt:no_setup_accepted_D14_D8_aperture_origin"
+        )
+        self.state["qualified_origin_session_id"] = session_id
+        self.state["qualified_d14_accepted_window_origin"] = accepted_origin
+        self.state["qualified_d14_reference_sequence_origin"] = reference_origin
+        self.state["qualified_d14_completed_apertures_before_segment"] = 0
+        self.state["qualified_d14_segment_accepted_window_origin"] = accepted_origin
+        self.state["qualified_d14_segment_reference_sequence_origin"] = reference_origin
+        self.state["qualified_authoritative_capture_baseline"] = baseline
+        self._save()
+        self._programme_event(
+            "zero_write_aperture_origin_established",
+            capture_session=session_id,
+            accepted_window_count_origin=accepted_origin,
+            boundary_reference_sequence_origin=reference_origin,
+            setup_application_count=0,
+            DAC_value_write_count=0,
+            progress_domain="accepted_D14_D8_apertures",
+        )
+
     def _abort_on_authoritative_capture_discontinuity(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
@@ -1653,6 +2503,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         session.  Qualified duration remains a sum of accepted apertures; the
         rejected reference boundaries never enter that sum.
         """
+
+        # Physical bench-attempt envelopes categorically prohibit extending or
+        # reopening an attempt.  Retain the discontinuity and enter the normal
+        # review hold; the two-transaction private PTY rehearsal continues to
+        # exercise the historical platform recovery seam without bench power.
+        if self.envelope.bench_attempt is not None:
+            return False
 
         if (
             self.programme.qualified_d14_aperture_count is None
@@ -1912,6 +2769,44 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.state["qualified_d14_reference_sequence_endpoint"] = reference_now
         return accepted_total
 
+    def _close_bench_arm_admission_if_required(
+        self, health: dict[tuple[str, str], str]
+    ) -> bool:
+        """Close new ARM admission in the exact accepted-aperture domain."""
+
+        bench_attempt = self.envelope.bench_attempt
+        if bench_attempt is None:
+            return False
+        if self._bench_authority_closed():
+            if not self.state.get("bench_attempt_arm_admission_closed"):
+                self.state["bench_attempt_arm_admission_closed"] = True
+                self._save()
+            return True
+        if self.state.get("bench_attempt_arm_admission_closed"):
+            return True
+        if bench_attempt.purpose != SINGLE_AUTOMATIC_APPLICATION:
+            raise ValueError("unknown physical bench-attempt authority state")
+        aperture_progress = self._qualified_d14_apertures(health)
+        deadline = (
+            bench_attempt.limits.automatic_application_admission_deadline_apertures
+        )
+        if aperture_progress is None or aperture_progress < deadline:
+            return False
+        self.state["bench_attempt_arm_admission_closed"] = True
+        self.state["bench_attempt_arm_admission_closed_utc"] = _utc_now()
+        self.state["bench_attempt_arm_admission_endpoint"] = aperture_progress
+        self._save()
+        self._programme_event(
+            "bench_attempt_arm_admission_closed",
+            accepted_D14_D8_apertures=aperture_progress,
+            admission_deadline_delta=deadline,
+            progress_domain="accepted_D14_D8_apertures",
+            endpoint_contract="qualified_D14_D8_aperture_count_v2",
+            new_ARM_authority=False,
+            attempt_extension_permitted=False,
+        )
+        return True
+
     def _close_response_horizon_if_required(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
@@ -1965,6 +2860,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     ) -> None:
         if self.state.get("host_verification_hold") is not None:
             return
+        bench_attempt = self.envelope.bench_attempt
+        if bench_attempt is not None and self._bench_authority_closed():
+            return
+        if (
+            bench_attempt is not None
+            and self.state.get("bench_attempt_arm_admission_closed")
+            and not self.state.get("arm_pending")
+        ):
+            return
         if not self._identity_ready(health):
             return
         state = health.get(("adaptive_hybrid", "state"), "")
@@ -2017,6 +2921,27 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
             return
 
+        setup_confirmation = self.state.get("setup_confirmation")
+        setup_confirmation_exact = (
+            isinstance(self.state.get("setup_confirmed_utc"), str)
+            and bool(self.state.get("setup_confirmed_utc"))
+            and isinstance(setup_confirmation, dict)
+            and setup_confirmation.get("session_id")
+            == self.state.get("initial_session_id")
+            and setup_confirmation.get("applied_code")
+            == self.programme.setup_code
+            and setup_confirmation.get("dac_epoch") == 1
+        )
+        if manual_confirmed and not setup_confirmation_exact:
+            self._enter_host_verification_hold(
+                ValueError(
+                    "firmware manual-start status lacks the exact retained "
+                    "setup first-consumer confirmation"
+                ),
+                source="setup_first_consumer_confirmation",
+            )
+            return
+
         if self.state["arm_pending"] and state == "DISARMED":
             sent_at = self.state.get("arm_sent_at_utc")
             age = (
@@ -2033,7 +2958,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 )
         if not manual_confirmed or self.state["arm_pending"]:
             return
-        if self._close_response_horizon_if_required(health):
+        if bench_attempt is not None:
+            if self._close_bench_arm_admission_if_required(health):
+                return
+        elif self._close_response_horizon_if_required(health):
             return
 
         hybrid_state = health.get(("adaptive_hybrid", "hybrid_state"), "")
@@ -2048,7 +2976,12 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         correction_count = int(
             health.get(("adaptive_hybrid", "correction_count"), "0")
         )
-        if correction_count >= self.programme.authorized_maximum_applications:
+        correction_limit = (
+            self.programme.authorized_maximum_applications
+            if bench_attempt is None
+            else bench_attempt.limits.automatic_application_limit
+        )
+        if correction_count >= correction_limit:
             return
         progress = int(
             health.get(("adaptive_hybrid", "selected_interval_count"), "0")
@@ -2057,6 +2990,29 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         preview = preview_rows[-1] if preview_rows else None
         if not self._arm_progress_epoch_ready(preview, progress):
             return
+        opportunity = None
+        if preview is not None:
+            opportunity = preview.get("decision_id") or preview.get("control_seq")
+        if bench_attempt is not None:
+            arm_count = self.state.get("bench_attempt_arm_submission_count")
+            if type(arm_count) is not int:
+                raise ValueError("bench-attempt ARM submission count is malformed")
+            if arm_count >= bench_attempt.limits.arm_submission_limit:
+                self.state["bench_attempt_arm_admission_closed"] = True
+                self.state["bench_attempt_arm_admission_closed_utc"] = _utc_now()
+                self._save()
+                self._programme_event(
+                    "bench_attempt_arm_submission_limit_reached",
+                    arm_submission_count=arm_count,
+                    new_ARM_authority=False,
+                )
+                return
+            if opportunity is None:
+                raise ValueError(
+                    "bench-attempt ARM lacks a distinct natural-correction opportunity"
+                )
+            if opportunity == self.state.get("bench_attempt_last_arm_opportunity"):
+                return
         # ADAPTIVE_HYBRID must arm the next fresh selected-estimate epoch even when the
         # The frequency-only preview is available every 600 seconds.
         # The hybrid firmware owns the 1800-second *applied* cadence and
@@ -2076,16 +3032,53 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         sequence = self.state["authorization_sequence"]
         nonce = secrets.randbits(32) or 1
         expiry = uptime + ARM_LIFETIME_S
-        self._command(f"ACTIVE ARM {sequence} {nonce} {expiry}")
         self.state["arm_pending"] = True
         self.state["arm_sent_at_utc"] = _utc_now()
+        if bench_attempt is not None:
+            aperture_coordinate = self._qualified_d14_apertures(health)
+            if aperture_coordinate is None:
+                raise ValueError("bench-attempt ARM lacks an accepted-aperture coordinate")
+            admission = {
+                "authorization_sequence": sequence,
+                "arm_nonce": nonce,
+                "expiry_s": expiry,
+                "authorizing_snapshot_generation": int(
+                    health[("adaptive_hybrid", "snapshot_generation_complete")]
+                ),
+                "authorizing_query_nonce": int(
+                    health[("adaptive_hybrid", "query_nonce")]
+                ),
+                "accepted_D14_D8_apertures": aperture_coordinate,
+                "admission_deadline_delta": (
+                    bench_attempt.limits.automatic_application_admission_deadline_apertures
+                ),
+                "natural_opportunity": str(opportunity),
+                "admitted_utc": self.state["arm_sent_at_utc"],
+            }
+            admissions = self.state["bench_attempt_arm_admissions"]
+            if not isinstance(admissions, list):
+                raise ValueError("bench-attempt ARM admissions are malformed")
+            admissions.append(admission)
+            self.state["bench_attempt_arm_submission_count"] = arm_count + 1
+            self.state["bench_attempt_last_arm_opportunity"] = opportunity
+            self._validate_bench_attempt_arm_admissions()
         self._save()
+        self._command(f"ACTIVE ARM {sequence} {nonce} {expiry}")
         self._programme_event(
             "one_decision_armed",
             authorization_sequence=sequence,
             expiry_s=expiry,
             selected_interval_count=progress,
             hybrid_state=hybrid_state,
+            **(
+                {
+                    "bench_attempt_arm_submission_count": arm_count + 1,
+                    "bench_attempt_natural_opportunity": opportunity,
+                    "bench_attempt_admission": admission,
+                }
+                if bench_attempt is not None
+                else {}
+            ),
         )
 
     def _healthy_terminal_ready(
@@ -2143,6 +3136,93 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         }
         self._save()
 
+    def _maybe_finish_bench_attempt(
+        self,
+        health: dict[tuple[str, str], str],
+        now_epoch: float,
+    ) -> bool:
+        """Apply only the terminal horizons frozen in the bench envelope."""
+
+        bench_attempt = self.envelope.bench_attempt
+        if bench_attempt is None:
+            return False
+        document = bench_attempt.as_dict()
+        timing = document["timing"]
+        terminals = document["terminal_semantics"]
+        progress = self._qualified_d14_apertures(health)
+        wall_origin = self.state.get("wall_origin_utc")
+        wall_reached = bool(
+            isinstance(wall_origin, str)
+            and wall_origin
+            and now_epoch - _parse_utc_epoch(wall_origin)
+            >= int(timing["absolute_wall_limit_s"])
+        )
+        if bench_attempt.purpose == INHIBITED_ZERO_WRITE:
+            if progress is not None and wall_reached and self._healthy_terminal_ready(health):
+                self._set_healthy_endpoint(
+                    health, endpoint=str(terminals["success_terminal"])
+                )
+            elif wall_reached:
+                self._enter_host_verification_hold(
+                    ValueError("zero-write wall endpoint lacks a clear static terminal"),
+                    source="bench_attempt_wall_endpoint_observer",
+                )
+            return True
+
+        causal_state = self.state.get("bench_attempt_causal_state")
+        closure = (
+            causal_state.get("closure")
+            if isinstance(causal_state, dict)
+            else None
+        )
+        if isinstance(closure, dict):
+            application_coordinate = closure.get(
+                "accepted_D14_D8_apertures_at_application"
+            )
+            reserve = int(timing["correction_response_reserve_delta"]) + int(
+                timing["first_dependent_decision_reserve_delta"]
+            )
+            if (
+                type(application_coordinate) is int
+                and progress is not None
+                and progress >= application_coordinate + reserve
+                and self._healthy_terminal_ready(health)
+            ):
+                self._set_healthy_endpoint(
+                    health, endpoint=str(terminals["success_terminal"])
+                )
+                return True
+        elif (
+            self.state.get("bench_attempt_arm_admission_closed")
+            and not self.state.get("arm_pending")
+            and self._healthy_terminal_ready(health)
+        ):
+            self.state["terminal"] = {
+                "result": "nonpass",
+                "reason": str(terminals["no_application_terminal"]),
+                "primary_decision": str(terminals["no_application_terminal"]),
+                "last_confirmed_code": self.state["terminal_static_code"],
+                "utc": _utc_now(),
+            }
+            self._save()
+            return True
+        if wall_reached:
+            if self._healthy_terminal_ready(health):
+                self.state["terminal"] = {
+                    "result": "nonpass",
+                    "reason": "bench_attempt_absolute_wall_endpoint",
+                    "primary_decision": "adaptive_hybrid_right_censored_incomplete",
+                    "last_confirmed_code": self.state["terminal_static_code"],
+                    "utc": _utc_now(),
+                }
+                self._save()
+            else:
+                self._enter_host_verification_hold(
+                    ValueError("bench-attempt wall endpoint lacks a clear static terminal"),
+                    source="bench_attempt_wall_endpoint_observer",
+                )
+        return True
+
     def _maybe_finish(
         self,
         health: dict[tuple[str, str], str],
@@ -2156,6 +3236,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             and not self.programme.response_checkpoint_observational
         ):
             self._abort("phase_channel_degraded_frequency_control_retained")
+            return
+
+        if self._maybe_finish_bench_attempt(health, now_epoch):
             return
 
         qualification_deadline_s = self.programme.qualification_deadline_s
@@ -2427,6 +3510,75 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                         else 2
                     )
                 time.sleep(0.2)
+
+
+def load_validated_nonphysical_rehearsal_spec(
+    validated_manifest: dict[str, Any],
+) -> tuple[CampaignSpec, dict[str, str]]:
+    """Load the live spec from an exactly validated zero-authority PTY manifest."""
+
+    programme = programme_from_mapping(validated_manifest)
+    if not _nonphysical_rehearsal_boundary_exact(
+        validated_manifest, expected_stage=_NONPHYSICAL_REHEARSAL_STAGE
+    ):
+        raise ValueError(
+            "validated PTY rehearsal manifest differs from its private "
+            "zero-authority boundary"
+        )
+    live_envelope = {**validated_manifest, "stage": programme.live_stage}
+    return load_active_hybrid_spec(
+        live_envelope,
+        private_rehearsal_capability=(
+            _VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY
+        ),
+    )
+
+
+def create_validated_nonphysical_rehearsal_supervisor(
+    *,
+    validated_manifest: dict[str, Any],
+    manifest_path: Path,
+    run_dir: Path,
+    command_fifo: Path,
+    emergency_command_fifo: Path,
+    abort_fifo: Path,
+    expected_build_identity: str,
+    duration_s: float | None = None,
+    console_events: bool = False,
+) -> AdaptiveHybridSupervisor:
+    """Construct the private PTY worker after its producer-only validator.
+
+    The capability is injected here and has no physical CLI route.  The
+    runtime envelope independently rechecks the zero-authority markers so an
+    ordinary live manifest cannot be smuggled through this factory.
+    """
+
+    programme = programme_from_mapping(validated_manifest)
+    live_envelope = {**validated_manifest, "stage": programme.live_stage}
+    spec, identities = load_validated_nonphysical_rehearsal_spec(
+        validated_manifest
+    )
+    build_identity = _manifest_build_identity(live_envelope)
+    if expected_build_identity != build_identity:
+        raise ValueError(
+            "requested build identity differs from the validated PTY rehearsal manifest"
+        )
+    return AdaptiveHybridSupervisor(
+        manifest=live_envelope,
+        manifest_path=manifest_path,
+        private_rehearsal_capability=(
+            _VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY
+        ),
+        run_dir=run_dir,
+        command_fifo=command_fifo,
+        emergency_command_fifo=emergency_command_fifo,
+        abort_fifo=abort_fifo,
+        spec=spec,
+        identities=identities,
+        expected_build_identity=build_identity,
+        duration_s=duration_s,
+        console_events=console_events,
+    )
 
 
 def create_supervisor(

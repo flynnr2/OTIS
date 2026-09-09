@@ -9,7 +9,10 @@ manifest, not another product branch.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
+import json
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping
 
 
@@ -67,14 +70,6 @@ class AdaptiveHybridProgramme:
     @property
     def campaign_name(self) -> str:
         return self.profile_id
-
-    @property
-    def capture_duration_s(self) -> int:
-        return self.absolute_wall_limit_s + 180
-
-    @property
-    def supervisor_duration_s(self) -> int:
-        return self.absolute_wall_limit_s + 120
 
     @property
     def qualified_endpoint_reason(self) -> str:
@@ -159,6 +154,370 @@ ADAPTIVE_HYBRID_STRUCTURAL_PREFLIGHT_COVERAGE = (
     "GNSS_hold_causal_requalification_model",
     "D10_optional_event_control_projection",
 )
+
+OPERATIONAL_REHEARSAL_SEAL_TYPE = (
+    "adaptive_hybrid_operational_rehearsal_seal_v1"
+)
+OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES = (
+    "continuous_capture_and_exact_frozen_identity_consumption",
+    "actual_capture_and_supervisor_process_topology",
+    "setup_arm_and_evidence_ack_through_first_dependent_decision",
+    "timeout_periodic_and_repeated_transaction_boundaries",
+    "normal_command_transport_obstruction",
+    "independent_priority_abort_submission_and_delivery_before_capture_close",
+    "atomic_serial_owner_handoff_without_ownerless_interval",
+    "clean_stop_shared_current_analyzer_consumers_snapshot_rehearsal_seal_and_successful_registration",
+)
+
+
+# Closed current bench-attempt envelopes live beside the sole programme
+# descriptor.  They constrain individual bench entries; they do not add an
+# alternate programme or grant authority by themselves.
+SCHEMA_VERSION = 1
+CONTRACT_ID = "adaptive_hybrid_bench_attempt_envelope_v1"
+CAUSAL_STATE_SCHEMA_VERSION = 1
+CAUSAL_STATE_CONTRACT_ID = "adaptive_hybrid_bench_attempt_causal_state_v1"
+
+INHIBITED_ZERO_WRITE = "inhibited_zero_write"
+SINGLE_AUTOMATIC_APPLICATION = "single_automatic_application"
+PURPOSES = frozenset({INHIBITED_ZERO_WRITE, SINGLE_AUTOMATIC_APPLICATION})
+
+EXPECTED_BOARD_SERIAL = "503533748A919118"
+EXPECTED_HARDWARE_ID = "503533748A919118"
+EXPECTED_USB_VID = "0x2341"
+EXPECTED_USB_PID = "0x005E"
+EXPECTED_USB_PRODUCT = "Nano RP2040 Connect"
+EXPECTED_BOARD_NAME = "Arduino Nano RP2040 Connect"
+EXPECTED_BASE_FQBN = "rp2040:rp2040:arduino_nano_connect"
+EXPECTED_COMPILE_FQBN = "rp2040:rp2040:arduino_nano_connect:freq=133"
+
+PROGRESS_DOMAIN = "accepted_D14_D8_apertures"
+ENDPOINT_CONTRACT = "qualified_D14_D8_aperture_count_v2"
+AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES = 1_800
+CORRECTION_RESPONSE_RESERVE_APERTURES = 1_511
+FIRST_DEPENDENT_DECISION_RESERVE_APERTURES = 600
+ABSOLUTE_WALL_LIMIT_S = 7_200
+SETUP_CODE = ADAPTIVE_HYBRID_PROGRAMME.setup_code
+
+
+@dataclass(frozen=True)
+class _PurposeLimits:
+    setup_application_limit: int
+    automatic_application_limit: int
+    required_completed_automatic_applications: int
+    arm_submission_limit: int
+    total_dac_value_write_limit: int
+    maximum_outstanding_requests: int
+    setup_code: int | None
+    automatic_application_admission_deadline_apertures: int
+    authority_initially_closed: bool
+    authority_closure_trigger: str
+    success_terminal: str
+    no_application_terminal: str
+
+
+_LIMITS = MappingProxyType(
+    {
+        INHIBITED_ZERO_WRITE: _PurposeLimits(
+            setup_application_limit=0,
+            automatic_application_limit=0,
+            required_completed_automatic_applications=0,
+            arm_submission_limit=0,
+            total_dac_value_write_limit=0,
+            maximum_outstanding_requests=0,
+            setup_code=None,
+            automatic_application_admission_deadline_apertures=0,
+            authority_initially_closed=True,
+            authority_closure_trigger="initial_contract_state",
+            success_terminal="inhibited_zero_write_complete",
+            no_application_terminal="inhibited_by_contract",
+        ),
+        SINGLE_AUTOMATIC_APPLICATION: _PurposeLimits(
+            setup_application_limit=1,
+            automatic_application_limit=1,
+            required_completed_automatic_applications=1,
+            arm_submission_limit=4,
+            total_dac_value_write_limit=2,
+            maximum_outstanding_requests=1,
+            setup_code=SETUP_CODE,
+            automatic_application_admission_deadline_apertures=(
+                AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES
+            ),
+            authority_initially_closed=False,
+            authority_closure_trigger="first_validated_ACT_application",
+            success_terminal="single_automatic_application_recovery_complete",
+            no_application_terminal="bounded_no_natural_correction",
+        ),
+    }
+)
+
+
+def _canonical_bench_attempt_json(value: object) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("bench-attempt envelope is not canonical JSON") from exc
+
+
+def canonical_bench_attempt_sha256(unsigned_envelope: Mapping[str, Any]) -> str:
+    """Return the identity of an unsigned canonical envelope document."""
+
+    return sha256(_canonical_bench_attempt_json(unsigned_envelope)).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class BenchAttemptEnvelope:
+    """One of the two exact, current bench-attempt contracts."""
+
+    purpose: str
+
+    def __post_init__(self) -> None:
+        if self.purpose not in PURPOSES:
+            raise ValueError(f"unsupported bench-attempt purpose {self.purpose!r}")
+
+    @property
+    def limits(self) -> _PurposeLimits:
+        return _LIMITS[self.purpose]
+
+    def unsigned_document(self) -> dict[str, Any]:
+        limits = self.limits
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "contract": CONTRACT_ID,
+            "purpose": self.purpose,
+            "device_identity": {
+                "expected_board_serial": EXPECTED_BOARD_SERIAL,
+                "expected_hardware_id": EXPECTED_HARDWARE_ID,
+                "expected_usb_vid": EXPECTED_USB_VID,
+                "expected_usb_pid": EXPECTED_USB_PID,
+                "expected_usb_product": EXPECTED_USB_PRODUCT,
+                "expected_board_name": EXPECTED_BOARD_NAME,
+                "expected_base_fqbn": EXPECTED_BASE_FQBN,
+                "expected_compile_fqbn": EXPECTED_COMPILE_FQBN,
+            },
+            "authority": {
+                "setup_application_limit": limits.setup_application_limit,
+                "automatic_application_limit": limits.automatic_application_limit,
+                "required_completed_automatic_applications": (
+                    limits.required_completed_automatic_applications
+                ),
+                "arm_submission_limit": limits.arm_submission_limit,
+                "total_dac_value_write_limit": limits.total_dac_value_write_limit,
+                "maximum_outstanding_requests": limits.maximum_outstanding_requests,
+                "setup_code": limits.setup_code,
+                "automatic_retry_permitted": False,
+                "arm_retry_permitted": False,
+                "arm_submission_scope": "distinct_natural_correction_opportunities",
+                "restore_write_permitted": False,
+                "attempt_extension_permitted": False,
+                "forced_correction_permitted": False,
+            },
+            "timing": {
+                "progress_domain": PROGRESS_DOMAIN,
+                "endpoint_contract": ENDPOINT_CONTRACT,
+                "automatic_application_admission_deadline_delta": (
+                    limits.automatic_application_admission_deadline_apertures
+                ),
+                "correction_response_reserve_delta": (
+                    CORRECTION_RESPONSE_RESERVE_APERTURES
+                ),
+                "first_dependent_decision_reserve_delta": (
+                    FIRST_DEPENDENT_DECISION_RESERVE_APERTURES
+                ),
+                "absolute_wall_limit_s": ABSOLUTE_WALL_LIMIT_S,
+                "wall_limit_role": "separate_hard_bound_not_decision_counter",
+            },
+            "causal_state": {
+                "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
+                "contract": CAUSAL_STATE_CONTRACT_ID,
+                "durable_ACT_application_count": {
+                    "initial": 0,
+                    "maximum": limits.automatic_application_limit,
+                    "source": "durable_validated_ACT_application_records",
+                },
+                "firmware_correction_count": {
+                    "initial": 0,
+                    "maximum": limits.automatic_application_limit,
+                    "source": (
+                        "causally_complete_firmware_snapshot_for_same_request_sequence"
+                    ),
+                },
+                "authority_closed": {
+                    "initial": limits.authority_initially_closed,
+                    "closure_trigger": limits.authority_closure_trigger,
+                    "source": "durable_bench_attempt_causal_state",
+                    "persistence_required": True,
+                    "persistence_order": (
+                        "durable_before_phase_3_evidence_acknowledgement"
+                    ),
+                    "reopening_permitted": False,
+                    "new_ARM_permitted_when_closed": False,
+                },
+                "count_comparison_precondition": (
+                    "ACT_and_firmware_snapshot_causally_complete_for_same_request_sequence"
+                ),
+                "count_mismatch_transition": "operator_review_hold",
+            },
+            "terminal_semantics": {
+                "natural_correction_only": True,
+                "success_terminal": limits.success_terminal,
+                "no_application_terminal": limits.no_application_terminal,
+                "no_retry": True,
+                "no_restore": True,
+                "no_extension": True,
+            },
+            "host_discrepancy_semantics": {
+                "transition": "operator_review_hold",
+                "new_setup_authority": False,
+                "new_ARM_authority": False,
+                "automatic_abort_authority": False,
+                "automatic_teardown_authority": False,
+                "failed_campaign_authority": False,
+                "retain_capture_and_serial_owner": True,
+                "preserve_last_confirmed_code": True,
+                "preserve_exact_pending_phase_identity": True,
+            },
+        }
+
+    def as_dict(self) -> dict[str, Any]:
+        unsigned = self.unsigned_document()
+        return {
+            **unsigned,
+            "envelope_sha256": canonical_bench_attempt_sha256(unsigned),
+        }
+
+
+def envelope_for_purpose(purpose: str) -> BenchAttemptEnvelope:
+    """Return the immutable contract object for an exact supported purpose."""
+
+    return BenchAttemptEnvelope(purpose=purpose)
+
+
+def validate_bench_attempt_envelope(
+    value: Mapping[str, Any],
+) -> BenchAttemptEnvelope:
+    """Fail closed unless *value* is exactly one generated envelope."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("bench-attempt envelope must be a mapping")
+    expected_top_level_keys = {
+        "schema_version",
+        "contract",
+        "purpose",
+        "device_identity",
+        "authority",
+        "timing",
+        "causal_state",
+        "terminal_semantics",
+        "host_discrepancy_semantics",
+        "envelope_sha256",
+    }
+    if set(value) != expected_top_level_keys:
+        raise ValueError("bench-attempt envelope has unknown or missing fields")
+    purpose = value.get("purpose")
+    if not isinstance(purpose, str) or purpose not in PURPOSES:
+        raise ValueError(f"unsupported bench-attempt purpose {purpose!r}")
+    expected = envelope_for_purpose(purpose)
+    expected_document = expected.as_dict()
+    claimed_sha256 = value.get("envelope_sha256")
+    if not isinstance(claimed_sha256, str):
+        raise ValueError("bench-attempt envelope identity is malformed")
+    unsigned = {
+        key: item for key, item in value.items() if key != "envelope_sha256"
+    }
+    if claimed_sha256 != canonical_bench_attempt_sha256(unsigned):
+        raise ValueError("bench-attempt envelope identity is not exact")
+    if _canonical_bench_attempt_json(value) != _canonical_bench_attempt_json(
+        expected_document
+    ):
+        raise ValueError("bench-attempt envelope is not the exact current contract")
+    return expected
+
+
+def operational_rehearsal_authorization_contract(
+    *,
+    bundle: dict[str, Any],
+    proposal: dict[str, Any],
+    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
+) -> dict[str, Any]:
+    """Return the exact host-rehearsal activation-input contract."""
+
+    firmware = bundle.get("firmware")
+    policy = bundle.get("policy")
+    authoritative_inputs = bundle.get("authoritative_inputs")
+    host_tools = bundle.get("host_tools")
+    if not all(
+        isinstance(value, dict)
+        for value in (firmware, policy, authoritative_inputs, host_tools)
+    ):
+        raise ValueError("rehearsal authorization inputs are incomplete")
+    required_tools = {
+        "capture_device",
+        "adaptive_hybrid_operational_rehearsal",
+        "adaptive_hybrid_supervisor",
+        "adaptive_hybrid_run",
+        "adaptive_hybrid_analyze",
+        "evidence",
+        "evidence_finalization",
+        "evidence_index",
+    }
+    if not required_tools.issubset(host_tools):
+        raise ValueError("rehearsal authorization host-tool closure is incomplete")
+    return {
+        "schema_version": 1,
+        "seal_type": OPERATIONAL_REHEARSAL_SEAL_TYPE,
+        "report_kind": "operational_path_rehearsal",
+        "status": "passed",
+        "identity": {
+            "programme_id": programme.programme_id,
+            "run_identity": programme.runtime_run_identity,
+            "image_identity": programme.profile_id,
+            "bundle_sha256": bundle.get("bundle_sha256"),
+            "proposal_sha256": proposal.get("proposal_sha256"),
+            "source_revision": firmware.get("source_revision"),
+            "build_identity": firmware.get("build_identity"),
+            "uf2_sha256": (
+                firmware.get("uf2", {}).get("sha256")
+                if isinstance(firmware.get("uf2"), dict)
+                else None
+            ),
+            "policy_sha256": policy.get("policy_sha256"),
+            "authoritative_input_set_sha256": authoritative_inputs.get(
+                "set_sha256"
+            ),
+        },
+        "required_boundaries": list(OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES),
+        "required_evidence": {
+            "immutable_complete_acquisition_snapshot": True,
+            "shared_current_analyzer_consumers_exact": True,
+            "successful_rehearsal_registration": True,
+            "exact_tool_bindings": {
+                name: host_tools[name] for name in sorted(required_tools)
+            },
+            "raw_evidence_and_frozen_criteria_unchanged_during_analysis": True,
+        },
+        "host_discrepancy_semantics": {
+            "review_required_hold": True,
+            "new_setup_or_arm": False,
+            "automatic_abort_or_teardown": False,
+            "failed_campaign_authority": False,
+        },
+        "claim_boundary": {
+            "authorizes_activation_input_only": True,
+            "is_not_physical_plant_qualification": True,
+            "grants_no_retry_extension_or_restoration": True,
+            "physical_actions_performed": 0,
+        },
+        "producer_requirement": (
+            "current_bundle_bound_real_io_rehearsal_producer_and_independent_seal"
+        ),
+    }
 
 
 def programme_from_mapping(value: Mapping[str, Any]) -> AdaptiveHybridProgramme:

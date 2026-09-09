@@ -34,6 +34,7 @@ from .contracts import (
 TOOL_ID = "adaptive_hybrid_hybrid_monitor_v1"
 CAPTURE_STATE = Path("reports/capture_device_state.json")
 SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
+HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
 RAW_SERIAL = Path("raw/serial.log")
 ESTIMATES = Path("csv/estimates_v2.csv")
 ACTIVE = Path("csv/active_transactions_v2.csv")
@@ -46,6 +47,52 @@ QUALIFIED_D14_ENDPOINT_CONTRACT = "qualified_D14_D8_aperture_count_v2"
 QUALIFIED_D14_MILESTONE_APERTURES = 21_600
 UINT32_MODULUS = 1 << 32
 UINT32_MAXIMUM_FORWARD_DELTA = (1 << 31) - 1
+
+
+def _diagnostic_review_hold(
+    *,
+    integrity_faults: list[str],
+    supervisor_hold: object,
+    orchestration_hold: object,
+) -> dict[str, Any] | None:
+    """Classify host-consumer discrepancies without granting terminal authority."""
+
+    retained_supervisor = (
+        supervisor_hold if isinstance(supervisor_hold, dict) else None
+    )
+    retained_orchestration = (
+        orchestration_hold if isinstance(orchestration_hold, dict) else None
+    )
+    if (
+        not integrity_faults
+        and retained_supervisor is None
+        and retained_orchestration is None
+    ):
+        return None
+    sources = set(integrity_faults)
+    for retained in (retained_supervisor, retained_orchestration):
+        if retained is not None:
+            source = retained.get("source", retained.get("error_type"))
+            if isinstance(source, str) and source:
+                sources.add(source)
+    return {
+        "contract": "otis_host_discrepancy_review_hold_v1",
+        "review_status": "operator_review_required",
+        "sources": sorted(sources),
+        "retained_supervisor_hold": retained_supervisor,
+        "retained_orchestration_hold": retained_orchestration,
+        "authority": {
+            "new_setup": False,
+            "new_arm": False,
+            "automatic_abort": False,
+            "automatic_teardown": False,
+            "failed_campaign": False,
+        },
+        "capture_policy": "retain_sole_serial_owner_and_healthy_capture",
+        "scientific_status": "unclassified_pending_operator_review",
+        "nonzero_exit_semantics": "attention_required_not_abort_authority",
+    }
+
 
 def _utc_now() -> str:
     return (
@@ -435,6 +482,16 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
     now = time.time() if now is None else now
     capture = _read_object(run_dir / CAPTURE_STATE)
     supervisor = _read_object(run_dir / SUPERVISOR_STATE)
+    orchestration_hold_error: str | None = None
+    try:
+        orchestration_hold = _read_object(run_dir / HOST_REVIEW_HOLD)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        orchestration_hold_error = f"{type(exc).__name__}: {exc}"
+        orchestration_hold = {
+            "source": "orchestration_hold_parser",
+            "review_status": "operator_review_required",
+            "error": orchestration_hold_error,
+        }
     terminal = None if supervisor is None else supervisor.get("terminal")
     terminal_reached = isinstance(terminal, dict)
     prewrite_readiness = (
@@ -456,6 +513,8 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
     capture_age = _age_s(run_dir / CAPTURE_STATE, now=now)
     raw_age = _age_s(run_dir / RAW_SERIAL, now=now)
     integrity_faults: list[str] = []
+    if orchestration_hold_error is not None:
+        integrity_faults.append("orchestration_hold_unreadable")
     exact_lifecycle: dict[str, Any] | None = None
     maintenance: dict[str, Any] | None = None
     try:
@@ -580,11 +639,18 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "requested_delta_codes",
         ),
     )
+    diagnostic_hold = _diagnostic_review_hold(
+        integrity_faults=integrity_faults,
+        supervisor_hold=(
+            None if supervisor is None else supervisor.get("host_verification_hold")
+        ),
+        orchestration_hold=orchestration_hold,
+    )
     status = (
-        "terminal"
+        "review_required"
+        if diagnostic_hold is not None
+        else "terminal"
         if terminal_reached
-        else "fault"
-        if integrity_faults
         else "running"
     )
     return {
@@ -598,6 +664,7 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
         "activation_sha256": manifest["activation"]["activation_sha256"],
         "terminal": terminal,
         "integrity_faults": integrity_faults,
+        "diagnostic_review_hold": diagnostic_hold,
         "monitoring": {
             "maximum_poll_interval_s": 10,
             "evidence_stale_after_s": EVIDENCE_MAX_AGE_S,
@@ -667,7 +734,7 @@ def main(argv: list[str] | None = None) -> int:
     except (FileNotFoundError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
-    return 2 if result["status"] == "fault" else 0
+    return 2 if result["status"] == "review_required" else 0
 
 
 if __name__ == "__main__":

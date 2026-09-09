@@ -17,15 +17,22 @@ import os
 from pathlib import Path
 import re
 import tempfile
-from typing import Any, Iterable
+from typing import Any
+
+from . import evidence as evidence_module
+from .evidence import (
+    EVIDENCE_INDEX_ID,
+    EVIDENCE_INDEX_SCHEMA_VERSION,
+    package_identity,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INDEX = (
     Path.home() / ".local" / "share" / "otis" / "evidence_index_v1.json"
 )
-INDEX_ID = "otis_evidence_index_v1"
-SCHEMA_VERSION = 1
+INDEX_ID = EVIDENCE_INDEX_ID
+SCHEMA_VERSION = EVIDENCE_INDEX_SCHEMA_VERSION
 ATTEMPT_CLASSIFICATIONS = {
     "successful_rehearsal",
     "failed_rehearsal",
@@ -74,6 +81,7 @@ CURRENT_SEAL_FIELDS = frozenset(
         "evidence_snapshot",
         "source_sha256",
         "D10_semantics",
+        "host_discrepancy_authority",
         "limitations",
         "seal_sha256",
     }
@@ -123,6 +131,15 @@ def _validated_success_package(
     if not location.is_dir():
         raise ValueError(
             "successful evidence registration requires a completed package directory"
+        )
+    if attempt_classification == "successful_rehearsal":
+        return evidence_module.validate_operational_rehearsal_package(
+            location,
+            source_revision=source_revision,
+            build_identity=build_identity,
+            image_identity=image_identity,
+            result_or_failure_reason=result_or_failure_reason,
+            analyzer_identity=analyzer_identity,
         )
     required = {
         "completion marker": location / "COMPLETE",
@@ -252,12 +269,6 @@ def _validated_success_package(
         raise ValueError(
             "successful qualification registration requires the qualified endpoint"
         )
-    if attempt_classification == "successful_rehearsal":
-        raise ValueError(
-            "successful rehearsal registration is unavailable until the current "
-            "operational-rehearsal producer and seal contract exist"
-        )
-
     sealed_sources = seal.get("source_sha256")
     expected_sources = {
         str(item["path"]): _sha256_file(location / str(item["path"]))
@@ -276,56 +287,6 @@ def _validated_success_package(
         "seal_sha256": claimed_seal_sha256,
         "seal_status": str(seal["status"]),
         "primary_decision": str(seal["primary_decision"]),
-    }
-
-
-def _package_files(path: Path) -> Iterable[tuple[str, Path]]:
-    if path.is_symlink():
-        raise ValueError(f"evidence package may not be a symlink: {path}")
-    if path.is_file():
-        yield path.name, path
-        return
-    if not path.is_dir():
-        raise ValueError(f"evidence package does not exist: {path}")
-    for candidate in sorted(path.rglob("*")):
-        if candidate.is_symlink():
-            raise ValueError(
-                f"evidence package contains a symlink: {candidate}"
-            )
-        if candidate.is_file():
-            yield candidate.relative_to(path).as_posix(), candidate
-
-
-def package_identity(path: Path) -> dict[str, Any]:
-    """Return a stable identity for one file or a recursively hashed tree."""
-
-    source = path.expanduser().resolve()
-    entries: list[dict[str, Any]] = []
-    tree_digest = sha256()
-    total_bytes = 0
-    for relative_path, candidate in _package_files(source):
-        size = candidate.stat().st_size
-        file_sha256 = _sha256_file(candidate)
-        entries.append(
-            {
-                "relative_path": relative_path,
-                "size_bytes": size,
-                "sha256": file_sha256,
-            }
-        )
-        encoded = json.dumps(
-            entries[-1], sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-        tree_digest.update(len(encoded).to_bytes(8, "big"))
-        tree_digest.update(encoded)
-        total_bytes += size
-    if source.is_dir() and not entries:
-        tree_digest.update(b"OTIS_EMPTY_EVIDENCE_DIRECTORY_V1")
-    return {
-        "content_sha256": tree_digest.hexdigest(),
-        "file_count": len(entries),
-        "total_bytes": total_bytes,
-        "files": entries,
     }
 
 

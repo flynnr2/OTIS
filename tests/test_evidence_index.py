@@ -8,7 +8,8 @@ import json
 import pytest
 
 from host.otis_tools import adaptive_hybrid_activation
-from host.otis_tools.evidence import create_evidence_snapshot
+from host.otis_tools import evidence as evidence_module
+from host.otis_tools.evidence import EvidenceError, create_evidence_snapshot
 from host.otis_tools.evidence_index import (
     CURRENT_SEAL_PATH,
     _parser,
@@ -18,6 +19,7 @@ from host.otis_tools.evidence_index import (
     register_package,
     validate_index,
 )
+from host.otis_tools.run_loader import RunManifest
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -46,6 +48,32 @@ def test_register_cli_uses_exact_image_identity_option(tmp_path: Path) -> None:
                 "--result-or-failure-reason", "passed", "--analyzer-identity", "analyzer-1",
             ]
         )
+
+
+def test_snapshot_rejects_symlink_in_retained_report_tree(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    reports = run / "reports"
+    reports.mkdir(parents=True)
+    manifest_path = run / "run_manifest.json"
+    raw = run / "raw/serial.log"
+    raw.parent.mkdir()
+    raw.write_text("retained\n", encoding="utf-8")
+    _write_json(manifest_path, {"schema_version": 1, "run_id": run.name})
+    (run / "COMPLETE").write_text("complete\n", encoding="utf-8")
+    (reports / "escaped.json").symlink_to(tmp_path / "outside.json")
+    manifest = RunManifest(
+        run,
+        manifest_path,
+        {
+            "schema_version": 1,
+            "run_id": run.name,
+            "template": False,
+            "files": [{"path": "raw/serial.log"}],
+        },
+    )
+
+    with pytest.raises(EvidenceError, match="symbolic link"):
+        create_evidence_snapshot(run, manifest=manifest)
 
 
 def _register(index_path: Path, package: Path) -> dict:
@@ -138,7 +166,7 @@ def test_success_classification_rejects_arbitrary_unsealed_directory(
     (package / "raw.csv").write_text("record\n", encoding="utf-8")
 
     with pytest.raises(
-        ValueError, match="successful evidence registration requires"
+        ValueError, match="successful (?:evidence registration requires|rehearsal package)"
     ):
         register_package(
             index_path=tmp_path / "index.json",
@@ -151,6 +179,59 @@ def test_success_classification_rejects_arbitrary_unsealed_directory(
             analyzer_identity="analyzer-1",
         )
     assert not (tmp_path / "index.json").exists()
+
+
+def test_successful_rehearsal_dispatches_to_independent_package_validator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package = tmp_path / "rehearsal"
+    package.mkdir()
+    (package / "evidence.txt").write_text("retained\n", encoding="utf-8")
+    observed: dict[str, object] = {}
+    validation = {
+        "contract": "otis_validated_success_package_v1",
+        "evidence_snapshot_sha256": "1" * 64,
+        "seal_path": "reports/adaptive_hybrid_operational_rehearsal_seal_v1.json",
+        "seal_sha256": "2" * 64,
+        "seal_status": "passed",
+        "primary_decision": "operational_path_rehearsal_passed",
+    }
+
+    def validate(location: Path, **metadata: str) -> dict[str, str]:
+        observed["location"] = location
+        observed["metadata"] = metadata
+        return validation
+
+    monkeypatch.setattr(
+        evidence_module,
+        "validate_operational_rehearsal_package",
+        validate,
+        raising=False,
+    )
+    record = register_package(
+        index_path=tmp_path / "index.json",
+        package_path=package,
+        source_revision="a" * 40,
+        build_identity="b" * 64 + ":" + "c" * 64,
+        image_identity="adaptive_hybrid_regulation",
+        attempt_classification="successful_rehearsal",
+        result_or_failure_reason="adaptive-hybrid operational rehearsal passed",
+        analyzer_identity="d" * 64,
+    )
+
+    assert observed == {
+        "location": package.resolve(),
+        "metadata": {
+            "source_revision": "a" * 40,
+            "build_identity": "b" * 64 + ":" + "c" * 64,
+            "image_identity": "adaptive_hybrid_regulation",
+            "result_or_failure_reason": (
+                "adaptive-hybrid operational rehearsal passed"
+            ),
+            "analyzer_identity": "d" * 64,
+        },
+    }
+    assert record["package_validation"] == validation
 
 
 def test_successful_qualification_derives_validation_from_completed_package(
@@ -196,8 +277,16 @@ def test_successful_qualification_derives_validation_from_completed_package(
         "orchestration_error": None,
     }
     _write_json(run / "COMPLETE", completion)
+    report = run / "reports/step_0001/record_0001.json"
+    response = run / "carrier/responses/response_0001.json"
+    _write_json(report, {"decision": "retained"})
+    _write_json(response, {"acknowledgement": "retained"})
     snapshot_path = create_evidence_snapshot(run)
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    retained = {item["path"]: item["role"] for item in snapshot["artifacts"]}
+    assert retained["COMPLETE"] == "completion_marker"
+    assert retained["reports/step_0001/record_0001.json"] == "retained_evidence"
+    assert retained["carrier/responses/response_0001.json"] == "retained_evidence"
     seal = {
         "schema_version": 1,
         "seal_type": "adaptive_hybrid_physical_seal_v1",
@@ -228,6 +317,15 @@ def test_successful_qualification_derives_validation_from_completed_package(
         },
         "source_sha256": {"raw/serial.log": sha256(raw.read_bytes()).hexdigest()},
         "D10_semantics": {},
+        "host_discrepancy_authority": {
+            "review_required": False,
+            "new_setup": False,
+            "new_arm": False,
+            "automatic_abort": False,
+            "automatic_teardown": False,
+            "failed_campaign": False,
+            "raw_evidence_preserved": True,
+        },
         "limitations": [],
     }
     seal["seal_sha256"] = sha256(
