@@ -53,7 +53,7 @@ serial device, flash, reset, command, rewire, or otherwise touch the bench.
 ## Programme ordering
 
 | Order | Programme | Dependency | Why this order |
-|---:|---|---|---|
+| ---: | --- | --- | --- |
 | 0 | Complete the existing range-spanning frequency programme | current preserved `0xA844` state | supplies the missing bidirectional plant, hysteresis, controller and cadence evidence |
 | 1 | Disciplined 10 MHz output | frequency programme terminal; board state released | qualifies the physical output and establishes a frequency-only sustained baseline |
 | 2 | Hybrid phase/frequency control | frequency result plus terminal output qualification and its frequency-only soak | qualifies hybrid behavior while observing the exact output configuration already delivered and baselined |

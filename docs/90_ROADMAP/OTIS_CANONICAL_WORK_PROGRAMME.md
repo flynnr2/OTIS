@@ -43,18 +43,22 @@ is supporting work, not a programme outcome by itself.
 ## Audited disposition of the originating concerns
 
 | Concern | Repository state on 2026-09-09 | Programme disposition |
-|---|---|---|
+| --- | --- | --- |
 | Serial output modes | Design discussed; no current profile contract or switching implementation was found. The fixed image emits the canonical operating stream. | Define host-side `FULL`, `EVENTS`, `BENCH` and `SUMMARY` products after the event and candidate-input records exist. Add device-side filtering only for a measured transport or client requirement. |
 | Autonomous operation | The fixed `adaptive_hybrid_regulation` image performs the estimator, policy and bounded actuation locally. | Treat autonomy as the production control architecture, not a serial mode or selectable firmware profile. Preserve explicit observe-only and hold-static authority states where benchmarking requires no actuation. |
 | Dedicated candidate GNSS and oscillator inputs | Not implemented. D10 is reserved for external events; its isolated firmware capture backend is also not implemented. | Allocate independent candidate-GNSS PPS/metadata and candidate-oscillator count paths in the successor-board resource and pin plan. D10 remains the external-event input. |
 | GNSS baud robustness | Completed multi-artifact characterization selected 115200 with zero recorded serial/ring/parser faults in 23,100 confirmed-online seconds at that rate. The fixed image implements a bounded 9600/115200 startup transaction and causal requalification. | Closed for the installed PA1616S/Nano path. Re-run only a focused bootstrap and service-margin qualification after a board, UART, receiver, power or service-topology change. Do not repeat the full multi-baud programme by default. |
 | Too many compile states | The current branch has already removed the firmware matrix and retains one fixed image and manifest. | Closed as a reduction task. Preserve one supported production image. A board or component replacement becomes the next fixed image after selection; historical revisions remain the compatibility mechanism. |
 | Too many regression tests | Historical programme and compatibility tests were materially removed. The current tree contains a much smaller current-only suite, but this task did not execute or time it. | Measure the Fast, Campaign and Release tiers once after Stage 0. Remove or consolidate only checks that duplicate a protected invariant, test retired behavior, or add no earlier detection. Do not optimize for an arbitrary test count. |
+| Firmware/host contract mismatch fragility | Current schemas, profiles, firmware formatters, command handlers, host parsers and validators protect many individual boundaries, but their agreement still depends on duplicated definitions and local checks. Field presence, names, widths, signedness, units, enum values, sentinel values, optionality and ordering can diverge. | Make complete bidirectional contract parity a Stage 0 platform outcome. Bind firmware and host to one versioned authority wherever practical, verify real producer-to-consumer records and commands, and treat an unexplained mismatch as a review-required diagnostic hold rather than plausible zero/default data. |
 | Better power supply | The current TPS62827 3.3 V rail has a documented DC budget and observed 3.292 V level, but ripple, transients, cold-start behavior and ground coupling remain unqualified. | Make the power/ground architecture part of successor-board selection and measure the current and proposed arrangements before attributing timing anomalies to power. |
 | Rewire on a different board configuration | The current fixed target remains the Nano RP2040 Connect. The hardware roadmap identifies Raspberry Pi Pico 2/RP2350 as the likely successor direction, but no exact board is selected here. | Select one successor board from an explicit pin, timing-resource, toolchain, power and operational comparison; then replace the fixed target rather than supporting two production boards indefinitely. |
 | Breakbeam on D10 | The D10 pin/channel/schema seam exists, but the fixed image explicitly records external-event capture as not implemented and not isolated. | Implement the hardware-owned D10 capture path, qualify its failure isolation, and build the exact sensor interface including emitter current limiting, receiver bias/pull-up, input protection/series resistance and declared output polarity. |
 | Disciplined output | D9 forwarding and D6 digital monitoring exist. Prior evidence corroborates digital forwarding, but voltage levels, duty cycle, edge behavior, ringing, propagation delay, jitter, load sensitivity and independently referenced frequency remain unqualified. | Complete the electrical output/interface design and the external waveform, load and non-interference qualification. D6 remains corroborating diagnostic evidence only. |
 | Exact estimator windows for other oscillators | The current 600-second policy is already exact: one count is represented as 36 units on the `1/21600 Hz` lattice. Current wide-integer and fixed-point arithmetic is deterministic and replayable. | Freeze the current arithmetic. Choose a different window only from candidate oscillator noise/stability, plant response and control needs. Add a typed rational boundary only when the first real candidate cannot be represented cleanly by the current policy. |
+| Measurement-aperture bias and variability | The current hardware aperture removes CPU, USB and host scheduling from timing truth, but GPIO, input conditioning, synchronizer and capture-path bias and variability are not a calibrated end-to-end timing claim. | Add a differential PPS-path characterization using a dedicated calibration/candidate input plus an independent external witness. Separate constant path bias from state-, power- and temperature-dependent aperture variation. D10 must not be repurposed as a PPS witness. |
+| GNSS PPS corrections and timing modes | Current GNSS metadata qualifies the receiver but does not yet define a general observation contract for receiver-reported PPS quantization/sawtooth correction, cable-delay configuration, survey state or fixed-position timing mode. | Preserve the raw electrical PPS observation and add separately identified, initially zero-authority receiver timing context. Characterize navigation, survey-in and fixed-position operation for receivers that support them. Never overwrite raw D14 evidence with a corrected value. |
+| Accelerated closed-loop simulation | Current replay and native/Python parity cover the selected policy, but the programme does not yet define one accelerated path for recorded and synthetic reference, oscillator, metadata and plant sequences through the real decision engine. | Add a bounded shared-engine replay/simulation lane before component promotion. It must exercise production policy code, not a separately reimplemented toy controller, and cannot substitute for firmware integration or physical qualification. |
 
 ## Architectural invariants
 
@@ -97,15 +101,88 @@ Changing a serial product must not change capture timing, queue servicing,
 reference qualification, estimator behavior, actuator authority or the
 physical output.
 
+## Firmware/host contract parity
+
+Firmware/host agreement is one end-to-end platform contract, not a collection
+of approximately matching structs, format strings, parsers and fixtures. For
+every current record, command, acknowledgement, status snapshot and manifest
+binding, the contract must declare:
+
+- field name, presence and ordering;
+- wire representation, width, signedness and legal range;
+- unit, scale, clock/counter domain and rollover behavior;
+- enum, flag and reason-code values;
+- optional, unknown, unavailable and sentinel semantics;
+- record/schema version and compatibility rule; and
+- the producer acknowledgement and first decision-bearing host or firmware
+  consumer.
+
+Unknown, missing, truncated, extra or out-of-version data must never become a
+plausible zero, stale value or default enum. A host-detected discrepancy enters
+the repository-defined review-required diagnostic hold: retain capture and the
+last confirmed DAC code, grant no new setup/arm authority, and preserve the
+exact offending bytes, parsed form, schema identity and pending causal phase
+for review.
+
+Prefer one machine-readable authority that generates or mechanically validates
+both firmware constants/layouts and host decoding. Where generation would hide
+important firmware meaning or add disproportionate machinery, retain explicit
+implementations but compare them exhaustively against that authority. The
+fixed firmware binary must expose the exact contract/schema digest or version
+set that the host validates at attachment.
+
+Verification must cross the actual boundary in both directions:
+
+1. firmware/native producer emits every legal record shape and boundary value;
+2. the production host parser retains and interprets it exactly;
+3. the host emits every legal command and boundary value;
+4. the production firmware parser accepts or rejects it as declared; and
+5. exact identity and ordering are checked through the first dependent
+   decision, not merely through byte receipt or acknowledgement.
+
+Exercise minimum, maximum, zero, negative where legal, rollover-adjacent,
+unknown-enum, missing, duplicate, extra, truncated, reordered and version-
+mismatched cases. Derive these cases from the contract so exhaustive parity
+does not become another manually duplicated regression matrix.
+
+## Measurement language and claim discipline
+
+Use the following distinctions in contracts, reports and plots:
+
+- **precision/repeatability** — the spread or reproducibility of repeated
+  observations under declared conditions;
+- **accuracy** — agreement with a named reference or timescale, supported by
+  calibration and an uncertainty statement;
+- **measurement-aperture bias** — repeatable displacement between the physical
+  event and the captured timestamp;
+- **measurement-aperture variability** — observation-to-observation movement
+  of that displacement; and
+- **receiver PPS quantization correction** — receiver-reported context about
+  its intended PPS placement, not a replacement raw observation or automatic
+  timing authority.
+
+A constant common path delay may cancel in an adjacent frequency interval but
+still matters to an absolute phase claim. A varying path delay contaminates
+both phase and interval observations. Report these separately rather than
+using `accurate`, `precise` or `jitter` without naming the reference, statistic,
+aperture and observation conditions.
+
+External receiver comparisons and SatPulse design ideas are inputs to candidate
+selection and experiment design, not OTIS evidence. Verify the relevant
+receiver documentation and primary measurement reports before freezing a
+purchase, electrical interface, correction sign or performance expectation.
+PTP/PHC and network-time distribution remain outside this programme unless a
+later OTIS decision explicitly needs them as an external witness.
+
 ## Programme sequence
 
 | Stage | Outcome | Physical work? | Entry dependency |
-|---:|---|---|---|
+| ---: | --- | --- | --- |
 | 0 | Restore and verify the current fixed-image operational path | No | Current clean source |
 | 1 | Select and freeze the successor hardware architecture | Design and measurement only under separate authority | Stage 0 platform contract |
 | 2 | Port one fixed image and add isolated measurement inputs | Bench entry required for final qualification | Selected board, power and pin/resource ledger |
 | 3 | Qualify power, signal interfaces, D10 breakbeam and D9 output | Yes | Exact Stage 2 image and complete rehearsal |
-| 4 | Deliver serial products without multiplying firmware states | No-hardware first; optional bench load check | Stable record contracts from Stages 2-3 |
+| 4 | Deliver serial products and accelerated shared-engine exercise without multiplying firmware states | No-hardware first; optional bench load check | Stable record contracts from Stages 2-3 |
 | 5 | Run candidate GNSS and oscillator comparisons | Yes | Qualified dedicated inputs and frozen candidate contracts |
 | 6 | Select the final components and complete the integrated qualification | Yes | Stage 5 decisions and final fixed configuration |
 
@@ -126,24 +203,30 @@ deliberately fail-closed until this exists.
 
 1. Run and record the current Fast, Campaign and Release tiers, including
    elapsed time, discovered checks and fixed-image identity.
-2. Implement the current-only process-level rehearsal producer. Exercise the
+2. Inventory every current firmware/host wire boundary and close the contract
+   parity requirements above. Replace duplicated authoritative field/width/
+   value definitions with generation or mechanical comparison from one
+   versioned contract, and bind its identity into the firmware/host attachment
+   handshake.
+3. Implement the current-only process-level rehearsal producer. Exercise the
    actual capture owner, normal and priority command paths, repeated requests,
    first dependent decisions, transport obstruction, bounded abort delivery,
    same-owner evidence rotation, analyzer and sealing path.
-3. Verify the recovered metadata-hold state machine and current host diagnostic
+4. Verify the recovered metadata-hold state machine and current host diagnostic
    hold semantics through the first dependent decision after requalification.
-4. Audit retained tests against current invariants and the rehearsal. Remove a
+5. Audit retained tests against current invariants and the rehearsal. Remove a
    test only when its protected behavior is retired, duplicated at a cheaper
    layer, or better covered by the end-to-end path.
-5. Produce one concise current-platform readiness report. Do not start a new
+6. Produce one concise current-platform readiness report. Do not start a new
    multi-day Nano campaign merely to validate the software reset if the board
    is about to be replaced.
 
 ### Gate
 
-Pass when the exact current image builds and the genuine operational rehearsal
-passes with exact identities and no ownerless serial interval. Stop and repair
-only the failed current boundary otherwise.
+Pass when the exact current image builds, every current bidirectional contract
+shape and boundary value has producer-to-first-consumer parity, and the genuine
+operational rehearsal passes with exact identities and no ownerless serial
+interval. Stop and repair only the failed current boundary otherwise.
 
 ## Stage 1 — select the successor board, power and physical interface
 
@@ -179,13 +262,13 @@ target after qualification.
 ### Required logical I/O
 
 | Logical signal | Required hardware behavior | Authority |
-|---|---|---|
+| --- | --- | --- |
 | `PRIMARY_PPS` | hardware-captured installed GNSS PPS; successor mapping for D14 | sole reference authority |
 | `PRIMARY_OSC_COUNT` | continuous high-rate count and reference-aligned snapshot; successor mapping for D8 | sole regulation measurement |
 | `EXTERNAL_EVENT` | hardware-captured edge/pulse input for the breakbeam and general events; successor mapping for D10 | zero control and terminal authority |
 | `DISCIPLINED_OUTPUT` | buffered or directly qualified output derived from the primary oscillator; successor mapping for D9 | output only |
 | `OUTPUT_MONITOR` | optional independent diagnostic observation; successor mapping for D6 | fail-local diagnostic |
-| `CANDIDATE_GNSS_PPS` | dedicated hardware capture independent of D10 | comparison evidence only |
+| `CANDIDATE_GNSS_PPS` | dedicated hardware capture independent of D10; may also accept the same electrically split PPS during path calibration | comparison/calibration evidence only |
 | `CANDIDATE_GNSS_SERIAL` | dedicated RX and, only if needed, bounded TX with exact receiver identity | metadata context only |
 | `CANDIDATE_OSC_COUNT` | independent high-rate count aligned to the same qualified primary PPS boundaries | comparison evidence only |
 
@@ -229,8 +312,9 @@ candidate-oscillator acquisition.
 
 ### Work
 
-1. Port the fixed build manifest, board identity and resource ledger. Do not
-   recreate selectable campaign profiles.
+1. Port the fixed build manifest, board identity, firmware/host contract
+   identity and resource ledger. Do not recreate selectable campaign profiles
+   or fork the wire contract for the new board.
 2. Re-establish the primary PPS/oscillator snapshot mechanism and repeat every
    proof invalidated by the MCU, pin, clock, PIO, DMA, synchronizer or toolchain
    change.
@@ -238,13 +322,19 @@ candidate-oscillator acquisition.
    edges, capture domain, sequence, loss markers and overflow evidence.
 4. Implement the candidate GNSS PPS and candidate oscillator count paths with
    separate queues and explicitly droppable/fail-local policies where needed.
-5. Add a runtime authority contract with fail-closed `OBSERVE_ONLY`, explicit
+5. Define a minimal GNSS timing-observation contract for the installed receiver
+   and the first actual candidate. Preserve raw electrical PPS, receiver
+   identity, receiver timescale, solution/timing mode, survey/fixed-position
+   state, configured cable delay and receiver-reported PPS correction as
+   distinct fields with explicit availability and units. Do not build a broad
+   vendor framework before two concrete drivers demonstrate shared semantics.
+6. Add a runtime authority contract with fail-closed `OBSERVE_ONLY`, explicit
    autonomous regulation, and `HOLD_STATIC` behavior. These are authority
    states of one image, not build variants.
-6. Requalify the installed receiver's bounded 9600/115200 boot transaction and
+7. Requalify the installed receiver's bounded 9600/115200 boot transaction and
    receive-service margin on the new UART/service topology. Do not repeat the
    five-rate study unless the new evidence contradicts its selected result.
-7. Run the affected Release gate and the complete current operational-path
+8. Run the affected Release gate and the complete current operational-path
    rehearsal against the exact successor image.
 
 ### Gate
@@ -320,6 +410,32 @@ D6 may corroborate digital continuity but cannot qualify the delivered
 waveform or load. If direct MCU drive is inadequate, select and requalify an
 external output buffer rather than weakening the claim.
 
+### 3D. Measurement-aperture and PPS-path characterization
+
+Use the dedicated candidate/calibration capture input, never D10, for a bounded
+measurement of the measurement system itself.
+
+First feed one electrically split PPS edge through documented, preferably
+matched distribution into the primary and calibration capture paths. Measure:
+
+- fixed differential path bias and startup repeatability;
+- observation-to-observation differential variation;
+- dependence on edge slew, pulse width and input level inside the declared
+  electrical envelope;
+- dependence on power state, USB/serial load and temperature; and
+- any path-specific missing, duplicate or reordered capture behavior.
+
+Then compare the internal differential result with an oscilloscope, TIC or
+other independent hardware witness whose channels, trigger, input settings,
+cable delays and measurement floor are retained. Decompose the full path as
+far as the evidence permits: source/output circuitry, distribution/cable,
+input conditioning, pad/synchronizer and capture state machine. Do not infer
+absolute calibration for an unobserved segment.
+
+This experiment establishes bounds only for the exact board, pin, input
+conditioning, clock, firmware and environmental envelope tested. Its constant
+bias and variable component must be reported separately.
+
 ### Gate
 
 Produce separate, provenance-linked results for power/input integrity,
@@ -327,7 +443,7 @@ breakbeam capture and disciplined output. A failure in an optional path does
 not invalidate a healthy primary acquisition unless shared-resource evidence
 demonstrates actual compromise.
 
-## Stage 4 — deliver useful serial products
+## Stage 4 — deliver useful serial products and accelerated policy exercise
 
 ### Outcome
 
@@ -337,7 +453,7 @@ creating another firmware image.
 ### Initial products
 
 | Product | Content | Claim |
-|---|---|---|
+| --- | --- | --- |
 | `FULL` | all canonical observations, state transitions, diagnostics, estimates, control requests/applications/acknowledgements, identities and continuity counters | replayable canonical evidence |
 | `EVENTS` | D10 event records plus coherent referenced quality/state snapshots | event evidence with declared scope |
 | `BENCH` | selected primary and candidate raw observations, configuration, environment and diagnostics for a frozen component comparison | replayable only when its declared completeness contract passes |
@@ -366,6 +482,33 @@ Given one retained `FULL` fixture, every projection is deterministic and its
 scope is explicit. Switching or generating a view has no effect on firmware
 decisions, raw evidence, capture throughput or physical output.
 
+### Shared-engine replay and simulation
+
+Provide one accelerated observation-source seam that accepts either retained
+canonical observations or prospectively declared synthetic observations and
+feeds the same portable estimator/policy/transaction code used by firmware.
+Python may orchestrate scenarios and act as an independent exact oracle, but it
+must not become a second authoritative controller implementation.
+
+Begin with the smallest decision-bearing scenario set:
+
+- ordinary acquisition, convergence, tracking and bounded correction;
+- PPS absence, one bad interval, a bounded phase step and recovery;
+- GNSS metadata loss, late correction metadata and causal requalification;
+- oscillator frequency step, slow drift/ageing and temperature-correlated
+  curvature;
+- actuator gain variation, saturation and delayed or contradictory
+  acknowledgement; and
+- serial delivery delay or obstruction after the hardware observation has
+  already been captured.
+
+Map these stimuli onto OTIS's existing explicit policy states and reasons; do
+not rename the current state machine merely to imitate another system. A
+scenario passes only when firmware-native and host replay decisions, exact
+request/application identity and the first dependent result agree. Synthetic
+coherence proves decision logic, not physical capture, electrical response or
+the fidelity of the noise/plant model.
+
 ## Stage 5 — benchmark candidate components
 
 Run each comparison as a finite experiment with one concrete selection
@@ -377,6 +520,25 @@ Keep the installed primary receiver on the authoritative PPS input. Capture the
 candidate PPS on its dedicated zero-authority input and its serial metadata on
 the separately identified candidate link.
 
+Select candidates by timing architecture and observable evidence rather than a
+simple consumer/timing-grade/price hierarchy. Review at least:
+
+- availability of receiver-reported PPS quantization/sawtooth correction;
+- navigation, survey-in and fixed-position timing support;
+- cable-delay configuration and documented correction sign/convention;
+- time-mark/external-event capability;
+- raw measurement and solution-quality reporting;
+- protocol openness, configuration persistence and recovery behavior;
+- electrical PPS/serial interfaces and supply requirements; and
+- availability, cost and long-term support.
+
+The initial documentation-review shortlist may include the installed
+PA1616S/MT3339 baseline, u-blox M8T and M8F architectures, u-blox F9P/F9T, and
+a Septentrio mosaic timing-family receiver. This is an architecture-diverse
+comparison list, not a performance ranking or purchase decision. Reconfirm
+exact product availability, documentation and independently reported results
+before selecting hardware.
+
 Freeze antenna arrangement, splitter/amplifier behavior where used, cable
 identity/delay, supply, ground, receiver configuration, output polarity,
 warm-up and environmental context. Compare offset, jitter, wander, interval
@@ -384,6 +546,20 @@ anomalies, outages, reacquisition and metadata/PPS causal association. State
 whether the result is a same-antenna common-view comparison or a less
 controlled two-antenna observation. Do not infer UTC accuracy or calibrated
 absolute phase without the missing delay and reference calibration.
+
+Where the receiver supports them, treat navigation/mobile operation,
+survey-in, fixed-position timing operation and later loss/reacquisition as
+separate phases with explicit transitions. Retain the raw electrical PPS and
+the receiver-reported quantization/sawtooth correction separately; derive a
+corrected comparison series only after the correction's sign, units, epoch and
+causal association are verified. The corrected series is a derived metrology
+product and has no automatic control authority.
+
+For a receiver with a documented time-mark/external-event input, a reciprocal
+test may feed a bounded OTIS-generated event into the receiver and compare its
+reported GNSS event time with OTIS's observation of receiver PPS. Treat this as
+an optional independent witness for path delay and phase, not a prerequisite
+and not proof of UTC accuracy by itself.
 
 ### Candidate oscillator
 
@@ -443,8 +619,9 @@ are frozen and qualified together.
    inputs absent or deliberately local-degraded, evidence rotation and clean
    finalization.
 5. Seal and register the evidence and publish one concise result separating
-   observed facts, derived results, modeled quantities, equipment floors and
-   unavailable uncertainty.
+   observed facts, raw and receiver-corrected PPS products, precision,
+   reference-bound accuracy, aperture bias/variability, derived results,
+   modeled quantities, equipment floors and unavailable uncertainty.
 
 The programme completes at either:
 
@@ -500,7 +677,8 @@ Only the first decision is needed before Stage 1 can close; none blocks Stage
 
 ## Immediate next action
 
-Execute Stage 0 only: establish the genuine current operational rehearsal,
-run the fixed-image Release gate once, and record whether any further test
-reduction is decision-bearing. In parallel, the operator decisions above can
-be resolved without touching the bench.
+Execute Stage 0 only: establish exhaustive current firmware/host contract
+parity, establish the genuine current operational rehearsal, run the fixed-
+image Release gate once, and record whether any further test reduction is
+decision-bearing. In parallel, the operator decisions above can be resolved
+without touching the bench.
