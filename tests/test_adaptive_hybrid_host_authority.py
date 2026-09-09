@@ -783,6 +783,19 @@ def test_frozen_bundle_validation_does_not_repeat_firmware_reproduction(
     validate_bundle(bundle_path)
     assert reproduction_modes == [False, True]
 
+    recorded_binding = bundle_module._binding
+
+    def changed_checkout_binding(path: Path) -> dict[str, object]:
+        binding = recorded_binding(path)
+        if path.suffix == ".py":
+            return {**binding, "sha256": "f" * 64}
+        return binding
+
+    monkeypatch.setattr(bundle_module, "_binding", changed_checkout_binding)
+    validate_frozen_bundle(bundle_path)
+    with pytest.raises(ValueError, match="tool, topology, limit, or authority"):
+        validate_bundle(bundle_path)
+
 
 def test_live_supervisor_consumes_frozen_manifest_without_reproduction(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

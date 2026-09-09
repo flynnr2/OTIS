@@ -107,6 +107,19 @@ def _normalize_terminal(
     return False, None, result if isinstance(result, str) else None, reason
 
 
+def _d10_isolated(
+    section: dict[str, Any], measurement: dict[str, Any]
+) -> bool:
+    d10 = section.get("external_event_input", {})
+    return (
+        d10.get("pin") == "D10"
+        and d10.get("authority") == "evidence_only"
+        and d10.get("control_eligible") is False
+        and d10.get("terminal_eligible") is False
+        and measurement.get("D10", {}).get("enters_D14_D8_replay") is not True
+    )
+
+
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -429,16 +442,50 @@ def analyze(
     section = manifest_value[programme.manifest_section]
     control = section["automatic_control"]
     build_identity = str(manifest_value["firmware"]["build_identity"])
+    bench_attempt = manifest_value.get("bench_attempt", {})
+    inhibited_zero_write = bench_attempt.get("purpose") == "inhibited_zero_write"
+    if inhibited_zero_write:
+        transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
+        dac_steps = _read_csv(_one_contract(manifest, "dac_steps_v1"))
+        inhibited_authority_exact = (
+            section["setup"].get("authorized") is False
+            and section["setup"].get("code") is None
+            and control.get("authorized") is False
+            and control.get("maximum_total_applications") == 0
+            and bench_attempt.get("authority", {}).get(
+                "total_dac_value_write_limit"
+            )
+            == 0
+            and not transactions
+            and not dac_steps
+        )
+        if not inhibited_authority_exact:
+            raise ValueError(
+                "inhibited zero-write evidence contains authority or a DAC transaction"
+            )
+        # Replay still needs numerical bounds. Here these are validation-only
+        # programme constants: the zero limits and empty records above prevent
+        # them from asserting or authorizing an applied code.
+        start_code = programme.setup_code
+        minimum_code = programme.minimum_code
+        maximum_code = programme.maximum_code
+        maximum_step = programme.maximum_step_codes
+    else:
+        inhibited_authority_exact = True
+        start_code = int(section["setup"]["code"])
+        minimum_code = int(control["minimum_code"])
+        maximum_code = int(control["maximum_code"])
+        maximum_step = int(control["maximum_step_codes"])
     spec = CampaignSpec(
         campaign=programme.campaign_name,
         profile=str(manifest_value["image_identity"]),
         run_identity=str(manifest_value["run_identity"]),
-        start_code=int(section["setup"]["code"]),
+        start_code=start_code,
         correction_limit=int(control["maximum_total_applications"]),
         cumulative_limit=int(control["maximum_cumulative_movement_codes"]),
-        minimum_code=int(control["minimum_code"]),
-        maximum_code=int(control["maximum_code"]),
-        maximum_step=int(control["maximum_step_codes"]),
+        minimum_code=minimum_code,
+        maximum_code=maximum_code,
+        maximum_step=maximum_step,
     )
     shared_consumers = replay_current_adaptive_hybrid_host_consumers(
         manifest,
@@ -462,14 +509,7 @@ def analyze(
     responses = shared_consumers["response_replay"]
     supervisor_state = _read_object(run_dir / SUPERVISOR_STATE)
 
-    d10 = section.get("external_event_input", {})
-    d10_isolated = (
-        d10.get("pin") == "D10"
-        and d10.get("authority") == "evidence_only"
-        and d10.get("control_eligible") is False
-        and d10.get("terminal_eligible") is False
-        and measurement.get("D10", {}).get("enters_D14_D8_replay") is False
-    )
+    d10_isolated = _d10_isolated(section, measurement)
     checks = {
         "manifest_current": True,
         "csv_contracts_exact": shared_consumers["checks"][
@@ -495,6 +535,7 @@ def analyze(
             "transaction_capsules_exact"
         ],
         "D10_optional_event_isolated": d10_isolated,
+        "inhibited_zero_write_authority_exact": inhibited_authority_exact,
     }
     (
         terminal_exact,

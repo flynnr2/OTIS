@@ -592,6 +592,7 @@ def create_bundle(
     _created_utc: str | None = None,
     _authoritative_inputs: dict[str, Any] | None = None,
     _verify_deterministic_reproduction: bool = True,
+    _frozen_host_tools: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     frozen_inputs = _authoritative_inputs or collect_authoritative_inputs()
     validate_authoritative_inputs(frozen_inputs)
@@ -641,10 +642,14 @@ def create_bundle(
             ),
         ),
         "offline_replay": replay,
-        "host_tools": {
-            path.removesuffix(".py"): _binding(module_root / path)
-            for path in HOST_TOOL_MODULES
-        },
+        "host_tools": (
+            _frozen_host_tools
+            if _frozen_host_tools is not None
+            else {
+                path.removesuffix(".py"): _binding(module_root / path)
+                for path in HOST_TOOL_MODULES
+            }
+        ),
         "topology": {
             "sole_reference_input": "D14",
             "sole_oscillator_count_input": "D8",
@@ -791,6 +796,11 @@ def _validate_bundle(
         _created_utc=created_utc,
         _authoritative_inputs=frozen_inputs,
         _verify_deterministic_reproduction=verify_deterministic_reproduction,
+        _frozen_host_tools=(
+            bundle.get("host_tools")
+            if not verify_deterministic_reproduction
+            else None
+        ),
     )
     if bundle != expected:
         raise ValueError(

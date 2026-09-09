@@ -2025,10 +2025,10 @@ void emit_gnss_receiver_status(void) {
               status.configuration_confirmed ? "true" : "false",
               link_severity, link_flags);
   emit_status("gnss_receiver", "uart_configuration",
-              "uart0_fixed_operational_115200_8n1_v1",
+              "uart0_configuration_blind_default_or_retained_115200_v1",
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status("gnss_receiver", "operational_baud_policy",
-              "fixed_operational_115200_v1",
+              "configuration_blind_default_or_retained_115200_v1",
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status("gnss_receiver", "operational_bootstrap_state",
               status.operational_bootstrap_failed
