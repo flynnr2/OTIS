@@ -1919,6 +1919,13 @@ class DeterministicPtyInstrument:
     def _emit_health_map(self, health: dict[tuple[str, str], str]) -> None:
         self._emit_health_items((key, health[key]) for key in sorted(health))
 
+    def _emit_idle_wakeup(self) -> None:
+        # Timer callbacks publish complete record groups from separate threads.
+        # Serialize the otherwise empty carrier wake-up with those groups so it
+        # can never split a decision-bearing record in the PTY byte stream.
+        with self._lock:
+            _write_all_fd(self.master_fd, b"\n")
+
     def _emit_snapshot(self) -> None:
         self.generation += 1
         active = {
@@ -2146,7 +2153,7 @@ class DeterministicPtyInstrument:
                 if not readable:
                     # Wake the genuine capture reader so it services FIFO
                     # ingress promptly; an empty line is not a device record.
-                    _write_all_fd(self.master_fd, b"\n")
+                    self._emit_idle_wakeup()
                     continue
                 try:
                     chunk = os.read(self.master_fd, 4096)

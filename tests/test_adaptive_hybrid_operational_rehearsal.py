@@ -3,10 +3,12 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 from pathlib import Path
+import threading
 
 import pytest
 
 from host.otis_tools import adaptive_hybrid_bundle as bundle_module
+from host.otis_tools import adaptive_hybrid_operational_rehearsal as rehearsal_module
 from host.otis_tools.adaptive_hybrid_bundle import create_bundle
 from host.otis_tools.adaptive_hybrid_operational_rehearsal import (
     REQUIRED_BOUNDARIES,
@@ -14,6 +16,33 @@ from host.otis_tools.adaptive_hybrid_operational_rehearsal import (
     validate_operational_rehearsal_package,
 )
 from host.otis_tools.adaptive_hybrid_proposal import create_proposal
+
+
+def test_idle_wakeup_serializes_with_complete_pty_record_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    instrument = object.__new__(rehearsal_module.DeterministicPtyInstrument)
+    instrument.master_fd = 17
+    instrument._lock = threading.Lock()
+    write_started = threading.Event()
+    writes: list[tuple[int, bytes]] = []
+
+    def record_write(descriptor: int, payload: bytes) -> None:
+        writes.append((descriptor, payload))
+        write_started.set()
+
+    monkeypatch.setattr(rehearsal_module, "_write_all_fd", record_write)
+    instrument._lock.acquire()
+    worker = threading.Thread(target=instrument._emit_idle_wakeup)
+    worker.start()
+    try:
+        assert not write_started.wait(0.05)
+    finally:
+        instrument._lock.release()
+    assert write_started.wait(1.0)
+    worker.join(timeout=1.0)
+    assert not worker.is_alive()
+    assert writes == [(17, b"\n")]
 
 
 def _write_json(path: Path, value: object) -> None:
