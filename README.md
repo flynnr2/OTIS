@@ -57,6 +57,12 @@ acknowledgement/obstruction/abort/analysis/sealing rehearsal producer is
 implemented and verified. A successful build or structural preflight is not a
 claim that the programme is ready for bench entry.
 
+The current cross-disciplinary execution sequence is the
+[`OTIS Canonical Instrument Completion Work Programme`](docs/90_ROADMAP/OTIS_CANONICAL_WORK_PROGRAMME.md).
+It incorporates the fixed-image reset, successor board and power work, isolated
+D10 and component-benchmarking inputs, serial products, disciplined-output
+qualification and final integrated instrument gate.
+
 ## Evidence policy
 
 `runs/` is intentionally ignored local scientific evidence. Never force-add it

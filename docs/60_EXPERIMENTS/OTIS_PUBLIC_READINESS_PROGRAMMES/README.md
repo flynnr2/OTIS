@@ -1,5 +1,12 @@
 # OTIS Public-Readiness Programmes
 
+> **Current planning status (2026-09-09):** The execution ordering in this
+> folder has been superseded by the
+> [OTIS Canonical Instrument Completion Work Programme](../../90_ROADMAP/OTIS_CANONICAL_WORK_PROGRAMME.md).
+> These documents remain design inputs and historical claim boundaries; they
+> do not grant current bench authority and must not override the fixed-image
+> or successor-hardware sequence in the canonical programme.
+
 ## Purpose
 
 This folder defines three descriptively named programmes intended to close the
