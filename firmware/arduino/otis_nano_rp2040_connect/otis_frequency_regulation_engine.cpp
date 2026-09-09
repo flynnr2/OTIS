@@ -68,6 +68,7 @@ const char *recoverable_quality_reason(const OtisFrequencyRegulationInput &input
 }
 
 const char *fault_reason(const OtisFrequencyRegulationInput &input) {
+  if (!input.applied_code_available) return "static_dac_code_unavailable";
   if (!input.applied_code_matches) return "requested_applied_mismatch";
   if (!input.i2c_ok) return "i2c_failure";
   if (input.current_code < kDacMinimumCode ||
@@ -128,12 +129,29 @@ void otis_frequency_regulation_engine_evaluate(
     fill_common(*engine, previous, *input, decision);
     return;
   }
+  if (engine->state == OtisFrequencyRegulationState::Fault) {
+    fill_common(*engine, previous, *input, decision);
+    return;
+  }
 
-  const char *recoverable_quality = recoverable_quality_reason(*input);
-  if (recoverable_quality != nullptr) {
-    engine->state = OtisFrequencyRegulationState::Qualifying;
-    engine->reason = recoverable_quality;
-    engine->inhibit_until_s = input->timestamp_s + kRecoveryFreshSupportS;
+  if (!input->actuator_context_established) {
+    // Before the deliberate one-shot setup there is no authoritative DAC
+    // code against which to evaluate the plant model.  The estimator remains
+    // useful evidence, but the preview controller has zero authority and must
+    // not manufacture a requested/applied mismatch fault from that absence.
+    if (input->applied_code_available || input->applied_code_matches ||
+        input->model_applicable || input->current_code != 0u) {
+      engine->state = OtisFrequencyRegulationState::Fault;
+      engine->reason = "pre_setup_static_code_context_inconsistent";
+      engine->integrator_codes = 0.0;
+      engine->have_last_decision = false;
+      otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
+      engine->tight_deadband_decision_available = false;
+      fill_common(*engine, previous, *input, decision);
+      return;
+    }
+    engine->state = OtisFrequencyRegulationState::SetupInhibit;
+    engine->reason = "static_dac_code_unavailable_no_control_authority";
     engine->integrator_codes = 0.0;
     engine->have_last_decision = false;
     otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
@@ -152,7 +170,16 @@ void otis_frequency_regulation_engine_evaluate(
     fill_common(*engine, previous, *input, decision);
     return;
   }
-  if (engine->state == OtisFrequencyRegulationState::Fault) {
+
+  const char *recoverable_quality = recoverable_quality_reason(*input);
+  if (recoverable_quality != nullptr) {
+    engine->state = OtisFrequencyRegulationState::Qualifying;
+    engine->reason = recoverable_quality;
+    engine->inhibit_until_s = input->timestamp_s + kRecoveryFreshSupportS;
+    engine->integrator_codes = 0.0;
+    engine->have_last_decision = false;
+    otis_integer_count_tight_deadband_requalify(&engine->tight_deadband);
+    engine->tight_deadband_decision_available = false;
     fill_common(*engine, previous, *input, decision);
     return;
   }
@@ -295,6 +322,8 @@ const char *otis_regulation_preview_state_name(OtisFrequencyRegulationState stat
   switch (state) {
     case OtisFrequencyRegulationState::WarmupInhibit:
       return "WARMUP_INHIBIT";
+    case OtisFrequencyRegulationState::SetupInhibit:
+      return "SAFE_OBSERVE";
     case OtisFrequencyRegulationState::Qualifying:
       return "QUALIFYING";
     case OtisFrequencyRegulationState::SettlingInhibit:

@@ -22,7 +22,7 @@ from typing import Any
 from .adaptive_hybrid_activation import validate_frozen_run_manifest
 from .adaptive_hybrid_contract import AdaptiveHybridProgramme, programme_from_mapping
 from .adaptive_hybrid_evidence import replay_adaptive_hybrid_maintenance_history
-from .adaptive_hybrid_policy import policy_from_mapping
+from .adaptive_hybrid_policy import AdaptiveHybridPolicy, policy_from_mapping
 from .adaptive_hybrid_replay import _capsules_exact, _measurement_replay, _response_replay
 from .adaptive_hybrid_transactions import CampaignSpec, _read_csv, validate_transaction_history
 from .contracts import CsvValidationContext, validate_csv
@@ -105,6 +105,19 @@ def _normalize_terminal(
         )
         return exact, primary if exact else None, result, reason
     return False, None, result if isinstance(result, str) else None, reason
+
+
+def _d10_isolated(
+    section: dict[str, Any], measurement: dict[str, Any]
+) -> bool:
+    d10 = section.get("external_event_input", {})
+    return (
+        d10.get("pin") == "D10"
+        and d10.get("authority") == "evidence_only"
+        and d10.get("control_eligible") is False
+        and d10.get("terminal_eligible") is False
+        and measurement.get("D10", {}).get("enters_D14_D8_replay") is not True
+    )
 
 
 def _atomic_new_json(path: Path, value: dict[str, Any]) -> None:
@@ -242,6 +255,168 @@ def _source_hashes(manifest: RunManifest) -> dict[str, str]:
     }
 
 
+def replay_current_adaptive_hybrid_records(
+    *,
+    transactions: list[dict[str, str]],
+    decisions: list[dict[str, str]],
+    maintenance: list[dict[str, str]],
+    spec: CampaignSpec,
+    identities: dict[str, str],
+    expected_build_identity: str,
+    policy: AdaptiveHybridPolicy,
+    policy_document: dict[str, Any],
+    expected_active_policy_sha256: str,
+    estimator_sha256: str,
+) -> dict[str, Any]:
+    """Replay the current deterministic record consumers without authority.
+
+    This seam deliberately accepts no path, manifest, seal, status Boolean, or
+    hardware-authority input.  Callers must establish their own manifest and
+    artifact boundary first.  The physical analyzer remains responsible for
+    validating the live manifest before it calls this shared replay.
+    """
+
+    validate_transaction_history(
+        transactions,
+        spec,
+        identities,
+        expected_build_identity,
+        dual_core=True,
+    )
+    replay = replay_adaptive_hybrid_maintenance_history(
+        decisions,
+        transactions,
+        maintenance,
+        expected_run_identity=spec.run_identity,
+        expected_build_identity=expected_build_identity,
+        expected_image_identity=spec.profile,
+        expected_active_policy_sha256=expected_active_policy_sha256,
+        policy=policy,
+        policy_document=policy_document,
+        estimator_sha256=estimator_sha256,
+    )
+    return {
+        "transaction_history_exact": True,
+        "transaction_row_count": len(transactions),
+        "decision_row_count": len(decisions),
+        "maintenance_row_count": len(maintenance),
+        "maintenance_replay": replay,
+    }
+
+
+def replay_current_adaptive_hybrid_host_consumers(
+    manifest: RunManifest,
+    *,
+    spec: CampaignSpec,
+    identities: dict[str, str],
+    expected_build_identity: str,
+    policy: AdaptiveHybridPolicy,
+    policy_document: dict[str, Any],
+    expected_active_policy_sha256: str,
+    estimator_sha256: str,
+    response_policy_document: dict[str, Any],
+    programme: AdaptiveHybridProgramme,
+) -> dict[str, Any]:
+    """Run the current deterministic host-analysis consumers without authority.
+
+    The caller must establish the manifest's stage and activation authority.
+    This function independently reads the declared artifacts, supervisor
+    records, and evidence snapshot; callers cannot supply their verdicts.  It
+    intentionally excludes physical measurement replay and physical-seal
+    construction, which a PTY rehearsal cannot establish.
+    """
+
+    before_hashes = _source_hashes(manifest)
+    snapshot_path = manifest.root / EVIDENCE_MANIFEST
+    before_snapshot_sha256 = _sha256_file(snapshot_path)
+    csv_results = _validate_manifest_csvs(
+        manifest, expected_policy_sha256=expected_active_policy_sha256
+    )
+    lifecycle = require_exact_lifecycle_records(manifest)
+    transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
+    decisions = _read_csv(_one_contract(manifest, "active_hybrid_decisions_v2"))
+    maintenance = _read_csv(
+        _one_contract(manifest, "active_hybrid_maintenance_v1")
+    )
+    record_replay = replay_current_adaptive_hybrid_records(
+        transactions=transactions,
+        decisions=decisions,
+        maintenance=maintenance,
+        spec=spec,
+        identities=identities,
+        expected_build_identity=expected_build_identity,
+        policy=policy,
+        policy_document=policy_document,
+        expected_active_policy_sha256=expected_active_policy_sha256,
+        estimator_sha256=estimator_sha256,
+    )
+    response_exact, responses = _response_replay(
+        transactions,
+        spec.minimum_code,
+        spec.maximum_code,
+        response_classification_observational=(
+            programme.response_checkpoint_observational
+        ),
+        response_policy_document=response_policy_document,
+    )
+    supervisor_state = _read_object(manifest.root / SUPERVISOR_STATE)
+    events = _read_jsonl(manifest.root / SUPERVISOR_EVENTS)
+    capsules_exact, capsule_hashes = _capsules_exact(
+        manifest.root, transactions, events, supervisor_state
+    )
+
+    source_hashes = _source_hashes(manifest)
+    snapshot_failures, snapshot_warnings = validate_evidence_snapshot(
+        manifest.root, manifest
+    )
+    snapshot_sha256 = _sha256_file(snapshot_path)
+    checks = {
+        "authoritative_csvs_exact": _authoritative_csvs_exact(csv_results),
+        "exact_lifecycle_records": lifecycle.get("exact") is True,
+        "transaction_history_exact": (
+            record_replay.get("transaction_history_exact") is True
+        ),
+        "maintenance_replay_exact": (
+            record_replay.get("maintenance_replay", {}).get("exact") is True
+        ),
+        "response_replay_exact": response_exact,
+        "transaction_capsules_exact": capsules_exact,
+        "evidence_snapshot_exact": (
+            not snapshot_failures
+            and snapshot_sha256 == before_snapshot_sha256
+        ),
+        "source_evidence_immutable_during_replay": source_hashes == before_hashes,
+    }
+    return {
+        "exact": all(checks.values()),
+        "consumer_scope": {
+            "csv_contract_validation": "exercised",
+            "D10_optional_event_csv": "fail_local",
+            "lifecycle_validation": "exercised",
+            "transaction_and_maintenance_replay": "exercised",
+            "response_replay": "exercised",
+            "transaction_capsule_validation": "exercised",
+            "evidence_snapshot_and_source_immutability": "exercised",
+            "physical_D14_D8_measurement_replay": "unexercised",
+            "physical_terminal_scientific_decision": "unexercised",
+            "physical_seal_construction": "unexercised",
+        },
+        "checks": checks,
+        "csv_validation": csv_results,
+        "exact_lifecycle_records": lifecycle,
+        "record_replay": record_replay,
+        "response_replay": responses,
+        "transaction_capsule_sha256": capsule_hashes,
+        "evidence_snapshot": {
+            "path": EVIDENCE_MANIFEST,
+            "sha256": snapshot_sha256,
+            "failures": snapshot_failures,
+            "warnings": snapshot_warnings,
+        },
+        "source_sha256": source_hashes,
+    }
+
+
 def analyze(
     run_dir: Path, *, output_path: Path | None = None,
 ) -> tuple[Path, dict[str, Any]]:
@@ -264,81 +439,103 @@ def analyze(
     policy = policy_from_mapping(
         policy_document, policy_sha256=str(policy_binding["sha256"])
     )
-    csv_results = _validate_manifest_csvs(
-        manifest, expected_policy_sha256=policy.policy_sha256
-    )
-    csv_exact = _authoritative_csvs_exact(csv_results)
-    snapshot_failures, snapshot_warnings = validate_evidence_snapshot(run_dir, manifest)
-    lifecycle = require_exact_lifecycle_records(manifest)
-
     section = manifest_value[programme.manifest_section]
     control = section["automatic_control"]
     build_identity = str(manifest_value["firmware"]["build_identity"])
+    bench_attempt = manifest_value.get("bench_attempt", {})
+    inhibited_zero_write = bench_attempt.get("purpose") == "inhibited_zero_write"
+    if inhibited_zero_write:
+        transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
+        dac_steps = _read_csv(_one_contract(manifest, "dac_steps_v1"))
+        inhibited_authority_exact = (
+            section["setup"].get("authorized") is False
+            and section["setup"].get("code") is None
+            and control.get("authorized") is False
+            and control.get("maximum_total_applications") == 0
+            and bench_attempt.get("authority", {}).get(
+                "total_dac_value_write_limit"
+            )
+            == 0
+            and not transactions
+            and not dac_steps
+        )
+        if not inhibited_authority_exact:
+            raise ValueError(
+                "inhibited zero-write evidence contains authority or a DAC transaction"
+            )
+        # Replay still needs numerical bounds. Here these are validation-only
+        # programme constants: the zero limits and empty records above prevent
+        # them from asserting or authorizing an applied code.
+        start_code = programme.setup_code
+        minimum_code = programme.minimum_code
+        maximum_code = programme.maximum_code
+        maximum_step = programme.maximum_step_codes
+    else:
+        inhibited_authority_exact = True
+        start_code = int(section["setup"]["code"])
+        minimum_code = int(control["minimum_code"])
+        maximum_code = int(control["maximum_code"])
+        maximum_step = int(control["maximum_step_codes"])
     spec = CampaignSpec(
         campaign=programme.campaign_name,
         profile=str(manifest_value["image_identity"]),
         run_identity=str(manifest_value["run_identity"]),
-        start_code=int(section["setup"]["code"]),
+        start_code=start_code,
         correction_limit=int(control["maximum_total_applications"]),
         cumulative_limit=int(control["maximum_cumulative_movement_codes"]),
-        minimum_code=int(control["minimum_code"]),
-        maximum_code=int(control["maximum_code"]),
-        maximum_step=int(control["maximum_step_codes"]),
+        minimum_code=minimum_code,
+        maximum_code=maximum_code,
+        maximum_step=maximum_step,
     )
-    transactions_path = _one_contract(manifest, "active_transactions_v2")
-    decisions_path = _one_contract(manifest, "active_hybrid_decisions_v2")
-    maintenance_path = _one_contract(manifest, "active_hybrid_maintenance_v1")
-    transactions = _read_csv(transactions_path)
-    decisions = _read_csv(decisions_path)
-    maintenance = _read_csv(maintenance_path)
-    validate_transaction_history(
-        transactions, spec, manifest_value["transaction_identities"],
-        build_identity, dual_core=True,
-    )
-    maintenance_replay = replay_adaptive_hybrid_maintenance_history(
-        decisions, transactions, maintenance,
-        expected_run_identity=spec.run_identity,
+    shared_consumers = replay_current_adaptive_hybrid_host_consumers(
+        manifest,
+        spec=spec,
+        identities=manifest_value["transaction_identities"],
         expected_build_identity=build_identity,
-        expected_image_identity=spec.profile,
-        expected_active_policy_sha256=policy.policy_sha256,
         policy=policy,
         policy_document=policy_document,
+        expected_active_policy_sha256=policy.policy_sha256,
         estimator_sha256=str(manifest_value["transaction_identities"]["estimator_sha256"]),
-    )
-    measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value)
-    response_exact, responses = _response_replay(
-        transactions, spec.minimum_code, spec.maximum_code,
-        response_classification_observational=programme.response_checkpoint_observational,
         response_policy_document=authoritative_document(
             frozen_inputs,
             str(policy_document["bindings"]["response_classification"]),
         ),
+        programme=programme,
     )
+    record_replay = shared_consumers["record_replay"]
+    maintenance_replay = record_replay["maintenance_replay"]
+    transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
+    measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value)
+    responses = shared_consumers["response_replay"]
     supervisor_state = _read_object(run_dir / SUPERVISOR_STATE)
-    events = _read_jsonl(run_dir / SUPERVISOR_EVENTS)
-    capsules_exact, capsule_hashes = _capsules_exact(
-        run_dir, transactions, events, supervisor_state
-    )
 
-    d10 = section.get("external_event_input", {})
-    d10_isolated = (
-        d10.get("pin") == "D10"
-        and d10.get("authority") == "evidence_only"
-        and d10.get("control_eligible") is False
-        and d10.get("terminal_eligible") is False
-        and measurement.get("D10", {}).get("enters_D14_D8_replay") is False
-    )
+    d10_isolated = _d10_isolated(section, measurement)
     checks = {
         "manifest_current": True,
-        "csv_contracts_exact": csv_exact,
-        "evidence_snapshot_exact": not snapshot_failures,
-        "exact_lifecycle_records": lifecycle["exact"],
-        "transactions_exact": True,
-        "maintenance_replay_exact": bool(maintenance_replay.get("exact")),
+        "csv_contracts_exact": shared_consumers["checks"][
+            "authoritative_csvs_exact"
+        ],
+        "evidence_snapshot_exact": shared_consumers["checks"][
+            "evidence_snapshot_exact"
+        ],
+        "exact_lifecycle_records": shared_consumers["checks"][
+            "exact_lifecycle_records"
+        ],
+        "transactions_exact": shared_consumers["checks"][
+            "transaction_history_exact"
+        ],
+        "maintenance_replay_exact": shared_consumers["checks"][
+            "maintenance_replay_exact"
+        ],
         "D14_D8_measurement_replay_exact": measurement_exact,
-        "response_replay_exact": response_exact,
-        "transaction_capsules_exact": capsules_exact,
+        "response_replay_exact": shared_consumers["checks"][
+            "response_replay_exact"
+        ],
+        "transaction_capsules_exact": shared_consumers["checks"][
+            "transaction_capsules_exact"
+        ],
         "D10_optional_event_isolated": d10_isolated,
+        "inhibited_zero_write_authority_exact": inhibited_authority_exact,
     }
     (
         terminal_exact,
@@ -364,30 +561,37 @@ def analyze(
         "image_identity": spec.profile,
         "programme_id": programme.programme_id,
         "policy_id": policy.policy_id,
-        "status": "passed" if passed else "failed",
+        "status": "passed" if passed else "review_required",
         "primary_decision": (
             scientific_decision
             if passed and isinstance(scientific_decision, str)
-            else "adaptive_hybrid_identity_or_evidence_fault"
+            else "operator_review_required"
         ),
         "terminal_result": terminal_result,
         "terminal_reason": terminal_reason,
         "checks": checks,
-        "csv_validation": csv_results,
-        "exact_lifecycle_records": lifecycle,
+        "csv_validation": shared_consumers["csv_validation"],
+        "exact_lifecycle_records": shared_consumers["exact_lifecycle_records"],
         "maintenance_replay": maintenance_replay,
         "measurement_replay": measurement,
         "response_replay": responses,
-        "transaction_capsule_sha256": capsule_hashes,
-        "evidence_snapshot": {
-            "path": EVIDENCE_MANIFEST,
-            "failures": snapshot_failures,
-            "warnings": snapshot_warnings,
-        },
+        "transaction_capsule_sha256": shared_consumers[
+            "transaction_capsule_sha256"
+        ],
+        "evidence_snapshot": shared_consumers["evidence_snapshot"],
         "source_sha256": source_hashes,
         "D10_semantics": {
             "pin": "D10", "record_type": "EVT", "authority": "evidence_only",
             "absence_noise_invalidity_or_overflow_cannot_change_control_or_terminal": True,
+        },
+        "host_discrepancy_authority": {
+            "review_required": not passed,
+            "new_setup": False,
+            "new_arm": False,
+            "automatic_abort": False,
+            "automatic_teardown": False,
+            "failed_campaign": False,
+            "raw_evidence_preserved": True,
         },
         "limitations": [
             "D14 is the sole PPS/reference input and D8 is the oscillator/count input.",

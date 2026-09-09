@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from host.otis_tools import adaptive_hybrid_replay as replay_module
 from host.otis_tools.adaptive_hybrid_analyze import (
     _authoritative_csvs_exact,
+    _d10_isolated,
     _validate_manifest_csvs,
 )
 from host.otis_tools.adaptive_hybrid_policy import (
@@ -209,6 +210,21 @@ def test_invalid_d10_csv_cannot_fail_authoritative_analyzer_gate(
     assert results["raw_events_v1:EVT"]["exact"] is False
     assert results["raw_events_v1:EVT"]["authority"] == "fail_local"
     assert _authoritative_csvs_exact(results) is True
+
+
+def test_absent_d10_does_not_claim_entry_into_d14_d8_replay() -> None:
+    section = {
+        "external_event_input": {
+            "pin": "D10",
+            "authority": "evidence_only",
+            "control_eligible": False,
+            "terminal_eligible": False,
+        }
+    }
+    report = {
+        "D10": {"row_count": 0, "channel_exact": True, "local_error": None}
+    }
+    assert _d10_isolated(section, report) is True
 
 
 def test_control_interfaces_have_no_external_event_authority_fields() -> None:

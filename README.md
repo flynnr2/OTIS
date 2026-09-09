@@ -57,6 +57,14 @@ acknowledgement/obstruction/abort/analysis/sealing rehearsal producer is
 implemented and verified. A successful build or structural preflight is not a
 claim that the programme is ready for bench entry.
 
+The current cross-disciplinary execution sequence is the
+[`OTIS Canonical Instrument Completion Work Programme`](docs/90_ROADMAP/OTIS_CANONICAL_WORK_PROGRAMME.md).
+It incorporates the fixed-image reset, successor board and power work, isolated
+D10 and component-benchmarking inputs, exhaustive firmware/host contract
+parity, measurement-aperture characterization, GNSS timing corrections and
+modes, serial products, shared-engine accelerated exercise,
+disciplined-output qualification and the final integrated instrument gate.
+
 ## Evidence policy
 
 `runs/` is intentionally ignored local scientific evidence. Never force-add it
@@ -80,7 +88,7 @@ instructions; there is no historical compatibility tier on current HEAD.
 ## Repository map
 
 | Directory | Purpose |
-|---|---|
+| --- | --- |
 | `data_contracts/` | current deployed contract documentation |
 | `firmware/arduino/otis_nano_rp2040_connect/` | current fixed-image firmware |
 | `host/otis_tools/` | current capture, regulation, replay, and evidence tools |

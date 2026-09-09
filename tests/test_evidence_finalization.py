@@ -63,6 +63,8 @@ def test_evidence_provenance_uses_fixed_image_identity_without_profile_artifacts
         "run_manifest",
         "raw_evidence",
         "declared_artifact",
+        "completion_marker",
+        "retained_evidence",
     }
 
 

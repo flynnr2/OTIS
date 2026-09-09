@@ -22,6 +22,9 @@ ENTRYPOINTS = frozenset(
         "adaptive_hybrid_supervisor",
     }
 )
+STANDALONE_CURRENT_TOOLS = frozenset(
+    {"adaptive_hybrid_operational_rehearsal"}
+)
 RETIRED_FRAGMENTS = (
     "active_hybrid",
     "bounded_tight",
@@ -66,8 +69,11 @@ def _graph() -> dict[str, frozenset[str]]:
     return {name: _imports(path, available) for name, path in modules.items()}
 
 
-def _closure(graph: dict[str, frozenset[str]]) -> frozenset[str]:
-    missing = ENTRYPOINTS - graph.keys()
+def _closure(
+    graph: dict[str, frozenset[str]],
+    entrypoints: frozenset[str] = ENTRYPOINTS,
+) -> frozenset[str]:
+    missing = entrypoints - graph.keys()
     assert not missing, f"current host entrypoints are missing: {sorted(missing)}"
     unresolved = sorted(
         f"{module}->{dependency}"
@@ -77,7 +83,7 @@ def _closure(graph: dict[str, frozenset[str]]) -> frozenset[str]:
     )
     assert not unresolved, "unresolved internal imports: " + ", ".join(unresolved)
     reached: set[str] = set()
-    pending = list(ENTRYPOINTS)
+    pending = list(entrypoints)
     while pending:
         module = pending.pop()
         if module in reached:
@@ -89,7 +95,7 @@ def _closure(graph: dict[str, frozenset[str]]) -> frozenset[str]:
 
 def test_current_host_dependency_closure_is_acyclic() -> None:
     graph = _graph()
-    closure = _closure(graph)
+    closure = _closure(graph, ENTRYPOINTS | STANDALONE_CURRENT_TOOLS)
     indegree = {module: 0 for module in closure}
     consumers: dict[str, set[str]] = defaultdict(set)
     for importer in closure:
@@ -125,7 +131,7 @@ def test_current_host_closure_has_no_retired_programme_modules() -> None:
 
 def test_every_semantic_adaptive_hybrid_module_is_in_current_closure() -> None:
     modules = _modules()
-    closure = _closure(_graph())
+    closure = _closure(_graph()) | STANDALONE_CURRENT_TOOLS
     adaptive_modules = {
         module for module in modules if module.startswith("adaptive_hybrid_")
     }

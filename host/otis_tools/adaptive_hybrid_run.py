@@ -25,7 +25,6 @@ from typing import Any, Callable, IO
 from . import adaptive_hybrid_monitor as _adaptive_hybrid_monitor
 
 from .adaptive_hybrid_activation import (
-    EXPECTED_BOARD_SERIAL,
     EXPECTED_BAUD,
     OPERATION,
     RUN_ACTIVATION_PATH,
@@ -33,7 +32,7 @@ from .adaptive_hybrid_activation import (
     RUN_MANIFEST_PATH,
     RUN_PROPOSAL_PATH,
     create_run_manifest,
-    validate_activation,
+    validate_activation_for_physical_entry,
     validate_frozen_run_manifest,
 )
 from .active_status_contract import complete_active_status_snapshots
@@ -41,7 +40,9 @@ from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
 from .adaptive_hybrid_contract import (
     AdaptiveHybridProgramme,
     ADAPTIVE_HYBRID_PROGRAMME,
+    BenchAttemptEnvelope,
     programme_from_mapping,
+    validate_bench_attempt_envelope,
 )
 from .capture_device import _capture_state_ready, _detect_single_device, _serial_owner_pids
 from .contracts import HEALTH_FIELDS
@@ -77,13 +78,11 @@ FLASH_RECORD = Path("reports/adaptive_hybrid_hybrid_firmware_entry_v1.json")
 FINALIZATION_FAILURE = Path("reports/adaptive_hybrid_hybrid_finalization_failure_v1.json")
 LIVE_SEAL = Path("reports/adaptive_hybrid_hybrid_physical_seal_v1.json")
 
-EXPECTED_BOARD_VID = "0x2341"
-EXPECTED_BOARD_PID = "0x005E"
-EXPECTED_BOARD_FQBN = "rp2040:rp2040:arduino_nano_connect"
-
-
 def read_board_identity(
-    device: str, *, arduino_cli: str = "arduino-cli"
+    device: str,
+    *,
+    bench_attempt: BenchAttemptEnvelope,
+    arduino_cli: str = "arduino-cli",
 ) -> dict[str, str]:
     """Read and bind the one accepted bench-board identity."""
 
@@ -116,15 +115,29 @@ def read_board_identity(
         "board_name": str(boards[0].get("name", "")) if len(boards) == 1 else "",
         "board_fqbn": str(boards[0].get("fqbn", "")) if len(boards) == 1 else "",
     }
-    if (
-        identity["serial_number"] != EXPECTED_BOARD_SERIAL
-        or identity["hardware_id"] != EXPECTED_BOARD_SERIAL
-        or identity["vid"].lower() != EXPECTED_BOARD_VID.lower()
-        or identity["pid"].lower() != EXPECTED_BOARD_PID.lower()
-        or identity["board_fqbn"] != EXPECTED_BOARD_FQBN
-    ):
+    expected = bench_attempt.as_dict()["device_identity"]
+    observed = {
+        "expected_board_serial": identity["serial_number"],
+        "expected_hardware_id": identity["hardware_id"],
+        "expected_usb_vid": identity["vid"].upper().replace("0X", "0x"),
+        "expected_usb_pid": identity["pid"].upper().replace("0X", "0x"),
+        "expected_usb_product": identity["product"],
+        "expected_board_name": identity["board_name"],
+        "expected_base_fqbn": identity["board_fqbn"],
+        "expected_compile_fqbn": expected["expected_compile_fqbn"],
+    }
+    if observed != expected:
         raise ValueError("connected board identity differs from the accepted OTIS bench board")
     return identity
+
+
+def _activation_bench_attempt(
+    activation: dict[str, Any],
+) -> BenchAttemptEnvelope:
+    value = activation.get("bench_attempt")
+    if not isinstance(value, dict):
+        raise ValueError("activation lacks an exact bench-attempt envelope")
+    return validate_bench_attempt_envelope(value)
 COMPLETE = Path("COMPLETE")
 NORMAL_FIFO = Path("control/normal_commands.fifo")
 EMERGENCY_FIFO = Path("control/emergency_abort.fifo")
@@ -293,8 +306,30 @@ def _upload_exact_firmware(
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     authority = activation["authority"]
     firmware = activation["firmware"]
+    bench_attempt = _activation_bench_attempt(activation)
+    envelope = bench_attempt.as_dict()
+    identity = envelope["device_identity"]
     if authority.get("firmware_flash_limit") != 1:
         raise ValueError("ADAPTIVE_HYBRID activation does not grant exactly one firmware upload")
+    if firmware.get("fqbn") != identity["expected_compile_fqbn"]:
+        raise ValueError("firmware compile FQBN differs from the bench-attempt envelope")
+    # Do not trust a caller-supplied preflight record without checking every
+    # field against the same closed envelope used after re-enumeration.
+    expected_before = {
+        "serial_number": identity["expected_board_serial"],
+        "hardware_id": identity["expected_hardware_id"],
+        "vid": identity["expected_usb_vid"],
+        "pid": identity["expected_usb_pid"],
+        "product": identity["expected_usb_product"],
+        "board_name": identity["expected_board_name"],
+        "board_fqbn": identity["expected_base_fqbn"],
+    }
+    for field, expected_value in expected_before.items():
+        actual = board_before.get(field)
+        if field in {"vid", "pid"} and isinstance(actual, str):
+            actual = actual.upper().replace("0X", "0x")
+        if actual != expected_value:
+            raise ValueError("pre-flash board identity differs from the bench-attempt envelope")
     command = [
         arduino_cli,
         "upload",
@@ -318,7 +353,9 @@ def _upload_exact_firmware(
             try:
                 device_after = _fresh_auto_detect_device()
                 board_after = read_board_identity(
-                    device_after, arduino_cli=arduino_cli
+                    device_after,
+                    bench_attempt=bench_attempt,
+                    arduino_cli=arduino_cli,
                 )
                 break
             except (
@@ -329,13 +366,12 @@ def _upload_exact_firmware(
             ) as exc:
                 reappearance_error = str(exc)
                 time.sleep(0.5)
-    expected_serial = None
+    expected_serial = identity["expected_board_serial"]
     passed = (
         completed.returncode == 0
         and device_after is not None
         and board_after is not None
-        and board_before.get("serial_number")
-        == board_after.get("serial_number")
+        and board_after.get("serial_number") == expected_serial
     )
     record = {
         "schema_version": 1,
@@ -352,6 +388,11 @@ def _upload_exact_firmware(
         "stdout_tail": completed.stdout[-4000:],
         "stderr_tail": completed.stderr[-4000:],
         "expected_board_serial": expected_serial,
+        "bench_attempt": envelope,
+        "bench_attempt_purpose": bench_attempt.purpose,
+        "bench_attempt_envelope_sha256": envelope["envelope_sha256"],
+        "expected_device_identity": identity,
+        "compile_fqbn": firmware["fqbn"],
         "device_selection": "fresh_capture_device_--auto-detect",
         "board_identity_confirmed_before": True,
         "board_identity_confirmed_after": passed,
@@ -387,6 +428,7 @@ def _capture_command(
     *,
     device: str,
     run_dir: Path,
+    bench_attempt: BenchAttemptEnvelope,
     programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
 ) -> list[str]:
     command = [
@@ -407,7 +449,7 @@ def _capture_command(
         "--run-dir",
         str(run_dir),
         "--duration-s",
-        str(programme.capture_duration_s),
+        str(int(bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]) + 180),
         "--status-interval",
         "5",
         "--command-fifo",
@@ -426,6 +468,7 @@ def _supervisor_command(
     *,
     run_dir: Path,
     build_identity: str,
+    bench_attempt: BenchAttemptEnvelope,
     programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
 ) -> list[str]:
     return [
@@ -445,7 +488,7 @@ def _supervisor_command(
         "--expected-build-identity",
         build_identity,
         "--duration-s",
-        str(programme.supervisor_duration_s),
+        str(int(bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]) + 120),
     ]
 
 
@@ -468,16 +511,19 @@ def _terminal(run_dir: Path) -> dict[str, Any] | None:
 
 def _terminal_expected(
     terminal: dict[str, Any] | None,
+    bench_attempt: BenchAttemptEnvelope,
     programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
 ) -> bool:
     if terminal is None:
         return False
     result = terminal.get("result")
+    semantics = bench_attempt.as_dict()["terminal_semantics"]
     decision_is_valid = (
-        terminal.get("preliminary_decision")
-        in programme.healthy_preliminary_decisions
+        terminal.get("reason") == semantics["success_terminal"]
+        and terminal.get("preliminary_decision") in programme.healthy_preliminary_decisions
         if result == "healthy_stop"
-        else terminal.get("primary_decision") in programme.terminal_decisions
+        else terminal.get("primary_decision")
+        in {semantics["no_application_terminal"], "adaptive_hybrid_right_censored_incomplete", *programme.terminal_decisions}
     )
     static_code = terminal.get("last_confirmed_code")
     static_code_is_valid = type(static_code) is int or (
@@ -776,7 +822,9 @@ def _registration(
     analyzer_identity: str,
 ) -> dict[str, str]:
     classification = (
-        COMPLETED_INDEX_CLASSIFICATION
+        "diagnostic"
+        if status == "review_required"
+        else COMPLETED_INDEX_CLASSIFICATION
         if status in {"passed", "bounded_nonpass"}
         else INTERRUPTED_INDEX_CLASSIFICATION
     )
@@ -1069,7 +1117,13 @@ def run_adaptive_hybrid_qualification(
     if activation_value is None:
         raise ValueError("active-hybrid activation is unreadable")
     programme = programme_from_mapping(activation_value)
-    activation, bundle, _proposal = validate_activation(activation_path)
+    (
+        activation,
+        bundle,
+        _proposal,
+        current_reproduction,
+    ) = validate_activation_for_physical_entry(activation_path)
+    bench_attempt = _activation_bench_attempt(activation)
     run_dir = run_dir.resolve()
     if run_dir.exists():
         raise FileExistsError(f"ADAPTIVE_HYBRID live run already exists: {run_dir}")
@@ -1083,7 +1137,9 @@ def run_adaptive_hybrid_qualification(
     owners = _serial_owner_pids(device)
     if owners:
         raise ValueError(f"serial device already has owners: {sorted(owners)}")
-    board = read_board_identity(device, arduino_cli=arduino_cli)
+    board = read_board_identity(
+        device, bench_attempt=bench_attempt, arduino_cli=arduino_cli
+    )
     run_dir.mkdir(parents=True)
     (run_dir / "reports").mkdir()
     (run_dir / "control").mkdir()
@@ -1137,6 +1193,7 @@ def run_adaptive_hybrid_qualification(
             run_dir=run_dir,
             output_path=manifest_path,
             serial_device=device,
+            _validated_current_reproduction=current_reproduction,
         )
         generic_manifest = load_manifest(run_dir)
         if generic_manifest.data != created_manifest:
@@ -1189,7 +1246,10 @@ def run_adaptive_hybrid_qualification(
         supervisor_log = (run_dir / SUPERVISOR_LOG).open("x", encoding="utf-8")
         capture = _launch_process(
             _capture_command(
-                device=device, run_dir=run_dir, programme=programme
+                device=device,
+                run_dir=run_dir,
+                bench_attempt=bench_attempt,
+                programme=programme,
             ),
             capture_log,
         )
@@ -1210,10 +1270,16 @@ def run_adaptive_hybrid_qualification(
         )
         if _serial_owner_pids(device) != {capture.pid}:
             raise RuntimeError("capture_device is not the sole serial owner")
+        capture_owned_board = read_board_identity(
+            device, bench_attempt=bench_attempt, arduino_cli=arduino_cli
+        )
+        if capture_owned_board.get("serial_number") != board.get("serial_number"):
+            raise RuntimeError("board identity changed after capture ownership")
         supervisor = _launch_process(
             _supervisor_command(
                 run_dir=run_dir,
                 build_identity=str(bundle["firmware"]["build_identity"]),
+                bench_attempt=bench_attempt,
                 programme=programme,
             ),
             supervisor_log,
@@ -1231,11 +1297,11 @@ def run_adaptive_hybrid_qualification(
         _wait_until(
             lambda: _terminal(run_dir) is not None
             or (supervisor is not None and supervisor.poll() is not None),
-            programme.supervisor_duration_s,
+            int(bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]) + 120,
             "finite ADAPTIVE_HYBRID supervisor terminal",
         )
         terminal = _terminal(run_dir)
-        if not _terminal_expected(terminal, programme):
+        if not _terminal_expected(terminal, bench_attempt, programme):
             raise RuntimeError(
                 "ADAPTIVE_HYBRID supervisor reached a non-canonical terminal: "
                 + json.dumps(terminal, sort_keys=True)

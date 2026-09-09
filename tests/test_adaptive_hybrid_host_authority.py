@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -11,14 +12,24 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from host.otis_tools import adaptive_hybrid_bundle as bundle_module
+from host.otis_tools import adaptive_hybrid_activation as activation_module
+from host.otis_tools import adaptive_hybrid_analyze as analyze_module
+from host.otis_tools import adaptive_hybrid_run as run_module
+from host.otis_tools import adaptive_hybrid_supervisor as supervisor_module
 from host.otis_tools import adaptive_hybrid_transactions as transactions_module
-from host.otis_tools.adaptive_hybrid_activation import validate_operational_rehearsal
+from host.otis_tools import evidence as evidence_module
+from host.otis_tools.adaptive_hybrid_activation import (
+    OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES,
+    operational_rehearsal_authorization_contract,
+    validate_operational_rehearsal,
+)
 from host.otis_tools.adaptive_hybrid_analyze import _normalize_terminal
 from host.otis_tools.adaptive_hybrid_bundle import (
     create_bundle,
     create_progressive_replay,
     _validate_build,
     validate_bundle,
+    validate_frozen_bundle,
     validate_progressive_replay,
 )
 from host.otis_tools.authoritative_inputs import (
@@ -38,6 +49,8 @@ from host.otis_tools.firmware_binary import (
 from tools import build_firmware
 from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
+    SINGLE_AUTOMATIC_APPLICATION,
+    envelope_for_purpose,
     programme_from_mapping,
 )
 from host.otis_tools.adaptive_hybrid_health import (
@@ -46,6 +59,7 @@ from host.otis_tools.adaptive_hybrid_health import (
     AdaptiveHybridSupervisorBase,
 )
 from host.otis_tools.adaptive_hybrid_supervisor import load_active_hybrid_spec
+from host.otis_tools.adaptive_hybrid_monitor import _diagnostic_review_hold
 from host.otis_tools.adaptive_hybrid_transactions import (
     AdaptiveHybridTransactionSupervisor,
     CampaignSpec,
@@ -94,6 +108,326 @@ def _write_uf2(path: Path, payload: bytes) -> None:
         struct.pack_into("<I", block, 508, UF2_MAGIC_END)
         blocks.append(bytes(block))
     path.write_bytes(b"".join(blocks))
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        "analyzer_discrepancy",
+        "parser_discrepancy",
+        "independent_replay_discrepancy",
+        "live_orchestration_discrepancy",
+    ),
+)
+def test_host_consumer_discrepancy_enters_no_authority_review_hold(
+    source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
+    supervisor.run_dir = tmp_path
+    supervisor.state = {
+        "host_verification_hold": None,
+        "arm_pending": True,
+        "arm_sent_at_utc": "2026-09-09T00:00:00Z",
+        "terminal": None,
+        "terminal_static_code": 43344,
+    }
+    saves: list[dict[str, object]] = []
+    events: list[dict[str, object]] = []
+    supervisor._save = lambda: saves.append(dict(supervisor.state))
+    supervisor._programme_event = lambda _event, **values: events.append(values)
+    monkeypatch.setattr(supervisor_module, "_read_csv", lambda _path: [])
+
+    supervisor._enter_host_verification_hold(
+        ValueError("retained host discrepancy"), source=source
+    )
+
+    hold = supervisor.state["host_verification_hold"]
+    assert hold["review_status"] == "operator_review_required"
+    assert hold["new_authority"] is False
+    assert hold["capture_and_serial_owner_retained"] is True
+    assert hold["evidence_ack_policy"] == "continue_exact_withhold_unverifiable"
+    assert supervisor.state["arm_pending"] is False
+    assert supervisor.state["arm_sent_at_utc"] is None
+    assert supervisor.state["terminal"] is None
+    assert saves and events
+
+    supervisor._identity_ready = lambda _health: (_ for _ in ()).throw(
+        AssertionError("held supervisor attempted setup/arm qualification")
+    )
+    supervisor._maybe_start_or_arm({})
+
+
+def test_monitor_and_registration_classify_host_findings_as_review_only() -> None:
+    hold = _diagnostic_review_hold(
+        integrity_faults=["parser_discrepancy", "independent_replay_discrepancy"],
+        supervisor_hold={
+            "source": "host_verifier",
+            "review_status": "operator_review_required",
+        },
+        orchestration_hold={
+            "error_type": "RuntimeError",
+            "review_status": "operator_review_required",
+        },
+    )
+    assert hold is not None
+    assert hold["scientific_status"] == "unclassified_pending_operator_review"
+    assert hold["nonzero_exit_semantics"] == "attention_required_not_abort_authority"
+    assert hold["authority"] == {
+        "new_setup": False,
+        "new_arm": False,
+        "automatic_abort": False,
+        "automatic_teardown": False,
+        "failed_campaign": False,
+    }
+    registration = run_module._registration(
+        activation={
+            "firmware": {
+                "source_revision": "a" * 40,
+                "build_identity": "source:configuration",
+            },
+            "image_identity": "adaptive_hybrid_regulation",
+        },
+        status="review_required",
+        reason="offline analyzer disagreement pending operator review",
+        analyzer_identity="b" * 64,
+    )
+    assert registration["attempt_classification"] == "diagnostic"
+
+    exact_nonpass_registration = run_module._registration(
+        activation={
+            "firmware": {
+                "source_revision": "a" * 40,
+                "build_identity": "source:configuration",
+            },
+            "image_identity": "adaptive_hybrid_regulation",
+        },
+        status="passed",
+        reason=(
+            "ADAPTIVE_HYBRID passed: "
+            "adaptive_hybrid_authority_not_sustained"
+        ),
+        analyzer_identity="b" * 64,
+    )
+    assert (
+        exact_nonpass_registration["attempt_classification"]
+        == run_module.COMPLETED_INDEX_CLASSIFICATION
+    )
+
+
+def test_shared_analyzer_record_replay_has_no_manifest_or_authority_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transactions = [{"event": "manual_start"}]
+    decisions = [{"record_type": "AHY"}]
+    maintenance = [{"record_type": "AHM"}]
+    spec = SimpleNamespace(run_identity="run", profile="image")
+    policy = SimpleNamespace(policy_sha256="a" * 64)
+    observed: dict[str, object] = {}
+
+    def validate(*args: object, **kwargs: object) -> None:
+        observed["transaction_validation"] = (args, kwargs)
+
+    def replay(*args: object, **kwargs: object) -> dict[str, object]:
+        observed["maintenance_replay"] = (args, kwargs)
+        return {"exact": True}
+
+    monkeypatch.setattr(analyze_module, "validate_transaction_history", validate)
+    monkeypatch.setattr(
+        analyze_module, "replay_adaptive_hybrid_maintenance_history", replay
+    )
+    result = analyze_module.replay_current_adaptive_hybrid_records(
+        transactions=transactions,
+        decisions=decisions,
+        maintenance=maintenance,
+        spec=spec,
+        identities={"estimator_sha256": "b" * 64},
+        expected_build_identity="build",
+        policy=policy,
+        policy_document={"policy_id": "policy"},
+        expected_active_policy_sha256="a" * 64,
+        estimator_sha256="b" * 64,
+    )
+
+    assert result == {
+        "transaction_history_exact": True,
+        "transaction_row_count": 1,
+        "decision_row_count": 1,
+        "maintenance_row_count": 1,
+        "maintenance_replay": {"exact": True},
+    }
+    validation_args, validation_kwargs = observed["transaction_validation"]
+    assert validation_args[:3] == (
+        transactions,
+        spec,
+        {"estimator_sha256": "b" * 64},
+    )
+    assert validation_kwargs == {"dual_core": True}
+    _replay_args, replay_kwargs = observed["maintenance_replay"]
+    assert replay_kwargs["expected_run_identity"] == "run"
+    assert replay_kwargs["expected_image_identity"] == "image"
+
+
+def test_shared_analyzer_host_consumers_recompute_every_applicable_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = SimpleNamespace(root=tmp_path)
+    spec = SimpleNamespace(minimum_code=0xA800, maximum_code=0xAB00)
+    programme = SimpleNamespace(response_checkpoint_observational=True)
+    source_hashes = iter(({"csv/records.csv": "1" * 64},) * 2)
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        analyze_module, "_source_hashes", lambda _manifest: next(source_hashes)
+    )
+    monkeypatch.setattr(analyze_module, "_sha256_file", lambda _path: "2" * 64)
+    monkeypatch.setattr(
+        analyze_module,
+        "_validate_manifest_csvs",
+        lambda *_args, **_kwargs: {
+            "active_transactions_v2": {
+                "authority": "authoritative",
+                "exact": True,
+            },
+            "raw_events_v1:EVT": {
+                "authority": "fail_local",
+                "exact": False,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "require_exact_lifecycle_records",
+        lambda _manifest: {"exact": True},
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "validate_evidence_snapshot",
+        lambda *_args: ([], ["diagnostic warning"]),
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "_one_contract",
+        lambda _manifest, contract: tmp_path / f"{contract}.csv",
+    )
+
+    def read_csv(path: Path) -> list[dict[str, str]]:
+        calls.append(path.name)
+        return [{"event": path.stem}]
+
+    monkeypatch.setattr(analyze_module, "_read_csv", read_csv)
+    monkeypatch.setattr(
+        analyze_module,
+        "replay_current_adaptive_hybrid_records",
+        lambda **_kwargs: {
+            "transaction_history_exact": True,
+            "maintenance_replay": {"exact": True},
+        },
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "_response_replay",
+        lambda *_args, **_kwargs: (True, [{"exact": True}]),
+    )
+    monkeypatch.setattr(analyze_module, "_read_object", lambda _path: {"state": 1})
+    monkeypatch.setattr(analyze_module, "_read_jsonl", lambda _path: [{"event": 1}])
+    monkeypatch.setattr(
+        analyze_module,
+        "_capsules_exact",
+        lambda *_args: (True, {"reports/step.json": "3" * 64}),
+    )
+
+    result = analyze_module.replay_current_adaptive_hybrid_host_consumers(
+        manifest,
+        spec=spec,
+        identities={"estimator_sha256": "4" * 64},
+        expected_build_identity="build",
+        policy=SimpleNamespace(),
+        policy_document={"policy_id": "policy"},
+        expected_active_policy_sha256="5" * 64,
+        estimator_sha256="4" * 64,
+        response_policy_document={"policy_id": "response"},
+        programme=programme,
+    )
+
+    assert result["exact"] is True
+    assert all(result["checks"].values())
+    assert calls == [
+        "active_transactions_v2.csv",
+        "active_hybrid_decisions_v2.csv",
+        "active_hybrid_maintenance_v1.csv",
+    ]
+    assert result["csv_validation"]["raw_events_v1:EVT"] == {
+        "authority": "fail_local",
+        "exact": False,
+    }
+    assert result["consumer_scope"]["physical_D14_D8_measurement_replay"] == (
+        "unexercised"
+    )
+    assert result["consumer_scope"]["D10_optional_event_csv"] == "fail_local"
+    assert result["consumer_scope"]["physical_seal_construction"] == "unexercised"
+    assert result["evidence_snapshot"]["warnings"] == ["diagnostic warning"]
+
+
+def test_shared_analyzer_host_consumers_reject_source_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = SimpleNamespace(root=tmp_path)
+    source_hashes = iter(({"a": "before"}, {"a": "after"}))
+    monkeypatch.setattr(
+        analyze_module, "_source_hashes", lambda _manifest: next(source_hashes)
+    )
+    monkeypatch.setattr(analyze_module, "_sha256_file", lambda _path: "1" * 64)
+    monkeypatch.setattr(
+        analyze_module,
+        "_validate_manifest_csvs",
+        lambda *_args, **_kwargs: {"x": {"authority": "authoritative", "exact": True}},
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "require_exact_lifecycle_records",
+        lambda _manifest: {"exact": True},
+    )
+    monkeypatch.setattr(
+        analyze_module, "validate_evidence_snapshot", lambda *_args: ([], [])
+    )
+    monkeypatch.setattr(
+        analyze_module,
+        "_one_contract",
+        lambda _manifest, contract: tmp_path / f"{contract}.csv",
+    )
+    monkeypatch.setattr(analyze_module, "_read_csv", lambda _path: [])
+    monkeypatch.setattr(
+        analyze_module,
+        "replay_current_adaptive_hybrid_records",
+        lambda **_kwargs: {
+            "transaction_history_exact": True,
+            "maintenance_replay": {"exact": True},
+        },
+    )
+    monkeypatch.setattr(
+        analyze_module, "_response_replay", lambda *_args, **_kwargs: (True, [])
+    )
+    monkeypatch.setattr(analyze_module, "_read_object", lambda _path: {})
+    monkeypatch.setattr(analyze_module, "_read_jsonl", lambda _path: [])
+    monkeypatch.setattr(
+        analyze_module, "_capsules_exact", lambda *_args: (True, {})
+    )
+
+    result = analyze_module.replay_current_adaptive_hybrid_host_consumers(
+        manifest,
+        spec=SimpleNamespace(minimum_code=0, maximum_code=1),
+        identities={},
+        expected_build_identity="build",
+        policy=SimpleNamespace(),
+        policy_document={},
+        expected_active_policy_sha256="2" * 64,
+        estimator_sha256="3" * 64,
+        response_policy_document={},
+        programme=SimpleNamespace(response_checkpoint_observational=False),
+    )
+
+    assert result["exact"] is False
+    assert result["checks"]["source_evidence_immutable_during_replay"] is False
 
 
 def test_complete_exact_act_is_durable_before_phase_acknowledgement(
@@ -417,6 +751,142 @@ def test_bundle_rejects_self_consistent_authority_mutation(
         validate_bundle(path)
 
 
+def test_frozen_bundle_validation_does_not_repeat_firmware_reproduction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build_manifest = tmp_path / "build.json"
+    _write_json(build_manifest, {"build": "fixture"})
+    firmware = {
+        "image_id": ADAPTIVE_HYBRID_PROGRAMME.profile_id,
+        "build_identity": "a" * 64 + ":" + "b" * 64,
+        "build_manifest": _binding(build_manifest),
+    }
+    reproduction_modes: list[bool] = []
+
+    def fake_validate_build(
+        *_args: object,
+        verify_deterministic_reproduction: bool = True,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        reproduction_modes.append(verify_deterministic_reproduction)
+        return firmware
+
+    monkeypatch.setattr(bundle_module, "_validate_build", fake_validate_build)
+    bundle_path = tmp_path / "bundle.json"
+    _write_json(bundle_path, create_bundle(build_manifest_path=build_manifest))
+    assert reproduction_modes == [True]
+
+    reproduction_modes.clear()
+    validate_frozen_bundle(bundle_path)
+    assert reproduction_modes == [False]
+
+    validate_bundle(bundle_path)
+    assert reproduction_modes == [False, True]
+
+    recorded_binding = bundle_module._binding
+
+    def changed_checkout_binding(path: Path) -> dict[str, object]:
+        binding = recorded_binding(path)
+        if path.suffix == ".py":
+            return {**binding, "sha256": "f" * 64}
+        return binding
+
+    monkeypatch.setattr(bundle_module, "_binding", changed_checkout_binding)
+    validate_frozen_bundle(bundle_path)
+    with pytest.raises(ValueError, match="tool, topology, limit, or authority"):
+        validate_bundle(bundle_path)
+
+
+def test_live_supervisor_consumes_frozen_manifest_without_reproduction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    build_identity = "a" * 64 + ":" + "b" * 64
+    manifest = {"firmware": {"build_identity": build_identity}}
+    manifest_path = tmp_path / "run_manifest.json"
+    _write_json(manifest_path, manifest)
+    frozen_calls: list[Path] = []
+
+    def frozen_validator(path: Path) -> dict[str, object]:
+        frozen_calls.append(path)
+        return manifest
+
+    def current_validator(_path: Path) -> dict[str, object]:
+        raise AssertionError("live supervisor repeated current firmware validation")
+
+    monkeypatch.setattr(
+        activation_module, "validate_frozen_run_manifest", frozen_validator
+    )
+    monkeypatch.setattr(
+        activation_module, "validate_run_manifest", current_validator
+    )
+    spec = object()
+    identities = object()
+    monkeypatch.setattr(
+        supervisor_module,
+        "load_active_hybrid_spec",
+        lambda _manifest: (spec, identities),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "AdaptiveHybridSupervisor",
+        lambda **kwargs: kwargs,
+    )
+
+    result = supervisor_module.create_supervisor(
+        manifest_path=manifest_path,
+        run_dir=tmp_path,
+        command_fifo=tmp_path / "normal.fifo",
+        emergency_command_fifo=tmp_path / "emergency.fifo",
+        abort_fifo=tmp_path / "abort.fifo",
+        expected_build_identity=build_identity,
+    )
+    assert frozen_calls == [manifest_path]
+    assert result["manifest"] == manifest
+
+
+def test_live_manifest_requires_matching_current_reproduction_capability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    activation = {"activation_sha256": "1" * 64}
+    bundle = {
+        "bundle_sha256": "2" * 64,
+        "firmware": {
+            "build_identity": "3" * 64 + ":" + "4" * 64,
+            "uf2": {"sha256": "5" * 64},
+        },
+    }
+    proposal = {"proposal_sha256": "6" * 64}
+    monkeypatch.setattr(
+        activation_module,
+        "validate_activation",
+        lambda *_args, **_kwargs: (activation, bundle, proposal),
+    )
+
+    *_, capability = activation_module.validate_activation_for_physical_entry(
+        tmp_path / "activation.json"
+    )
+    activation_module._require_current_reproduction_capability(
+        capability,
+        activation=activation,
+        bundle=bundle,
+        proposal=proposal,
+    )
+    with pytest.raises(ValueError, match="current firmware reproduction capability"):
+        activation_module._require_current_reproduction_capability(
+            None,
+            activation=activation,
+            bundle=bundle,
+            proposal=proposal,
+        )
+    with pytest.raises(ValueError, match="current firmware reproduction capability"):
+        activation_module._require_current_reproduction_capability(
+            replace(capability, uf2_sha256="7" * 64),
+            activation=activation,
+            bundle=bundle,
+            proposal=proposal,
+        )
+
+
 def test_bundle_validation_consumes_embedded_profile_and_schema_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -499,6 +969,9 @@ def test_live_runtime_envelope_consumes_frozen_profiles_not_checkout_paths() -> 
             "policy_sha256": policy["sha256"],
         },
         "started_at_utc": "2026-08-13T00:00:00Z",
+        "bench_attempt": envelope_for_purpose(
+            SINGLE_AUTOMATIC_APPLICATION
+        ).as_dict(),
         ADAPTIVE_HYBRID_PROGRAMME.manifest_section: {},
     }
     spec, identities = load_active_hybrid_spec(manifest)
@@ -512,7 +985,7 @@ def test_live_runtime_envelope_consumes_frozen_profiles_not_checkout_paths() -> 
     )
 
 
-def test_activation_rejects_structural_and_unimplemented_rehearsals(tmp_path: Path) -> None:
+def test_activation_rejects_structural_and_unbound_rehearsals(tmp_path: Path) -> None:
     structural = tmp_path / "structural.json"
     _write_json(structural, {"report_kind": "structural_preflight"})
     with pytest.raises(ValueError, match="structural preflight cannot authorize"):
@@ -520,8 +993,271 @@ def test_activation_rejects_structural_and_unimplemented_rehearsals(tmp_path: Pa
 
     asserted = tmp_path / "asserted.json"
     _write_json(asserted, {"report_kind": "operational_rehearsal"})
-    with pytest.raises(ValueError, match="no genuine .* producer is implemented"):
+    with pytest.raises(ValueError, match="authorization inputs are incomplete"):
         validate_operational_rehearsal(asserted, bundle={}, proposal={})
+
+
+def test_rehearsal_authorization_contract_binds_real_path_and_denies_authority() -> None:
+    required_tools = {
+        name: {"path": f"/frozen/{name}.py", "sha256": "1" * 64, "size_bytes": 1}
+        for name in (
+            "capture_device",
+            "adaptive_hybrid_operational_rehearsal",
+            "adaptive_hybrid_supervisor",
+            "adaptive_hybrid_run",
+            "adaptive_hybrid_analyze",
+            "evidence",
+            "evidence_finalization",
+            "evidence_index",
+        )
+    }
+    contract = operational_rehearsal_authorization_contract(
+        bundle={
+            "bundle_sha256": "2" * 64,
+            "firmware": {
+                "source_revision": "3" * 40,
+                "build_identity": "4" * 64 + ":" + "5" * 64,
+                "uf2": {"sha256": "6" * 64},
+            },
+            "policy": {"policy_sha256": "7" * 64},
+            "authoritative_inputs": {"set_sha256": "8" * 64},
+            "host_tools": required_tools,
+        },
+        proposal={"proposal_sha256": "9" * 64},
+    )
+    assert tuple(contract["required_boundaries"]) == (
+        OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES
+    )
+    assert not any("shadow" in boundary for boundary in contract["required_boundaries"])
+    assert (
+        contract["required_evidence"]["shared_current_analyzer_consumers_exact"]
+        is True
+    )
+    assert contract["required_evidence"]["successful_rehearsal_registration"] is True
+    assert contract["host_discrepancy_semantics"] == {
+        "review_required_hold": True,
+        "new_setup_or_arm": False,
+        "automatic_abort_or_teardown": False,
+        "failed_campaign_authority": False,
+    }
+    assert contract["claim_boundary"] == {
+        "authorizes_activation_input_only": True,
+        "is_not_physical_plant_qualification": True,
+        "grants_no_retry_extension_or_restoration": True,
+        "physical_actions_performed": 0,
+    }
+
+
+def _passing_rehearsal_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, dict[str, object], dict[str, object], dict[str, object]]:
+    package = tmp_path / "rehearsal-run"
+    package.mkdir()
+    manifest = package / "run_manifest.json"
+    snapshot = package / "evidence_manifest.json"
+    seal = package / evidence_module.OPERATIONAL_REHEARSAL_SEAL_PATH
+    process_evidence = (
+        package / evidence_module.OPERATIONAL_REHEARSAL_PROCESS_EVIDENCE_PATH
+    )
+    for artifact in (manifest, snapshot, seal, process_evidence):
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text(f"{artifact.name}\n", encoding="utf-8")
+
+    tools = tmp_path / "tools"
+    host_tools: dict[str, object] = {}
+    for name in (
+        "capture_device",
+        "adaptive_hybrid_operational_rehearsal",
+        "adaptive_hybrid_supervisor",
+        "adaptive_hybrid_run",
+        "adaptive_hybrid_analyze",
+        "evidence",
+        "evidence_finalization",
+        "evidence_index",
+    ):
+        tool = tools / f"{name}.py"
+        tool.parent.mkdir(parents=True, exist_ok=True)
+        tool.write_text(f"# {name}\n", encoding="utf-8")
+        host_tools[name] = _binding(tool)
+    bundle: dict[str, object] = {
+        "bundle_sha256": "1" * 64,
+        "firmware": {
+            "source_revision": "2" * 40,
+            "build_identity": "3" * 64 + ":" + "4" * 64,
+            "uf2": {"sha256": "5" * 64},
+        },
+        "policy": {"policy_sha256": "6" * 64},
+        "authoritative_inputs": {"set_sha256": "7" * 64},
+        "host_tools": host_tools,
+    }
+    proposal: dict[str, object] = {"proposal_sha256": "8" * 64}
+    contract = operational_rehearsal_authorization_contract(
+        bundle=bundle, proposal=proposal
+    )
+    _write_json(
+        manifest,
+        {
+            "programme_id": ADAPTIVE_HYBRID_PROGRAMME.programme_id,
+            "run_identity": ADAPTIVE_HYBRID_PROGRAMME.runtime_run_identity,
+            "image_identity": ADAPTIVE_HYBRID_PROGRAMME.profile_id,
+            "bundle": {"bundle_sha256": bundle["bundle_sha256"]},
+            "proposal": {"proposal_sha256": proposal["proposal_sha256"]},
+        },
+    )
+    package_identity = {
+        "content_sha256": "9" * 64,
+        "file_count": 4,
+        "total_bytes": sum(
+            artifact.stat().st_size
+            for artifact in (manifest, snapshot, seal, process_evidence)
+        ),
+        "files": [
+            {"relative_path": artifact.relative_to(package).as_posix()}
+            for artifact in (manifest, snapshot, seal, process_evidence)
+        ],
+    }
+    package_validation = {
+        "contract": "otis_validated_success_package_v1",
+        "evidence_snapshot_sha256": "a" * 64,
+        "seal_path": evidence_module.OPERATIONAL_REHEARSAL_SEAL_PATH.as_posix(),
+        "seal_sha256": "b" * 64,
+        "seal_status": "passed",
+        "primary_decision": "adaptive_hybrid_operational_rehearsal_passed",
+    }
+    monkeypatch.setattr(
+        evidence_module,
+        "validate_operational_rehearsal_package",
+        lambda *_args, **_kwargs: package_validation,
+    )
+    monkeypatch.setattr(
+        evidence_module, "package_identity", lambda _path: package_identity
+    )
+    index_path = tmp_path / "evidence_index_v1.json"
+    producer_sha256 = host_tools["adaptive_hybrid_operational_rehearsal"]["sha256"]
+    index_record = {
+        "content_sha256": package_identity["content_sha256"],
+        "file_count": package_identity["file_count"],
+        "total_bytes": package_identity["total_bytes"],
+        "file_manifest": package_identity["files"],
+        "storage_locations": [str(package.resolve())],
+        "source_revision": bundle["firmware"]["source_revision"],
+        "build_identity": bundle["firmware"]["build_identity"],
+        "image_identity": ADAPTIVE_HYBRID_PROGRAMME.profile_id,
+        "attempt_classification": "successful_rehearsal",
+        "result_or_failure_reason": "adaptive-hybrid operational rehearsal passed",
+        "analyzer_identity": producer_sha256,
+        "package_validation": package_validation,
+        "lifecycle_status": "active",
+        "registered_utc": "2026-09-09T08:00:00Z",
+        "mothball": None,
+    }
+    _write_json(
+        index_path,
+        {
+            "schema_version": evidence_module.EVIDENCE_INDEX_SCHEMA_VERSION,
+            "index_id": evidence_module.EVIDENCE_INDEX_ID,
+            "created_utc": "2026-09-09T07:59:59Z",
+            "updated_utc": "2026-09-09T08:00:00Z",
+            "packages": {package_identity["content_sha256"]: index_record},
+        },
+    )
+    report: dict[str, object] = {
+        **contract,
+        "tool": evidence_module.OPERATIONAL_REHEARSAL_TOOL_ID,
+        "tool_binding": host_tools["adaptive_hybrid_operational_rehearsal"],
+        "created_utc": "2026-09-09T08:00:01Z",
+        "boundary_results": {
+            boundary: True for boundary in contract["required_boundaries"]
+        },
+        "package": {
+            key: package_identity[key]
+            for key in ("content_sha256", "file_count", "total_bytes")
+        }
+        | {"path": str(package.resolve())},
+        "manifest": _binding(manifest),
+        "evidence_snapshot": {
+            **_binding(snapshot),
+            "snapshot_digest": package_validation["evidence_snapshot_sha256"],
+        },
+        "seal": {
+            **_binding(seal),
+            "seal_sha256": package_validation["seal_sha256"],
+        },
+        "process_evidence": _binding(process_evidence),
+        "registration": {
+            "index_path": str(index_path.resolve()),
+            "content_sha256": package_identity["content_sha256"],
+            "attempt_classification": "successful_rehearsal",
+            "successful_rehearsal_validation_error": None,
+        },
+        "activation_input_ready": True,
+        "minimal_remaining_extension": None,
+    }
+    report["report_sha256"] = _canonical(report)
+    report_path = tmp_path / (
+        f"{package.name}-{evidence_module.OPERATIONAL_REHEARSAL_REPORT_NAME}"
+    )
+    _write_json(report_path, report)
+    return report_path, report, bundle, proposal
+
+
+def test_activation_independently_validates_successful_rehearsal_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report_path, report, bundle, proposal = _passing_rehearsal_report(
+        tmp_path, monkeypatch
+    )
+    binding = validate_operational_rehearsal(
+        report_path,
+        bundle=bundle,
+        proposal=proposal,
+        require_current_tools=False,
+    )
+
+    assert binding == {
+        **_binding(report_path),
+        "report_sha256": report["report_sha256"],
+        "package_content_sha256": report["package"]["content_sha256"],
+        "evidence_snapshot_sha256": report["evidence_snapshot"][
+            "snapshot_digest"
+        ],
+        "seal_sha256": report["seal"]["seal_sha256"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement"),
+    (
+        ("boundary_results", OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES[0], False),
+        ("required_evidence", "shared_current_analyzer_consumers_exact", False),
+        ("claim_boundary", "physical_actions_performed", 1),
+        ("identity", "build_identity", "different"),
+        ("registration", "attempt_classification", "diagnostic"),
+    ),
+)
+def test_activation_rejects_rehashed_rehearsal_report_claim_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    section: str,
+    field: str,
+    replacement: object,
+) -> None:
+    report_path, report, bundle, proposal = _passing_rehearsal_report(
+        tmp_path, monkeypatch
+    )
+    report[section][field] = replacement
+    report["report_sha256"] = _canonical(
+        {key: value for key, value in report.items() if key != "report_sha256"}
+    )
+    _write_json(report_path, report)
+
+    with pytest.raises(ValueError, match="rehearsal .* differs"):
+        validate_operational_rehearsal(
+            report_path,
+            bundle=bundle,
+            proposal=proposal,
+            require_current_tools=False,
+        )
 
 
 @pytest.mark.parametrize(
@@ -544,6 +1280,15 @@ def test_activation_rejects_structural_and_unimplemented_rehearsals(tmp_path: Pa
             },
             True,
             "adaptive_hybrid_operator_abort",
+        ),
+        (
+            {
+                "result": "nonpass",
+                "reason": "independently verified firmware response terminal",
+                "primary_decision": "adaptive_hybrid_authority_not_sustained",
+            },
+            True,
+            "adaptive_hybrid_authority_not_sustained",
         ),
         (
             {

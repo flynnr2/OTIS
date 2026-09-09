@@ -42,7 +42,9 @@
             "enum": [
               "run_manifest",
               "raw_evidence",
-              "declared_artifact"
+              "declared_artifact",
+              "completion_marker",
+              "retained_evidence"
             ]
           },
           "contract": {
