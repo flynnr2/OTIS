@@ -53,6 +53,9 @@ SUCCESS_CLASSIFICATIONS = frozenset(
 CURRENT_SEAL_TYPE = "adaptive_hybrid_physical_seal_v1"
 CURRENT_ANALYZER_ID = "adaptive_hybrid_analyze_v1"
 CURRENT_SEAL_PATH = Path("reports/adaptive_hybrid_physical_seal_v1.json")
+HOST_REVIEW_RESOLUTION_PATH = Path(
+    "reports/adaptive_hybrid_hybrid_host_review_resolution_v1.json"
+)
 LOWER_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 CURRENT_SEAL_FIELDS = frozenset(
     {
@@ -71,6 +74,7 @@ CURRENT_SEAL_FIELDS = frozenset(
         "primary_decision",
         "terminal_result",
         "terminal_reason",
+        "host_review_resolution",
         "checks",
         "csv_validation",
         "exact_lifecycle_records",
@@ -86,6 +90,77 @@ CURRENT_SEAL_FIELDS = frozenset(
         "seal_sha256",
     }
 )
+
+
+def _resolved_completion_terminal(
+    *,
+    location: Path,
+    completion: dict[str, Any],
+    seal: dict[str, Any],
+    original_analyzer_sha256: object,
+    analyzer_identity: str,
+) -> tuple[dict[str, Any], bool]:
+    """Return the original terminal or one exact no-I/O supersession."""
+
+    original_terminal = completion.get("terminal")
+    seal_resolution = seal.get("host_review_resolution")
+    if isinstance(original_terminal, dict):
+        if seal_resolution is not None:
+            raise ValueError(
+                "successful evidence registration has a contradictory review resolution"
+            )
+        return original_terminal, False
+    if original_terminal is not None or completion.get("orchestration_error") is not None:
+        raise ValueError("successful evidence registration completion marker differs")
+    if not isinstance(seal_resolution, dict) or set(seal_resolution) != {
+        "path",
+        "resolution_sha256",
+        "source_sha256",
+    }:
+        raise ValueError("successful evidence registration lacks an exact review resolution")
+    if seal_resolution.get("path") != HOST_REVIEW_RESOLUTION_PATH.as_posix():
+        raise ValueError("successful evidence registration review resolution path differs")
+    resolution = _read_object(
+        location / HOST_REVIEW_RESOLUTION_PATH,
+        "host-review resolution",
+    )
+    unsigned = {
+        key: value for key, value in resolution.items() if key != "resolution_sha256"
+    }
+    if (
+        resolution.get("schema_version") != 1
+        or resolution.get("report_type")
+        != "adaptive_hybrid_hybrid_host_review_resolution_v1"
+        or resolution.get("resolution")
+        != "deterministic_host_endpoint_mismatch_superseded"
+        or resolution.get("original_hold_preserved") is not True
+        or resolution.get("physical_rerun") is not False
+        or resolution.get("device_or_actuator_io") is not False
+        or resolution.get("new_authority") is not False
+        or resolution.get("absent_artifacts")
+        != ["reports/adaptive_hybrid_setup_authority_v1.json"]
+        or (location / "reports/adaptive_hybrid_setup_authority_v1.json").exists()
+        or resolution.get("resolution_sha256") != _canonical_sha256(unsigned)
+        or seal_resolution.get("resolution_sha256")
+        != resolution.get("resolution_sha256")
+        or seal_resolution.get("source_sha256") != resolution.get("source_sha256")
+    ):
+        raise ValueError("successful evidence registration review resolution differs")
+    original_tools = resolution.get("original_tool_sha256")
+    review_tools = resolution.get("review_tool_sha256")
+    terminal = resolution.get("terminal")
+    if (
+        not isinstance(original_tools, dict)
+        or original_tools.get("adaptive_hybrid_analyze")
+        != original_analyzer_sha256
+        or not isinstance(review_tools, dict)
+        or review_tools.get("adaptive_hybrid_analyze") != analyzer_identity
+        or not isinstance(terminal, dict)
+        or terminal.get("result") != "healthy_stop"
+        or terminal.get("last_confirmed_code") is not None
+    ):
+        raise ValueError("successful evidence registration review tool or terminal differs")
+    return terminal, True
 
 
 def _utc_now() -> str:
@@ -175,7 +250,8 @@ def _validated_success_package(
     if (
         completion.get("completion")
         != "adaptive_hybrid_finite_physical_campaign"
-        or not isinstance(completion.get("terminal"), dict)
+        or completion.get("terminal") is not None
+        and not isinstance(completion.get("terminal"), dict)
     ):
         raise ValueError("successful evidence registration completion marker differs")
 
@@ -217,7 +293,6 @@ def _validated_success_package(
             "successful evidence registration requires an exact passing analyzer seal"
         )
 
-    terminal = completion["terminal"]
     firmware = manifest_value.get("firmware", {})
     policy = manifest_value.get("policy", {})
     host = manifest_value.get("host", {})
@@ -226,6 +301,13 @@ def _validated_success_package(
         tool_bindings.get("adaptive_hybrid_analyze", {})
         if isinstance(tool_bindings, dict)
         else {}
+    )
+    terminal, resolved_review = _resolved_completion_terminal(
+        location=location,
+        completion=completion,
+        seal=seal,
+        original_analyzer_sha256=analyzer_binding.get("sha256"),
+        analyzer_identity=analyzer_identity,
     )
     expected = {
         "run_id": manifest.run_id,
@@ -252,7 +334,10 @@ def _validated_success_package(
         or firmware.get("source_revision") != source_revision
         or firmware.get("build_identity") != build_identity
         or manifest_value.get("image_identity") != image_identity
-        or analyzer_binding.get("sha256") != analyzer_identity
+        or (
+            not resolved_review
+            and analyzer_binding.get("sha256") != analyzer_identity
+        )
         or not isinstance(seal.get("primary_decision"), str)
         or seal["primary_decision"] not in result_or_failure_reason
     ):

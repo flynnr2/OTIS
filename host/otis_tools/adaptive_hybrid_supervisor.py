@@ -3108,6 +3108,102 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.state["terminal_static_code"] = code
         return True
 
+    def _inhibited_zero_write_terminal_ready(
+        self, health: dict[tuple[str, str], str]
+    ) -> bool:
+        """Require a static no-authority endpoint without inventing a DAC code."""
+
+        bench_attempt = self.envelope.bench_attempt
+        if (
+            bench_attempt is None
+            or bench_attempt.purpose != INHIBITED_ZERO_WRITE
+            or not self._identity_ready(health)
+            or _authoritative_capture_health_faults(health)
+        ):
+            return False
+
+        exact_health = {
+            "state": "DISARMED",
+            "reason": "initialized_disarmed",
+            "hybrid_state": "SETUP_PENDING",
+            "hybrid_reason": "setup_consumers_pending",
+            "capture_lease_live": "true",
+            "manual_start_confirmed": "false",
+            "arm_eligible": "false",
+            "fail_static": "false",
+            "evidence_phase": "evidence_clear",
+            "evidence_pending": "false",
+            "evidence_request_sequence": "0",
+            "confirmed_applied_code_known": "false",
+            "confirmed_applied_code": "unavailable",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "dac_epoch": "0",
+            "phase_material_application_count": "0",
+            "phase_nonzero_application_count": "0",
+            "frequency_only_application_count": "0",
+            "first_phase_checkpoint_passed": "false",
+            "automatic_retry": "false",
+            "automatic_restore": "false",
+        }
+        if any(
+            health.get(("adaptive_hybrid", key)) != expected
+            for key, expected in exact_health.items()
+        ):
+            return False
+
+        causal_state = self.state.get("bench_attempt_causal_state")
+        try:
+            self._validate_bench_attempt_causal_state(causal_state)
+        except ValueError:
+            return False
+        if (
+            self.state.get("host_verification_hold") is not None
+            or self.state.get("terminal_static_code") is not None
+            or self.state.get("manual_start_sent") is not False
+            or self.state.get("arm_pending") is not False
+            or self.state.get("arm_sent_at_utc") is not None
+            or self.state.get("authorization_sequence") != 0
+            or self.state.get("setup_authorization_sequence") != 0
+            or self.state.get("setup_requested_utc") is not None
+            or self.state.get("setup_confirmed_utc") is not None
+            or self.state.get("setup_authority_path") is not None
+            or self.state.get("setup_confirmation") is not None
+            or self.state.get("bench_attempt_arm_admission_closed") is not True
+            or self.state.get("bench_attempt_arm_submission_count") != 0
+            or self.state.get("bench_attempt_last_arm_opportunity") is not None
+            or self.state.get("bench_attempt_arm_admissions") != []
+            or self.state.get("later_authority_released", False) is not False
+            or self.state.get("first_phase_checkpoint_passed", False) is not False
+            or self.state.get("first_phase_observation_checkpoint_exact", False)
+            is not False
+            or self.state.get("phase_material_application_count", 0) != 0
+            or causal_state.get("durable_ACT_application_count") != 0
+            or causal_state.get("firmware_correction_count") != 0
+            or causal_state.get("authority_closed") is not True
+            or _read_csv(self.run_dir / ACTIVE_CSV)
+            or _read_csv(self.run_dir / DAC_CSV)
+            or (self.run_dir / SETUP_AUTHORITY_PATH).exists()
+        ):
+            return False
+
+        origin_session = self.state.get("qualified_origin_session_id")
+        baseline = self.state.get("qualified_authoritative_capture_baseline")
+        try:
+            current_session = int(health[("pps_gate", "snapshot_session")])
+            counters_unchanged = isinstance(baseline, dict) and all(
+                type(baseline.get(key)) is int
+                and int(health[("pps_gate", key)]) == baseline[key]
+                for key in _authoritative_capture_counters(self.programme)
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+        return (
+            type(origin_session) is int
+            and current_session == origin_session
+            and counters_unchanged
+        )
+
     def _set_healthy_endpoint(
         self, health: dict[tuple[str, str], str], *, endpoint: str
     ) -> None:
@@ -3158,7 +3254,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             >= int(timing["absolute_wall_limit_s"])
         )
         if bench_attempt.purpose == INHIBITED_ZERO_WRITE:
-            if progress is not None and wall_reached and self._healthy_terminal_ready(health):
+            if (
+                progress is not None
+                and wall_reached
+                and self._inhibited_zero_write_terminal_ready(health)
+            ):
                 self._set_healthy_endpoint(
                     health, endpoint=str(terminals["success_terminal"])
                 )

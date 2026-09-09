@@ -49,6 +49,7 @@ from host.otis_tools.firmware_binary import (
 from tools import build_firmware
 from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
+    INHIBITED_ZERO_WRITE,
     SINGLE_AUTOMATIC_APPLICATION,
     envelope_for_purpose,
     programme_from_mapping,
@@ -1309,6 +1310,230 @@ def test_terminal_normalization_preserves_canonical_scientific_decision(
     )
     assert observed_exact is exact
     assert observed_decision == decision
+
+
+def test_terminal_normalization_accepts_exact_zero_write_success() -> None:
+    bench_attempt = envelope_for_purpose(INHIBITED_ZERO_WRITE).as_dict()
+    terminal = {
+        "result": "healthy_stop",
+        "reason": "inhibited_zero_write_complete",
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": None,
+    }
+
+    exact, decision, result, reason = _normalize_terminal(
+        terminal,
+        ADAPTIVE_HYBRID_PROGRAMME,
+        bench_attempt=bench_attempt,
+    )
+
+    assert exact is True
+    assert decision == "inhibited_zero_write_complete"
+    assert result == "healthy_stop"
+    assert reason == "inhibited_zero_write_complete"
+
+
+def test_terminal_normalization_rejects_fabricated_zero_write_success() -> None:
+    bench_attempt = envelope_for_purpose(INHIBITED_ZERO_WRITE).as_dict()
+    terminal = {
+        "result": "healthy_stop",
+        "reason": "inhibited_zero_write_complete",
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": None,
+    }
+    fabricated_envelope = json.loads(json.dumps(bench_attempt))
+    fabricated_envelope["authority"]["total_dac_value_write_limit"] = 1
+    contradictory_code = {**terminal, "last_confirmed_code": 0xA84D}
+    contradictory_primary = {
+        **terminal,
+        "primary_decision": "inhibited_zero_write_complete",
+    }
+
+    rejected = (
+        _normalize_terminal(terminal, ADAPTIVE_HYBRID_PROGRAMME),
+        _normalize_terminal(
+            terminal,
+            ADAPTIVE_HYBRID_PROGRAMME,
+            bench_attempt=envelope_for_purpose(
+                SINGLE_AUTOMATIC_APPLICATION
+            ).as_dict(),
+        ),
+        _normalize_terminal(
+            terminal,
+            ADAPTIVE_HYBRID_PROGRAMME,
+            bench_attempt=fabricated_envelope,
+        ),
+        _normalize_terminal(
+            contradictory_code,
+            ADAPTIVE_HYBRID_PROGRAMME,
+            bench_attempt=bench_attempt,
+        ),
+        _normalize_terminal(
+            contradictory_primary,
+            ADAPTIVE_HYBRID_PROGRAMME,
+            bench_attempt=bench_attempt,
+        ),
+    )
+    assert all(exact is False and decision is None for exact, decision, _, _ in rejected)
+
+
+def test_terminal_normalization_uses_exact_success_for_other_bench_purpose() -> None:
+    programme_terminal = {
+        "result": "healthy_stop",
+        "reason": ADAPTIVE_HYBRID_PROGRAMME.qualified_endpoint_reason,
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": 0xA84D,
+    }
+    bench_terminal = {
+        **programme_terminal,
+        "reason": "single_automatic_application_recovery_complete",
+    }
+    bench_attempt = envelope_for_purpose(
+        SINGLE_AUTOMATIC_APPLICATION
+    ).as_dict()
+
+    exact, decision, _, _ = _normalize_terminal(
+        bench_terminal,
+        ADAPTIVE_HYBRID_PROGRAMME,
+        bench_attempt=bench_attempt,
+    )
+    assert exact is True
+    assert decision == "single_automatic_application_recovery_complete"
+
+    exact, decision, _, _ = _normalize_terminal(
+        programme_terminal,
+        ADAPTIVE_HYBRID_PROGRAMME,
+        bench_attempt=bench_attempt,
+    )
+    assert exact is False
+    assert decision is None
+
+
+def _write_host_review_resolution_fixture(
+    tmp_path: Path,
+) -> tuple[dict[str, object], dict[str, object], Path]:
+    supervisor_state: dict[str, object] = {
+        "terminal": None,
+        "host_verification_hold": {
+            "source": "bench_attempt_wall_endpoint_observer",
+            "error": "zero-write wall endpoint lacks a clear static terminal",
+            "review_status": "operator_review_required",
+            "new_authority": False,
+        },
+    }
+    source_paths = {
+        "supervisor_state": tmp_path / analyze_module.SUPERVISOR_STATE,
+        "live_status": tmp_path / analyze_module.LIVE_STATE_PATH,
+        "capture_state": tmp_path / analyze_module.CAPTURE_STATE,
+        "capture_closure": tmp_path / analyze_module.CAPTURE_CLOSURE,
+        "active_transactions": tmp_path / analyze_module.ACTIVE_TRANSACTIONS,
+        "dac_steps": tmp_path / analyze_module.DAC_STEPS,
+        "completion": tmp_path / analyze_module.COMPLETE_MARKER,
+    }
+    _write_json(source_paths["supervisor_state"], supervisor_state)
+    for key, path in source_paths.items():
+        if key != "supervisor_state":
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"retained-{key}\n", encoding="utf-8")
+    original_tools = {
+        "adaptive_hybrid_supervisor": "1" * 64,
+        "adaptive_hybrid_run": "2" * 64,
+        "adaptive_hybrid_analyze": "3" * 64,
+    }
+    manifest: dict[str, object] = {
+        "programme_id": ADAPTIVE_HYBRID_PROGRAMME.programme_id,
+        "run_identity": ADAPTIVE_HYBRID_PROGRAMME.runtime_run_identity,
+        "image_identity": ADAPTIVE_HYBRID_PROGRAMME.profile_id,
+        "host": {
+            "tool_bindings": {
+                name: {"sha256": digest}
+                for name, digest in original_tools.items()
+            }
+        },
+    }
+    module_root = Path(analyze_module.__file__).resolve().parent
+    terminal = {
+        "result": "healthy_stop",
+        "reason": "inhibited_zero_write_complete",
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": None,
+        "utc": "2026-09-09T12:00:00Z",
+    }
+    unsigned = {
+        "schema_version": 1,
+        "report_type": "adaptive_hybrid_hybrid_host_review_resolution_v1",
+        "recorded_utc": "2026-09-09T12:00:01Z",
+        "resolution": "deterministic_host_endpoint_mismatch_superseded",
+        "original_hold_preserved": True,
+        "physical_rerun": False,
+        "device_or_actuator_io": False,
+        "new_authority": False,
+        "absent_artifacts": [
+            "reports/adaptive_hybrid_setup_authority_v1.json"
+        ],
+        "source_sha256": {
+            key: sha256(path.read_bytes()).hexdigest()
+            for key, path in source_paths.items()
+        },
+        "original_tool_sha256": original_tools,
+        "review_tool_sha256": {
+            name: sha256((module_root / f"{name}.py").read_bytes()).hexdigest()
+            for name in original_tools
+        },
+        "terminal": terminal,
+    }
+    resolution = {**unsigned, "resolution_sha256": _canonical(unsigned)}
+    resolution_path = tmp_path / analyze_module.HOST_REVIEW_RESOLUTION
+    _write_json(resolution_path, resolution)
+    return manifest, supervisor_state, resolution_path
+
+
+def test_analyzer_consumes_exact_zero_write_host_review_resolution(
+    tmp_path: Path,
+) -> None:
+    manifest, supervisor_state, _ = _write_host_review_resolution_fixture(
+        tmp_path
+    )
+    terminal, exact, identity = analyze_module._validated_host_review_resolution(
+        run_dir=tmp_path,
+        manifest=manifest,
+        bench_attempt=envelope_for_purpose(INHIBITED_ZERO_WRITE).as_dict(),
+        supervisor_state=supervisor_state,
+    )
+
+    assert exact is True
+    assert terminal is not None
+    assert terminal["reason"] == "inhibited_zero_write_complete"
+    assert identity is not None
+    assert identity["path"] == str(analyze_module.HOST_REVIEW_RESOLUTION)
+    assert len(identity["source_sha256"]) == 7
+
+
+def test_analyzer_rejects_tampered_zero_write_host_review_resolution(
+    tmp_path: Path,
+) -> None:
+    manifest, supervisor_state, resolution_path = (
+        _write_host_review_resolution_fixture(tmp_path)
+    )
+    resolution = json.loads(resolution_path.read_text(encoding="utf-8"))
+    resolution["physical_rerun"] = True
+    unsigned = {
+        key: value
+        for key, value in resolution.items()
+        if key != "resolution_sha256"
+    }
+    resolution["resolution_sha256"] = _canonical(unsigned)
+    resolution_path.write_text(
+        json.dumps(resolution, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="contract or identity differs"):
+        analyze_module._validated_host_review_resolution(
+            run_dir=tmp_path,
+            manifest=manifest,
+            bench_attempt=envelope_for_purpose(INHIBITED_ZERO_WRITE).as_dict(),
+            supervisor_state=supervisor_state,
+        )
 
 
 def test_control_preview_binds_exact_current_plant_profile() -> None:

@@ -90,6 +90,74 @@ def _write_single_row(path: Path, row: dict[str, str]) -> None:
         writer.writerow(row)
 
 
+def _zero_write_terminal_health(
+    supervisor: supervisor_module.AdaptiveHybridSupervisor,
+) -> dict[tuple[str, str], str]:
+    session_id = 7
+    baseline = {
+        key: 0
+        for key in supervisor_module._authoritative_capture_counters(
+            supervisor.programme
+        )
+    }
+    supervisor.state.update(
+        {
+            "terminal": None,
+            "terminal_static_code": None,
+            "wall_origin_utc": "2026-09-09T00:00:00Z",
+            "qualified_origin_session_id": session_id,
+            "qualified_authoritative_capture_baseline": baseline,
+            "setup_requested_utc": None,
+            "setup_confirmed_utc": None,
+            "setup_authorization_sequence": 0,
+            "setup_authority_path": None,
+            "setup_confirmation": None,
+            "later_authority_released": False,
+            "first_phase_checkpoint_passed": False,
+            "first_phase_observation_checkpoint_exact": False,
+            "phase_material_application_count": 0,
+        }
+    )
+    active = {
+        "state": "DISARMED",
+        "reason": "initialized_disarmed",
+        "hybrid_state": "SETUP_PENDING",
+        "hybrid_reason": "setup_consumers_pending",
+        "capture_lease_live": "true",
+        "manual_start_confirmed": "false",
+        "arm_eligible": "false",
+        "fail_static": "false",
+        "evidence_phase": "evidence_clear",
+        "evidence_pending": "false",
+        "evidence_request_sequence": "0",
+        "confirmed_applied_code_known": "false",
+        "confirmed_applied_code": "unavailable",
+        "correction_count": "0",
+        "cumulative_movement_codes": "0",
+        "dac_epoch": "0",
+        "phase_material_application_count": "0",
+        "phase_nonzero_application_count": "0",
+        "frequency_only_application_count": "0",
+        "first_phase_checkpoint_passed": "false",
+        "automatic_retry": "false",
+        "automatic_restore": "false",
+    }
+    health = {
+        ("adaptive_hybrid", key): value for key, value in active.items()
+    }
+    health.update(
+        {
+            ("pps_gate", key): value
+            for key, value in supervisor_module._AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items()
+        }
+    )
+    health[("pps_gate", "snapshot_session")] = str(session_id)
+    health.update(
+        {("pps_gate", key): str(value) for key, value in baseline.items()}
+    )
+    return health
+
+
 def test_zero_write_gate_cannot_reach_identity_setup_or_arm(tmp_path: Path) -> None:
     supervisor = _bare_supervisor(INHIBITED_ZERO_WRITE, tmp_path)
     supervisor._identity_ready = lambda _health: (_ for _ in ()).throw(
@@ -101,6 +169,117 @@ def test_zero_write_gate_cannot_reach_identity_setup_or_arm(tmp_path: Path) -> N
     assert supervisor.state["manual_start_sent"] is False
     assert supervisor.state["authorization_sequence"] == 0
     assert supervisor.state["bench_attempt_arm_submission_count"] == 0
+
+
+def test_zero_write_wall_endpoint_is_static_without_a_known_dac_code(
+    tmp_path: Path,
+) -> None:
+    supervisor = _bare_supervisor(INHIBITED_ZERO_WRITE, tmp_path)
+    health = _zero_write_terminal_health(supervisor)
+    supervisor._identity_ready = lambda _health: True
+    supervisor._qualified_d14_apertures = lambda _health: 6720
+    supervisor._healthy_terminal_ready = lambda _health: (_ for _ in ()).throw(
+        AssertionError("zero-write endpoint required a confirmed DAC code")
+    )
+    supervisor._save = lambda: None
+    supervisor._command = lambda _command: (_ for _ in ()).throw(
+        AssertionError("zero-write endpoint submitted a command")
+    )
+    supervisor._abort = lambda _reason: (_ for _ in ()).throw(
+        AssertionError("zero-write endpoint submitted an abort")
+    )
+    holds: list[tuple[str, str]] = []
+    supervisor._enter_host_verification_hold = (
+        lambda error, *, source="host_verifier": holds.append((str(error), source))
+    )
+    wall_s = envelope_for_purpose(INHIBITED_ZERO_WRITE).as_dict()["timing"][
+        "absolute_wall_limit_s"
+    ]
+
+    assert supervisor._maybe_finish_bench_attempt(
+        health,
+        supervisor_module._parse_utc_epoch("2026-09-09T00:00:00Z") + wall_s,
+    )
+
+    terminal = supervisor.state["terminal"]
+    assert terminal["result"] == "healthy_stop"
+    assert terminal["reason"] == "inhibited_zero_write_complete"
+    assert terminal["preliminary_decision"] == "pending_offline_scientific_analysis"
+    assert terminal["last_confirmed_code"] is None
+    assert supervisor.state["terminal_static_code"] is None
+    assert holds == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("confirmed_applied_code_known", "true"),
+        ("confirmed_applied_code", "0xA800"),
+        ("manual_start_confirmed", "true"),
+        ("evidence_pending", "true"),
+        ("evidence_request_sequence", "1"),
+        ("correction_count", "1"),
+        ("cumulative_movement_codes", "1"),
+        ("dac_epoch", "1"),
+        ("state", "ARMED"),
+        ("hybrid_state", "FREQUENCY_ACQUIRE"),
+    ],
+)
+def test_zero_write_wall_endpoint_rejects_nonstatic_firmware_evidence(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    supervisor = _bare_supervisor(INHIBITED_ZERO_WRITE, tmp_path)
+    health = _zero_write_terminal_health(supervisor)
+    health[("adaptive_hybrid", field)] = value
+    supervisor._identity_ready = lambda _health: True
+    supervisor._qualified_d14_apertures = lambda _health: 6720
+    supervisor._save = lambda: None
+    holds: list[tuple[str, str]] = []
+    supervisor._enter_host_verification_hold = (
+        lambda error, *, source="host_verifier": holds.append((str(error), source))
+    )
+    wall_s = envelope_for_purpose(INHIBITED_ZERO_WRITE).as_dict()["timing"][
+        "absolute_wall_limit_s"
+    ]
+
+    supervisor._maybe_finish_bench_attempt(
+        health,
+        supervisor_module._parse_utc_epoch("2026-09-09T00:00:00Z") + wall_s,
+    )
+
+    assert supervisor.state["terminal"] is None
+    assert holds == [
+        (
+            "zero-write wall endpoint lacks a clear static terminal",
+            "bench_attempt_wall_endpoint_observer",
+        )
+    ]
+
+
+@pytest.mark.parametrize("relative_path", [ACTIVE_CSV, supervisor_module.DAC_CSV])
+def test_zero_write_wall_endpoint_rejects_any_control_transaction(
+    tmp_path: Path, relative_path: Path
+) -> None:
+    supervisor = _bare_supervisor(INHIBITED_ZERO_WRITE, tmp_path)
+    health = _zero_write_terminal_health(supervisor)
+    _write_single_row(tmp_path / relative_path, {"event": "unexpected"})
+    supervisor._identity_ready = lambda _health: True
+
+    assert supervisor._inhibited_zero_write_terminal_ready(health) is False
+    assert supervisor.state["terminal_static_code"] is None
+
+
+def test_zero_write_wall_endpoint_rejects_a_setup_authority_record(
+    tmp_path: Path,
+) -> None:
+    supervisor = _bare_supervisor(INHIBITED_ZERO_WRITE, tmp_path)
+    health = _zero_write_terminal_health(supervisor)
+    path = tmp_path / supervisor_module.SETUP_AUTHORITY_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n", encoding="utf-8")
+    supervisor._identity_ready = lambda _health: True
+
+    assert supervisor._inhibited_zero_write_terminal_ready(health) is False
 
 
 def test_one_application_setup_is_submitted_once(tmp_path: Path) -> None:

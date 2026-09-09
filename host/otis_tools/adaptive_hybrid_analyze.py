@@ -20,7 +20,13 @@ import tempfile
 from typing import Any
 
 from .adaptive_hybrid_activation import validate_frozen_run_manifest
-from .adaptive_hybrid_contract import AdaptiveHybridProgramme, programme_from_mapping
+from .active_status_live_state import LIVE_STATE_PATH
+from .adaptive_hybrid_contract import (
+    INHIBITED_ZERO_WRITE,
+    AdaptiveHybridProgramme,
+    programme_from_mapping,
+    validate_bench_attempt_envelope,
+)
 from .adaptive_hybrid_evidence import replay_adaptive_hybrid_maintenance_history
 from .adaptive_hybrid_policy import AdaptiveHybridPolicy, policy_from_mapping
 from .adaptive_hybrid_replay import _capsules_exact, _measurement_replay, _response_replay
@@ -41,6 +47,13 @@ SEAL_TYPE = "adaptive_hybrid_physical_seal_v1"
 DEFAULT_SEAL = Path("reports/adaptive_hybrid_physical_seal_v1.json")
 SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
 SUPERVISOR_EVENTS = Path("reports/adaptive_hybrid_supervisor_events.jsonl")
+HOST_REVIEW_RESOLUTION = Path(
+    "reports/adaptive_hybrid_hybrid_host_review_resolution_v1.json"
+)
+CAPTURE_STATE = Path("reports/capture_device_state.json")
+CAPTURE_CLOSURE = Path("reports/capture_segment_closure_v1.json")
+ACTIVE_TRANSACTIONS = Path("csv/active_transactions_v2.csv")
+DAC_STEPS = Path("csv/dac_steps.csv")
 
 
 def _sha256_file(path: Path) -> str:
@@ -77,8 +90,21 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _explicit_utc(value: object) -> bool:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
+
+
 def _normalize_terminal(
-    terminal: object, programme: AdaptiveHybridProgramme
+    terminal: object,
+    programme: AdaptiveHybridProgramme,
+    *,
+    bench_attempt: object = None,
 ) -> tuple[bool, str | None, str | None, str | None]:
     """Return exactness, scientific decision, result, and detailed reason."""
 
@@ -89,7 +115,36 @@ def _normalize_terminal(
     primary = terminal.get("primary_decision")
     if not isinstance(reason, str) or not reason:
         return False, None, result if isinstance(result, str) else None, None
+    validated_bench_attempt = None
+    if bench_attempt is not None:
+        if not isinstance(bench_attempt, dict):
+            return False, None, result if isinstance(result, str) else None, reason
+        try:
+            validated_bench_attempt = validate_bench_attempt_envelope(
+                bench_attempt
+            )
+        except ValueError:
+            return False, None, result if isinstance(result, str) else None, reason
     if result == "healthy_stop":
+        if validated_bench_attempt is not None:
+            bench_success = validated_bench_attempt.as_dict()[
+                "terminal_semantics"
+            ]["success_terminal"]
+            static_code = terminal.get("last_confirmed_code")
+            static_code_exact = (
+                static_code is None
+                if validated_bench_attempt.purpose == INHIBITED_ZERO_WRITE
+                else type(static_code) is int
+                and programme.minimum_code <= static_code <= programme.maximum_code
+            )
+            exact = (
+                reason == bench_success
+                and terminal.get("preliminary_decision")
+                in programme.healthy_preliminary_decisions
+                and primary is None
+                and static_code_exact
+            )
+            return exact, bench_success if exact else None, result, reason
         exact = (
             reason == programme.qualified_endpoint_reason
             and terminal.get("preliminary_decision")
@@ -105,6 +160,150 @@ def _normalize_terminal(
         )
         return exact, primary if exact else None, result, reason
     return False, None, result if isinstance(result, str) else None, reason
+
+
+def _validated_host_review_resolution(
+    *,
+    run_dir: Path,
+    manifest: dict[str, Any],
+    bench_attempt: object,
+    supervisor_state: dict[str, Any],
+) -> tuple[dict[str, Any] | None, bool, dict[str, Any] | None]:
+    """Consume only the immutable resolution of the exact zero-write hold."""
+
+    retained_terminal = supervisor_state.get("terminal")
+    resolution_path = run_dir / HOST_REVIEW_RESOLUTION
+    if retained_terminal is not None:
+        if resolution_path.exists():
+            raise ValueError(
+                "host-review resolution contradicts an existing supervisor terminal"
+            )
+        return retained_terminal if isinstance(retained_terminal, dict) else None, True, None
+    if not resolution_path.is_file():
+        return None, False, None
+    if not isinstance(bench_attempt, dict):
+        raise ValueError("host-review resolution lacks an exact bench attempt")
+    try:
+        validated_bench_attempt = validate_bench_attempt_envelope(bench_attempt)
+    except ValueError as exc:
+        raise ValueError("host-review resolution bench attempt is not exact") from exc
+    if validated_bench_attempt.purpose != INHIBITED_ZERO_WRITE:
+        raise ValueError("host-review resolution is limited to inhibited zero-write")
+
+    hold = supervisor_state.get("host_verification_hold")
+    if not (
+        isinstance(hold, dict)
+        and hold.get("source") == "bench_attempt_wall_endpoint_observer"
+        and hold.get("error")
+        == "zero-write wall endpoint lacks a clear static terminal"
+        and hold.get("review_status") == "operator_review_required"
+        and hold.get("new_authority") is False
+    ):
+        raise ValueError("host-review resolution does not preserve the exact original hold")
+
+    resolution = _read_object(resolution_path)
+    expected_fields = {
+        "schema_version",
+        "report_type",
+        "recorded_utc",
+        "resolution",
+        "original_hold_preserved",
+        "physical_rerun",
+        "device_or_actuator_io",
+        "new_authority",
+        "absent_artifacts",
+        "source_sha256",
+        "original_tool_sha256",
+        "review_tool_sha256",
+        "terminal",
+        "resolution_sha256",
+    }
+    unsigned = {
+        key: value
+        for key, value in resolution.items()
+        if key != "resolution_sha256"
+    }
+    if (
+        set(resolution) != expected_fields
+        or resolution.get("schema_version") != 1
+        or resolution.get("report_type")
+        != "adaptive_hybrid_hybrid_host_review_resolution_v1"
+        or resolution.get("resolution")
+        != "deterministic_host_endpoint_mismatch_superseded"
+        or not _explicit_utc(resolution.get("recorded_utc"))
+        or resolution.get("original_hold_preserved") is not True
+        or resolution.get("physical_rerun") is not False
+        or resolution.get("device_or_actuator_io") is not False
+        or resolution.get("new_authority") is not False
+        or resolution.get("absent_artifacts")
+        != ["reports/adaptive_hybrid_setup_authority_v1.json"]
+        or (run_dir / "reports/adaptive_hybrid_setup_authority_v1.json").exists()
+        or resolution.get("resolution_sha256") != _canonical_sha256(unsigned)
+    ):
+        raise ValueError("host-review resolution contract or identity differs")
+
+    source_paths = {
+        "supervisor_state": run_dir / SUPERVISOR_STATE,
+        "live_status": run_dir / LIVE_STATE_PATH,
+        "capture_state": run_dir / CAPTURE_STATE,
+        "capture_closure": run_dir / CAPTURE_CLOSURE,
+        "active_transactions": run_dir / ACTIVE_TRANSACTIONS,
+        "dac_steps": run_dir / DAC_STEPS,
+        "completion": run_dir / COMPLETE_MARKER,
+    }
+    try:
+        expected_source_sha256 = {
+            key: _sha256_file(path) for key, path in source_paths.items()
+        }
+    except OSError as exc:
+        raise ValueError("host-review resolution source evidence is unavailable") from exc
+    if resolution.get("source_sha256") != expected_source_sha256:
+        raise ValueError("host-review resolution source evidence changed")
+
+    tool_names = (
+        "adaptive_hybrid_supervisor",
+        "adaptive_hybrid_run",
+        "adaptive_hybrid_analyze",
+    )
+    tool_bindings = manifest.get("host", {}).get("tool_bindings", {})
+    expected_original_tools = {
+        name: tool_bindings.get(name, {}).get("sha256") for name in tool_names
+    }
+    module_root = Path(__file__).resolve().parent
+    expected_review_tools = {
+        name: _sha256_file(module_root / f"{name}.py") for name in tool_names
+    }
+    if (
+        any(not isinstance(value, str) for value in expected_original_tools.values())
+        or resolution.get("original_tool_sha256") != expected_original_tools
+        or resolution.get("review_tool_sha256") != expected_review_tools
+    ):
+        raise ValueError("host-review resolution tool identity differs")
+
+    resolved_terminal = resolution.get("terminal")
+    if not isinstance(resolved_terminal, dict) or set(resolved_terminal) != {
+        "result",
+        "reason",
+        "preliminary_decision",
+        "last_confirmed_code",
+        "utc",
+    }:
+        raise ValueError("host-review resolution terminal is malformed")
+    if not _explicit_utc(resolved_terminal.get("utc")):
+        raise ValueError("host-review resolution terminal time is malformed")
+    terminal_exact, _, _, _ = _normalize_terminal(
+        resolved_terminal,
+        programme_from_mapping(manifest),
+        bench_attempt=bench_attempt,
+    )
+    if not terminal_exact:
+        raise ValueError("host-review resolution terminal is not exact")
+    identity = {
+        "path": str(HOST_REVIEW_RESOLUTION),
+        "resolution_sha256": resolution["resolution_sha256"],
+        "source_sha256": expected_source_sha256,
+    }
+    return resolved_terminal, True, identity
 
 
 def _d10_isolated(
@@ -508,6 +707,16 @@ def analyze(
     measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value)
     responses = shared_consumers["response_replay"]
     supervisor_state = _read_object(run_dir / SUPERVISOR_STATE)
+    (
+        effective_terminal,
+        review_resolution_exact,
+        review_resolution_identity,
+    ) = _validated_host_review_resolution(
+        run_dir=run_dir,
+        manifest=manifest_value,
+        bench_attempt=bench_attempt,
+        supervisor_state=supervisor_state,
+    )
 
     d10_isolated = _d10_isolated(section, measurement)
     checks = {
@@ -536,13 +745,18 @@ def analyze(
         ],
         "D10_optional_event_isolated": d10_isolated,
         "inhibited_zero_write_authority_exact": inhibited_authority_exact,
+        "host_review_resolution_exact": review_resolution_exact,
     }
     (
         terminal_exact,
         scientific_decision,
         terminal_result,
         terminal_reason,
-    ) = _normalize_terminal(supervisor_state.get("terminal"), programme)
+    ) = _normalize_terminal(
+        effective_terminal,
+        programme,
+        bench_attempt=bench_attempt,
+    )
     checks["supervisor_terminal_exact"] = terminal_exact
     passed = all(checks.values())
     source_hashes = _source_hashes(manifest)
@@ -569,6 +783,7 @@ def analyze(
         ),
         "terminal_result": terminal_result,
         "terminal_reason": terminal_reason,
+        "host_review_resolution": review_resolution_identity,
         "checks": checks,
         "csv_validation": shared_consumers["csv_validation"],
         "exact_lifecycle_records": shared_consumers["exact_lifecycle_records"],

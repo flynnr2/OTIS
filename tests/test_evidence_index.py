@@ -12,7 +12,9 @@ from host.otis_tools import evidence as evidence_module
 from host.otis_tools.evidence import EvidenceError, create_evidence_snapshot
 from host.otis_tools.evidence_index import (
     CURRENT_SEAL_PATH,
+    HOST_REVIEW_RESOLUTION_PATH,
     _parser,
+    _resolved_completion_terminal,
     load_index,
     mothball_package,
     package_identity,
@@ -25,6 +27,89 @@ from host.otis_tools.run_loader import RunManifest
 def _write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def test_success_registration_uses_exact_null_completion_supersession(
+    tmp_path: Path,
+) -> None:
+    original_analyzer = "a" * 64
+    review_analyzer = "b" * 64
+    terminal = {
+        "result": "healthy_stop",
+        "reason": "inhibited_zero_write_complete",
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": None,
+        "utc": "2026-09-09T17:01:54Z",
+    }
+    unsigned = {
+        "schema_version": 1,
+        "report_type": "adaptive_hybrid_hybrid_host_review_resolution_v1",
+        "recorded_utc": "2026-09-09T17:10:00Z",
+        "resolution": "deterministic_host_endpoint_mismatch_superseded",
+        "original_hold_preserved": True,
+        "physical_rerun": False,
+        "device_or_actuator_io": False,
+        "new_authority": False,
+        "absent_artifacts": [
+            "reports/adaptive_hybrid_setup_authority_v1.json"
+        ],
+        "source_sha256": {"supervisor_state": "c" * 64},
+        "original_tool_sha256": {
+            "adaptive_hybrid_analyze": original_analyzer
+        },
+        "review_tool_sha256": {
+            "adaptive_hybrid_analyze": review_analyzer
+        },
+        "terminal": terminal,
+    }
+    resolution = {
+        **unsigned,
+        "resolution_sha256": sha256(
+            json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+    }
+    _write_json(tmp_path / HOST_REVIEW_RESOLUTION_PATH, resolution)
+    completion = {"terminal": None, "orchestration_error": None}
+    seal = {
+        "host_review_resolution": {
+            "path": HOST_REVIEW_RESOLUTION_PATH.as_posix(),
+            "resolution_sha256": resolution["resolution_sha256"],
+            "source_sha256": resolution["source_sha256"],
+        }
+    }
+
+    observed, resolved = _resolved_completion_terminal(
+        location=tmp_path,
+        completion=completion,
+        seal=seal,
+        original_analyzer_sha256=original_analyzer,
+        analyzer_identity=review_analyzer,
+    )
+
+    assert observed == terminal
+    assert resolved is True
+
+    resolution["physical_rerun"] = True
+    unsigned = {
+        key: value
+        for key, value in resolution.items()
+        if key != "resolution_sha256"
+    }
+    resolution["resolution_sha256"] = sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    seal["host_review_resolution"]["resolution_sha256"] = resolution[
+        "resolution_sha256"
+    ]
+    _write_json(tmp_path / HOST_REVIEW_RESOLUTION_PATH, resolution)
+    with pytest.raises(ValueError, match="review resolution differs"):
+        _resolved_completion_terminal(
+            location=tmp_path,
+            completion=completion,
+            seal=seal,
+            original_analyzer_sha256=original_analyzer,
+            analyzer_identity=review_analyzer,
+        )
 
 
 def test_register_cli_uses_exact_image_identity_option(tmp_path: Path) -> None:
@@ -303,6 +388,7 @@ def test_successful_qualification_derives_validation_from_completed_package(
         "primary_decision": primary_decision,
         "terminal_result": "healthy_stop",
         "terminal_reason": primary_decision,
+        "host_review_resolution": None,
         "checks": {"all_current_checks": True},
         "csv_validation": {},
         "exact_lifecycle_records": {},
