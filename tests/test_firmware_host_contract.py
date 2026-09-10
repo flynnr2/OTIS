@@ -15,22 +15,34 @@ from host.otis_tools.active_status_contract import (
     SNAPSHOT_BEGIN_KEY,
     SNAPSHOT_COMPLETE_KEY,
     SNAPSHOT_CONTRACT_KEY,
+    complete_active_status_snapshots,
 )
 from host.otis_tools.active_status_live_state import ActiveStatusLiveReducer
 from host.otis_tools.adaptive_hybrid_replay import ResponseClassifier
 from host.otis_tools.capture_serial import CsvRecordSplitter
-from host.otis_tools.contracts import CONTRACT_FIELDS
+from host.otis_tools.contracts import (
+    CONTRACT_FIELDS,
+    CsvValidationContext,
+    validate_csv,
+)
 from host.otis_tools.firmware_host_contract import (
     COMMAND_FORMS,
     CONTRACT,
     CONTRACT_ID,
     CONTRACT_SHA256,
     FRONTIERS,
+    ACTIVE_STATUS_VALUE_WIRE_TYPES,
     RECORD_FIELDS,
+    RECORD_FIELD_WIRE_TYPES,
     RECORD_SCHEMA_VERSIONS,
+    RECORD_TYPES,
     RELATIONS,
     SIMPLE_COMMANDS,
+    WIRE_TYPES,
+    active_status_value_error,
+    validate_record_wire_values,
     verify_generated_cpp_header,
+    wire_value_error,
 )
 from host.otis_tools.prewrite_readiness_contract import (
     canonical_prewrite_fixture,
@@ -41,6 +53,99 @@ from host.otis_tools.serial_commands import parse_serial_command
 
 ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
+
+
+def _base_type(type_name: str) -> tuple[str, dict[str, object], bool]:
+    wire_type = WIRE_TYPES[type_name]
+    if wire_type["kind"] != "optional":
+        return type_name, wire_type, False
+    base_name = str(wire_type["base"])
+    return base_name, WIRE_TYPES[base_name], True
+
+
+def _legal_wire_values(contract: str, field: str) -> tuple[str, ...]:
+    type_name = RECORD_FIELD_WIRE_TYPES[contract][field]
+    _, wire_type, optional = _base_type(type_name)
+    kind = str(wire_type["kind"])
+    values: list[str] = [""] if optional else []
+    if kind == "record_type":
+        values.extend(sorted(RECORD_TYPES[contract]))
+    elif kind == "schema_version":
+        values.append(str(RECORD_SCHEMA_VERSIONS[contract]))
+    elif kind == "integer":
+        values.extend(
+            {
+                str(wire_type["minimum"]),
+                "0",
+                str(wire_type["maximum"]),
+            }
+        )
+    elif kind == "finite_decimal":
+        values.extend(("0", "-0.000000000", "1.25", "-1.25"))
+    elif kind == "enum":
+        values.extend(str(value) for value in wire_type["values"])
+    elif kind == "escaped_atom":
+        if wire_type.get("optional") is True:
+            values.append("")
+        values.extend(("value", "value%25%2C%22%0D%0A"))
+    elif kind == "lower_hex":
+        length = int(wire_type["length"])
+        values.extend(("0" * length, "f" * length))
+    elif kind == "lower_hex_or_literal":
+        length = int(wire_type["length"])
+        values.extend((str(wire_type["literal"]), "0" * length, "f" * length))
+    else:  # pragma: no cover - contract loader rejects unknown kinds
+        raise AssertionError(kind)
+    return tuple(dict.fromkeys(values))
+
+
+def _illegal_wire_values(contract: str, field: str) -> tuple[str, ...]:
+    type_name = RECORD_FIELD_WIRE_TYPES[contract][field]
+    _, wire_type, optional = _base_type(type_name)
+    kind = str(wire_type["kind"])
+    if kind == "record_type":
+        return ("UNKNOWN", "", "STS ")
+    if kind == "schema_version":
+        return ("0", "01", "-1")
+    if kind == "integer":
+        minimum = int(wire_type["minimum"])
+        maximum = int(wire_type["maximum"])
+        candidates = (str(minimum - 1), str(maximum + 1), "+1", "01", "-0")
+        return tuple(value for value in candidates if not (optional and value == ""))
+    if kind == "finite_decimal":
+        candidates = ("nan", "inf", "1e3", "+1.0", "01.0", "9" * 400)
+        if not optional and wire_type.get("optional") is not True:
+            candidates = ("", *candidates)
+        return candidates
+    if kind == "enum":
+        candidates = ("", "TRUE", "2")
+        return tuple(value for value in candidates if not (optional and value == ""))
+    if kind == "escaped_atom":
+        candidates = ('raw"quote', "raw%", "raw%2c", "nonascii-\N{POUND SIGN}")
+        if not optional and wire_type.get("optional") is not True:
+            candidates = ("", *candidates)
+        return candidates
+    if kind == "lower_hex":
+        length = int(wire_type["length"])
+        return ("", "a" * (length - 1), "A" * length, "g" * length)
+    if kind == "lower_hex_or_literal":
+        length = int(wire_type["length"])
+        return ("", "a" * (length - 1), "A" * length, "other_literal")
+    raise AssertionError(kind)  # pragma: no cover
+
+
+def _canonical_wire_row(
+    contract: str, *, record_type: str | None = None
+) -> list[str]:
+    row = [
+        _legal_wire_values(contract, field)[0]
+        for field in RECORD_FIELDS[contract]
+    ]
+    row[0] = record_type or sorted(RECORD_TYPES[contract])[0]
+    if contract == "raw_events_v1":
+        channel_index = RECORD_FIELDS[contract].index("channel_id")
+        row[channel_index] = "0" if row[0] == "EVT" else "1"
+    return row
 
 
 def _health_row(key: str, value: str, *, version: str = "1") -> dict[str, str]:
@@ -67,9 +172,30 @@ def _snapshot_rows(*, version: str = "1") -> list[dict[str, str]]:
             version=version,
         ),
     ]
-    rows.extend(_health_row(key, "0", version=version) for key in ACTIVE_STATUS_KEYS)
+    rows.extend(
+        _health_row(key, _active_status_value(key), version=version)
+        for key in ACTIVE_STATUS_KEYS
+    )
     rows.append(_health_row(SNAPSHOT_COMPLETE_KEY, "1", version=version))
     return rows
+
+
+def _active_status_value(key: str) -> str:
+    type_name = ACTIVE_STATUS_VALUE_WIRE_TYPES[key]
+    wire_type = WIRE_TYPES[type_name]
+    if wire_type["kind"] == "integer":
+        return "0"
+    if wire_type["kind"] == "enum":
+        return str(wire_type["values"][0])
+    if wire_type["kind"] == "escaped_atom":
+        return "value"
+    if wire_type["kind"] == "lower_hex":
+        return "a" * int(wire_type["length"])
+    if wire_type["kind"] == "hex_integer":
+        return "0x0000"
+    if wire_type["kind"] == "literal_or":
+        return str(wire_type["literal"])
+    raise AssertionError(f"unhandled ACTIVE status type {type_name}")
 
 
 def test_contract_authority_is_current_complete_and_deterministically_generated() -> None:
@@ -81,6 +207,11 @@ def test_contract_authority_is_current_complete_and_deterministically_generated(
         RECORD_FIELDS
     )
     assert len(RECORD_FIELDS) == 16
+    assert sum(len(fields) for fields in RECORD_FIELDS.values()) == 418
+    assert {
+        name: set(field_types)
+        for name, field_types in RECORD_FIELD_WIRE_TYPES.items()
+    } == {name: set(fields) for name, fields in RECORD_FIELDS.items()}
     assert set(RELATIONS) == {
         "active_decision_whole_seconds_from_exact_ticks",
         "estimate_tick_is_wrapped_suffix_of_decision_tick",
@@ -91,6 +222,111 @@ def test_contract_authority_is_current_complete_and_deterministically_generated(
         "decision_replay_uses_post_decision_frontier",
         "response_classification_is_stateful",
     }
+
+
+def test_every_record_field_has_contract_derived_legal_and_illegal_boundaries() -> None:
+    exercised = 0
+    for contract, fields in RECORD_FIELDS.items():
+        for field in fields:
+            legal = _legal_wire_values(contract, field)
+            illegal = _illegal_wire_values(contract, field)
+            assert legal, f"{contract}.{field} lacks legal boundary values"
+            assert illegal, f"{contract}.{field} lacks illegal boundary values"
+            assert all(
+                wire_value_error(contract, field, value) is None
+                for value in legal
+            ), f"{contract}.{field} legal matrix disagrees with the contract"
+            assert all(
+                wire_value_error(contract, field, value) is not None
+                for value in illegal
+            ), f"{contract}.{field} illegal matrix disagrees with the contract"
+            exercised += 1
+    assert exercised == 418
+
+
+def test_every_active_status_value_has_a_contract_derived_wire_type() -> None:
+    expected_keys = {
+        SNAPSHOT_BEGIN_KEY,
+        SNAPSHOT_CONTRACT_KEY,
+        *ACTIVE_STATUS_KEYS,
+        SNAPSHOT_COMPLETE_KEY,
+    }
+    assert set(ACTIVE_STATUS_VALUE_WIRE_TYPES) == expected_keys
+    for key in ACTIVE_STATUS_KEYS:
+        value = _active_status_value(key)
+        assert active_status_value_error(key, value) is None
+    assert active_status_value_error(SNAPSHOT_BEGIN_KEY, "1") is None
+    assert active_status_value_error(SNAPSHOT_BEGIN_KEY, "01") is not None
+    assert active_status_value_error(SNAPSHOT_COMPLETE_KEY, str(2**32)) is not None
+    assert (
+        active_status_value_error(
+            SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT
+        )
+        is None
+    )
+
+
+def test_every_legal_record_shape_crosses_the_live_splitter(tmp_path: Path) -> None:
+    targets = {
+        contract: tmp_path / f"{contract}.csv" for contract in RECORD_FIELDS
+    }
+    with CsvRecordSplitter(targets) as splitter:
+        for contract in RECORD_FIELDS:
+            for record_type in sorted(RECORD_TYPES[contract]):
+                row = _canonical_wire_row(contract, record_type=record_type)
+                assert validate_record_wire_values(contract, row) == ()
+                assert splitter.process_line(",".join(row)) == contract
+
+
+def test_out_of_range_wire_value_enters_live_parser_hold_without_storage(
+    tmp_path: Path,
+) -> None:
+    errors: list[str] = []
+    target = tmp_path / "count_observations.csv"
+    row = _canonical_wire_row("count_observations_v1")
+    field_index = RECORD_FIELDS["count_observations_v1"].index("count_seq")
+    row[field_index] = str(2**32)
+    with CsvRecordSplitter(
+        {"count_observations_v1": target}, on_parser_error=errors.append
+    ) as splitter:
+        assert splitter.process_line(",".join(row)) is None
+    assert len(errors) == 1
+    assert "count_observations_v1.count_seq must be in 0..4294967295" in errors[0]
+    assert target.read_text(encoding="utf-8").splitlines() == [
+        ",".join(RECORD_FIELDS["count_observations_v1"])
+    ]
+
+
+def test_out_of_range_wire_value_is_rejected_by_offline_validation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "count_observations.csv"
+    row = _canonical_wire_row("count_observations_v1")
+    row[RECORD_FIELDS["count_observations_v1"].index("count_seq")] = str(
+        2**32
+    )
+    path.write_text(
+        ",".join(RECORD_FIELDS["count_observations_v1"])
+        + "\n"
+        + ",".join(row)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = validate_csv(
+        path,
+        CsvValidationContext(
+            contract="count_observations_v1",
+            known_channels=frozenset({0}),
+            known_domains=frozenset({"value"}),
+        ),
+    )
+
+    assert any(
+        "count_observations_v1.count_seq must be in 0..4294967295"
+        in error
+        for error in result.errors
+    )
 
 
 def test_firmware_uses_generated_headers_and_capacity_frontiers() -> None:
@@ -169,6 +405,25 @@ def test_active_status_reducer_rejects_stale_versions_and_extra_keys() -> None:
     assert update is not None
     assert update["state"] == "invalid"
     assert update["reason"] == "unknown active snapshot key 'unexpected_key'"
+
+
+def test_active_status_wire_value_failure_reaches_live_and_offline_consumers() -> None:
+    rows = _snapshot_rows()
+    query_nonce = next(
+        row for row in rows if row["status_key"] == "query_nonce"
+    )
+    query_nonce["status_value"] = "01"
+
+    reducer = ActiveStatusLiveReducer()
+    updates = [
+        update for row in rows if (update := reducer.observe(row)) is not None
+    ]
+    assert updates[-1]["state"] == "invalid"
+    assert "query_nonce" in updates[-1]["reason"]
+
+    snapshots, newest_started_generation = complete_active_status_snapshots(rows)
+    assert snapshots == []
+    assert newest_started_generation == 1
 
 
 def test_active_event_status_outside_generation_does_not_replace_snapshot() -> None:

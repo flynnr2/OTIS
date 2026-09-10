@@ -12,9 +12,11 @@ The contract declares:
 - the carrier framing and mismatch disposition;
 - every current record tag, schema version, ordered field layout, sequence,
   timestamp, domain and session field, and first host consumer;
+- every record field's canonical wire encoding, storage width, signedness,
+  legal range, optionality, enum or fixed-format constraint;
 - every current command form, argument representation and range,
   acknowledgement, and first firmware consumer;
-- the atomic ACTIVE status vocabulary and envelope;
+- the atomic ACTIVE status vocabulary, envelope and value encodings;
 - evidence, status, boot and concurrent-telemetry frontiers; and
 - decision-bearing relations that cannot be validated from one field alone,
   including exact-tick projection, wrapped timestamp suffixes, causal identity
@@ -24,7 +26,9 @@ The individual `*.csv.md` files remain the human-readable definitions of field
 meaning, units and detailed validity. The explicit semantic validators in
 `host/otis_tools/contracts.py` remain production code, but their record tags,
 versions, layouts, sequence fields, timestamp/domain fields and session fields
-are checked at import against this authority.
+are checked at import against this authority. Both live record splitting and
+offline CSV validation apply the contract-derived wire checks before a current
+row can become interpreted evidence.
 
 ## Generated firmware projection
 
@@ -63,8 +67,8 @@ translated and is not treated as an older compatible version.
 ## Mismatch handling
 
 An unknown record tag, wrong version, wrong column count, mismatched header,
-invalid ACTIVE generation, or failed declared relation is a protocol
-discrepancy. The host must:
+non-canonical or out-of-range field value, invalid ACTIVE generation, or failed
+declared relation is a protocol discrepancy. The host must:
 
 1. preserve the raw bytes and parsed attempt;
 2. keep the sole capture owner and canonical acquisition running;
@@ -79,16 +83,22 @@ separate.
 ## Required verification
 
 The contract check is necessary but not sufficient. Current release evidence
-must also compile the actual production firmware parsers and state machines and
-compare them with production host behavior. The current parity regression
-covers legal and illegal command boundaries, ACTIVE status completeness,
+must also compile the actual production firmware emitters, parsers and state
+machines and compare them with production host behavior. The contract-derived
+matrix exercises legal and illegal encodings for all 418 fields in all 16
+current record contracts. Native producer checks pass representative minimum
+and maximum values through the production raw emitters and pass derived records
+through their production formatters. The current parity regressions also cover
+legal and illegal command boundaries, ACTIVE status values and completeness,
 contract identity admission, exact timestamp projection and wrapping, and the
 stateful response-classifier cases that caused the 2026-09-09 retained-evidence
 replay discrepancy.
 
-On 2026-09-10 the current Release tier passed all 427 retained tests, including
-the full current-process rehearsal, and the subsequent exact fixed-image build
-and binary/resource audit passed.
+The earlier 2026-09-10 baseline Release tier passed all 427 tests, including the
+full current-process rehearsal, and its subsequent fixed-image build and
+binary/resource audit passed. A changed contract digest or implementation
+requires a fresh exact Release, build, bundle freeze and rehearsal before bench
+entry; the earlier evidence is not rebound to changed bytes.
 
 The complete Stage 0 claim additionally requires the fixed firmware build and
 the genuine process/FIFO/command/acknowledgement/abort/analyzer/sealing

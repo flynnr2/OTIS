@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import math
 from pathlib import Path
 import re
 from typing import Any, Mapping
@@ -35,6 +36,21 @@ RELATION_KINDS = frozenset(
         "latched_until",
         "causal_frontier",
         "stateful_classifier",
+    }
+)
+WIRE_TYPE_KINDS = frozenset(
+    {
+        "enum",
+        "escaped_atom",
+        "finite_decimal",
+        "hex_integer",
+        "integer",
+        "literal_or",
+        "lower_hex",
+        "lower_hex_or_literal",
+        "optional",
+        "record_type",
+        "schema_version",
     }
 )
 
@@ -93,6 +109,67 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
             "firmware/host compatibility must be exact_current_only"
         )
 
+    wire_types = _mapping(root.get("wire_types"), "wire_types")
+    for name, raw in wire_types.items():
+        wire_type = _mapping(raw, f"wire_types.{name}")
+        kind = wire_type.get("kind")
+        if kind not in WIRE_TYPE_KINDS:
+            raise FirmwareHostContractError(
+                f"wire_types.{name}.kind {kind!r} is unknown"
+            )
+        if kind == "integer":
+            minimum = wire_type.get("minimum")
+            maximum = wire_type.get("maximum")
+            if (
+                not isinstance(minimum, int)
+                or isinstance(minimum, bool)
+                or not isinstance(maximum, int)
+                or isinstance(maximum, bool)
+                or minimum > maximum
+            ):
+                raise FirmwareHostContractError(
+                    f"wire_types.{name} has an invalid integer range"
+                )
+            if wire_type.get("signed") is not (minimum < 0):
+                raise FirmwareHostContractError(
+                    f"wire_types.{name}.signed contradicts its range"
+                )
+        elif kind in {"literal_or", "optional"}:
+            base = wire_type.get("base")
+            if base not in wire_types or base == name:
+                raise FirmwareHostContractError(
+                    f"wire_types.{name}.base is unknown or recursive"
+                )
+            if kind == "literal_or":
+                _string(wire_type.get("literal"), f"wire_types.{name}.literal")
+        elif kind == "enum":
+            _strings(wire_type.get("values"), f"wire_types.{name}.values")
+        elif kind in {"lower_hex", "lower_hex_or_literal"}:
+            length = wire_type.get("length")
+            if not isinstance(length, int) or length <= 0:
+                raise FirmwareHostContractError(
+                    f"wire_types.{name}.length must be positive"
+                )
+            if kind == "lower_hex_or_literal":
+                _string(wire_type.get("literal"), f"wire_types.{name}.literal")
+        elif kind == "hex_integer":
+            digits = wire_type.get("digits")
+            prefix = wire_type.get("prefix")
+            minimum = wire_type.get("minimum")
+            maximum = wire_type.get("maximum")
+            if (
+                not isinstance(digits, int)
+                or digits <= 0
+                or not isinstance(prefix, str)
+                or not isinstance(minimum, int)
+                or not isinstance(maximum, int)
+                or minimum < 0
+                or minimum > maximum
+            ):
+                raise FirmwareHostContractError(
+                    f"wire_types.{name} has an invalid hexadecimal range"
+                )
+
     records = _mapping(root.get("records"), "records")
     seen_tags: set[str] = set()
     for name, raw in records.items():
@@ -136,6 +213,56 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
             )
         _string(record.get("first_consumer"), f"records.{name}.first_consumer")
 
+    field_groups = _mapping(
+        root.get("record_field_wire_types"), "record_field_wire_types"
+    )
+    if set(field_groups) != set(records):
+        raise FirmwareHostContractError(
+            "record_field_wire_types must cover every current record exactly"
+        )
+    for name, raw_groups in field_groups.items():
+        fields = tuple(records[name]["fields"])
+        groups = _mapping(raw_groups, f"record_field_wire_types.{name}")
+        unknown_types = set(groups) - set(wire_types)
+        if unknown_types:
+            raise FirmwareHostContractError(
+                f"record_field_wire_types.{name} uses unknown wire types: "
+                f"{sorted(unknown_types)}"
+            )
+        seen_fields: list[str] = []
+        for wire_type, raw_fields in groups.items():
+            typed_fields = _strings(
+                raw_fields, f"record_field_wire_types.{name}.{wire_type}"
+            )
+            seen_fields.extend(typed_fields)
+        duplicates = sorted(
+            {field for field in seen_fields if seen_fields.count(field) > 1}
+        )
+        if duplicates:
+            raise FirmwareHostContractError(
+                f"record_field_wire_types.{name} duplicates fields: {duplicates}"
+            )
+        if set(seen_fields) != set(fields):
+            missing = sorted(set(fields) - set(seen_fields))
+            extra = sorted(set(seen_fields) - set(fields))
+            raise FirmwareHostContractError(
+                f"record_field_wire_types.{name} differs from its layout; "
+                f"missing={missing}, extra={extra}"
+            )
+        field_to_type = {
+            field: wire_type
+            for wire_type, typed_fields in groups.items()
+            for field in typed_fields
+        }
+        if field_to_type["record_type"] != "record_type":
+            raise FirmwareHostContractError(
+                f"record_field_wire_types.{name}.record_type must use record_type"
+            )
+        if field_to_type["schema_version"] != "schema_version":
+            raise FirmwareHostContractError(
+                f"record_field_wire_types.{name}.schema_version must use schema_version"
+            )
+
     snapshots = _mapping(root.get("status_snapshots"), "status_snapshots")
     if len(snapshots) != 1:
         raise FirmwareHostContractError(
@@ -154,6 +281,48 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
         )
     if len(set(envelope.values())) != 3:
         raise FirmwareHostContractError("ACTIVE status envelope keys must differ")
+    envelope_value_types = _mapping(
+        snapshot.get("envelope_value_wire_types"),
+        f"status_snapshots.{snapshot_name}.envelope_value_wire_types",
+    )
+    if set(envelope_value_types) != set(envelope):
+        raise FirmwareHostContractError(
+            f"status_snapshots.{snapshot_name}.envelope_value_wire_types must "
+            "cover begin, contract, and complete exactly"
+        )
+    if any(value not in wire_types for value in envelope_value_types.values()):
+        raise FirmwareHostContractError(
+            f"status_snapshots.{snapshot_name}.envelope_value_wire_types uses "
+            "an unknown wire type"
+        )
+    value_groups = _mapping(
+        snapshot.get("value_wire_types"),
+        f"status_snapshots.{snapshot_name}.value_wire_types",
+    )
+    unknown_types = set(value_groups) - set(wire_types)
+    if unknown_types:
+        raise FirmwareHostContractError(
+            f"status_snapshots.{snapshot_name}.value_wire_types uses unknown "
+            f"wire types: {sorted(unknown_types)}"
+        )
+    value_fields: list[str] = []
+    for wire_type, raw_fields in value_groups.items():
+        value_fields.extend(
+            _strings(
+                raw_fields,
+                f"status_snapshots.{snapshot_name}.value_wire_types.{wire_type}",
+            )
+        )
+    duplicates = sorted(
+        {field for field in value_fields if value_fields.count(field) > 1}
+    )
+    if duplicates or set(value_fields) != set(snapshot["keys"]):
+        raise FirmwareHostContractError(
+            f"status_snapshots.{snapshot_name}.value_wire_types must cover "
+            f"every key exactly; duplicates={duplicates}, "
+            f"missing={sorted(set(snapshot['keys']) - set(value_fields))}, "
+            f"extra={sorted(set(value_fields) - set(snapshot['keys']))}"
+        )
 
     commands = _mapping(root.get("commands"), "commands")
     _strings(commands.get("simple"), "commands.simple")
@@ -261,16 +430,197 @@ RECORD_TYPE_TO_CONTRACT = {
     for name, record_types in RECORD_TYPES.items()
     for record_type in record_types
 }
+WIRE_TYPES = CONTRACT["wire_types"]
+RECORD_FIELD_WIRE_TYPES = {
+    name: {
+        field: wire_type
+        for wire_type, fields in CONTRACT["record_field_wire_types"][name].items()
+        for field in fields
+    }
+    for name in RECORDS
+}
 ACTIVE_STATUS_CONTRACT_ID, ACTIVE_STATUS = next(
     iter(CONTRACT["status_snapshots"].items())
 )
 ACTIVE_STATUS_KEYS = tuple(ACTIVE_STATUS["keys"])
 ACTIVE_STATUS_COMPONENT = str(ACTIVE_STATUS["component"])
 ACTIVE_STATUS_ENVELOPE = dict(ACTIVE_STATUS["envelope"])
+ACTIVE_STATUS_VALUE_WIRE_TYPES = {
+    field: wire_type
+    for wire_type, fields in ACTIVE_STATUS["value_wire_types"].items()
+    for field in fields
+}
+ACTIVE_STATUS_VALUE_WIRE_TYPES.update(
+    {
+        ACTIVE_STATUS_ENVELOPE[role]: wire_type
+        for role, wire_type in ACTIVE_STATUS["envelope_value_wire_types"].items()
+    }
+)
 SIMPLE_COMMANDS = frozenset(CONTRACT["commands"]["simple"])
 COMMAND_FORMS = CONTRACT["commands"]["forms"]
 FRONTIERS = CONTRACT["frontiers"]
 RELATIONS = {item["id"]: item for item in CONTRACT["relations"]}
+
+
+_UNSIGNED_INTEGER = re.compile(r"(?:0|[1-9][0-9]*)\Z")
+_SIGNED_INTEGER = re.compile(r"(?:0|-?[1-9][0-9]*)\Z")
+_FIXED_DECIMAL = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?\Z")
+_LOWER_HEX = re.compile(r"[0-9a-f]+\Z")
+_ESCAPED_BYTES = frozenset({"25", "2C", "22", "0D", "0A"})
+
+
+def _atom_error(value: str, *, optional: bool) -> str | None:
+    if not value:
+        return None if optional else "must be a non-empty escaped atom"
+    if any(ord(character) > 0x7F for character in value):
+        return "must contain only ASCII wire bytes"
+    if any(character in ',"\r\n' for character in value):
+        return "must use unquoted CSV percent escaping"
+    index = 0
+    while index < len(value):
+        if value[index] != "%":
+            index += 1
+            continue
+        escape = value[index + 1 : index + 3]
+        if len(escape) != 2 or escape not in _ESCAPED_BYTES:
+            return "contains an invalid or non-canonical percent escape"
+        index += 3
+    return None
+
+
+def _wire_type_value_error(
+    type_name: str, value: str, *, contract_name: str | None = None
+) -> str | None:
+    wire_type = WIRE_TYPES[type_name]
+    kind = wire_type["kind"]
+    if kind == "optional":
+        if value == "":
+            return None
+        wire_type = WIRE_TYPES[str(wire_type["base"])]
+        kind = wire_type["kind"]
+    if kind == "literal_or":
+        if value == wire_type["literal"]:
+            return None
+        return _wire_type_value_error(str(wire_type["base"]), value)
+
+    if kind == "record_type":
+        if contract_name is None:
+            raise FirmwareHostContractError(
+                "record_type validation requires a record contract"
+            )
+        if value not in RECORD_TYPES[contract_name]:
+            return f"must be one of {sorted(RECORD_TYPES[contract_name])}"
+        return None
+    if kind == "schema_version":
+        if contract_name is None:
+            raise FirmwareHostContractError(
+                "schema_version validation requires a record contract"
+            )
+        expected = str(RECORD_SCHEMA_VERSIONS[contract_name])
+        return None if value == expected else f"must equal {expected}"
+    if kind == "integer":
+        signed = bool(wire_type["signed"])
+        pattern = _SIGNED_INTEGER if signed else _UNSIGNED_INTEGER
+        if pattern.fullmatch(value) is None:
+            return "must use canonical decimal integer encoding"
+        parsed = int(value, 10)
+        if not int(wire_type["minimum"]) <= parsed <= int(wire_type["maximum"]):
+            return (
+                f"must be in {wire_type['minimum']}..{wire_type['maximum']}"
+            )
+        return None
+    if kind == "finite_decimal":
+        optional = bool(wire_type.get("optional", False))
+        if value == "":
+            return None if optional else "must not be empty"
+        if _FIXED_DECIMAL.fullmatch(value) is None:
+            return "must use finite fixed-decimal encoding"
+        try:
+            parsed = float(value)
+        except ValueError:
+            return "must be an IEEE-754 binary64 decimal"
+        return None if math.isfinite(parsed) else "must fit finite IEEE-754 binary64"
+    if kind == "hex_integer":
+        prefix = str(wire_type["prefix"])
+        digits = int(wire_type["digits"])
+        alphabet = "[0-9A-F]" if wire_type.get("uppercase") is True else "[0-9a-f]"
+        if re.fullmatch(re.escape(prefix) + alphabet + f"{{{digits}}}", value) is None:
+            return (
+                f"must use {prefix} followed by exactly {digits} "
+                f"{'uppercase' if wire_type.get('uppercase') is True else 'lowercase'} "
+                "hexadecimal digits"
+            )
+        parsed = int(value[len(prefix) :], 16)
+        if not int(wire_type["minimum"]) <= parsed <= int(wire_type["maximum"]):
+            return (
+                f"must be in {wire_type['minimum']}..{wire_type['maximum']}"
+            )
+        return None
+    if kind == "enum":
+        values = tuple(str(item) for item in wire_type["values"])
+        return None if value in values else f"must be one of {list(values)}"
+    if kind == "escaped_atom":
+        return _atom_error(value, optional=bool(wire_type.get("optional", False)))
+    if kind == "lower_hex":
+        length = int(wire_type["length"])
+        if len(value) != length or _LOWER_HEX.fullmatch(value) is None:
+            return f"must be exactly {length} lowercase hexadecimal characters"
+        return None
+    if kind == "lower_hex_or_literal":
+        if value == wire_type["literal"]:
+            return None
+        length = int(wire_type["length"])
+        if len(value) != length or _LOWER_HEX.fullmatch(value) is None:
+            return (
+                f"must be {wire_type['literal']!r} or exactly {length} "
+                "lowercase hexadecimal characters"
+            )
+        return None
+    raise FirmwareHostContractError(f"wire type {type_name!r} is not executable")
+
+
+def wire_value_error(
+    contract_name: str, field_name: str, value: str
+) -> str | None:
+    """Return the exact current-wire error for one already-split CSV field."""
+
+    try:
+        type_name = RECORD_FIELD_WIRE_TYPES[contract_name][field_name]
+    except KeyError as exc:
+        raise FirmwareHostContractError(
+            f"unknown current record field {contract_name}.{field_name}"
+        ) from exc
+    return _wire_type_value_error(
+        type_name, value, contract_name=contract_name
+    )
+
+
+def active_status_value_error(key: str, value: str) -> str | None:
+    """Validate one value inside the exact current ACTIVE snapshot vocabulary."""
+
+    try:
+        type_name = ACTIVE_STATUS_VALUE_WIRE_TYPES[key]
+    except KeyError as exc:
+        raise FirmwareHostContractError(
+            f"unknown current ACTIVE status key {key!r}"
+        ) from exc
+    return _wire_type_value_error(type_name, value)
+
+
+def validate_record_wire_values(
+    contract_name: str, values: tuple[str, ...] | list[str]
+) -> tuple[str, ...]:
+    """Validate field count, canonical encodings, widths, and signedness."""
+
+    fields = RECORD_FIELDS[contract_name]
+    if len(values) != len(fields):
+        return (f"column count {len(values)} does not match {len(fields)}",)
+    errors: list[str] = []
+    for field_name, value in zip(fields, values, strict=True):
+        error = wire_value_error(contract_name, field_name, value)
+        if error is not None:
+            errors.append(f"{contract_name}.{field_name} {error}; got {value!r}")
+    return tuple(errors)
 
 
 def integer_projection_matches(

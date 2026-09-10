@@ -9,6 +9,7 @@ import sys
 import pytest
 
 from host.otis_tools.contracts import CONTROL_PREVIEW_V1_FIELDS
+from host.otis_tools.firmware_host_contract import validate_record_wire_values
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +54,10 @@ def test_pre_setup_selected_estimate_remains_safe_observe(tmp_path: Path) -> Non
     )
     rows = list(csv.reader(completed.stdout.splitlines()))
     assert len(rows) == 2
+    assert all(
+        validate_record_wire_values("control_previews_v1", row) == ()
+        for row in rows
+    )
     controls = [
         dict(zip(CONTROL_PREVIEW_V1_FIELDS, row, strict=True)) for row in rows
     ]

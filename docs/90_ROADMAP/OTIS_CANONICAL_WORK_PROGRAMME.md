@@ -50,7 +50,7 @@ is supporting work, not a programme outcome by itself.
 | GNSS baud robustness                           | Completed multi-artifact characterization selected 115200 with zero recorded serial/ring/parser faults in 23,100 confirmed-online seconds at that rate. The fixed image implements a bounded 9600/115200 startup transaction and causal requalification.                                                                              | Closed for the installed PA1616S/Nano path. Re-run only a focused bootstrap and service-margin qualification after a board, UART, receiver, power or service-topology change. Do not repeat the full multi-baud programme by default.                                                                                |
 | Too many compile states                        | The current branch has already removed the firmware matrix and retains one fixed image and manifest.                                                                                                                                                                                                                                  | Closed as a reduction task. Preserve one supported production image. A board or component replacement becomes the next fixed image after selection; historical revisions remain the compatibility mechanism.                                                                                                         |
 | Too many regression tests                      | Historical programme and compatibility tests were materially removed. On 2026-09-10 the current Release tier completed 427 tests, including the current-process operational rehearsal, in 204 seconds; the subsequent exact fixed-image build and binary/resource audit passed. | Remove or consolidate only checks that duplicate a protected invariant, test retired behavior, or add no earlier detection. Do not optimize for an arbitrary test count. |
-| Firmware/host contract mismatch fragility      | A current machine-readable contract now owns record tags/versions/layouts, command forms, ACTIVE status vocabulary, queue frontiers and named cross-record relations. The fixed build embeds its exact digest; host pre-write admission requires it. Production command and response-classifier parity tests reproduce the latest escaped cases. | Keep complete bidirectional parity as a Stage 0 outcome. Complete the remaining contract-derived record boundary-value matrix. Any unexplained mismatch is a review-required diagnostic hold, never plausible zero/default data or host-invented abort authority. |
+| Firmware/host contract mismatch fragility      | A current machine-readable contract now owns record tags/versions/layouts and all 418 field encodings, command forms, typed ACTIVE status vocabulary, queue frontiers and named cross-record relations. The fixed build embeds its exact digest; live and offline host admission require it. Production emitter, command and response-classifier checks cover the latest escaped cases. | Keep complete bidirectional parity as a Stage 0 outcome. Any unexplained mismatch is a review-required diagnostic hold, never plausible zero/default data or host-invented abort authority. Require a fresh exact Release, build, freeze and rehearsal after an operational contract change. |
 | Better power supply                            | The current TPS62827 3.3 V rail has a documented DC budget and observed 3.292 V level, but ripple, transients, cold-start behavior and ground coupling remain unqualified.                                                                                                                                                            | Make the power/ground architecture part of successor-board selection and measure the current and proposed arrangements before attributing timing anomalies to power.                                                                                                                                                 |
 | Rewire on a different board configuration      | The current fixed target remains the Nano RP2040 Connect. The hardware roadmap identifies Raspberry Pi Pico 2/RP2350 as the likely successor direction, but no exact board is selected here.                                                                                                                                          | Select one successor board from an explicit pin, timing-resource, toolchain, power and operational comparison; then replace the fixed target rather than supporting two production boards indefinitely.                                                                                                              |
 | Breakbeam on D10                               | The D10 pin/channel/schema seam exists, but the fixed image explicitly records external-event capture as not implemented and not isolated.                                                                                                                                                                                            | Implement the hardware-owned D10 capture path, qualify its failure isolation, and build the exact sensor interface including emitter current limiting, receiver bias/pull-up, input protection/series resistance and declared output polarity.                                                                       |
@@ -173,13 +173,14 @@ remains historical review-required evidence until the repository's explicit
 provenance-linked superseding-analysis workflow is run; it is not rewritten in
 place.
 
-This closes the known recurring structural, command-grammar, timestamp-relation
-and response-state mismatch paths. The 2026-09-10 Release tier passed all 427
-current tests, including the current-process operational rehearsal, and the
-subsequent exact fixed firmware build and binary/resource audit passed. This
-does not by itself pass all of Stage 0: the remaining contract-derived record
-boundary-value matrix and the exact contingent-bundle freeze/rehearsal are still
-required by the gate below.
+This closes the known recurring structural, field-encoding, command-grammar,
+timestamp-relation and response-state mismatch paths. The contract-derived
+matrix now covers all 418 fields in all 16 current record contracts, including
+typed ACTIVE snapshot values, live admission, offline validation, production
+raw-emitter boundaries and native derived-record formatter checks. The earlier
+2026-09-10 baseline Release, current-process rehearsal and fixed build passed,
+but changed contract bytes require a fresh exact Release, build and contingent-
+bundle freeze/rehearsal before this revision may enter the bench.
 
 ## Measurement language and claim discipline
 
@@ -266,11 +267,11 @@ shape and boundary value has producer-to-first-consumer parity, and the genuine
 operational rehearsal passes with exact identities and no ownerless serial
 interval. Stop and repair only the failed current boundary otherwise.
 
-Current status on 2026-09-10: the shared authority, runtime identity admission,
-strict mismatch hold and regressions for the known escapes are implemented.
-The Release tier, current-process operational rehearsal and fixed-image build
-pass. Stage 0 remains in progress pending the complete contract-derived record
-boundary-value matrix and freeze/rehearsal of the exact contingent bundle.
+Current status on 2026-09-10: the shared authority, complete record and ACTIVE
+value matrix, runtime identity admission, strict mismatch hold, and regressions
+for the known escapes are implemented. This revision still requires its fresh
+exact Release, fixed-image build and contingent-bundle freeze/rehearsal before
+Stage 0 can be closed for the prospective physical entry.
 
 ## Stage 1 — select the successor board, power and physical interface
 

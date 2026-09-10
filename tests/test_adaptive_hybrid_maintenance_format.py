@@ -13,6 +13,7 @@ from host.otis_tools.contracts import (
     CsvValidationContext,
     validate_csv,
 )
+from host.otis_tools.firmware_host_contract import validate_record_wire_values
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,6 +63,10 @@ def test_native_formatter_emits_exact_header_and_host_valid_lifecycle(
     assert len(rows[0]) == len(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS) == 59
     assert all(
         len(row) == len(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
+        for row in rows[1:]
+    )
+    assert all(
+        validate_record_wire_values("active_hybrid_maintenance_v1", row) == ()
         for row in rows[1:]
     )
 

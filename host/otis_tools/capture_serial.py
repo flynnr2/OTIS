@@ -10,7 +10,10 @@ import sys
 from typing import Callable
 
 from .contracts import CONTRACT_FIELDS, CONTRACT_SCHEMA_VERSIONS
-from .firmware_host_contract import RECORD_TYPE_TO_CONTRACT
+from .firmware_host_contract import (
+    RECORD_TYPE_TO_CONTRACT,
+    validate_record_wire_values,
+)
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
 
 
@@ -104,6 +107,14 @@ class CsvRecordSplitter:
                 self.on_parser_error(
                     f"{record_type} schema_version {row[1]!r} does not match "
                     f"{expected_version}"
+                )
+            return None
+        wire_errors = validate_record_wire_values(contract, row)
+        if wire_errors:
+            if self.on_parser_error is not None:
+                self.on_parser_error(
+                    f"{record_type} current wire contract mismatch: "
+                    + "; ".join(wire_errors)
                 )
             return None
         expected_channel = RAW_EVENT_CHANNELS.get(record_type)

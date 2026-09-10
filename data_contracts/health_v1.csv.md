@@ -16,7 +16,7 @@ evidence.
 |---|---|---|
 | `record_type` | enum | always `STS` |
 | `schema_version` | uint | currently `1` |
-| `status_seq` | uint64 | monotonic status-record sequence |
+| `status_seq` | uint32 | strictly increasing status-record sequence within a current capture segment; rollover is not admissible inside that segment |
 | `timestamp_ticks` | uint64 | timestamp in `status_domain` |
 | `status_domain` | string | declared timestamp domain |
 | `component` | string | emitting subsystem |

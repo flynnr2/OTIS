@@ -12,7 +12,7 @@ This is the primary timing-observation artifact for individual pulse edges. It i
 |---|---|---|
 | `record_type` | enum | compact record tag; `EVT` means user/event capture, `REF` means reference capture |
 | `schema_version` | uint | schema revision; currently `1` |
-| `event_seq` | uint64 | monotonic observation counter within the emitting device/run |
+| `event_seq` | uint32 | strictly increasing observation counter within a current capture segment; rollover is not admissible inside that segment |
 | `channel_id` | uint16 | physical or logical capture channel |
 | `edge` | enum | captured edge: `R` rising, `F` falling, `B` both/unspecified edge when hardware cannot disambiguate |
 | `timestamp_ticks` | uint64 | raw timestamp ticks latched or reconstructed by the timing fabric |

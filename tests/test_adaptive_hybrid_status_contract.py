@@ -9,6 +9,10 @@ from host.otis_tools.active_status_contract import (
     SNAPSHOT_CONTRACT_KEY,
     latest_complete_active_status,
 )
+from host.otis_tools.firmware_host_contract import (
+    ACTIVE_STATUS_VALUE_WIRE_TYPES,
+    WIRE_TYPES,
+)
 
 
 def _row(key: str, value: str) -> dict[str, str]:
@@ -21,12 +25,30 @@ def _row(key: str, value: str) -> dict[str, str]:
     }
 
 
+def _valid_value(key: str) -> str:
+    wire_type = WIRE_TYPES[ACTIVE_STATUS_VALUE_WIRE_TYPES[key]]
+    kind = wire_type["kind"]
+    if kind == "integer":
+        return "0"
+    if kind == "enum":
+        return str(wire_type["values"][0])
+    if kind == "escaped_atom":
+        return "value"
+    if kind == "lower_hex":
+        return "a" * int(wire_type["length"])
+    if kind == "hex_integer":
+        return "0x0000"
+    if kind == "literal_or":
+        return str(wire_type["literal"])
+    raise AssertionError(f"unhandled ACTIVE status wire type {kind}")
+
+
 def _snapshot(generation: int, *, contract: str = ACTIVE_STATUS_SNAPSHOT_CONTRACT) -> list[dict[str, str]]:
     rows = [
         _row(SNAPSHOT_BEGIN_KEY, str(generation)),
         _row(SNAPSHOT_CONTRACT_KEY, contract),
     ]
-    rows.extend(_row(key, "0") for key in ACTIVE_STATUS_KEYS)
+    rows.extend(_row(key, _valid_value(key)) for key in ACTIVE_STATUS_KEYS)
     rows.append(_row(SNAPSHOT_COMPLETE_KEY, str(generation)))
     return rows
 
