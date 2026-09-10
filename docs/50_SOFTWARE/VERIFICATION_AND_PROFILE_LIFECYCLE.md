@@ -51,6 +51,11 @@ Use `--list` to inspect the commands without executing them.
 
 Current verification fails when:
 
+- the generated firmware projection of the current firmware/host contract is
+  stale, or its runtime ID/digest differs from host admission;
+- a current record tag, schema version, ordered layout, ACTIVE status
+  generation, command grammar, queue frontier or declared cross-field relation
+  differs across firmware and host;
 - a retired CX318-CX323 identity appears in executable code, configuration, a
   filename, schema, profile, or test;
 - CX317 is used as a software/campaign identity rather than the physical

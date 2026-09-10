@@ -28,11 +28,11 @@ bool fixed(double value, char *output, size_t size) {
 }  // namespace
 
 const char *otis_phase_preview_rph_header(void) {
-  return "record_type,schema_version,phase_epoch,observation_sequence,capture_session,opening_snapshot_sequence,closing_snapshot_sequence,opening_reference_sequence,closing_reference_sequence,dac_epoch,source_backend,source_file_sha256,method_id,configuration_sha256,interval_edges,edge_error_cycles,relative_phase_cycles,relative_phase_time_ns,qualification_state,observation_age_s,discontinuity_reason,calibrated_uncertainty_status\r\n";
+  return OTIS_CONTRACT_RELATIVE_PHASE_OBSERVATIONS_V1_HEADER "\r\n";
 }
 
 const char *otis_phase_preview_phe_header(void) {
-  return "record_type,schema_version,phase_epoch,observation_sequence,source_relative_phase_observation,raw_relative_phase_cycles,raw_relative_phase_time_ns,filtered_relative_phase_cycles,estimated_frequency_error_hz,estimator_id,configuration_sha256,estimate_age_s,qualification_state,uncertainty_status,reason_codes\r\n";
+  return OTIS_CONTRACT_PHASE_ESTIMATOR_OUTPUTS_V1_HEADER "\r\n";
 }
 
 bool otis_phase_preview_format_rph(const OtisPhasePreviewRecordMessage *message,

@@ -3,14 +3,16 @@
 
 #include <stdint.h>
 
+#include "otis_firmware_host_contract.generated.h"
 #include "otis_regulation_transaction.h"
 #include "otis_dual_core_contract.h"
 #include "otis_status_emit.h"
 
 #define OTIS_ADAPTIVE_HYBRID_ACTIVE_STATUS_SNAPSHOT_CONTRACT \
-  "adaptive_hybrid_active_status_snapshot_v1"
+  OTIS_ACTIVE_STATUS_CONTRACT_ID
 
-constexpr char OTIS_ADAPTIVE_HYBRID_STATUS_COMPONENT[] = "adaptive_hybrid";
+constexpr char OTIS_ADAPTIVE_HYBRID_STATUS_COMPONENT[] =
+    OTIS_ACTIVE_STATUS_COMPONENT;
 static_assert(
     sizeof(OTIS_ADAPTIVE_HYBRID_STATUS_COMPONENT) <=
         sizeof(((OtisTelemetryMessage *)nullptr)->component),

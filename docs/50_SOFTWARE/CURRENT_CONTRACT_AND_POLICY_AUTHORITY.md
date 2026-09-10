@@ -11,11 +11,31 @@ programme-specific authority records are not current authority.
 - frequency estimator: `OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1`;
 - relative-phase estimator: `OTIS_RELATIVE_PHASE_ESTIMATOR_V1`;
 - plant model: `OTIS_PPS_GATED_OSCILLATOR_PLANT_V1`; and
-- active status: `adaptive_hybrid_active_status_snapshot_v1`.
+- active status: `adaptive_hybrid_active_status_snapshot_v1`; and
+- firmware/host protocol: `OTIS_FIRMWARE_HOST_CONTRACT_V1`.
 
 The machine-readable sources are the five files retained under `profiles/`
-and the seven current schemas under `schemas/`. The fixed firmware build identity and
-resource contract are in `firmware/arduino/firmware_build_manifest.json`.
+and the seven current schemas under `schemas/`. The current wire authority is
+`data_contracts/otis_firmware_host_contract_v1.json`; its generated firmware
+projection is checked rather than maintained independently. The fixed firmware
+build identity and resource contract are in
+`firmware/arduino/firmware_build_manifest.json`.
+
+## Firmware/host attachment authority
+
+The wire contract is exact-current-only. It controls record tags, versions and
+ordered layouts, command forms and ranges, ACTIVE snapshot vocabulary, queue
+frontiers, and named cross-record relations. The firmware binary carries the
+canonical contract digest and emits it as `protocol.contract_id` and
+`protocol.contract_sha256`. A host must observe an exact match before setup or
+arm authority is available.
+
+Unknown, missing, extra, malformed or out-of-version protocol data is retained
+as raw evidence and enters a review-required diagnostic hold. Capture and the
+last confirmed DAC state are preserved; the discrepancy cannot silently become
+zero/default data and has no automatic abort or teardown authority. Detailed
+operation and generation instructions are in
+`data_contracts/otis_firmware_host_contract_v1.md`.
 
 ## Measurement authority
 

@@ -19,21 +19,59 @@ bool identity_equal(const char *left, const char *right) {
   return *left == '\0' && *right == '\0';
 }
 
-bool parse_u32_token(const char **cursor, uint32_t *value) {
+bool parse_nonzero_decimal_u32_token(const char **cursor, uint32_t *value) {
   if (cursor == nullptr || *cursor == nullptr || value == nullptr)
     return false;
   while (**cursor != '\0' &&
          isspace(static_cast<unsigned char>(**cursor)))
     ++*cursor;
-  // strtoul accepts signs. The wire contract does not, and accepting one
-  // would make the parsed value depend on the target width.
-  if (!isdigit(static_cast<unsigned char>(**cursor))) return false;
-  errno = 0;
-  char *end = nullptr;
-  const unsigned long parsed = strtoul(*cursor, &end, 0);
-  if (end == *cursor || errno == ERANGE || parsed > UINT32_MAX) return false;
-  *value = static_cast<uint32_t>(parsed);
-  *cursor = end;
+  if (**cursor < '1' || **cursor > '9') return false;
+  uint32_t parsed = 0u;
+  do {
+    const uint32_t digit = static_cast<uint32_t>(**cursor - '0');
+    if (parsed > (UINT32_MAX - digit) / 10u) return false;
+    parsed = parsed * 10u + digit;
+    ++*cursor;
+  } while (**cursor >= '0' && **cursor <= '9');
+  if (**cursor != '\0' &&
+      !isspace(static_cast<unsigned char>(**cursor)))
+    return false;
+  *value = parsed;
+  return true;
+}
+
+bool parse_setup_code_token(const char **cursor, uint32_t *value) {
+  if (cursor == nullptr || *cursor == nullptr || value == nullptr)
+    return false;
+  while (**cursor != '\0' &&
+         isspace(static_cast<unsigned char>(**cursor)))
+    ++*cursor;
+  const char *start = *cursor;
+  uint32_t base = 10u;
+  if (start[0] == '0' && (start[1] == 'X' || start[1] == 'x')) {
+    base = 16u;
+    *cursor += 2;
+    if (!isxdigit(static_cast<unsigned char>(**cursor))) return false;
+  } else if (!isdigit(static_cast<unsigned char>(**cursor))) {
+    return false;
+  }
+  uint32_t parsed = 0u;
+  while (**cursor != '\0' &&
+         (base == 16u ? isxdigit(static_cast<unsigned char>(**cursor))
+                      : isdigit(static_cast<unsigned char>(**cursor)))) {
+    const unsigned char byte = static_cast<unsigned char>(**cursor);
+    const uint32_t digit = isdigit(byte)
+                               ? static_cast<uint32_t>(byte - '0')
+                               : static_cast<uint32_t>(toupper(byte) - 'A' + 10);
+    if (parsed > (UINT16_MAX - digit) / base) return false;
+    parsed = parsed * base + digit;
+    ++*cursor;
+  }
+  if (*cursor == start ||
+      (**cursor != '\0' &&
+       !isspace(static_cast<unsigned char>(**cursor))))
+    return false;
+  *value = parsed;
   return true;
 }
 
@@ -119,9 +157,11 @@ bool otis_setup_authority_parse_request(
   if (text == nullptr || request == nullptr) return false;
   uint32_t values[7] = {};
   const char *cursor = text;
-  for (uint8_t index = 0u; index < 7u; ++index) {
-    if (!parse_u32_token(&cursor, &values[index])) return false;
-  }
+  for (uint8_t index = 0u; index < 5u; ++index)
+    if (!parse_nonzero_decimal_u32_token(&cursor, &values[index])) return false;
+  if (!parse_setup_code_token(&cursor, &values[5]) ||
+      !parse_nonzero_decimal_u32_token(&cursor, &values[6]))
+    return false;
   while (*cursor != '\0' && isspace(static_cast<unsigned char>(*cursor)))
     ++cursor;
   const char *identity = cursor;

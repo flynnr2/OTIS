@@ -634,7 +634,21 @@ class CaptureDeviceRunner:
             _log_event(logging.WARNING, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
             _write_marker(raw_writer, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
             return
+        parser_errors_before = self.parser_errors
         contract = splitter.process_line(text)
+        if self.parser_errors != parser_errors_before:
+            try:
+                parsed_fields = next(csv.reader([text.strip()]))
+            except csv.Error:
+                parsed_fields = []
+            _write_marker(
+                raw_writer,
+                "firmware_host_contract_discrepancy",
+                line_number=self.lines_seen,
+                raw_line=text.rstrip("\r\n"),
+                parsed_fields=parsed_fields,
+                parser_errors=self.parser_errors,
+            )
         if contract is not None:
             self.lines_parsed += 1
             if (
@@ -649,6 +663,7 @@ class CaptureDeviceRunner:
     def _parser_error(self, message: str) -> None:
         self.parser_errors += 1
         _log_event(logging.WARNING, "parser_error", message=message, parser_errors=self.parser_errors)
+        self._emit_status()
 
     def _process_bytes(
         self,

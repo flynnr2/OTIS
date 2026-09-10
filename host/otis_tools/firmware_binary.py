@@ -108,6 +108,12 @@ def _expected_provenance_values(provenance: object) -> dict[str, str]:
             ],
             "OTIS_BUILD_ARDUINO_CLI_VERSION": invocation["arduino_cli_version"],
             "OTIS_BUILD_INVOCATION_ID": invocation["id"],
+            "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_ID": config[
+                "contract_bindings"
+            ]["firmware_host"]["contract_id"],
+            "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_SHA256": config[
+                "contract_bindings"
+            ]["firmware_host"]["sha256"],
             "OTIS_BUILD_FORWARDED_CLOCK_CONTRACT_ID": config[
                 "forwarded_clock_contract"
             ]["contract_id"],

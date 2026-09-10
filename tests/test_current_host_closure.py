@@ -126,10 +126,11 @@ def test_current_host_closure_has_no_retired_programme_modules() -> None:
         if any(fragment in module for fragment in RETIRED_FRAGMENTS)
     )
     assert not retired, f"retired modules reachable from current host: {retired}"
-    # Three small boundary modules are intentional: one freezes and validates
-    # authoritative inputs, one independently inspects UF2 payload bytes, and
-    # one resolves current build bindings without caching mutable files.
-    assert len(closure) <= 32, f"current host closure unexpectedly broad: {len(closure)}"
+    # Four small boundary modules are intentional: one freezes and validates
+    # authoritative inputs, one independently inspects UF2 payload bytes, one
+    # resolves current build bindings without caching mutable files, and one
+    # projects the shared firmware/host contract.
+    assert len(closure) <= 33, f"current host closure unexpectedly broad: {len(closure)}"
 
 
 def test_every_semantic_adaptive_hybrid_module_is_in_current_closure() -> None:

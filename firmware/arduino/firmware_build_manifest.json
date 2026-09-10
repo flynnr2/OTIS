@@ -32,6 +32,9 @@
     "setup_authority": "schemas/adaptive_hybrid_setup_authority_v1.schema.json",
     "run_evidence": "schemas/run_evidence_v1.schema.json"
   },
+  "contract_bindings": {
+    "firmware_host": "data_contracts/otis_firmware_host_contract_v1.json"
+  },
   "forwarded_clock_contract": {
     "schema_version": 1,
     "contract_id": "OTIS_D9_FORWARDED_CLOCK_CONTRACT_V1",

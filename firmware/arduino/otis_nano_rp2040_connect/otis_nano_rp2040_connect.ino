@@ -112,25 +112,6 @@ OtisSetupAuthorityGuard dual_core_timing_setup_guard = {};
 OtisSetupExecutionGuard dual_core_service_setup_guard = {};
 bool dual_core_manual_start_consumed = false;
 
-bool parse_active_u32_fields(char *text, uint32_t *values, uint8_t count) {
-  if (text == nullptr || values == nullptr || count == 0u) return false;
-  char *cursor = text;
-  for (uint8_t index = 0u; index < count; ++index) {
-    while (*cursor != '\0' && isspace(static_cast<unsigned char>(*cursor)))
-      cursor++;
-    if (!isdigit(static_cast<unsigned char>(*cursor))) return false;
-    errno = 0;
-    char *end = nullptr;
-    unsigned long value = strtoul(cursor, &end, 0);
-    if (end == cursor || errno == ERANGE || value > UINT32_MAX) return false;
-    values[index] = static_cast<uint32_t>(value);
-    cursor = end;
-  }
-  while (*cursor != '\0' && isspace(static_cast<unsigned char>(*cursor)))
-    cursor++;
-  return *cursor == '\0';
-}
-
 bool queue_dual_core_active_control(OtisRunControlKind kind,
                                     uint32_t first = 0u,
                                     uint32_t second = 0u,
@@ -1814,6 +1795,12 @@ void drain_pps_count_boundary_ring(void) {
 void emit_build_provenance_status(void) {
   emit_status("build", "provenance_format", OTIS_BUILD_PROVENANCE_FORMAT,
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
+  emit_status("protocol", "contract_id",
+              OTIS_BUILD_FIRMWARE_HOST_CONTRACT_ID,
+              OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
+  emit_status("protocol", "contract_sha256",
+              OTIS_BUILD_FIRMWARE_HOST_CONTRACT_SHA256, OTIS_SEVERITY_INFO,
+              OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status("firmware", "git_commit", OTIS_FIRMWARE_GIT_COMMIT,
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status("firmware", "source_state", OTIS_BUILD_SOURCE_STATE,
@@ -3268,10 +3255,11 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                 accepted ? OTIS_FLAG_NONE
                          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   } else if (command.kind == OtisSerialCommandKind::ActiveSnapshot) {
-    uint32_t values[1];
+    uint32_t values[OTIS_COMMAND_ACTIVE_SNAPSHOT_ARGUMENT_COUNT];
     const bool parsed = command.arguments_valid &&
-                        parse_active_u32_fields(command.text_argument, values,
-                                                1u) &&
+                        otis_serial_command_parse_nonzero_decimal_u32_fields(
+                            command.text_argument, values,
+                            OTIS_COMMAND_ACTIVE_SNAPSHOT_ARGUMENT_COUNT) &&
                         values[0] != 0u;
     const bool accepted = parsed && queue_dual_core_active_control(
                                       OtisRunControlKind::StatusQuery,
@@ -3307,10 +3295,11 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                       OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
     }
   } else if (command.kind == OtisSerialCommandKind::ActiveLease) {
-    uint32_t values[1];
+    uint32_t values[OTIS_COMMAND_ACTIVE_LEASE_ARGUMENT_COUNT];
     const bool parsed = command.arguments_valid &&
-                        parse_active_u32_fields(command.text_argument, values,
-                                                1u);
+                        otis_serial_command_parse_nonzero_decimal_u32_fields(
+                            command.text_argument, values,
+                            OTIS_COMMAND_ACTIVE_LEASE_ARGUMENT_COUNT);
     const bool accepted = parsed &&
                           queue_dual_core_active_control(
                               OtisRunControlKind::CaptureLease, values[0]);
@@ -3320,10 +3309,11 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                     : OTIS_SEVERITY_WARN,
                 OTIS_FLAG_NONE);
   } else if (command.kind == OtisSerialCommandKind::ActiveArm) {
-    uint32_t values[3];
+    uint32_t values[OTIS_COMMAND_ACTIVE_ARM_ARGUMENT_COUNT];
     const bool parsed = command.arguments_valid &&
-                        parse_active_u32_fields(command.text_argument, values,
-                                                3u);
+                        otis_serial_command_parse_nonzero_decimal_u32_fields(
+                            command.text_argument, values,
+                            OTIS_COMMAND_ACTIVE_ARM_ARGUMENT_COUNT);
     const bool accepted = parsed &&
                           queue_dual_core_active_control(
                               OtisRunControlKind::Arm, values[0], values[1],
@@ -3342,15 +3332,13 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                 accepted ? OTIS_FLAG_NONE
                          : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   } else if (command.kind == OtisSerialCommandKind::ActiveEvidence) {
-    uint32_t values[2];
+    uint32_t values[OTIS_COMMAND_ACTIVE_EVIDENCE_ARGUMENT_COUNT];
     const bool parsed = command.arguments_valid &&
-                        parse_active_u32_fields(command.text_argument, values,
-                                                2u);
-    const bool accepted =
-        parsed &&
-             queue_dual_core_active_control(
-                 OtisRunControlKind::EvidenceRelease, values[0], values[1])
-        ;
+                        otis_serial_command_parse_active_evidence(
+                            command.text_argument, &values[0], &values[1]);
+    const bool accepted = parsed && queue_dual_core_active_control(
+                                        OtisRunControlKind::EvidenceRelease,
+                                        values[0], values[1]);
     emit_status("adaptive_hybrid_regulation", "evidence_ack",
                 accepted ? "accepted" : "rejected", accepted
                     ? OTIS_SEVERITY_INFO

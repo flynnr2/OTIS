@@ -55,8 +55,12 @@ Build it with:
 ```
 
 The builder verifies the pinned board, core, toolchain, source provenance,
-binary identity, required markers, and memory budget. Artifacts are written to
-ignored local build storage.
+binary identity, required markers, firmware/host contract binding, and memory
+budget. Artifacts are written to ignored local build storage. The current wire
+authority is
+[`data_contracts/otis_firmware_host_contract_v1.json`](data_contracts/otis_firmware_host_contract_v1.json);
+its checked-in firmware projection must be regenerated with
+`tools/generate_firmware_host_contract.py` whenever that authority changes.
 
 The current host structural preflight is deliberately non-authorizing. Live
 activation requires an exact successful process/FIFO/command/acknowledgement/

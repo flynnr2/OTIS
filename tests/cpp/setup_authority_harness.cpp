@@ -33,7 +33,7 @@ OtisSetupAuthorityContext context() {
 
 void parser_rejects_noncanonical_or_out_of_range_wire_values() {
   char valid[256] = {};
-  snprintf(valid, sizeof(valid), "3 17 0x12345678 1020 7 0xA808 1 %s",
+  snprintf(valid, sizeof(valid), "3 17 305419896 1020 7 0xA808 1 %s",
            kConfig);
   OtisSetupAuthorityRequest parsed = {};
   assert(otis_setup_authority_parse_request(valid, &parsed));
@@ -49,6 +49,8 @@ void parser_rejects_noncanonical_or_out_of_range_wire_values() {
       "-3 17 1 1020 7 43016 1 "
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       "+3 17 1 1020 7 43016 1 "
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "3 17 0x12345678 1020 7 43016 1 "
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       "3 17 1 1020 7 65536 1 "
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

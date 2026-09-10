@@ -35,6 +35,7 @@ from .authoritative_inputs import (
     validate_authoritative_inputs,
 )
 from .firmware_binary import verify_uf2
+from .firmware_host_contract import binding as firmware_host_contract_binding
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -59,6 +60,7 @@ LOWER_HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 LOWER_HEX_16 = re.compile(r"^[0-9a-f]{16}$")
 HOST_TOOL_MODULES = (
     "adaptive_hybrid_bundle.py",
+    "firmware_host_contract.py",
     "adaptive_hybrid_contract.py",
     "adaptive_hybrid_policy.py",
     "adaptive_hybrid_proposal.py",
@@ -335,6 +337,12 @@ def _validate_build(
         or external_event.get("terminal_authority") is not False
     ):
         raise ValueError("firmware build does not select adaptive_hybrid_regulation")
+    if configuration.get("contract_bindings") != {
+        "firmware_host": firmware_host_contract_binding()
+    }:
+        raise ValueError(
+            "firmware build does not bind the exact current firmware/host contract"
+        )
     binary = manifest.get("binary_contract", {})
     authority = binary.get("authority", {}) if isinstance(binary, dict) else {}
     markers = binary.get("required_markers", {}) if isinstance(binary, dict) else {}

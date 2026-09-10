@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import re
 from pathlib import Path
 
 from host.otis_tools.capture_serial import CsvRecordSplitter
@@ -11,6 +10,7 @@ from host.otis_tools.contracts import (
     CsvValidationContext,
     validate_csv,
 )
+from host.otis_tools.firmware_host_contract import RECORD_FIELDS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,9 +174,8 @@ def test_firmware_header_and_capture_splitter_use_the_exact_contract(
         ROOT
         / "firmware/arduino/otis_nano_rp2040_connect/otis_adaptive_hybrid_regulation_live.cpp"
     ).read_text(encoding="utf-8")
-    match = re.search(r'"record_type,schema_version,hybrid_record_sequence[^\"]+', source)
-    assert match is not None
-    assert match.group(0)[1:].removesuffix(r"\r\n").split(",") == (
+    assert "OTIS_CONTRACT_ACTIVE_HYBRID_DECISIONS_V2_HEADER" in source
+    assert RECORD_FIELDS["active_hybrid_decisions_v2"] == tuple(
         ACTIVE_HYBRID_DECISION_V2_FIELDS
     )
 

@@ -3,7 +3,7 @@
 ## Status and authority
 
 Status: current planning authority, audited against repository HEAD on
-2026-09-09.
+2026-09-10.
 
 This is the canonical sequence for completing the present OTIS instrument and
 for evaluating replacement GNSS receivers, oscillators, power arrangements and
@@ -42,15 +42,15 @@ is supporting work, not a programme outcome by itself.
 
 ## Audited disposition of the originating concerns
 
-| Concern                                        | Repository state on 2026-09-09                                                                                                                                                                                                                                                                                                        | Programme disposition                                                                                                                                                                                                                                                                                                |
+| Concern                                        | Repository state through 2026-09-10                                                                                                                                                                                                                                                                                                    | Programme disposition                                                                                                                                                                                                                                                                                                |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Serial output modes                            | Design discussed; no current profile contract or switching implementation was found. The fixed image emits the canonical operating stream.                                                                                                                                                                                            | Define host-side `FULL`, `EVENTS`, `BENCH` and `SUMMARY` products after the event and candidate-input records exist. Add device-side filtering only for a measured transport or client requirement.                                                                                                                  |
 | Autonomous operation                           | The fixed `adaptive_hybrid_regulation` image performs the estimator, policy and bounded actuation locally.                                                                                                                                                                                                                            | Treat autonomy as the production control architecture, not a serial mode or selectable firmware profile. Preserve explicit observe-only and hold-static authority states where benchmarking requires no actuation.                                                                                                   |
 | Dedicated candidate GNSS and oscillator inputs | Not implemented. D10 is reserved for external events; its isolated firmware capture backend is also not implemented.                                                                                                                                                                                                                  | Allocate independent candidate-GNSS PPS/metadata and candidate-oscillator count paths in the successor-board resource and pin plan. D10 remains the external-event input.                                                                                                                                            |
 | GNSS baud robustness                           | Completed multi-artifact characterization selected 115200 with zero recorded serial/ring/parser faults in 23,100 confirmed-online seconds at that rate. The fixed image implements a bounded 9600/115200 startup transaction and causal requalification.                                                                              | Closed for the installed PA1616S/Nano path. Re-run only a focused bootstrap and service-margin qualification after a board, UART, receiver, power or service-topology change. Do not repeat the full multi-baud programme by default.                                                                                |
 | Too many compile states                        | The current branch has already removed the firmware matrix and retains one fixed image and manifest.                                                                                                                                                                                                                                  | Closed as a reduction task. Preserve one supported production image. A board or component replacement becomes the next fixed image after selection; historical revisions remain the compatibility mechanism.                                                                                                         |
-| Too many regression tests                      | Historical programme and compatibility tests were materially removed. The current tree contains a much smaller current-only suite, but this task did not execute or time it.                                                                                                                                                          | Measure the Fast, Campaign and Release tiers once after Stage 0. Remove or consolidate only checks that duplicate a protected invariant, test retired behavior, or add no earlier detection. Do not optimize for an arbitrary test count.                                                                            |
-| Firmware/host contract mismatch fragility      | Current schemas, profiles, firmware formatters, command handlers, host parsers and validators protect many individual boundaries, but their agreement still depends on duplicated definitions and local checks. Field presence, names, widths, signedness, units, enum values, sentinel values, optionality and ordering can diverge. | Make complete bidirectional contract parity a Stage 0 platform outcome. Bind firmware and host to one versioned authority wherever practical, verify real producer-to-consumer records and commands, and treat an unexplained mismatch as a review-required diagnostic hold rather than plausible zero/default data. |
+| Too many regression tests                      | Historical programme and compatibility tests were materially removed. On 2026-09-10 the current Release tier completed 427 tests, including the current-process operational rehearsal, in 204 seconds; the subsequent exact fixed-image build and binary/resource audit passed. | Remove or consolidate only checks that duplicate a protected invariant, test retired behavior, or add no earlier detection. Do not optimize for an arbitrary test count. |
+| Firmware/host contract mismatch fragility      | A current machine-readable contract now owns record tags/versions/layouts, command forms, ACTIVE status vocabulary, queue frontiers and named cross-record relations. The fixed build embeds its exact digest; host pre-write admission requires it. Production command and response-classifier parity tests reproduce the latest escaped cases. | Keep complete bidirectional parity as a Stage 0 outcome. Complete the remaining contract-derived record boundary-value matrix. Any unexplained mismatch is a review-required diagnostic hold, never plausible zero/default data or host-invented abort authority. |
 | Better power supply                            | The current TPS62827 3.3 V rail has a documented DC budget and observed 3.292 V level, but ripple, transients, cold-start behavior and ground coupling remain unqualified.                                                                                                                                                            | Make the power/ground architecture part of successor-board selection and measure the current and proposed arrangements before attributing timing anomalies to power.                                                                                                                                                 |
 | Rewire on a different board configuration      | The current fixed target remains the Nano RP2040 Connect. The hardware roadmap identifies Raspberry Pi Pico 2/RP2350 as the likely successor direction, but no exact board is selected here.                                                                                                                                          | Select one successor board from an explicit pin, timing-resource, toolchain, power and operational comparison; then replace the fixed target rather than supporting two production boards indefinitely.                                                                                                              |
 | Breakbeam on D10                               | The D10 pin/channel/schema seam exists, but the fixed image explicitly records external-event capture as not implemented and not isolated.                                                                                                                                                                                            | Implement the hardware-owned D10 capture path, qualify its failure isolation, and build the exact sensor interface including emitter current limiting, receiver bias/pull-up, input protection/series resistance and declared output polarity.                                                                       |
@@ -145,6 +145,42 @@ unknown-enum, missing, duplicate, extra, truncated, reordered and version-
 mismatched cases. Derive these cases from the contract so exhaustive parity
 does not become another manually duplicated regression matrix.
 
+### Current implementation status — 2026-09-10
+
+`data_contracts/otis_firmware_host_contract_v1.json` is now the single current
+authority for record tags, schema versions and ordered layouts; command forms
+and argument bounds; the atomic ACTIVE status vocabulary; queue frontiers; and
+named cross-record relations. It generates the checked-in firmware header and
+is bound into the fixed build manifest, source identity and binary provenance.
+Firmware emits the contract ID and digest, and host pre-write admission requires
+an exact match.
+
+The production host now rejects unknown record tags, mismatched headers, wrong
+schema versions and incomplete or extra ACTIVE status fields before they can
+become state. It preserves the offending line and parsed attempt and reports the
+existing review-required diagnostic hold without granting host abort or teardown
+authority. Native parity checks compile the production firmware command/setup
+parsers and response transaction state machine and compare them with production
+host behavior.
+
+The latest retained discrepancy is understood and deterministically covered.
+The original 2026-09-09 attempt-3 offline replay classified response requests 2
+and 4 from each request's immediate response only. Firmware correctly also used
+the cumulative response from the first pre-response baseline. Host replay now
+uses the same stateful operands and rule order; replay of the unchanged retained
+ACT rows returns exact classifications for all four requests. The original seal
+remains historical review-required evidence until the repository's explicit
+provenance-linked superseding-analysis workflow is run; it is not rewritten in
+place.
+
+This closes the known recurring structural, command-grammar, timestamp-relation
+and response-state mismatch paths. The 2026-09-10 Release tier passed all 427
+current tests, including the current-process operational rehearsal, and the
+subsequent exact fixed firmware build and binary/resource audit passed. This
+does not by itself pass all of Stage 0: the remaining contract-derived record
+boundary-value matrix and the exact contingent-bundle freeze/rehearsal are still
+required by the gate below.
+
 ## Measurement language and claim discipline
 
 Use the following distinctions in contracts, reports and plots:
@@ -229,6 +265,12 @@ Pass when the exact current image builds, every current bidirectional contract
 shape and boundary value has producer-to-first-consumer parity, and the genuine
 operational rehearsal passes with exact identities and no ownerless serial
 interval. Stop and repair only the failed current boundary otherwise.
+
+Current status on 2026-09-10: the shared authority, runtime identity admission,
+strict mismatch hold and regressions for the known escapes are implemented.
+The Release tier, current-process operational rehearsal and fixed-image build
+pass. Stage 0 remains in progress pending the complete contract-derived record
+boundary-value matrix and freeze/rehearsal of the exact contingent bundle.
 
 ## Stage 1 — select the successor board, power and physical interface
 

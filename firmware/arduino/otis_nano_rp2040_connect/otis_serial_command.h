@@ -57,5 +57,9 @@ OtisSerialFrameEvent otis_serial_frame_collect(
 OtisSerialFrameValidation otis_serial_frame_validate(
     const OtisSerialFrameCollector *collector);
 OtisParsedSerialCommand otis_serial_command_parse(char *line);
+bool otis_serial_command_parse_nonzero_decimal_u32_fields(
+    const char *text, uint32_t *values, uint8_t count);
+bool otis_serial_command_parse_active_evidence(
+    const char *text, uint32_t *request_sequence, uint32_t *phase);
 
 #endif

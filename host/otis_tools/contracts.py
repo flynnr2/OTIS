@@ -7,6 +7,13 @@ import math
 import re
 
 from .time_domains import forward_progress, time_domain
+from .firmware_host_contract import (
+    RECORD_FIELDS as AUTHORITY_RECORD_FIELDS,
+    RECORD_SCHEMA_VERSIONS as AUTHORITY_RECORD_SCHEMA_VERSIONS,
+    RECORD_TYPES as AUTHORITY_RECORD_TYPES,
+    RECORDS as FIRMWARE_HOST_RECORDS,
+    integer_projection_matches,
+)
 
 
 CURRENT_PLANT_MODEL_PATH = (
@@ -557,6 +564,26 @@ CONTRACT_SCHEMA_VERSIONS = {
     "tight_deadband_decisions_v1": 1,
 }
 
+# Detailed validators remain explicit below. Their layouts and versions are
+# mechanically subordinate to the current firmware/host contract authority.
+if CONTRACT_FIELDS != {
+    name: list(fields) for name, fields in AUTHORITY_RECORD_FIELDS.items()
+}:
+    raise RuntimeError(
+        "host record layouts differ from otis_firmware_host_contract_v1"
+    )
+if CONTRACT_RECORD_TYPES != {
+    name: set(record_types)
+    for name, record_types in AUTHORITY_RECORD_TYPES.items()
+}:
+    raise RuntimeError(
+        "host record tags differ from otis_firmware_host_contract_v1"
+    )
+if CONTRACT_SCHEMA_VERSIONS != AUTHORITY_RECORD_SCHEMA_VERSIONS:
+    raise RuntimeError(
+        "host schema versions differ from otis_firmware_host_contract_v1"
+    )
+
 SEQUENCE_FIELDS = {
     "raw_events_v1": "event_seq",
     "count_observations_v1": "count_seq",
@@ -635,6 +662,44 @@ SESSION_FIELDS = {
     "active_hybrid_decisions_v2": "capture_session",
     "active_hybrid_maintenance_v1": "capture_session",
 }
+
+if SEQUENCE_FIELDS != {
+    name: str(record["sequence_field"])
+    for name, record in FIRMWARE_HOST_RECORDS.items()
+}:
+    raise RuntimeError(
+        "host sequence fields differ from otis_firmware_host_contract_v1"
+    )
+if TIMESTAMP_FIELDS != {
+    name: tuple(record["timestamp_fields"])
+    for name, record in FIRMWARE_HOST_RECORDS.items()
+}:
+    raise RuntimeError(
+        "host timestamp fields differ from otis_firmware_host_contract_v1"
+    )
+if DOMAIN_FIELDS != {
+    name: tuple(record["domain_fields"])
+    for name, record in FIRMWARE_HOST_RECORDS.items()
+}:
+    raise RuntimeError(
+        "host domain fields differ from otis_firmware_host_contract_v1"
+    )
+if CONTRACT_IMPLICIT_TIME_DOMAINS != {
+    name: str(record["implicit_time_domain"])
+    for name, record in FIRMWARE_HOST_RECORDS.items()
+    if record["implicit_time_domain"] is not None
+}:
+    raise RuntimeError(
+        "host implicit domains differ from otis_firmware_host_contract_v1"
+    )
+if SESSION_FIELDS != {
+    name: str(record["session_field"])
+    for name, record in FIRMWARE_HOST_RECORDS.items()
+    if record["session_field"] is not None
+}:
+    raise RuntimeError(
+        "host session fields differ from otis_firmware_host_contract_v1"
+    )
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
 VALID_EDGES = {"R", "F", "B"}
@@ -1698,6 +1763,22 @@ def _check_active_hybrid_decision_v2(
         "actual_dac_epoch",
     ):
         _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    try:
+        decision_ticks = int(row["decision_timestamp_ticks"], 10)
+        decision_seconds = int(row["decision_timestamp_s"], 10)
+    except (KeyError, TypeError, ValueError):
+        pass
+    else:
+        if not integer_projection_matches(
+            "active_decision_whole_seconds_from_exact_ticks",
+            source=decision_ticks,
+            target=decision_seconds,
+            source_domain=row.get("time_domain", ""),
+        ):
+            errors.append(
+                f"row {row_number}: decision_timestamp_s is not the declared "
+                "integer projection of decision_timestamp_ticks"
+            )
     for field_name in (
         "accumulated_edge_error_counts",
         "relative_phase_cycles",

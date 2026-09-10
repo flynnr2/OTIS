@@ -34,6 +34,8 @@ DIGEST_ALGORITHM = "sha256"
 EVIDENCE_INDEX_ID = "otis_evidence_index_v1"
 EVIDENCE_INDEX_SCHEMA_VERSION = 1
 FIRMWARE_PROVENANCE_STATUS_FIELDS = {
+    ("protocol", "contract_id"): "firmware_host_contract_id",
+    ("protocol", "contract_sha256"): "firmware_host_contract_sha256",
     ("firmware", "git_commit"): "git_commit",
     ("firmware", "source_state"): "source_state",
     ("firmware", "source_hash"): "source_sha256",
@@ -709,6 +711,7 @@ def _firmware_build_provenance(run_dir: Path, manifest) -> dict[str, str] | None
             "core_installed_sha256",
             "toolchain_installed_sha256",
             "invocation_id",
+            "firmware_host_contract_sha256",
         ):
             if not LOWER_HEX_64.fullmatch(values[field]):
                 raise EvidenceError(
@@ -724,6 +727,7 @@ def _firmware_build_provenance(run_dir: Path, manifest) -> dict[str, str] | None
             "invocation_id",
             "source_sha256",
             "source_state",
+            "firmware_host_contract_sha256",
         }:
             if not values[field]:
                 raise EvidenceError(
