@@ -1693,6 +1693,31 @@ class DeterministicPtyInstrument:
             for row in rows:
                 _write_all_fd(self.master_fd, _wire_row(fields, row))
 
+    def _emit_late_attach_boot_preamble(self) -> None:
+        lines = (
+            "0,prev_reset_reason=0x00000000",
+            "BOOT_WARN,v=1,key=serial_absent,wait_ms=250",
+            (
+                "BOOTDIAG,v=1,wd_reason=0x00000001,wd_s0=0x00000000,"
+                "wd_s1=0x00000000,wd_s2=0x0000000a,wd_s3=0x00010100,"
+                "wd_s4=0x00000000,wd_s5=0x4ff824a4,wd_s6=0x20042000,"
+                "wd_s7=0x00001b89,resets_reset=0x00000000,"
+                "resets_done=0x01ffffff,clk_ref_ctrl=0x00000002,"
+                "clk_ref_div=0x00000100,clk_sys_ctrl=0x00000001,"
+                "clk_sys_div=0x00000100,clk_peri_ctrl=0x00000840,"
+                "clk_peri_div=0x00000000,xosc_status=0x81001001,"
+                "rosc_status=0x81011000,rosc_ctrl=0x00fab000,"
+                "pll_sys_cs=0x80000001,pll_usb_cs=0x80000001,"
+                "vreg=0x000010b1,bod=0x00000091,chip_id=0x20002927,"
+                "platform=0x00000002,gitref_rp2040=0xe0c912e8"
+            ),
+        )
+        with self._lock:
+            _write_all_fd(
+                self.master_fd,
+                ("\r\n".join(lines) + "\r\n").encode("ascii"),
+            )
+
     def _emit_nonactive_health(self) -> None:
         self._emit_provenance_health()
         prewrite = canonical_prewrite_fixture(
@@ -2152,6 +2177,7 @@ class DeterministicPtyInstrument:
     def _run(self) -> None:
         buffer = bytearray()
         try:
+            self._emit_late_attach_boot_preamble()
             self._emit_initial_observations()
             while not self.stop_event.is_set():
                 readable, _, _ = select.select([self.master_fd], [], [], 0.05)

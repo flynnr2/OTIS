@@ -159,9 +159,11 @@ The production host now rejects unknown record tags, mismatched headers, wrong
 schema versions and incomplete or extra ACTIVE status fields before they can
 become state. It preserves the offending line and parsed attempt and reports the
 existing review-required diagnostic hold without granting host abort or teardown
-authority. Native parity checks compile the production firmware command/setup
-parsers and response transaction state machine and compare them with production
-host behavior.
+authority. The shared authority separately declares the typed, zero-authority
+boot-diagnostic envelopes and one bounded pre-protocol late-attach suffix; these
+remain raw evidence rather than being misclassified as canonical records. Native
+parity checks compile the production firmware command/setup parsers and response
+transaction state machine and compare them with production host behavior.
 
 The latest retained discrepancy is understood and deterministically covered.
 The original 2026-09-09 attempt-3 offline replay classified response requests 2
@@ -181,6 +183,14 @@ raw-emitter boundaries and native derived-record formatter checks. The earlier
 2026-09-10 baseline Release, current-process rehearsal and fixed build passed,
 but changed contract bytes require a fresh exact Release, build and contingent-
 bundle freeze/rehearsal before this revision may enter the bench.
+
+The first physical entry after strict unknown-tag admission on 2026-09-10
+correctly held before any command or DAC write because that authority had not
+yet declared the existing boot-diagnostic side channel. The raw carrier showed
+one late-attach `BOOT` suffix followed by complete `BOOT_WARN` and `BOOTDIAG`
+records. The narrow repair types those envelopes, retains them as raw-only
+evidence, and places the exact sequence at the start of the genuine process
+rehearsal. It does not weaken unknown canonical-record handling.
 
 ## Measurement language and claim discipline
 

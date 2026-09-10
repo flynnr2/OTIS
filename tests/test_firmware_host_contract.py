@@ -32,6 +32,8 @@ from host.otis_tools.firmware_host_contract import (
     CONTRACT_SHA256,
     FRONTIERS,
     ACTIVE_STATUS_VALUE_WIRE_TYPES,
+    RAW_ONLY_DIAGNOSTIC_FORMS,
+    RAW_ONLY_DIAGNOSTIC_RECORD_TYPES,
     RECORD_FIELDS,
     RECORD_FIELD_WIRE_TYPES,
     RECORD_SCHEMA_VERSIONS,
@@ -40,6 +42,7 @@ from host.otis_tools.firmware_host_contract import (
     SIMPLE_COMMANDS,
     WIRE_TYPES,
     active_status_value_error,
+    validate_raw_only_diagnostic,
     validate_record_wire_values,
     verify_generated_cpp_header,
     wire_value_error,
@@ -208,6 +211,12 @@ def test_contract_authority_is_current_complete_and_deterministically_generated(
     )
     assert len(RECORD_FIELDS) == 16
     assert sum(len(fields) for fields in RECORD_FIELDS.values()) == 418
+    assert RAW_ONLY_DIAGNOSTIC_RECORD_TYPES == {
+        "BOOT",
+        "BOOTDIAG",
+        "BOOT_FATAL",
+        "BOOT_WARN",
+    }
     assert {
         name: set(field_types)
         for name, field_types in RECORD_FIELD_WIRE_TYPES.items()
@@ -264,6 +273,68 @@ def test_every_active_status_value_has_a_contract_derived_wire_type() -> None:
         )
         is None
     )
+
+
+def test_raw_only_boot_diagnostics_are_typed_but_never_canonical_records(
+    tmp_path: Path,
+) -> None:
+    boot = (
+        "BOOT,v=1,boot_count=1,phase=run_mode,prev_valid=1,"
+        "prev_phase=run_mode,prev_fatal=none,reset_reason=0x00000000,"
+        "watchdog=0,watchdog_enable=0,failure_count=0,safe_mode=0,"
+        "prev_reset_reason=0x00000000"
+    )
+    warnings = (
+        "BOOT_WARN,v=1,key=serial_absent,wait_ms=250",
+        "BOOT_WARN,v=1,key=safe_mode,reason=repeated_boot_failure,"
+        "failure_count=3,threshold=3,prev_phase=fatal,prev_fatal=boot_fatal",
+    )
+    fatal = "BOOT_FATAL,v=1,fatal=boot_fatal,phase=fatal,boot_count=2,failure_count=1"
+    diag_fields = RAW_ONLY_DIAGNOSTIC_FORMS["BOOTDIAG"][0][0]
+    diag = "BOOTDIAG," + ",".join(
+        f"{field}={'1' if field == 'v' else '0x00000000'}"
+        for field in diag_fields
+    )
+    lines = (boot, *warnings, fatal, diag)
+    for line in lines:
+        assert validate_raw_only_diagnostic(next(csv.reader([line]))) == ()
+
+    complete_boot_errors: list[str] = []
+    with CsvRecordSplitter(
+        {"health_v1": tmp_path / "complete_boot_health.csv"},
+        on_parser_error=complete_boot_errors.append,
+    ) as splitter:
+        assert splitter.process_line(boot) is None
+        assert splitter.last_disposition == "raw_only_diagnostic"
+        assert splitter.process_line(
+            boot.replace("BOOT,v=1", "BOOT,v=2")
+        ) is None
+        assert splitter.last_disposition == "error"
+        assert "BOOT.v must be one of ['1']" in complete_boot_errors[-1]
+
+    errors: list[str] = []
+    target = tmp_path / "health.csv"
+    with CsvRecordSplitter(
+        {"health_v1": target}, on_parser_error=errors.append
+    ) as splitter:
+        assert splitter.process_line(
+            "0,prev_reset_reason=0x00000000"
+        ) is None
+        assert splitter.last_disposition == "late_attach_boot_fragment"
+        for line in lines:
+            assert splitter.process_line(line) is None
+            assert splitter.last_disposition == "raw_only_diagnostic"
+        assert errors == []
+        assert splitter.process_line("BOOT_WARN,v=2,key=serial_absent,wait_ms=250") is None
+        assert "BOOT_WARN.v must be one of ['1']" in errors[-1]
+        assert splitter.process_line(
+            "0,prev_reset_reason=0x00000000"
+        ) is None
+        assert "unknown record type" in errors[-1]
+
+    assert target.read_text(encoding="utf-8").splitlines() == [
+        ",".join(RECORD_FIELDS["health_v1"])
+    ]
 
 
 def test_every_legal_record_shape_crosses_the_live_splitter(tmp_path: Path) -> None:

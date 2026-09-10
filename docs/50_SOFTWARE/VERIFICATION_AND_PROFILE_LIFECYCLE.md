@@ -56,6 +56,8 @@ Current verification fails when:
 - a current record tag, schema version, ordered layout, ACTIVE status
   generation, command grammar, queue frontier or declared cross-field relation
   differs across firmware and host;
+- a documented raw-only boot diagnostic or bounded late-attach suffix is
+  misclassified as a canonical record or unknown-tag discrepancy;
 - a retired CX318-CX323 identity appears in executable code, configuration, a
   filename, schema, profile, or test;
 - CX317 is used as a software/campaign identity rather than the physical
@@ -73,8 +75,8 @@ Current verification fails when:
 ## Bench boundary
 
 These tiers touch no hardware and do not establish bench readiness. Current
-activation remains deliberately fail-closed until a genuine process-level
-operational-path rehearsal producer exists. Bench work then requires explicit
-operator authority, one immutable campaign bundle, a rehearsal of that exact
-bundle, exact firmware identity, singular serial ownership, and independent
-bounded abort delivery.
+activation remains deliberately fail-closed unless it binds a passing,
+registered result from the genuine process-level operational-path rehearsal.
+Bench work requires explicit operator authority, one immutable campaign bundle,
+a rehearsal of that exact bundle, exact firmware identity, singular serial
+ownership, and independent bounded abort delivery.

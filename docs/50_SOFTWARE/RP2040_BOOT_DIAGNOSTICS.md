@@ -126,6 +126,16 @@ pending. When USB serial later becomes ready, firmware first emits a line
 terminator to close any prefix retained by the USB core, then emits the banner
 once from a fresh record boundary.
 
+The current firmware/host authority types all four boot-diagnostic envelopes as
+raw-only evidence. The live host validates their version, ordered field names,
+and wire encodings, but never stores them as canonical CSV observations or
+allows them to influence setup, control, abort, or terminal decisions. A late
+host can begin receiving within the compact `BOOT` summary; exactly one bounded
+suffix ending in a valid `prev_reset_reason=0xNNNNNNNN` field is admissible only
+before the first recognized protocol line and remains visible in the raw log.
+Any later, repeated, malformed, or otherwise unknown line is a protocol
+discrepancy hold.
+
 ## Interpretation Limits
 
 `watchdog_hw->reason == 0` generally indicates a hardware or power-style reset

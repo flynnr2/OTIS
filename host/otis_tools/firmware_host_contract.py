@@ -169,6 +169,107 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
                 raise FirmwareHostContractError(
                     f"wire_types.{name} has an invalid hexadecimal range"
                 )
+            if (
+                maximum >= 16**digits
+                or not isinstance(wire_type.get("uppercase"), bool)
+            ):
+                raise FirmwareHostContractError(
+                    f"wire_types.{name} exceeds its hexadecimal encoding"
+                )
+
+    raw_diagnostics = _mapping(
+        root.get("raw_only_diagnostics"), "raw_only_diagnostics"
+    )
+    if raw_diagnostics.get("disposition") != (
+        "raw_evidence_only_never_control_or_terminal"
+    ):
+        raise FirmwareHostContractError(
+            "raw-only diagnostics must remain zero-authority raw evidence"
+        )
+    _string(
+        raw_diagnostics.get("first_consumer"),
+        "raw_only_diagnostics.first_consumer",
+    )
+    late_fragment = _mapping(
+        raw_diagnostics.get("late_attach_fragment"),
+        "raw_only_diagnostics.late_attach_fragment",
+    )
+    maximum_fragment_bytes = late_fragment.get("maximum_bytes")
+    if (
+        late_fragment.get(
+            "admissible_before_first_recognized_protocol_line_only"
+        )
+        is not True
+        or not isinstance(maximum_fragment_bytes, int)
+        or maximum_fragment_bytes <= 0
+        or late_fragment.get("wire_type") not in wire_types
+    ):
+        raise FirmwareHostContractError(
+            "raw-only late-attach fragment contract is malformed"
+        )
+    _string(
+        late_fragment.get("terminal_field"),
+        "raw_only_diagnostics.late_attach_fragment.terminal_field",
+    )
+    diagnostic_records = _mapping(
+        raw_diagnostics.get("record_types"),
+        "raw_only_diagnostics.record_types",
+    )
+    if not diagnostic_records:
+        raise FirmwareHostContractError(
+            "raw-only diagnostics must declare at least one record type"
+        )
+    for record_type, raw_diagnostic in diagnostic_records.items():
+        _string(record_type, "raw-only diagnostic record type")
+        diagnostic = _mapping(
+            raw_diagnostic,
+            f"raw_only_diagnostics.record_types.{record_type}",
+        )
+        forms = diagnostic.get("forms")
+        if not isinstance(forms, list) or not forms:
+            raise FirmwareHostContractError(
+                f"raw-only diagnostic {record_type} must declare forms"
+            )
+        seen_forms: set[tuple[str, ...]] = set()
+        for index, raw_form in enumerate(forms):
+            label = (
+                f"raw_only_diagnostics.record_types.{record_type}.forms[{index}]"
+            )
+            form = _mapping(raw_form, label)
+            fields = _strings(form.get("fields"), f"{label}.fields")
+            if fields[0] != "v" or fields in seen_forms:
+                raise FirmwareHostContractError(
+                    f"{label} must begin with v and have a unique layout"
+                )
+            seen_forms.add(fields)
+            groups = _mapping(
+                form.get("field_wire_types"),
+                f"{label}.field_wire_types",
+            )
+            unknown_types = set(groups) - set(wire_types)
+            if unknown_types:
+                raise FirmwareHostContractError(
+                    f"{label} uses unknown wire types: {sorted(unknown_types)}"
+                )
+            typed_fields = [
+                field
+                for wire_type, raw_fields in groups.items()
+                for field in _strings(raw_fields, f"{label}.{wire_type}")
+            ]
+            duplicates = sorted(
+                {
+                    field
+                    for field in typed_fields
+                    if typed_fields.count(field) > 1
+                }
+            )
+            if duplicates or set(typed_fields) != set(fields):
+                raise FirmwareHostContractError(
+                    f"{label} wire types must cover its fields exactly; "
+                    f"duplicates={duplicates}, "
+                    f"missing={sorted(set(fields) - set(typed_fields))}, "
+                    f"extra={sorted(set(typed_fields) - set(fields))}"
+                )
 
     records = _mapping(root.get("records"), "records")
     seen_tags: set[str] = set()
@@ -431,6 +532,26 @@ RECORD_TYPE_TO_CONTRACT = {
     for record_type in record_types
 }
 WIRE_TYPES = CONTRACT["wire_types"]
+RAW_ONLY_DIAGNOSTICS = CONTRACT["raw_only_diagnostics"]
+RAW_ONLY_DIAGNOSTIC_RECORD_TYPES = frozenset(
+    RAW_ONLY_DIAGNOSTICS["record_types"]
+)
+RAW_ONLY_DIAGNOSTIC_FORMS = {
+    record_type: tuple(
+        (
+            tuple(form["fields"]),
+            {
+                field: wire_type
+                for wire_type, fields in form["field_wire_types"].items()
+                for field in fields
+            },
+        )
+        for form in diagnostic["forms"]
+    )
+    for record_type, diagnostic in RAW_ONLY_DIAGNOSTICS[
+        "record_types"
+    ].items()
+}
 RECORD_FIELD_WIRE_TYPES = {
     name: {
         field: wire_type
@@ -621,6 +742,67 @@ def validate_record_wire_values(
         if error is not None:
             errors.append(f"{contract_name}.{field_name} {error}; got {value!r}")
     return tuple(errors)
+
+
+def validate_raw_only_diagnostic(values: list[str]) -> tuple[str, ...]:
+    """Validate one documented zero-authority boot diagnostic line."""
+
+    if not values or values[0] not in RAW_ONLY_DIAGNOSTIC_RECORD_TYPES:
+        return ("unknown raw-only diagnostic record type",)
+    parsed_fields: list[tuple[str, str]] = []
+    for token in values[1:]:
+        field_name, separator, value = token.partition("=")
+        if not separator or not field_name or value == "":
+            return (
+                f"{values[0]} fields must use non-empty name=value tokens",
+            )
+        parsed_fields.append((field_name, value))
+    field_names = tuple(field for field, _ in parsed_fields)
+    matching = [
+        field_types
+        for fields, field_types in RAW_ONLY_DIAGNOSTIC_FORMS[values[0]]
+        if fields == field_names
+    ]
+    if not matching:
+        return (f"{values[0]} field layout is not declared",)
+    field_types = matching[0]
+    errors: list[str] = []
+    for field_name, value in parsed_fields:
+        error = _wire_type_value_error(field_types[field_name], value)
+        if error is not None:
+            errors.append(
+                f"{values[0]}.{field_name} {error}; got {value!r}"
+            )
+    return tuple(errors)
+
+
+def is_admissible_late_attach_fragment(
+    value: str,
+    *,
+    recognized_protocol_line_seen: bool,
+    prior_fragment_seen: bool,
+) -> bool:
+    """Recognize the one bounded BOOT suffix closed by the late-attach CRLF."""
+
+    if recognized_protocol_line_seen or prior_fragment_seen:
+        return False
+    contract = RAW_ONLY_DIAGNOSTICS["late_attach_fragment"]
+    try:
+        encoded = value.encode("ascii")
+    except UnicodeEncodeError:
+        return False
+    if not encoded or len(encoded) > int(contract["maximum_bytes"]):
+        return False
+    prefix, separator, terminal = value.rpartition(",")
+    if not separator or not prefix:
+        return False
+    field_name, equals, field_value = terminal.partition("=")
+    if not equals or field_name != contract["terminal_field"]:
+        return False
+    return (
+        _wire_type_value_error(str(contract["wire_type"]), field_value)
+        is None
+    )
 
 
 def integer_projection_matches(

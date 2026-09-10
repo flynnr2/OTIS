@@ -8,6 +8,206 @@
     "unknown_record_type": "protocol_discrepancy_hold",
     "unknown_schema_version": "protocol_discrepancy_hold"
   },
+  "raw_only_diagnostics": {
+    "disposition": "raw_evidence_only_never_control_or_terminal",
+    "first_consumer": "capture_device.raw_serial_log",
+    "late_attach_fragment": {
+      "admissible_before_first_recognized_protocol_line_only": true,
+      "maximum_bytes": 512,
+      "terminal_field": "prev_reset_reason",
+      "wire_type": "hex_uint32"
+    },
+    "record_types": {
+      "BOOT": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "atom": [
+                "phase",
+                "prev_phase",
+                "prev_fatal"
+              ],
+              "bool01": [
+                "prev_valid",
+                "watchdog",
+                "watchdog_enable",
+                "safe_mode"
+              ],
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "hex_uint32": [
+                "reset_reason",
+                "prev_reset_reason"
+              ],
+              "uint32": [
+                "boot_count",
+                "failure_count"
+              ]
+            },
+            "fields": [
+              "v",
+              "boot_count",
+              "phase",
+              "prev_valid",
+              "prev_phase",
+              "prev_fatal",
+              "reset_reason",
+              "watchdog",
+              "watchdog_enable",
+              "failure_count",
+              "safe_mode",
+              "prev_reset_reason"
+            ]
+          }
+        ]
+      },
+      "BOOTDIAG": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "hex_uint32": [
+                "wd_reason",
+                "wd_s0",
+                "wd_s1",
+                "wd_s2",
+                "wd_s3",
+                "wd_s4",
+                "wd_s5",
+                "wd_s6",
+                "wd_s7",
+                "resets_reset",
+                "resets_done",
+                "clk_ref_ctrl",
+                "clk_ref_div",
+                "clk_sys_ctrl",
+                "clk_sys_div",
+                "clk_peri_ctrl",
+                "clk_peri_div",
+                "xosc_status",
+                "rosc_status",
+                "rosc_ctrl",
+                "pll_sys_cs",
+                "pll_usb_cs",
+                "vreg",
+                "bod",
+                "chip_id",
+                "platform",
+                "gitref_rp2040"
+              ]
+            },
+            "fields": [
+              "v",
+              "wd_reason",
+              "wd_s0",
+              "wd_s1",
+              "wd_s2",
+              "wd_s3",
+              "wd_s4",
+              "wd_s5",
+              "wd_s6",
+              "wd_s7",
+              "resets_reset",
+              "resets_done",
+              "clk_ref_ctrl",
+              "clk_ref_div",
+              "clk_sys_ctrl",
+              "clk_sys_div",
+              "clk_peri_ctrl",
+              "clk_peri_div",
+              "xosc_status",
+              "rosc_status",
+              "rosc_ctrl",
+              "pll_sys_cs",
+              "pll_usb_cs",
+              "vreg",
+              "bod",
+              "chip_id",
+              "platform",
+              "gitref_rp2040"
+            ]
+          }
+        ]
+      },
+      "BOOT_FATAL": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "atom": [
+                "fatal",
+                "phase"
+              ],
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "boot_count",
+                "failure_count"
+              ]
+            },
+            "fields": [
+              "v",
+              "fatal",
+              "phase",
+              "boot_count",
+              "failure_count"
+            ]
+          }
+        ]
+      },
+      "BOOT_WARN": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "atom": [
+                "key"
+              ],
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "wait_ms"
+              ]
+            },
+            "fields": [
+              "v",
+              "key",
+              "wait_ms"
+            ]
+          },
+          {
+            "field_wire_types": {
+              "atom": [
+                "key",
+                "reason",
+                "prev_phase",
+                "prev_fatal"
+              ],
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "failure_count",
+                "threshold"
+              ]
+            },
+            "fields": [
+              "v",
+              "key",
+              "reason",
+              "failure_count",
+              "threshold",
+              "prev_phase",
+              "prev_fatal"
+            ]
+          }
+        ]
+      }
+    }
+  },
   "wire_types": {
     "atom": {
       "kind": "escaped_atom",
@@ -32,6 +232,12 @@
         "1"
       ]
     },
+    "diagnostic_schema_v1": {
+      "kind": "enum",
+      "values": [
+        "1"
+      ]
+    },
     "hex_uint16": {
       "digits": 4,
       "kind": "hex_integer",
@@ -39,6 +245,14 @@
       "minimum": 0,
       "prefix": "0x",
       "uppercase": true
+    },
+    "hex_uint32": {
+      "digits": 8,
+      "kind": "hex_integer",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "prefix": "0x",
+      "uppercase": false
     },
     "int128": {
       "kind": "integer",

@@ -23,12 +23,19 @@ build identity and resource contract are in
 
 ## Firmware/host attachment authority
 
-The wire contract is exact-current-only. It controls record tags, versions and
-ordered layouts, command forms and ranges, ACTIVE snapshot vocabulary, queue
-frontiers, and named cross-record relations. The firmware binary carries the
-canonical contract digest and emits it as `protocol.contract_id` and
+The wire contract is exact-current-only. It controls record tags, versions,
+ordered layouts and field encodings; command forms and ranges; typed ACTIVE
+snapshot values; raw-only boot-diagnostic envelopes; queue frontiers; and named
+cross-record relations. The firmware binary carries the canonical contract
+digest and emits it as `protocol.contract_id` and
 `protocol.contract_sha256`. A host must observe an exact match before setup or
 arm authority is available.
+
+`BOOT`, `BOOT_WARN`, `BOOT_FATAL`, and `BOOTDIAG` are typed raw-only diagnostic
+envelopes, not canonical measurement records. One bounded late-attachment
+suffix from `BOOT` is admissible before the first recognized protocol line.
+These lines remain preserved in raw serial evidence and cannot affect
+measurement, setup, regulation, actuation, abort, or a run terminal.
 
 Unknown, missing, extra, malformed or out-of-version protocol data is retained
 as raw evidence and enters a review-required diagnostic hold. Capture and the
