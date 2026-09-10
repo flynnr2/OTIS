@@ -73,7 +73,7 @@ A deterministic C++ regression reproduces the exact fault geometry: captured
 boundary 58,841,999,878 us with foreground uptime already at 58,842 s. It
 asserts that the active decision retains the exact ticks and projects its
 whole-second field to 58,841. The direct regression, adjacent active-contract
-tests and full real-process no-hardware operational rehearsal test pass: 12
+tests and full real-process no-hardware operational rehearsal test pass: 11
 focused tests total.
 
 The exact affected Arduino Nano RP2040 Connect 133 MHz profile also builds with
@@ -81,7 +81,7 @@ verified binary contract. The unflashed repair build has firmware-source input
 SHA-256
 `bd3db13d7d61b30357173b758e586188dd9f0edff8a1fb3a40561cad90e1c2c6`
 and UF2 SHA-256
-`2edca48b96ddacc9bdeef6f5cee166476130ea866f1305d313aaea787b9d4fc3`.
-Because the repair remains an uncommitted working-tree change, it is not yet a
-clean frozen campaign bundle and grants no flash, reset, retry or renewed bench
-authority.
+`d9d758584ab6f46924dc56ed6ebac5e05e41741f55d981a9dddf9422c302c009`.
+That artifact is cleanly bound to repair commit
+`56e71c3d144f4eec017a24e9a1181e4c74c45358`. It is not a frozen campaign
+bundle and grants no flash, reset, retry or renewed bench authority.
