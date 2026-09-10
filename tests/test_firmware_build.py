@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -62,6 +63,44 @@ def test_builder_rejects_a_malformed_deterministic_session_before_build(
             arduino_cli="must-not-be-run",
             build_session_id="NOT-HEX",
         )
+
+
+def test_git_source_state_is_scoped_to_operational_inputs(tmp_path: Path) -> None:
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            ["git", *arguments],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git("init")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "OTIS test")
+    firmware = tmp_path / "firmware.cpp"
+    documentation = tmp_path / "notes.md"
+    firmware.write_text("int main() { return 0; }\n", encoding="utf-8")
+    documentation.write_text("initial notes\n", encoding="utf-8")
+    git("add", "firmware.cpp", "notes.md")
+    git("commit", "-m", "fixture")
+
+    documentation.write_text("edited notes\n", encoding="utf-8")
+    assert build_firmware._git_identity(
+        tmp_path, pathspecs=("firmware.cpp",)
+    )[1] == "clean"
+    assert build_firmware._git_identity(tmp_path)[1] == "dirty"
+
+    firmware.write_text("int main() { return 1; }\n", encoding="utf-8")
+    assert build_firmware._git_identity(
+        tmp_path, pathspecs=("firmware.cpp",)
+    )[1] == "dirty"
+
+
+def test_source_input_inventory_includes_the_binding_implementation() -> None:
+    paths = set(build_firmware.source_input_paths(build_firmware.load_manifest()))
+    assert build_firmware.FIRMWARE_HOST_BINDING_HELPER.resolve() in paths
+    assert not any(path.suffix == ".md" for path in paths)
 
 
 def test_builder_generates_every_current_semantic_identity_from_bound_bytes() -> None:

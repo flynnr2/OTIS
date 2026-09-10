@@ -26,6 +26,15 @@ session identity binds the generated header to the compiler invocation. The
 firmware has no fallback commit, board, configuration, alternate manifest, or
 profile selector.
 
+Firmware `source_state` describes only the operational input set whose exact
+bytes can affect the image: sketch sources, fixed manifest and builder,
+firmware/host binding helper and contract, profiles, and schemas. Repository-
+wide clean/dirty state is retained separately as non-authoritative build
+context. A documentation-only or otherwise unrelated working-tree edit must
+not change the firmware binary, its invocation identity, or deterministic
+reproduction verdict. An uncommitted change to any operational input remains a
+hard authorization failure even though its current bytes have an exact hash.
+
 Installed-tree hashes deliberately exclude package-manager metadata
 (`installed.json`), Finder metadata, and generated Python bytecode caches.
 Those files are not release inputs and vary with installation/runtime context;

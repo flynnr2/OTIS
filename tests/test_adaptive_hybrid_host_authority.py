@@ -764,6 +764,29 @@ def test_deterministic_reproduction_requires_exact_provenance(
         )
 
 
+def test_reproduction_checkout_gate_uses_only_operational_source_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    revision = "a" * 40
+    source = {"git_commit": revision, "source_state": "clean"}
+    monkeypatch.setattr(bundle_module.build_firmware, "load_manifest", lambda: {})
+    monkeypatch.setattr(
+        bundle_module.build_firmware,
+        "capture_source_state",
+        lambda _manifest: dict(source),
+    )
+
+    bundle_module._require_current_clean_checkout(revision)
+
+    source["source_state"] = "dirty"
+    with pytest.raises(ValueError, match="clean operational inputs"):
+        bundle_module._require_current_clean_checkout(revision)
+
+    source["source_state"] = "clean"
+    with pytest.raises(ValueError, match="clean operational inputs"):
+        bundle_module._require_current_clean_checkout("b" * 40)
+
+
 def test_bundle_rejects_self_consistent_authority_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
