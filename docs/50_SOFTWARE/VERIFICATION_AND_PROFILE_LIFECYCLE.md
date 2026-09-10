@@ -56,7 +56,7 @@ Current verification fails when:
 - a current record tag, schema version, ordered layout, ACTIVE status
   generation, command grammar, queue frontier or declared cross-field relation
   differs across firmware and host;
-- a documented raw-only boot diagnostic or bounded late-attach suffix is
+- a documented raw-only boot diagnostic or bounded late-attach fragment is
   misclassified as a canonical record or unknown-tag discrepancy;
 - a retired CX318-CX323 identity appears in executable code, configuration, a
   filename, schema, profile, or test;

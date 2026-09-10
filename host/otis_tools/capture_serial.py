@@ -107,19 +107,19 @@ class CsvRecordSplitter:
                 return None
             self.last_disposition = "raw_only_diagnostic"
             return None
-        if is_admissible_late_attach_fragment(
-            clean,
-            recognized_protocol_line_seen=self.recognized_protocol_line_seen,
-            prior_fragment_seen=self.late_attach_fragment_seen,
-        ):
-            self.late_attach_fragment_seen = True
-            self.last_disposition = "late_attach_boot_fragment"
-            return None
         contract = RECORD_CONTRACTS.get(record_type)
         if contract is None:
             if record_type == "record_type" and tuple(row) in CONTRACT_HEADER_ROWS:
                 self.recognized_protocol_line_seen = True
                 self.last_disposition = "contract_header"
+                return None
+            if is_admissible_late_attach_fragment(
+                clean,
+                recognized_protocol_line_seen=self.recognized_protocol_line_seen,
+                prior_fragment_seen=self.late_attach_fragment_seen,
+            ):
+                self.late_attach_fragment_seen = True
+                self.last_disposition = "late_attach_boot_fragment"
                 return None
             self.last_disposition = "error"
             if self.on_parser_error is not None:

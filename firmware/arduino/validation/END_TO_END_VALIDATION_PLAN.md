@@ -38,8 +38,8 @@ with deterministic and accelerated evidence. The rehearsal must cover
 progressive commands and acknowledgements, repeated requests, the first
 dependent decision, transport obstruction, priority abort delivery,
 serial-owner handoff without an ownerless interval, clean stop, analyzer replay,
-and evidence sealing. It must begin with the documented late-attachment boot
-suffix and typed raw-only boot diagnostics so the strict unknown-tag hold is
+and evidence sealing. It must begin with the documented late-attachment carrier
+fragment and typed raw-only boot diagnostics so the strict unknown-tag hold is
 exercised at the same pre-authority boundary seen on the physical carrier.
 
 The rehearsal report must bind the exact source, firmware/host contract, fixed

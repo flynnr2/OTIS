@@ -11,7 +11,7 @@ The contract declares:
 
 - the carrier framing and mismatch disposition;
 - the zero-authority `BOOT`, `BOOT_WARN`, `BOOT_FATAL`, and `BOOTDIAG`
-  raw-only envelopes and one bounded late-attach `BOOT` suffix;
+  raw-only envelopes and one bounded late-attach carrier fragment;
 - every current record tag, schema version, ordered field layout, sequence,
   timestamp, domain and session field, and first host consumer;
 - every record field's canonical wire encoding, storage width, signedness,
@@ -73,9 +73,9 @@ non-canonical or out-of-range field value, invalid ACTIVE generation, or failed
 declared relation is a protocol discrepancy. The only non-canonical record tags
 admitted without a hold are the contract-declared boot diagnostics. They remain
 raw evidence and have no measurement, control, abort, or terminal authority. A
-single bounded suffix ending in a valid `prev_reset_reason` field is also
-admissible only before the first recognized protocol line, because late USB
-attachment may begin inside the preceding `BOOT` summary. The host must:
+single bounded, uninterpreted carrier fragment is also admissible only before
+the first recognized protocol line, because late USB attachment may begin at
+any byte within a pending boot diagnostic. The host must:
 
 1. preserve the raw bytes and parsed attempt;
 2. keep the sole capture owner and canonical acquisition running;

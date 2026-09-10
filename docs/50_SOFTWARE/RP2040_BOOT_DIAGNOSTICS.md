@@ -130,11 +130,12 @@ The current firmware/host authority types all four boot-diagnostic envelopes as
 raw-only evidence. The live host validates their version, ordered field names,
 and wire encodings, but never stores them as canonical CSV observations or
 allows them to influence setup, control, abort, or terminal decisions. A late
-host can begin receiving within the compact `BOOT` summary; exactly one bounded
-suffix ending in a valid `prev_reset_reason=0xNNNNNNNN` field is admissible only
-before the first recognized protocol line and remains visible in the raw log.
-Any later, repeated, malformed, or otherwise unknown line is a protocol
-discrepancy hold.
+host can begin receiving at any byte within a pending boot diagnostic; exactly
+one bounded, uninterpreted carrier fragment is admissible only before the first
+recognized protocol line and remains visible in the raw log. A complete
+diagnostic that begins at its tag still takes the typed validation path. Any
+later, repeated, malformed, or otherwise unknown line is a protocol discrepancy
+hold.
 
 ## Interpretation Limits
 

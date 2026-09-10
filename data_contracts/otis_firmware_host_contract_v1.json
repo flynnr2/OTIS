@@ -13,9 +13,8 @@
     "first_consumer": "capture_device.raw_serial_log",
     "late_attach_fragment": {
       "admissible_before_first_recognized_protocol_line_only": true,
-      "maximum_bytes": 512,
-      "terminal_field": "prev_reset_reason",
-      "wire_type": "hex_uint32"
+      "content": "bounded_uninterpreted_carrier_fragment",
+      "maximum_bytes": 1024
     },
     "record_types": {
       "BOOT": {

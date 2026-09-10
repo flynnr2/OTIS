@@ -160,7 +160,7 @@ schema versions and incomplete or extra ACTIVE status fields before they can
 become state. It preserves the offending line and parsed attempt and reports the
 existing review-required diagnostic hold without granting host abort or teardown
 authority. The shared authority separately declares the typed, zero-authority
-boot-diagnostic envelopes and one bounded pre-protocol late-attach suffix; these
+boot-diagnostic envelopes and one bounded pre-protocol late-attach fragment; these
 remain raw evidence rather than being misclassified as canonical records. Native
 parity checks compile the production firmware command/setup parsers and response
 transaction state machine and compare them with production host behavior.
@@ -188,9 +188,12 @@ The first physical entry after strict unknown-tag admission on 2026-09-10
 correctly held before any command or DAC write because that authority had not
 yet declared the existing boot-diagnostic side channel. The raw carrier showed
 one late-attach `BOOT` suffix followed by complete `BOOT_WARN` and `BOOTDIAG`
-records. The narrow repair types those envelopes, retains them as raw-only
-evidence, and places the exact sequence at the start of the genuine process
-rehearsal. It does not weaken unknown canonical-record handling.
+records. A second physical entry attached within `BOOTDIAG`, proving that the
+fragment boundary is transport-relative rather than record-specific. The
+narrow repair admits exactly one bounded, uninterpreted pre-protocol carrier
+fragment, retains it as raw-only evidence, and places the longer observed
+sequence at the start of the genuine process rehearsal. Complete diagnostic
+tags remain typed and unknown canonical-record handling remains strict.
 
 ## Measurement language and claim discipline
 

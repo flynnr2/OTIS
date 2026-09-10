@@ -32,9 +32,10 @@ digest and emits it as `protocol.contract_id` and
 arm authority is available.
 
 `BOOT`, `BOOT_WARN`, `BOOT_FATAL`, and `BOOTDIAG` are typed raw-only diagnostic
-envelopes, not canonical measurement records. One bounded late-attachment
-suffix from `BOOT` is admissible before the first recognized protocol line.
-These lines remain preserved in raw serial evidence and cannot affect
+envelopes, not canonical measurement records. One bounded, uninterpreted
+late-attachment carrier fragment is admissible before the first recognized
+protocol line because attachment may begin at any byte of a pending boot
+diagnostic. These lines remain preserved in raw serial evidence and cannot affect
 measurement, setup, regulation, actuation, abort, or a run terminal.
 
 Unknown, missing, extra, malformed or out-of-version protocol data is retained

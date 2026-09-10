@@ -202,15 +202,12 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
         is not True
         or not isinstance(maximum_fragment_bytes, int)
         or maximum_fragment_bytes <= 0
-        or late_fragment.get("wire_type") not in wire_types
+        or late_fragment.get("content")
+        != "bounded_uninterpreted_carrier_fragment"
     ):
         raise FirmwareHostContractError(
             "raw-only late-attach fragment contract is malformed"
         )
-    _string(
-        late_fragment.get("terminal_field"),
-        "raw_only_diagnostics.late_attach_fragment.terminal_field",
-    )
     diagnostic_records = _mapping(
         raw_diagnostics.get("record_types"),
         "raw_only_diagnostics.record_types",
@@ -782,7 +779,7 @@ def is_admissible_late_attach_fragment(
     recognized_protocol_line_seen: bool,
     prior_fragment_seen: bool,
 ) -> bool:
-    """Recognize the one bounded BOOT suffix closed by the late-attach CRLF."""
+    """Admit one bounded uninterpreted line fragment at carrier attachment."""
 
     if recognized_protocol_line_seen or prior_fragment_seen:
         return False
@@ -791,18 +788,7 @@ def is_admissible_late_attach_fragment(
         encoded = value.encode("ascii")
     except UnicodeEncodeError:
         return False
-    if not encoded or len(encoded) > int(contract["maximum_bytes"]):
-        return False
-    prefix, separator, terminal = value.rpartition(",")
-    if not separator or not prefix:
-        return False
-    field_name, equals, field_value = terminal.partition("=")
-    if not equals or field_name != contract["terminal_field"]:
-        return False
-    return (
-        _wire_type_value_error(str(contract["wire_type"]), field_value)
-        is None
-    )
+    return bool(encoded) and len(encoded) <= int(contract["maximum_bytes"])
 
 
 def integer_projection_matches(

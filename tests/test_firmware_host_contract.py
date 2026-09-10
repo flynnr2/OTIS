@@ -314,12 +314,25 @@ def test_raw_only_boot_diagnostics_are_typed_but_never_canonical_records(
 
     errors: list[str] = []
     target = tmp_path / "health.csv"
+    observed_late_attach_fragment = (
+        "=0x00000000,wd_s1=0x00000000,wd_s2=0x0000000a,"
+        "wd_s3=0x00010100,wd_s4=0x00000000,wd_s5=0x4ff824a4,"
+        "wd_s6=0x20042000,wd_s7=0x00001b89,"
+        "resets_reset=0x00000000,resets_done=0x01ffffff,"
+        "clk_ref_ctrl=0x00000002,clk_ref_div=0x00000100,"
+        "clk_sys_ctrl=0x00000001,clk_sys_div=0x00000100,"
+        "clk_peri_ctrl=0x00000840,clk_peri_div=0x00000000,"
+        "xosc_status=0x81001001,rosc_status=0x81011000,"
+        "rosc_ctrl=0x00fab000,pll_sys_cs=0x80000001,"
+        "pll_usb_cs=0x80000001,vreg=0x000010b1,bod=0x00000091,"
+        "chip_id=0x20002927,platform=0x00000002,"
+        "gitref_rp2040=0xe0c912e8"
+    )
+    assert len(observed_late_attach_fragment.encode("ascii")) == 526
     with CsvRecordSplitter(
         {"health_v1": target}, on_parser_error=errors.append
     ) as splitter:
-        assert splitter.process_line(
-            "0,prev_reset_reason=0x00000000"
-        ) is None
+        assert splitter.process_line(observed_late_attach_fragment) is None
         assert splitter.last_disposition == "late_attach_boot_fragment"
         for line in lines:
             assert splitter.process_line(line) is None
@@ -327,9 +340,7 @@ def test_raw_only_boot_diagnostics_are_typed_but_never_canonical_records(
         assert errors == []
         assert splitter.process_line("BOOT_WARN,v=2,key=serial_absent,wait_ms=250") is None
         assert "BOOT_WARN.v must be one of ['1']" in errors[-1]
-        assert splitter.process_line(
-            "0,prev_reset_reason=0x00000000"
-        ) is None
+        assert splitter.process_line("arbitrary second unknown line") is None
         assert "unknown record type" in errors[-1]
 
     assert target.read_text(encoding="utf-8").splitlines() == [
