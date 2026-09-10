@@ -2284,6 +2284,21 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         ).encode("utf-8")
         return sha256(encoded).hexdigest()
 
+    @staticmethod
+    def _decision_timestamp_consumes_estimate(
+        decision: dict[str, str], estimate: dict[str, str]
+    ) -> bool:
+        """Match a 64-bit decision coordinate to its 32-bit EST producer."""
+        try:
+            return (
+                decision.get("time_domain") == "rp2040_monotonic_us64"
+                and estimate.get("time_domain") == "rp2040_monotonic_us32"
+                and (int(decision["decision_timestamp_ticks"]) & 0xFFFFFFFF)
+                == int(estimate["estimator_timestamp_ticks"])
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+
     def recover_retained_host_contract_prefix(
         self, *, reviewed_host_revision: str, apply: bool
     ) -> dict[str, Any]:
@@ -2391,8 +2406,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 or int(control.get("current_dac_code", -1)) != setup_code
                 or int(control.get("proposed_dac_code", -1)) != setup_code
                 or int(control.get("limited_delta_codes", 1)) != 0
-                or int(decision.get("decision_timestamp_ticks", -1))
-                != int(estimate["estimator_timestamp_ticks"])
+                or not self._decision_timestamp_consumes_estimate(
+                    decision, estimate
+                )
                 or int(decision.get("requested_delta_codes", 1)) != 0
                 or int(decision.get("requested_code", -1)) != setup_code
                 or int(decision.get("actual_applied_code", -1)) != setup_code

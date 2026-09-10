@@ -883,6 +883,21 @@ def test_qualification_selector_uses_frozen_policy_estimator_identity(
     ) is row
 
 
+def test_extended_decision_timestamp_consumes_wrapped_estimate_coordinate() -> None:
+    estimate = {
+        "time_domain": "rp2040_monotonic_us32",
+        "estimator_timestamp_ticks": "506319339",
+    }
+    decision = {
+        "time_domain": "rp2040_monotonic_us64",
+        "decision_timestamp_ticks": str((1 << 32) + 506319339),
+    }
+
+    assert supervisor_module.AdaptiveHybridSupervisor._decision_timestamp_consumes_estimate(
+        decision, estimate
+    )
+
+
 def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> None:
     supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     limits = supervisor.envelope.bench_attempt.limits
