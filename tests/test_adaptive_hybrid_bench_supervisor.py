@@ -667,7 +667,13 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
     monkeypatch.setattr(
         supervisor_module,
         "_read_csv",
-        lambda _path: [{"decision_id": "natural-opportunity-1"}],
+        lambda _path: [
+            {
+                "decision_id": "natural-opportunity-1",
+                "preview_available": "true",
+                "preview_eligibility": "true",
+            }
+        ],
     )
     health = {
         ("adaptive_hybrid", "state"): "DISARMED",
@@ -741,6 +747,140 @@ def test_contingent_arm_waits_for_first_natural_opportunity(
     assert supervisor.state["authorization_sequence"] == 0
     assert supervisor.state["bench_attempt_arm_submission_count"] == 0
     assert supervisor.state["bench_attempt_arm_admissions"] == []
+
+
+def test_contingent_arm_rejects_durable_nonpreview_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    supervisor.state.update(
+        {
+            "manual_start_sent": True,
+            "setup_confirmed_utc": "2026-09-09T00:00:00Z",
+            "setup_confirmation": {
+                "session_id": 5,
+                "applied_code": ADAPTIVE_HYBRID_PROGRAMME.setup_code,
+                "dac_epoch": 1,
+            },
+            "initial_session_id": 5,
+        }
+    )
+    supervisor._identity_ready = lambda _health: True
+    supervisor._close_bench_arm_admission_if_required = lambda _health: False
+    supervisor._arm_progress_epoch_ready = lambda *_args: (_ for _ in ()).throw(
+        AssertionError("ARM progress evaluated for a non-preview decision")
+    )
+    supervisor._command = lambda _command: (_ for _ in ()).throw(
+        AssertionError("ARM submitted for a non-preview decision")
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_read_csv",
+        lambda _path: [
+            {
+                "decision_id": "ctl:frequency_regulation:000000",
+                "control_seq": "0",
+                "preview_available": "false",
+                "preview_eligibility": "false",
+            }
+        ],
+    )
+    health = {
+        ("adaptive_hybrid", "state"): "DISARMED",
+        ("adaptive_hybrid", "manual_start_confirmed"): "true",
+        ("adaptive_hybrid", "hybrid_state"): "PHASE_QUALIFY",
+        ("adaptive_hybrid", "first_phase_checkpoint_passed"): "false",
+        ("adaptive_hybrid", "correction_count"): "0",
+        ("adaptive_hybrid", "selected_interval_count"): "600",
+    }
+
+    supervisor._maybe_start_or_arm(health)
+
+    assert supervisor.state["authorization_sequence"] == 0
+    assert supervisor.state["arm_pending"] is False
+    assert supervisor.state["bench_attempt_arm_submission_count"] == 0
+
+
+def test_contingent_arm_coordinate_failure_does_not_publish_ghost_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    supervisor.state.update(
+        {
+            "manual_start_sent": True,
+            "setup_confirmed_utc": "2026-09-09T00:00:00Z",
+            "setup_confirmation": {
+                "session_id": 5,
+                "applied_code": ADAPTIVE_HYBRID_PROGRAMME.setup_code,
+                "dac_epoch": 1,
+            },
+            "initial_session_id": 5,
+        }
+    )
+    supervisor._identity_ready = lambda _health: True
+    supervisor._close_bench_arm_admission_if_required = lambda _health: False
+    supervisor._arm_progress_epoch_ready = lambda _preview, _progress: True
+    supervisor._qualified_d14_apertures = lambda _health: None
+    supervisor._command = lambda _command: (_ for _ in ()).throw(
+        AssertionError("ARM submitted without an aperture coordinate")
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_read_csv",
+        lambda _path: [
+            {
+                "decision_id": "natural-opportunity-1",
+                "preview_available": "true",
+                "preview_eligibility": "true",
+            }
+        ],
+    )
+    health = {
+        ("adaptive_hybrid", "state"): "DISARMED",
+        ("adaptive_hybrid", "manual_start_confirmed"): "true",
+        ("adaptive_hybrid", "hybrid_state"): "FREQUENCY_ACQUIRE",
+        ("adaptive_hybrid", "first_phase_checkpoint_passed"): "false",
+        ("adaptive_hybrid", "correction_count"): "0",
+        ("adaptive_hybrid", "selected_interval_count"): "600",
+        ("adaptive_hybrid", "arm_eligible"): "true",
+        ("adaptive_hybrid", "evidence_phase"): "evidence_clear",
+        ("adaptive_hybrid", "evidence_pending"): "false",
+        ("adaptive_hybrid", "uptime_s"): "700",
+    }
+
+    with pytest.raises(ValueError, match="lacks an accepted-aperture coordinate"):
+        supervisor._maybe_start_or_arm(health)
+
+    assert supervisor.state["authorization_sequence"] == 0
+    assert supervisor.state["arm_pending"] is False
+    assert supervisor.state["arm_sent_at_utc"] is None
+    assert supervisor.state["bench_attempt_arm_submission_count"] == 0
+    assert supervisor.state["bench_attempt_arm_admissions"] == []
+
+
+def test_qualification_selector_uses_frozen_policy_estimator_identity(
+    tmp_path: Path,
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    supervisor.natural_policy = SimpleNamespace(
+        frequency_estimator_id="OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1"
+    )
+    row = {
+        "estimator_version": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
+        "observation_validity": "valid",
+        "reference_validity": "valid",
+        "reference_continuity": "true",
+        "count_validity": "valid",
+        "count_continuity": "true",
+        "diagnostic_health": "healthy",
+        "preview_eligibility": "true",
+        "source_dac_ref": "live:DAC:1",
+        "accepted_sample_count": "600",
+    }
+
+    assert supervisor._fresh_authoritative_selected_estimate(
+        [row], dac_epoch=1
+    ) is row
 
 
 def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> None:
