@@ -193,7 +193,9 @@ fragment boundary is transport-relative rather than record-specific. The
 narrow repair admits exactly one bounded, uninterpreted pre-protocol carrier
 fragment, retains it as raw-only evidence, and places the longer observed
 sequence at the start of the genuine process rehearsal. Complete diagnostic
-tags remain typed and unknown canonical-record handling remains strict.
+tags remain typed and unknown canonical-record handling remains strict. The
+focused regression now covers every byte-offset suffix of every declared boot
+envelope rather than treating either observed attachment offset as sufficient.
 
 ## Measurement language and claim discipline
 

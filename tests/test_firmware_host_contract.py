@@ -298,6 +298,25 @@ def test_raw_only_boot_diagnostics_are_typed_but_never_canonical_records(
     lines = (boot, *warnings, fatal, diag)
     for line in lines:
         assert validate_raw_only_diagnostic(next(csv.reader([line]))) == ()
+        assert len(line.encode("ascii")) <= 1024
+        for offset in range(len(line)):
+            offset_errors: list[str] = []
+            with CsvRecordSplitter(
+                {}, on_parser_error=offset_errors.append
+            ) as splitter:
+                assert splitter.process_line(line[offset:]) is None
+                assert splitter.last_disposition == (
+                    "raw_only_diagnostic"
+                    if offset == 0
+                    else "late_attach_boot_fragment"
+                )
+                assert offset_errors == []
+
+    oversized_errors: list[str] = []
+    with CsvRecordSplitter({}, on_parser_error=oversized_errors.append) as splitter:
+        assert splitter.process_line("x" * 1025) is None
+        assert splitter.last_disposition == "error"
+        assert "unknown record type" in oversized_errors[-1]
 
     complete_boot_errors: list[str] = []
     with CsvRecordSplitter(

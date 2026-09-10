@@ -41,6 +41,9 @@ serial-owner handoff without an ownerless interval, clean stop, analyzer replay,
 and evidence sealing. It must begin with the documented late-attachment carrier
 fragment and typed raw-only boot diagnostics so the strict unknown-tag hold is
 exercised at the same pre-authority boundary seen on the physical carrier.
+The focused transport regression must also exercise attachment at every byte
+offset of every declared boot-diagnostic envelope, plus the fragment-size bound
+and strict handling after the first recognized protocol line.
 
 The rehearsal report must bind the exact source, firmware/host contract, fixed
 binary, bundle and proposal identities used by the prospective run. A prior
