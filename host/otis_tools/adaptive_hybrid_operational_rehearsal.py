@@ -1421,6 +1421,11 @@ class _LifecycleBuilder:
 
     def build(self) -> LifecycleFixture:
         setup = self.programme.setup_code
+        # Physical setup is sampled at microsecond resolution and is not
+        # expected to land exactly on a whole-second boundary.  Keep the
+        # fixture shaped like that producer output so the host must validate
+        # the declared floor-second projection rather than exact divisibility.
+        setup_timestamp_ticks = 1_200 * RP2040_US + 71_551
         manual = {field: "" for field in ACTIVE_TRANSACTION_V2_FIELDS}
         manual.update(
             {
@@ -1428,7 +1433,7 @@ class _LifecycleBuilder:
                 "schema_version": "2",
                 "transaction_record_sequence": "1",
                 "event": "manual_start",
-                "event_timestamp_ticks": str(1_200 * RP2040_US),
+                "event_timestamp_ticks": str(setup_timestamp_ticks),
                 "time_domain": "rp2040_monotonic_us64",
                 "run_identity": self.programme.runtime_run_identity,
                 "build_identity": str(self.bundle["firmware"]["build_identity"]),
@@ -1483,7 +1488,7 @@ class _LifecycleBuilder:
         activation = self._maintenance_row(
             "policy_activation",
             before=inactive,
-            timestamp_ticks=1_200 * RP2040_US,
+            timestamp_ticks=setup_timestamp_ticks,
             reason="new_policy_activation",
             current_code=setup,
             current_epoch=1,
@@ -1919,6 +1924,13 @@ class DeterministicPtyInstrument:
     def _emit_health_map(self, health: dict[tuple[str, str], str]) -> None:
         self._emit_health_items((key, health[key]) for key in sorted(health))
 
+    def _emit_idle_wakeup(self) -> None:
+        # Timer callbacks publish complete record groups from separate threads.
+        # Serialize the otherwise empty carrier wake-up with those groups so it
+        # can never split a decision-bearing record in the PTY byte stream.
+        with self._lock:
+            _write_all_fd(self.master_fd, b"\n")
+
     def _emit_snapshot(self) -> None:
         self.generation += 1
         active = {
@@ -2146,7 +2158,7 @@ class DeterministicPtyInstrument:
                 if not readable:
                     # Wake the genuine capture reader so it services FIFO
                     # ingress promptly; an empty line is not a device record.
-                    _write_all_fd(self.master_fd, b"\n")
+                    self._emit_idle_wakeup()
                     continue
                 try:
                     chunk = os.read(self.master_fd, 4096)

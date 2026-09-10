@@ -185,6 +185,72 @@ def test_invalid_d10_is_diagnostic_only_in_actual_measurement_replay(
     assert report["D10"]["local_error"].startswith("UnicodeDecodeError:")
 
 
+def test_measurement_replay_uses_firmware_binary64_projection_before_serialization(
+    monkeypatch,
+) -> None:
+    files = [
+        {"contract": "count_observations_v1", "path": "counts.csv"},
+        {"contract": "pps_snapshots_v1", "path": "snapshots.csv"},
+        {"contract": "raw_events_v1", "record_type": "REF", "path": "ref.csv"},
+        {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
+        {"contract": "estimates_v2", "path": "estimates.csv"},
+    ]
+    rows = {
+        "counts.csv": [
+            {
+                "count_seq": str(sequence),
+                "counted_edges": "9999999" if sequence == 1 else "10000000",
+            }
+            for sequence in range(1, 601)
+        ],
+        "snapshots.csv": [{"snapshot_seq": "1"}],
+        "ref.csv": [{"record_type": "REF", "channel_id": "1"}],
+        "evt.csv": [],
+        "estimates.csv": [
+            {
+                "estimate_seq": "1",
+                "estimate_id": "selected-1",
+                "estimator_version": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
+                "source_reference_first_seq": "0",
+                "source_reference_last_seq": "600",
+                "source_count_seq": "600",
+                "accepted_sample_count": "600",
+                "config_hash": "a" * 64,
+                "observation_validity": "valid",
+                "reference_validity": "valid",
+                "count_validity": "valid",
+                "frequency_estimate_hz": "9999999.998333333060",
+                "frequency_error_hz": "-0.001666666940",
+            }
+        ],
+    }
+    monkeypatch.setattr(replay_module, "_read_csv", lambda path: rows[path.name])
+    manifest = SimpleNamespace(root=Path("/unused"), files=files)
+    identity = {"transaction_identities": {"estimator_sha256": "a" * 64}}
+
+    exact, report, _ = replay_module._measurement_replay(manifest, identity)
+
+    assert exact is True
+    assert report["calculation_domain"] == (
+        "firmware_ieee754_binary64_then_fixed_12_decimal"
+    )
+    assert report["comparisons"][0]["pass"] is True
+
+    rows["counts.csv"][0]["counted_edges"] = "10000001"
+    rows["estimates.csv"][0]["frequency_estimate_hz"] = "10000000.001666666940"
+    rows["estimates.csv"][0]["frequency_error_hz"] = "0.001666666940"
+    exact, report, _ = replay_module._measurement_replay(manifest, identity)
+    assert exact is True
+    assert report["comparisons"][0]["pass"] is True
+
+    rows["counts.csv"][0]["counted_edges"] = "9999999"
+    rows["estimates.csv"][0]["frequency_estimate_hz"] = "9999999.998333333333"
+    rows["estimates.csv"][0]["frequency_error_hz"] = "-0.001666666667"
+    exact, report, _ = replay_module._measurement_replay(manifest, identity)
+    assert exact is False
+    assert report["comparisons"][0]["pass"] is False
+
+
 def test_invalid_d10_csv_cannot_fail_authoritative_analyzer_gate(
     tmp_path: Path,
 ) -> None:

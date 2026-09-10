@@ -5,10 +5,13 @@ import pytest
 
 from host.otis_tools.adaptive_hybrid_contract import (
     ABSOLUTE_WALL_LIMIT_S,
+    ARM_SUBMISSION_LIMIT,
     AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES,
     CAUSAL_STATE_CONTRACT_ID,
+    CAUSAL_STATE_SCHEMA_VERSION,
     CONTRACT_ID,
     CORRECTION_RESPONSE_RESERVE_APERTURES,
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
     EXPECTED_BASE_FQBN,
     EXPECTED_BOARD_SERIAL,
     EXPECTED_COMPILE_FQBN,
@@ -20,7 +23,7 @@ from host.otis_tools.adaptive_hybrid_contract import (
     FIRST_DEPENDENT_DECISION_RESERVE_APERTURES,
     INHIBITED_ZERO_WRITE,
     PROGRESS_DOMAIN,
-    SINGLE_AUTOMATIC_APPLICATION,
+    QUALIFIED_APERTURE_MILESTONES,
     canonical_bench_attempt_sha256,
     envelope_for_purpose,
     validate_bench_attempt_envelope,
@@ -36,6 +39,8 @@ def _mutated(value):
         return value + 1
     if isinstance(value, str):
         return f"{value}_changed"
+    if isinstance(value, list):
+        return [0]
     raise AssertionError(f"unhandled leaf type {type(value)!r}")
 
 
@@ -43,6 +48,10 @@ def _leaf_paths(value, prefix=()):
     if isinstance(value, dict):
         for key, item in value.items():
             yield from _leaf_paths(item, (*prefix, key))
+        return
+    if isinstance(value, list) and value:
+        for index, item in enumerate(value):
+            yield from _leaf_paths(item, (*prefix, index))
         return
     yield prefix
 
@@ -70,13 +79,13 @@ def _replace_path(value, path, replacement):
             },
         ),
         (
-            SINGLE_AUTOMATIC_APPLICATION,
+            CONTINGENT_72_HOUR_HYBRID_CONTROL,
             {
                 "setup_application_limit": 1,
-                "automatic_application_limit": 1,
-                "required_completed_automatic_applications": 1,
-                "arm_submission_limit": 4,
-                "total_dac_value_write_limit": 2,
+                "automatic_application_limit": 144,
+                "required_completed_automatic_applications": 0,
+                "arm_submission_limit": ARM_SUBMISSION_LIMIT,
+                "total_dac_value_write_limit": 145,
                 "maximum_outstanding_requests": 1,
                 "setup_code": 0xA84D,
             },
@@ -87,7 +96,7 @@ def test_exact_closed_purpose_envelopes(purpose, expected_limits):
     envelope = envelope_for_purpose(purpose)
     document = envelope.as_dict()
 
-    assert document["schema_version"] == 1
+    assert document["schema_version"] == 2
     assert document["contract"] == CONTRACT_ID
     assert document["purpose"] == purpose
     for key, expected in expected_limits.items():
@@ -108,7 +117,9 @@ def test_exact_closed_purpose_envelopes(purpose, expected_limits):
 
 
 def test_device_identity_is_exactly_frozen():
-    identity = envelope_for_purpose(SINGLE_AUTOMATIC_APPLICATION).as_dict()[
+    identity = envelope_for_purpose(
+        CONTINGENT_72_HOUR_HYBRID_CONTROL
+    ).as_dict()[
         "device_identity"
     ]
 
@@ -125,7 +136,7 @@ def test_device_identity_is_exactly_frozen():
 
 
 @pytest.mark.parametrize(
-    "purpose", [INHIBITED_ZERO_WRITE, SINGLE_AUTOMATIC_APPLICATION]
+    "purpose", [INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL]
 )
 def test_timing_is_in_exact_d14_d8_apertures_with_separate_wall_bound(purpose):
     timing = envelope_for_purpose(purpose).as_dict()["timing"]
@@ -138,31 +149,34 @@ def test_timing_is_in_exact_d14_d8_apertures_with_separate_wall_bound(purpose):
     assert timing["first_dependent_decision_reserve_delta"] == (
         FIRST_DEPENDENT_DECISION_RESERVE_APERTURES
     )
-    assert timing["absolute_wall_limit_s"] == ABSOLUTE_WALL_LIMIT_S
+    expected_wall_s = (
+        7_200 if purpose == INHIBITED_ZERO_WRITE else ABSOLUTE_WALL_LIMIT_S
+    )
+    assert timing["absolute_wall_limit_s"] == expected_wall_s
     assert timing["wall_limit_role"] == (
         "separate_hard_bound_not_decision_counter"
     )
     assert all("16" not in key for key in timing)
 
 
-def test_single_application_admission_deadline_is_exact():
-    timing = envelope_for_purpose(SINGLE_AUTOMATIC_APPLICATION).as_dict()[
-        "timing"
-    ]
+def test_long_run_application_admission_deadline_is_exact():
+    timing = envelope_for_purpose(
+        CONTINGENT_72_HOUR_HYBRID_CONTROL
+    ).as_dict()["timing"]
     assert timing["automatic_application_admission_deadline_delta"] == (
         AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES
     )
 
 
 @pytest.mark.parametrize(
-    "purpose", [INHIBITED_ZERO_WRITE, SINGLE_AUTOMATIC_APPLICATION]
+    "purpose", [INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL]
 )
 def test_causal_state_closes_authority_and_disagreement_holds_for_review(purpose):
     document = envelope_for_purpose(purpose).as_dict()
     state = document["causal_state"]
     discrepancy = document["host_discrepancy_semantics"]
 
-    assert state["schema_version"] == 1
+    assert state["schema_version"] == CAUSAL_STATE_SCHEMA_VERSION
     assert state["contract"] == CAUSAL_STATE_CONTRACT_ID
     assert state["durable_ACT_application_count"]["source"] == (
         "durable_validated_ACT_application_records"
@@ -189,22 +203,34 @@ def test_causal_state_closes_authority_and_disagreement_holds_for_review(purpose
     }
 
 
-def test_single_application_closes_on_first_validated_durable_act():
-    state = envelope_for_purpose(SINGLE_AUTOMATIC_APPLICATION).as_dict()[
-        "causal_state"
-    ]
+def test_long_run_closes_only_at_the_application_limit():
+    document = envelope_for_purpose(
+        CONTINGENT_72_HOUR_HYBRID_CONTROL
+    ).as_dict()
+    state = document["causal_state"]
 
     assert state["authority_closed"] == {
         "initial": False,
-        "closure_trigger": "first_validated_ACT_application",
+        "closure_trigger": "automatic_application_limit_reached",
         "source": "durable_bench_attempt_causal_state",
         "persistence_required": True,
         "persistence_order": "durable_before_phase_3_evidence_acknowledgement",
         "reopening_permitted": False,
         "new_ARM_permitted_when_closed": False,
     }
-    assert state["durable_ACT_application_count"]["maximum"] == 1
-    assert state["firmware_correction_count"]["maximum"] == 1
+    assert state["durable_ACT_application_count"]["maximum"] == 144
+    assert state["firmware_correction_count"]["maximum"] == 144
+    assert document["terminal_semantics"][
+        "zero_natural_correction_outcome"
+    ] == "zero_natural_corrections_valid_at_qualified_endpoint"
+    assert document["monitoring_semantics"] == {
+        "authoritative_source": "retained_supervisor_state_and_capture_evidence",
+        "accepted_D14_D8_aperture_milestones": list(
+            QUALIFIED_APERTURE_MILESTONES
+        ),
+        "first_application_milestone_nonterminal": True,
+        "host_monitor_may_decide_terminal": False,
+    }
 
 
 def test_zero_write_authority_is_closed_from_initial_state():
@@ -222,7 +248,7 @@ def test_envelope_value_is_frozen():
     envelope = envelope_for_purpose(INHIBITED_ZERO_WRITE)
 
     with pytest.raises(FrozenInstanceError):
-        envelope.purpose = SINGLE_AUTOMATIC_APPLICATION
+        envelope.purpose = CONTINGENT_72_HOUR_HYBRID_CONTROL
 
 
 def test_only_two_purposes_are_accepted():
@@ -231,7 +257,7 @@ def test_only_two_purposes_are_accepted():
 
 
 @pytest.mark.parametrize(
-    "purpose", [INHIBITED_ZERO_WRITE, SINGLE_AUTOMATIC_APPLICATION]
+    "purpose", [INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL]
 )
 def test_every_leaf_mutation_is_rejected_even_with_recomputed_hash(purpose):
     original = envelope_for_purpose(purpose).as_dict()
@@ -254,7 +280,9 @@ def test_every_leaf_mutation_is_rejected_even_with_recomputed_hash(purpose):
 
 
 def test_unknown_missing_and_stale_identity_are_rejected():
-    original = envelope_for_purpose(SINGLE_AUTOMATIC_APPLICATION).as_dict()
+    original = envelope_for_purpose(
+        CONTINGENT_72_HOUR_HYBRID_CONTROL
+    ).as_dict()
 
     unknown = deepcopy(original)
     unknown["authority"]["legacy_retry_limit"] = 1
@@ -279,7 +307,9 @@ def test_unknown_missing_and_stale_identity_are_rejected():
 
 
 def test_json_number_cannot_substitute_for_boolean():
-    candidate = envelope_for_purpose(SINGLE_AUTOMATIC_APPLICATION).as_dict()
+    candidate = envelope_for_purpose(
+        CONTINGENT_72_HOUR_HYBRID_CONTROL
+    ).as_dict()
     candidate["authority"]["automatic_retry_permitted"] = 0
     unsigned = {
         key: value for key, value in candidate.items() if key != "envelope_sha256"

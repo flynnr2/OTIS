@@ -10,7 +10,9 @@ before the corresponding firmware evidence acknowledgement is released.
 from __future__ import annotations
 
 import argparse
+import csv
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -31,8 +33,8 @@ from .adaptive_hybrid_contract import (
 from .adaptive_hybrid_contract import (
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
-    SINGLE_AUTOMATIC_APPLICATION,
     BenchAttemptEnvelope,
     validate_bench_attempt_envelope,
 )
@@ -57,12 +59,12 @@ from .adaptive_hybrid_transport import (
 from .adaptive_hybrid_transactions import (
     ACTIVE_CSV,
     LEASE_PERIOD_S,
-QUERY_PERIOD_S,
+    QUERY_PERIOD_S,
     CampaignSpec,
+    _atomic_json,
     _read_csv,
     _utc_now,
 )
-FORWARDED_OUTPUT_STATUS_PERIOD_S = 60.0
 from .contracts import CsvValidationContext, validate_csv
 from .firmware_bindings import current_forwarded_clock_contract
 from .prewrite_readiness_contract import (
@@ -91,6 +93,9 @@ from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 from .time_domains import forward_progress
 
 
+FORWARDED_OUTPUT_STATUS_PERIOD_S = 60.0
+
+
 def gnss_operational_runtime_invariant_errors(
     health: dict[tuple[str, str], str], *, require_present: bool
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -115,6 +120,9 @@ PROGRAMME_ID = ADAPTIVE_HYBRID_PROGRAMME.programme_id
 PROFILE_ID = ADAPTIVE_HYBRID_PROGRAMME.profile_id
 RUNTIME_RUN_IDENTITY = ADAPTIVE_HYBRID_PROGRAMME.runtime_run_identity
 ACTIVE_HYBRID_CSV = Path("csv/active_hybrid_decisions_v2.csv")
+HOST_CONTRACT_RECOVERY_PATH = Path(
+    "reports/adaptive_hybrid_host_contract_recovery_v1.json"
+)
 
 SETUP_CODE = ADAPTIVE_HYBRID_PROGRAMME.setup_code
 MAXIMUM_APPLICATIONS = ADAPTIVE_HYBRID_PROGRAMME.maximum_applications
@@ -125,6 +133,18 @@ MAXIMUM_CODE = ADAPTIVE_HYBRID_PROGRAMME.maximum_code
 QUALIFIED_DURATION_S = ADAPTIVE_HYBRID_PROGRAMME.qualified_duration_s
 ABSOLUTE_WALL_LIMIT_S = ADAPTIVE_HYBRID_PROGRAMME.absolute_wall_limit_s
 MINIMUM_PHASE_MATERIAL_APPLICATIONS = 2
+
+
+def _tick_is_within_reported_whole_second(
+    event_timestamp_ticks: int, reported_timestamp_s: int
+) -> bool:
+    """Validate the firmware's explicit microsecond-to-second projection."""
+    return (
+        event_timestamp_ticks // RP2040_MONOTONIC_US_PER_SECOND
+        == reported_timestamp_s
+    )
+
+
 # ``uptime_s`` is an integer status value, while estimator timestamps retain
 # the fractional RP2040 timer coordinate.  A fresh estimator can also be
 # published after the latest complete queried status snapshot.  This bound is
@@ -844,6 +864,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     "inhibited zero-write causal state grants application authority"
                 )
             return
+        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+            raise ValueError("unsupported authority-bearing bench attempt")
         if authority_closed:
             required_closure_fields = {
                 "trigger",
@@ -859,10 +881,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 "closed_utc",
             }
             if (
-                durable_count != 1
+                durable_count != limits.automatic_application_limit
                 or not isinstance(closure, dict)
                 or set(closure) != required_closure_fields
-                or closure.get("trigger") != "first_validated_ACT_application"
+                or closure.get("trigger")
+                != "automatic_application_limit_reached"
                 or closure.get("bench_attempt_purpose") != bench_attempt.purpose
                 or closure.get("bench_attempt_envelope_sha256")
                 != bench_attempt.as_dict()["envelope_sha256"]
@@ -907,8 +930,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 raise ValueError(
                     "closed bench-attempt causal timestamp is malformed"
                 ) from exc
-        elif durable_count != 0 or closure is not None:
-            raise ValueError("open bench-attempt causal state has application evidence")
+        elif (
+            not 0 <= durable_count < limits.automatic_application_limit
+            or closure is not None
+        ):
+            raise ValueError(
+                "open long-run causal state exceeds its application authority"
+            )
 
     def _bench_authority_closed(self) -> bool:
         if self.envelope.bench_attempt is None:
@@ -917,17 +945,17 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self._validate_bench_attempt_causal_state(causal_state)
         return bool(causal_state["authority_closed"])
 
-    def _close_bench_authority_before_application_acknowledgement(
+    def _record_bench_application_before_acknowledgement(
         self,
         row: dict[str, str],
         health: dict[tuple[str, str], str],
     ) -> dict[str, object]:
-        """Persist the one physical application frontier before phase-3 ACK."""
+        """Persist each physical application frontier before phase-3 ACK."""
 
         bench_attempt = self.envelope.bench_attempt
         if bench_attempt is None:
             return {}
-        if bench_attempt.purpose != SINGLE_AUTOMATIC_APPLICATION:
+        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
             raise ValueError(
                 "inhibited zero-write attempt observed an ACT application"
             )
@@ -939,92 +967,123 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         application_rows = [item for item in rows if item.get("event") == "application"]
         record_sequence = int(row["transaction_record_sequence"])
         if (
-            len(application_rows) != 1
-            or application_rows[0] != row
-            or int(application_rows[0]["transaction_record_sequence"])
+            not application_rows
+            or application_rows[-1] != row
+            or int(application_rows[-1]["transaction_record_sequence"])
             != record_sequence
         ):
             raise ValueError(
-                "durable ACT application prefix differs from the one-application envelope"
+                "durable ACT application frontier differs from the long-run envelope"
             )
         durable_count = len(application_rows)
         firmware_count = int(
             health.get(("adaptive_hybrid", "correction_count"), "-1")
         )
         row_count = int(row["correction_count"])
-        if durable_count != 1 or row_count != 1 or firmware_count != 1:
+        limit = bench_attempt.limits.automatic_application_limit
+        if (
+            not 1 <= durable_count <= limit
+            or row_count != durable_count
+            or firmware_count != durable_count
+        ):
             raise ValueError(
                 "durable ACT and causally complete firmware correction counts differ: "
                 f"ACT={durable_count} row={row_count} firmware={firmware_count}"
             )
         accepted_apertures = self._qualified_d14_apertures(health)
-        closure = {
-            "trigger": "first_validated_ACT_application",
-            "bench_attempt_purpose": bench_attempt.purpose,
-            "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
-                "envelope_sha256"
-            ],
-            "request_sequence": int(row["request_sequence"]),
-            "transaction_record_sequence": record_sequence,
-            "decision_sequence": int(row["decision_sequence"]),
-            "application_sequence": int(row["application_sequence"]),
-            "snapshot_generation": int(
-                health[("adaptive_hybrid", "snapshot_generation_complete")]
-            ),
-            "query_nonce": int(health[("adaptive_hybrid", "query_nonce")]),
-            "accepted_D14_D8_apertures_at_application": accepted_apertures,
-            "closed_utc": _utc_now(),
-        }
-        retained = self.state.get("bench_attempt_causal_state")
-        self._validate_bench_attempt_causal_state(retained)
-        if retained["authority_closed"]:
-            retained_closure = retained["closure"]
-            stable_fields = {
-                "trigger",
-                "bench_attempt_purpose",
-                "bench_attempt_envelope_sha256",
-                "request_sequence",
-                "transaction_record_sequence",
-                "decision_sequence",
-                "application_sequence",
-                "accepted_D14_D8_apertures_at_application",
-            }
-            if any(
-                retained_closure.get(field) != closure.get(field)
-                for field in stable_fields
-            ):
-                raise ValueError(
-                    "retained bench-attempt authority closure changed identity"
-                )
-            return {
-                "bench_attempt_authority_closed": True,
+        authority_closed = durable_count == limit
+        closure = (
+            {
+                "trigger": "automatic_application_limit_reached",
+                "bench_attempt_purpose": bench_attempt.purpose,
                 "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
                     "envelope_sha256"
                 ],
+                "request_sequence": int(row["request_sequence"]),
+                "transaction_record_sequence": record_sequence,
+                "decision_sequence": int(row["decision_sequence"]),
+                "application_sequence": int(row["application_sequence"]),
+                "snapshot_generation": int(
+                    health[("adaptive_hybrid", "snapshot_generation_complete")]
+                ),
+                "query_nonce": int(health[("adaptive_hybrid", "query_nonce")]),
+                "accepted_D14_D8_apertures_at_application": accepted_apertures,
+                "closed_utc": _utc_now(),
             }
+            if authority_closed
+            else None
+        )
+        retained = self.state.get("bench_attempt_causal_state")
+        self._validate_bench_attempt_causal_state(retained)
+        retained_count = retained["durable_ACT_application_count"]
+        if retained_count == durable_count:
+            if retained["authority_closed"]:
+                retained_closure = retained["closure"]
+                stable_closure = {
+                    "trigger": "automatic_application_limit_reached",
+                    "bench_attempt_purpose": bench_attempt.purpose,
+                    "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
+                        "envelope_sha256"
+                    ],
+                    "request_sequence": int(row["request_sequence"]),
+                    "transaction_record_sequence": record_sequence,
+                    "decision_sequence": int(row["decision_sequence"]),
+                    "application_sequence": int(row["application_sequence"]),
+                }
+                if any(
+                    retained_closure.get(field) != value
+                    for field, value in stable_closure.items()
+                ):
+                    raise ValueError(
+                        "retained long-run authority closure changed identity"
+                    )
+            return {
+                "bench_attempt_authority_closed": retained["authority_closed"],
+                "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
+                    "envelope_sha256"
+                ],
+                "bench_attempt_durable_application_count": retained_count,
+            }
+        if retained["authority_closed"] or retained_count != durable_count - 1:
+            raise ValueError(
+                "retained long-run application frontier is not the exact predecessor"
+            )
 
         causal_state = {
             "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
             "contract": CAUSAL_STATE_CONTRACT_ID,
             "durable_ACT_application_count": durable_count,
             "firmware_correction_count": firmware_count,
-            "authority_closed": True,
+            "authority_closed": authority_closed,
             "closure": closure,
         }
         self._validate_bench_attempt_causal_state(causal_state)
         self.state["bench_attempt_causal_state"] = causal_state
-        self.state["bench_attempt_arm_admission_closed"] = True
-        self.state["arm_pending"] = False
-        self.state["arm_sent_at_utc"] = None
+        if authority_closed:
+            self.state["bench_attempt_arm_admission_closed"] = True
+            self.state["arm_pending"] = False
+            self.state["arm_sent_at_utc"] = None
         self._save()
         # Event append is itself fsynced.  The phase-3 command is submitted by
         # the base transaction layer only after this method returns.
-        self._programme_event("bench_attempt_authority_closed", **closure)
+        self._programme_event(
+            (
+                "bench_attempt_authority_closed"
+                if authority_closed
+                else "bench_attempt_application_frontier_persisted"
+            ),
+            durable_ACT_application_count=durable_count,
+            firmware_correction_count=firmware_count,
+            accepted_D14_D8_apertures_at_application=accepted_apertures,
+            authority_closed=authority_closed,
+            **({"closure": closure} if closure is not None else {}),
+        )
         return {
-            "bench_attempt_authority_closed": True,
+            "bench_attempt_authority_closed": authority_closed,
             "bench_attempt_envelope_sha256": bench_attempt.as_dict()[
                 "envelope_sha256"
             ],
+            "bench_attempt_durable_application_count": durable_count,
         }
 
     def _programme_event(self, suffix: str, **payload: object) -> None:
@@ -1133,7 +1192,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 }
                 if phase == 3 and self.envelope.bench_attempt is not None:
                     preparation.update(
-                        self._close_bench_authority_before_application_acknowledgement(
+                        self._record_bench_application_before_acknowledgement(
                             row, health
                         )
                     )
@@ -1699,8 +1758,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             mismatched
             or session_id <= 0
             or event_timestamp_ticks <= 0
-            or event_timestamp_ticks
-            != application_timestamp_s * RP2040_MONOTONIC_US_PER_SECOND
+            or not _tick_is_within_reported_whole_second(
+                event_timestamp_ticks, application_timestamp_s
+            )
             or request.get("session_id") != session_id
             or request.get("requested_code") != setup_code
             or request.get("one_shot_ordinal") != 1
@@ -2138,16 +2198,16 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             dac_epoch=retained["dac_epoch"],
         )
 
-    @staticmethod
-    def _fresh_authoritative_selected_estimate(
+    def _authoritative_selected_estimates(
+        self,
         rows: list[dict[str, str]], *, dac_epoch: int,
-    ) -> dict[str, str] | None:
+    ) -> list[dict[str, str]]:
         expected_dac_ref = f"live:DAC:{dac_epoch}"
-        candidates = [
+        return [
             row
             for row in rows
             if row.get("estimator_version")
-            == "adaptive_hybrid_selected_600s_nonoverlap_v1"
+            == self.natural_policy.frequency_estimator_id
             and row.get("observation_validity") == "valid"
             and row.get("reference_validity") == "valid"
             and row.get("reference_continuity") == "true"
@@ -2158,7 +2218,428 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             and row.get("source_dac_ref") == expected_dac_ref
             and int(row.get("accepted_sample_count") or "0") >= SELECTED_INTERVAL_S
         ]
+
+    def _fresh_authoritative_selected_estimate(
+        self,
+        rows: list[dict[str, str]], *, dac_epoch: int,
+    ) -> dict[str, str] | None:
+        candidates = self._authoritative_selected_estimates(
+            rows, dac_epoch=dac_epoch
+        )
         return candidates[-1] if candidates else None
+
+    def _historical_pps_origin_health(
+        self, *, origin_ticks: int
+    ) -> dict[str, str]:
+        """Read the first complete PPS health publication after an origin.
+
+        Retained health rows are chronological, while their RP2040 32-bit
+        timestamps wrap.  Qualification attempt 3's first selected estimate
+        precedes the first wrap, so stop if that first rollover is observed
+        rather than accidentally selecting a much later same-coordinate row.
+        """
+
+        required = {
+            "snapshot_session",
+            "accepted_window_count",
+            "boundary_reference_sequence",
+            *_AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH,
+            *_authoritative_capture_counters(self.programme),
+        }
+        values: dict[str, str] = {}
+        started = False
+        previous_ticks: int | None = None
+        path = self.run_dir / "csv/health.csv"
+        with path.open(newline="", encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                ticks = int(row["timestamp_ticks"])
+                if (
+                    previous_ticks is not None
+                    and previous_ticks - ticks > 0x7FFFFFFF
+                ):
+                    if started:
+                        break
+                previous_ticks = ticks
+                if not started:
+                    if ticks < origin_ticks:
+                        continue
+                    started = True
+                if (
+                    row.get("component") == "pps_gate"
+                    and row.get("status_key") in required
+                ):
+                    values[row["status_key"]] = row["status_value"]
+                    if required <= values.keys():
+                        return values
+        missing = sorted(required - values.keys())
+        raise ValueError(
+            "retained qualified-origin PPS health is incomplete: "
+            + ", ".join(missing)
+        )
+
+    @staticmethod
+    def _rows_sha256(rows: list[dict[str, str]]) -> str:
+        encoded = json.dumps(
+            rows, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        return sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _decision_timestamp_consumes_estimate(
+        decision: dict[str, str], estimate: dict[str, str]
+    ) -> bool:
+        """Match a 64-bit decision coordinate to its 32-bit EST producer."""
+        try:
+            return (
+                decision.get("time_domain") == "rp2040_monotonic_us64"
+                and estimate.get("time_domain") == "rp2040_monotonic_us32"
+                and (int(decision["decision_timestamp_ticks"]) & 0xFFFFFFFF)
+                == int(estimate["estimator_timestamp_ticks"])
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+
+    def recover_retained_host_contract_prefix(
+        self, *, reviewed_host_revision: str, apply: bool
+    ) -> dict[str, Any]:
+        """Rebind an intact attempt-3 prefix after the reviewed host defects.
+
+        This is deliberately narrower than a generic hold override.  It only
+        accepts a never-armed, never-corrected prefix for which every natural
+        hybrid decision was a zero-delta decision, then reconstructs the first
+        qualifying estimator/aperture origin from canonical firmware records.
+        It performs no device I/O and grants no immediate ARM transaction.
+        """
+
+        bench_attempt = self.envelope.bench_attempt
+        if (
+            bench_attempt is None
+            or bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL
+        ):
+            raise ValueError("host-contract recovery requires the contingent 72-hour attempt")
+        if not reviewed_host_revision or len(reviewed_host_revision) != 40:
+            raise ValueError("reviewed host revision must be an exact 40-character revision")
+        if self.state.get("terminal") is not None:
+            raise ValueError("terminal attempt cannot be rebound")
+        hold = self.state.get("host_verification_hold")
+        if not isinstance(hold, dict):
+            raise ValueError("host-contract recovery requires a retained review hold")
+        setup = self.state.get("setup_confirmation")
+        if not isinstance(setup, dict):
+            raise ValueError("host-contract recovery lacks exact setup confirmation")
+        setup_code = self.programme.setup_code
+        setup_epoch = int(setup.get("dac_epoch", -1))
+        setup_session = int(setup.get("session_id", -1))
+        if (
+            int(setup.get("applied_code", -1)) != setup_code
+            or setup_epoch != 1
+            or setup_session <= 0
+            or self.state.get("setup_confirmed_utc") is None
+            or self.state.get("arm_pending") is not False
+            or self.state.get("bench_attempt_arm_submission_count") != 0
+            or self.state.get("bench_attempt_arm_admissions") != []
+            or self.state.get("bench_attempt_last_arm_opportunity") is not None
+        ):
+            raise ValueError("retained setup or ARM state is not a recoverable zero-action prefix")
+
+        active_rows = _read_csv(self.run_dir / ACTIVE_CSV)
+        dac_rows = _read_csv(self.run_dir / DAC_CSV)
+        if (
+            len(active_rows) != 1
+            or active_rows[0].get("event") != "manual_start"
+            or int(active_rows[0].get("applied_code", -1)) != setup_code
+            or int(active_rows[0].get("dac_epoch", -1)) != setup_epoch
+            or int(active_rows[0].get("correction_count", -1)) != 0
+            or len(dac_rows) != 1
+            or dac_rows[0].get("event") != "manual_apply"
+            or int(dac_rows[0].get("dac_code_applied", -1)) != setup_code
+        ):
+            raise ValueError("retained ACT/DAC evidence contains post-setup actuation")
+
+        estimator_rows = _read_csv(self.run_dir / ESTIMATES_CSV)
+        selected = self._authoritative_selected_estimates(
+            estimator_rows, dac_epoch=setup_epoch
+        )
+        if not selected:
+            raise ValueError("retained prefix contains no qualifying selected estimate")
+        first = selected[0]
+        origin_ticks = int(first["estimator_timestamp_ticks"])
+        origin_reference = int(first["source_reference_last_seq"])
+        if (
+            first.get("time_domain") != "rp2040_monotonic_us32"
+            or int(first["source_count_seq"]) != origin_reference
+        ):
+            raise ValueError("retained selected-estimate origin is incoherent")
+        setup_ticks = int(setup.get("event_timestamp_ticks", -1))
+        origin_delay_ticks = origin_ticks - setup_ticks
+        deadline_ticks = int(self.programme.qualification_deadline_s or 0) * (
+            RP2040_MONOTONIC_US_PER_SECOND
+        )
+        if not 0 < origin_delay_ticks <= deadline_ticks:
+            raise ValueError("first retained selected estimate missed the qualification deadline")
+
+        controls = _read_csv(self.run_dir / CONTROL_CSV)
+        preview_controls = [
+            row for row in controls if row.get("preview_available") == "true"
+        ]
+        nonpreviews = [
+            row for row in controls if row.get("preview_available") != "true"
+        ]
+        hybrid_rows = _read_csv(self.run_dir / ACTIVE_HYBRID_CSV)
+        if (
+            len(nonpreviews) != 1
+            or nonpreviews[0].get("control_seq") != "0"
+            or nonpreviews[0].get("preview_eligibility") != "false"
+            or len(preview_controls) != len(selected)
+            or len(hybrid_rows) != len(selected)
+        ):
+            raise ValueError("retained estimator/control/decision prefix is not one-to-one")
+        for estimate, control, decision in zip(
+            selected, preview_controls, hybrid_rows, strict=True
+        ):
+            if (
+                control.get("est_input_ref") != estimate.get("estimate_id")
+                or control.get("preview_eligibility") != "true"
+                or control.get("preview_only") != "true"
+                or control.get("actuation_authorized") != "false"
+                or control.get("actionable") != "false"
+                or int(control.get("current_dac_code", -1)) != setup_code
+                or int(control.get("proposed_dac_code", -1)) != setup_code
+                or int(control.get("limited_delta_codes", 1)) != 0
+                or not self._decision_timestamp_consumes_estimate(
+                    decision, estimate
+                )
+                or int(decision.get("requested_delta_codes", 1)) != 0
+                or int(decision.get("requested_code", -1)) != setup_code
+                or int(decision.get("actual_applied_code", -1)) != setup_code
+                or int(decision.get("actual_dac_epoch", -1)) != setup_epoch
+                or decision.get("authority_state") != "DISARMED"
+                or int(decision.get("request_sequence", -1)) != 0
+                or int(decision.get("acceptance_sequence", -1)) != 0
+                or int(decision.get("application_sequence", -1)) != 0
+            ):
+                raise ValueError("retained prefix contains a nonzero or non-equivalent decision")
+
+        pps_origin_health = self._historical_pps_origin_health(
+            origin_ticks=origin_ticks
+        )
+        if (
+            int(pps_origin_health["snapshot_session"]) != setup_session
+            or int(pps_origin_health["accepted_window_count"]) != origin_reference
+            or int(pps_origin_health["boundary_reference_sequence"])
+            != origin_reference
+            or any(
+                pps_origin_health[key] != expected
+                for key, expected in _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items()
+            )
+        ):
+            raise ValueError("qualified-origin PPS health does not match the estimate frontier")
+        baseline = {
+            key: int(pps_origin_health[key])
+            for key in _authoritative_capture_counters(self.programme)
+        }
+
+        self._check_capture_transport_state()
+        current = self._current_health()
+        accepted_now = int(current[("pps_gate", "accepted_window_count")])
+        reference_now = int(current[("pps_gate", "boundary_reference_sequence")])
+        snapshots = [
+            row
+            for row in _read_csv(self.run_dir / "csv/pps_snapshots.csv")
+            if origin_reference
+            <= int(row.get("reference_sequence", -1))
+            <= reference_now
+        ]
+        if (
+            not snapshots
+            or int(snapshots[0]["reference_sequence"]) != origin_reference
+            or int(snapshots[0]["reference_timestamp_ticks"]) != origin_ticks
+        ):
+            raise ValueError("retained PPS snapshots do not bind the qualified origin")
+        latest_extended_ticks = origin_ticks
+        prior_ticks = origin_ticks
+        prior_reference = origin_reference
+        for snapshot in snapshots:
+            reference = int(snapshot["reference_sequence"])
+            ticks = int(snapshot["reference_timestamp_ticks"])
+            if (
+                int(snapshot.get("session", -1)) != setup_session
+                or int(snapshot.get("status", -1)) != 0
+                or reference != prior_reference + (0 if reference == origin_reference else 1)
+            ):
+                raise ValueError("retained PPS snapshot sequence is discontinuous")
+            if reference != origin_reference:
+                progress = forward_progress(
+                    prior_ticks,
+                    ticks,
+                    domain="rp2040_monotonic_us32",
+                    allow_equal=False,
+                )
+                if not progress.valid or progress.distance_ticks is None:
+                    raise ValueError("retained PPS timestamp sequence is discontinuous")
+                latest_extended_ticks += progress.distance_ticks
+            prior_ticks = ticks
+            prior_reference = reference
+
+        current_identity = {
+            "state": current.get(("adaptive_hybrid", "state")),
+            "fail_static": current.get(("adaptive_hybrid", "fail_static")),
+            "applied_code": int(
+                current.get(("adaptive_hybrid", "confirmed_applied_code"), "-1"), 0
+            ),
+            "dac_epoch": int(current.get(("adaptive_hybrid", "dac_epoch"), "-1")),
+            "correction_count": int(
+                current.get(("adaptive_hybrid", "correction_count"), "-1")
+            ),
+            "cumulative_movement_codes": int(
+                current.get(
+                    ("adaptive_hybrid", "cumulative_movement_codes"), "-1"
+                )
+            ),
+            "session_id": int(current.get(("pps_gate", "snapshot_session"), "-1")),
+        }
+        current_counters = {
+            key: int(current.get(("pps_gate", key), "-1"))
+            for key in _authoritative_capture_counters(self.programme)
+        }
+        if (
+            current_identity
+            != {
+                "state": "DISARMED",
+                "fail_static": "false",
+                "applied_code": setup_code,
+                "dac_epoch": setup_epoch,
+                "correction_count": 0,
+                "cumulative_movement_codes": 0,
+                "session_id": setup_session,
+            }
+            or current_counters != baseline
+            or _authoritative_capture_health_faults(current)
+        ):
+            raise ValueError("current firmware or D14/D8 state differs from the retained origin")
+        accepted_progress = (accepted_now - origin_reference) & 0xFFFFFFFF
+        reference_progress = (reference_now - origin_reference) & 0xFFFFFFFF
+        if (
+            accepted_progress > 0x7FFFFFFF
+            or reference_progress > 0x7FFFFFFF
+            or accepted_progress != reference_progress
+            or reference_now < prior_reference
+            or reference_now - prior_reference > 10
+        ):
+            raise ValueError("current accepted D14/D8 frontier is not continuous with replay")
+
+        setup_wall = _parse_utc_epoch(str(self.state["setup_confirmed_utc"]))
+        origin_wall = setup_wall + origin_delay_ticks / RP2040_MONOTONIC_US_PER_SECOND
+        origin_utc = (
+            datetime.fromtimestamp(origin_wall, timezone.utc)
+            .isoformat(timespec="microseconds")
+            .replace("+00:00", "Z")
+        )
+        source_sha256 = sha256(Path(__file__).read_bytes()).hexdigest()
+        recovery = {
+            "schema_version": 1,
+            "contract": "adaptive_hybrid_retained_host_contract_recovery_v1",
+            "reviewed_utc": _utc_now(),
+            "apply_requested": apply,
+            "reviewed_host_revision": reviewed_host_revision,
+            "reviewed_host_source_sha256": source_sha256,
+            "firmware_revision": self.manifest["firmware"]["source_revision"],
+            "firmware_build_identity": self.expected_build_identity,
+            "firmware_uf2_sha256": self.envelope.uf2_sha256,
+            "manifest_sha256": self.envelope.manifest_sha256,
+            "bundle_sha256": self.envelope.bundle_sha256,
+            "superseded_host_verification_hold": hold,
+            "criterion_disposition": (
+                "operator_authorized_retrospective_host_contract_repair; "
+                "canonical firmware and raw acquisition evidence unchanged"
+            ),
+            "qualified_origin": {
+                "estimate_id": first["estimate_id"],
+                "estimator_version": first["estimator_version"],
+                "estimator_timestamp_ticks": origin_ticks,
+                "time_domain": first["time_domain"],
+                "source_reference_first_seq": int(first["source_reference_first_seq"]),
+                "source_reference_last_seq": origin_reference,
+                "source_count_seq": int(first["source_count_seq"]),
+                "source_dac_ref": first["source_dac_ref"],
+                "capture_session": setup_session,
+                "projected_utc": origin_utc,
+                "projection_basis": "setup_confirmed_utc_plus_firmware_tick_delta",
+                "setup_to_origin_ticks": origin_delay_ticks,
+            },
+            "retained_zero_action_prefix": {
+                "selected_estimate_count": len(selected),
+                "control_preview_count": len(preview_controls),
+                "hybrid_decision_count": len(hybrid_rows),
+                "automatic_ACT_record_count": 0,
+                "automatic_DAC_application_count": 0,
+                "selected_estimates_sha256": self._rows_sha256(selected),
+                "control_previews_sha256": self._rows_sha256(controls),
+                "hybrid_decisions_sha256": self._rows_sha256(hybrid_rows),
+                "all_requested_delta_codes_zero": True,
+                "counterfactual_applied_code_unchanged": True,
+            },
+            "D14_D8_replay": {
+                "origin_accepted_window_count": origin_reference,
+                "origin_boundary_reference_sequence": origin_reference,
+                "current_accepted_window_count": accepted_now,
+                "current_boundary_reference_sequence": reference_now,
+                "accepted_apertures_at_review": accepted_progress,
+                "origin_authoritative_capture_baseline": baseline,
+                "latest_replayed_snapshot_reference_sequence": prior_reference,
+                "latest_replayed_snapshot_raw_ticks": prior_ticks,
+                "latest_replayed_snapshot_extended_ticks": latest_extended_ticks,
+            },
+            "current_firmware_identity": current_identity,
+            "void_unsent_host_authorization_sequences": [
+                int(self.state["authorization_sequence"])
+            ],
+            "new_setup_or_ARM_issued_by_recovery": False,
+        }
+        if not apply:
+            return recovery
+
+        report_path = self.run_dir / HOST_CONTRACT_RECOVERY_PATH
+        _atomic_json(report_path, recovery)
+        report_sha256 = sha256(report_path.read_bytes()).hexdigest()
+        self.state["qualification_started_utc"] = origin_utc
+        self.state["qualified_origin_estimate_id"] = first["estimate_id"]
+        self.state["qualified_origin_timestamp_ticks"] = origin_ticks
+        self.state["qualified_origin_session_id"] = setup_session
+        self.state["qualified_origin_extended_timestamp_ticks"] = origin_ticks
+        self.state["qualified_frontier_raw_ticks"] = prior_ticks
+        self.state["qualified_frontier_extended_ticks"] = latest_extended_ticks
+        self.state["qualified_d14_accepted_window_origin"] = origin_reference
+        self.state["qualified_d14_reference_sequence_origin"] = origin_reference
+        self.state["qualified_d14_completed_apertures_before_segment"] = 0
+        self.state["qualified_d14_segment_accepted_window_origin"] = origin_reference
+        self.state["qualified_d14_segment_reference_sequence_origin"] = origin_reference
+        self.state["qualified_d14_accepted_apertures"] = accepted_progress
+        self.state["qualified_d14_reference_sequence_endpoint"] = reference_now
+        self.state["qualified_authoritative_capture_baseline"] = baseline
+        self.state["host_contract_recovery"] = {
+            "path": str(HOST_CONTRACT_RECOVERY_PATH),
+            "sha256": report_sha256,
+            "reviewed_host_revision": reviewed_host_revision,
+            "reviewed_host_source_sha256": source_sha256,
+            "void_unsent_host_authorization_sequences": recovery[
+                "void_unsent_host_authorization_sequences"
+            ],
+        }
+        self.state["host_verification_hold"] = None
+        self.state["arm_pending"] = False
+        self.state["arm_sent_at_utc"] = None
+        self._save()
+        self._programme_event(
+            "retained_host_contract_prefix_recovered",
+            recovery_report=str(HOST_CONTRACT_RECOVERY_PATH),
+            recovery_report_sha256=report_sha256,
+            reviewed_host_revision=reviewed_host_revision,
+            estimate_id=first["estimate_id"],
+            accepted_D14_D8_apertures=accepted_progress,
+            new_setup_or_ARM_issued=False,
+        )
+        return {**recovery, "recovery_report_sha256": report_sha256}
 
     def _maybe_qualify(self, health: dict[tuple[str, str], str]) -> None:
         if self.state["qualification_started_utc"] is not None:
@@ -2784,7 +3265,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return True
         if self.state.get("bench_attempt_arm_admission_closed"):
             return True
-        if bench_attempt.purpose != SINGLE_AUTOMATIC_APPLICATION:
+        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
             raise ValueError("unknown physical bench-attempt authority state")
         aperture_progress = self._qualified_d14_apertures(health)
         deadline = (
@@ -2792,6 +3273,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         if aperture_progress is None or aperture_progress < deadline:
             return False
+        if not self._close_response_horizon_if_required(health):
+            raise ValueError(
+                "long-run bench admission deadline differs from programme response horizon"
+            )
         self.state["bench_attempt_arm_admission_closed"] = True
         self.state["bench_attempt_arm_admission_closed_utc"] = _utc_now()
         self.state["bench_attempt_arm_admission_endpoint"] = aperture_progress
@@ -2988,6 +3473,17 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         preview_rows = _read_csv(self.run_dir / CONTROL_CSV)
         preview = preview_rows[-1] if preview_rows else None
+        if bench_attempt is not None and (
+            preview is None
+            or preview.get("preview_available") != "true"
+            or preview.get("preview_eligibility") != "true"
+        ):
+            # Immediately after setup there is no natural correction
+            # opportunity yet.  A durable CTL decision without an eligible
+            # preview is also explicitly zero-authority.  Wait for the first
+            # eligible preview rather than deriving ARM authority merely from
+            # decision_id/control_seq presence.
+            return
         if not self._arm_progress_epoch_ready(preview, progress):
             return
         opportunity = None
@@ -3028,12 +3524,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         ):
             return
         uptime = int(health[("adaptive_hybrid", "uptime_s")])
-        self.state["authorization_sequence"] += 1
-        sequence = self.state["authorization_sequence"]
+        sequence = int(self.state["authorization_sequence"]) + 1
         nonce = secrets.randbits(32) or 1
         expiry = uptime + ARM_LIFETIME_S
-        self.state["arm_pending"] = True
-        self.state["arm_sent_at_utc"] = _utc_now()
+        arm_sent_at_utc = _utc_now()
+        admission: dict[str, object] | None = None
         if bench_attempt is not None:
             aperture_coordinate = self._qualified_d14_apertures(health)
             if aperture_coordinate is None:
@@ -3053,11 +3548,23 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     bench_attempt.limits.automatic_application_admission_deadline_apertures
                 ),
                 "natural_opportunity": str(opportunity),
-                "admitted_utc": self.state["arm_sent_at_utc"],
+                "admitted_utc": arm_sent_at_utc,
             }
             admissions = self.state["bench_attempt_arm_admissions"]
             if not isinstance(admissions, list):
                 raise ValueError("bench-attempt ARM admissions are malformed")
+            # Validate retained state and all inputs before publishing any new
+            # authorization state.  A host-side coordinate/parser failure must
+            # leave no ghost ARM sequence or pending transaction behind.
+            self._validate_bench_attempt_arm_admissions()
+
+        self.state["authorization_sequence"] = sequence
+        self.state["arm_pending"] = True
+        self.state["arm_sent_at_utc"] = arm_sent_at_utc
+        if bench_attempt is not None:
+            assert admission is not None
+            admissions = self.state["bench_attempt_arm_admissions"]
+            assert isinstance(admissions, list)
             admissions.append(admission)
             self.state["bench_attempt_arm_submission_count"] = arm_count + 1
             self.state["bench_attempt_last_arm_opportunity"] = opportunity
@@ -3107,6 +3614,102 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return False
         self.state["terminal_static_code"] = code
         return True
+
+    def _inhibited_zero_write_terminal_ready(
+        self, health: dict[tuple[str, str], str]
+    ) -> bool:
+        """Require a static no-authority endpoint without inventing a DAC code."""
+
+        bench_attempt = self.envelope.bench_attempt
+        if (
+            bench_attempt is None
+            or bench_attempt.purpose != INHIBITED_ZERO_WRITE
+            or not self._identity_ready(health)
+            or _authoritative_capture_health_faults(health)
+        ):
+            return False
+
+        exact_health = {
+            "state": "DISARMED",
+            "reason": "initialized_disarmed",
+            "hybrid_state": "SETUP_PENDING",
+            "hybrid_reason": "setup_consumers_pending",
+            "capture_lease_live": "true",
+            "manual_start_confirmed": "false",
+            "arm_eligible": "false",
+            "fail_static": "false",
+            "evidence_phase": "evidence_clear",
+            "evidence_pending": "false",
+            "evidence_request_sequence": "0",
+            "confirmed_applied_code_known": "false",
+            "confirmed_applied_code": "unavailable",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "dac_epoch": "0",
+            "phase_material_application_count": "0",
+            "phase_nonzero_application_count": "0",
+            "frequency_only_application_count": "0",
+            "first_phase_checkpoint_passed": "false",
+            "automatic_retry": "false",
+            "automatic_restore": "false",
+        }
+        if any(
+            health.get(("adaptive_hybrid", key)) != expected
+            for key, expected in exact_health.items()
+        ):
+            return False
+
+        causal_state = self.state.get("bench_attempt_causal_state")
+        try:
+            self._validate_bench_attempt_causal_state(causal_state)
+        except ValueError:
+            return False
+        if (
+            self.state.get("host_verification_hold") is not None
+            or self.state.get("terminal_static_code") is not None
+            or self.state.get("manual_start_sent") is not False
+            or self.state.get("arm_pending") is not False
+            or self.state.get("arm_sent_at_utc") is not None
+            or self.state.get("authorization_sequence") != 0
+            or self.state.get("setup_authorization_sequence") != 0
+            or self.state.get("setup_requested_utc") is not None
+            or self.state.get("setup_confirmed_utc") is not None
+            or self.state.get("setup_authority_path") is not None
+            or self.state.get("setup_confirmation") is not None
+            or self.state.get("bench_attempt_arm_admission_closed") is not True
+            or self.state.get("bench_attempt_arm_submission_count") != 0
+            or self.state.get("bench_attempt_last_arm_opportunity") is not None
+            or self.state.get("bench_attempt_arm_admissions") != []
+            or self.state.get("later_authority_released", False) is not False
+            or self.state.get("first_phase_checkpoint_passed", False) is not False
+            or self.state.get("first_phase_observation_checkpoint_exact", False)
+            is not False
+            or self.state.get("phase_material_application_count", 0) != 0
+            or causal_state.get("durable_ACT_application_count") != 0
+            or causal_state.get("firmware_correction_count") != 0
+            or causal_state.get("authority_closed") is not True
+            or _read_csv(self.run_dir / ACTIVE_CSV)
+            or _read_csv(self.run_dir / DAC_CSV)
+            or (self.run_dir / SETUP_AUTHORITY_PATH).exists()
+        ):
+            return False
+
+        origin_session = self.state.get("qualified_origin_session_id")
+        baseline = self.state.get("qualified_authoritative_capture_baseline")
+        try:
+            current_session = int(health[("pps_gate", "snapshot_session")])
+            counters_unchanged = isinstance(baseline, dict) and all(
+                type(baseline.get(key)) is int
+                and int(health[("pps_gate", key)]) == baseline[key]
+                for key in _authoritative_capture_counters(self.programme)
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+        return (
+            type(origin_session) is int
+            and current_session == origin_session
+            and counters_unchanged
+        )
 
     def _set_healthy_endpoint(
         self, health: dict[tuple[str, str], str], *, endpoint: str
@@ -3158,7 +3761,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             >= int(timing["absolute_wall_limit_s"])
         )
         if bench_attempt.purpose == INHIBITED_ZERO_WRITE:
-            if progress is not None and wall_reached and self._healthy_terminal_ready(health):
+            if (
+                progress is not None
+                and wall_reached
+                and self._inhibited_zero_write_terminal_ready(health)
+            ):
                 self._set_healthy_endpoint(
                     health, endpoint=str(terminals["success_terminal"])
                 )
@@ -3168,60 +3775,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     source="bench_attempt_wall_endpoint_observer",
                 )
             return True
-
-        causal_state = self.state.get("bench_attempt_causal_state")
-        closure = (
-            causal_state.get("closure")
-            if isinstance(causal_state, dict)
-            else None
-        )
-        if isinstance(closure, dict):
-            application_coordinate = closure.get(
-                "accepted_D14_D8_apertures_at_application"
-            )
-            reserve = int(timing["correction_response_reserve_delta"]) + int(
-                timing["first_dependent_decision_reserve_delta"]
-            )
-            if (
-                type(application_coordinate) is int
-                and progress is not None
-                and progress >= application_coordinate + reserve
-                and self._healthy_terminal_ready(health)
-            ):
-                self._set_healthy_endpoint(
-                    health, endpoint=str(terminals["success_terminal"])
-                )
-                return True
-        elif (
-            self.state.get("bench_attempt_arm_admission_closed")
-            and not self.state.get("arm_pending")
-            and self._healthy_terminal_ready(health)
-        ):
-            self.state["terminal"] = {
-                "result": "nonpass",
-                "reason": str(terminals["no_application_terminal"]),
-                "primary_decision": str(terminals["no_application_terminal"]),
-                "last_confirmed_code": self.state["terminal_static_code"],
-                "utc": _utc_now(),
-            }
-            self._save()
-            return True
-        if wall_reached:
-            if self._healthy_terminal_ready(health):
-                self.state["terminal"] = {
-                    "result": "nonpass",
-                    "reason": "bench_attempt_absolute_wall_endpoint",
-                    "primary_decision": "adaptive_hybrid_right_censored_incomplete",
-                    "last_confirmed_code": self.state["terminal_static_code"],
-                    "utc": _utc_now(),
-                }
-                self._save()
-            else:
-                self._enter_host_verification_hold(
-                    ValueError("bench-attempt wall endpoint lacks a clear static terminal"),
-                    source="bench_attempt_wall_endpoint_observer",
-                )
-        return True
+        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+            raise ValueError("unsupported physical bench-attempt terminal semantics")
+        # The authority-bearing envelope is an exact projection of the sole
+        # 72-hour programme. Its early setup/application milestones are not
+        # alternate terminals; continue into the programme-owned qualified
+        # aperture and wall endpoints below.
+        return False
 
     def _maybe_finish(
         self,
@@ -3641,6 +4201,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-build-identity", required=True)
     parser.add_argument("--duration-s", type=float)
     parser.add_argument("--console-events", action="store_true")
+    parser.add_argument(
+        "--recover-retained-host-contract-prefix",
+        action="store_true",
+        help="review and apply the bounded zero-action retained-prefix recovery",
+    )
+    parser.add_argument("--reviewed-host-revision")
+    parser.add_argument(
+        "--recovery-dry-run",
+        action="store_true",
+        help="validate and print the recovery without modifying retained state",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -3665,6 +4236,23 @@ def main(argv: list[str] | None = None) -> int:
             duration_s=args.duration_s,
             console_events=args.console_events,
         )
+        if args.recover_retained_host_contract_prefix:
+            if not args.reviewed_host_revision:
+                parser.error(
+                    "--recover-retained-host-contract-prefix requires "
+                    "--reviewed-host-revision"
+                )
+            recovery = supervisor.recover_retained_host_contract_prefix(
+                reviewed_host_revision=args.reviewed_host_revision,
+                apply=not args.recovery_dry_run,
+            )
+            print(json.dumps(recovery, indent=2, sort_keys=True), flush=True)
+            return 0
+        if args.recovery_dry_run or args.reviewed_host_revision:
+            parser.error(
+                "recovery-only options require "
+                "--recover-retained-host-contract-prefix"
+            )
         return supervisor.run()
     except (OSError, RuntimeError, SystemExit, TimeoutError, ValueError) as exc:
         if "supervisor" in locals():

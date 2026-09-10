@@ -23,7 +23,10 @@ ENTRYPOINTS = frozenset(
     }
 )
 STANDALONE_CURRENT_TOOLS = frozenset(
-    {"adaptive_hybrid_operational_rehearsal"}
+    {
+        "adaptive_hybrid_operational_rehearsal",
+        "adaptive_hybrid_supersede",
+    }
 )
 RETIRED_FRAGMENTS = (
     "active_hybrid",

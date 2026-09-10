@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import csv
 from datetime import datetime, timezone
+from hashlib import sha256
 import io
 import json
 import os
@@ -35,6 +36,9 @@ TOOL_ID = "adaptive_hybrid_hybrid_monitor_v1"
 CAPTURE_STATE = Path("reports/capture_device_state.json")
 SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
 HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
+HOST_CONTRACT_RECOVERY = Path(
+    "reports/adaptive_hybrid_host_contract_recovery_v1.json"
+)
 RAW_SERIAL = Path("raw/serial.log")
 ESTIMATES = Path("csv/estimates_v2.csv")
 ACTIVE = Path("csv/active_transactions_v2.csv")
@@ -110,6 +114,52 @@ def _read_object(path: Path) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         raise ValueError(f"JSON root must be an object: {path}")
     return value
+
+
+def _resolved_orchestration_hold(
+    run_dir: Path,
+    *,
+    supervisor: object,
+    orchestration_hold: object,
+) -> dict[str, Any] | None:
+    """Recognize an exact reviewed recovery without erasing the old hold."""
+
+    if not isinstance(supervisor, dict) or not isinstance(orchestration_hold, dict):
+        return None
+    binding = supervisor.get("host_contract_recovery")
+    if (
+        not isinstance(binding, dict)
+        or supervisor.get("host_verification_hold") is not None
+        or binding.get("path") != str(HOST_CONTRACT_RECOVERY)
+    ):
+        return None
+    path = run_dir / HOST_CONTRACT_RECOVERY
+    recovery = _read_object(path)
+    if recovery is None:
+        raise ValueError("retained host-contract recovery report is absent")
+    observed_sha256 = sha256(path.read_bytes()).hexdigest()
+    if (
+        binding.get("sha256") != observed_sha256
+        or recovery.get("contract")
+        != "adaptive_hybrid_retained_host_contract_recovery_v1"
+        or recovery.get("apply_requested") is not True
+        or recovery.get("new_setup_or_ARM_issued_by_recovery") is not False
+        or recovery.get("reviewed_host_revision")
+        != binding.get("reviewed_host_revision")
+        or recovery.get("reviewed_host_source_sha256")
+        != binding.get("reviewed_host_source_sha256")
+        or supervisor.get("qualified_origin_estimate_id")
+        != recovery.get("qualified_origin", {}).get("estimate_id")
+    ):
+        raise ValueError("retained host-contract recovery binding differs")
+    return {
+        "disposition": "reviewed_and_superseded_by_retained_host_contract_recovery",
+        "original_orchestration_hold": orchestration_hold,
+        "recovery_report": str(HOST_CONTRACT_RECOVERY),
+        "recovery_report_sha256": observed_sha256,
+        "reviewed_host_revision": binding["reviewed_host_revision"],
+        "canonical_firmware_and_capture_evidence_unchanged": True,
+    }
 
 
 def _age_s(path: Path, *, now: float) -> float | None:
@@ -492,6 +542,18 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             "review_status": "operator_review_required",
             "error": orchestration_hold_error,
         }
+    resolved_orchestration_hold: dict[str, Any] | None = None
+    if orchestration_hold_error is None:
+        try:
+            resolved_orchestration_hold = _resolved_orchestration_hold(
+                run_dir,
+                supervisor=supervisor,
+                orchestration_hold=orchestration_hold,
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            orchestration_hold_error = f"{type(exc).__name__}: {exc}"
+        if resolved_orchestration_hold is not None:
+            orchestration_hold = None
     terminal = None if supervisor is None else supervisor.get("terminal")
     terminal_reached = isinstance(terminal, dict)
     prewrite_readiness = (
@@ -665,6 +727,7 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
         "terminal": terminal,
         "integrity_faults": integrity_faults,
         "diagnostic_review_hold": diagnostic_hold,
+        "resolved_review_hold": resolved_orchestration_hold,
         "monitoring": {
             "maximum_poll_interval_s": 10,
             "evidence_stale_after_s": EVIDENCE_MAX_AGE_S,

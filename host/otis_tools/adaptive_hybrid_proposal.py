@@ -17,6 +17,8 @@ from .adaptive_hybrid_bundle import (
 )
 from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
+    ARM_OPPORTUNITY_INTERVAL_S,
+    ARM_SUBMISSION_LIMIT,
     AdaptiveHybridProgramme,
     integrated_setup_provenance_contract,
     progressive_checkpoint_contract,
@@ -86,7 +88,9 @@ def _requested_authority(programme: AdaptiveHybridProgramme) -> dict[str, Any]:
         "serial_access": True,
         "command_fifo": True,
         "exact_setup_application_limit": 1,
-        "control_arm_limit": 1,
+        "arm_submission_limit": ARM_SUBMISSION_LIMIT,
+        "arm_opportunity_interval_s": ARM_OPPORTUNITY_INTERVAL_S,
+        "maximum_outstanding_requests": 1,
         "physical_operational_rehearsal_limit": 1,
         "live_acquisition_limit": 1,
         "authority_consumed_by_first_physical_terminal": True,

@@ -173,14 +173,16 @@ OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES = (
 # Closed current bench-attempt envelopes live beside the sole programme
 # descriptor.  They constrain individual bench entries; they do not add an
 # alternate programme or grant authority by themselves.
-SCHEMA_VERSION = 1
-CONTRACT_ID = "adaptive_hybrid_bench_attempt_envelope_v1"
-CAUSAL_STATE_SCHEMA_VERSION = 1
-CAUSAL_STATE_CONTRACT_ID = "adaptive_hybrid_bench_attempt_causal_state_v1"
+SCHEMA_VERSION = 2
+CONTRACT_ID = "adaptive_hybrid_bench_attempt_envelope_v2"
+CAUSAL_STATE_SCHEMA_VERSION = 2
+CAUSAL_STATE_CONTRACT_ID = "adaptive_hybrid_bench_attempt_causal_state_v2"
 
 INHIBITED_ZERO_WRITE = "inhibited_zero_write"
-SINGLE_AUTOMATIC_APPLICATION = "single_automatic_application"
-PURPOSES = frozenset({INHIBITED_ZERO_WRITE, SINGLE_AUTOMATIC_APPLICATION})
+CONTINGENT_72_HOUR_HYBRID_CONTROL = "contingent_72_hour_hybrid_control"
+PURPOSES = frozenset(
+    {INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL}
+)
 
 EXPECTED_BOARD_SERIAL = "503533748A919118"
 EXPECTED_HARDWARE_ID = "503533748A919118"
@@ -193,10 +195,17 @@ EXPECTED_COMPILE_FQBN = "rp2040:rp2040:arduino_nano_connect:freq=133"
 
 PROGRESS_DOMAIN = "accepted_D14_D8_apertures"
 ENDPOINT_CONTRACT = "qualified_D14_D8_aperture_count_v2"
-AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES = 1_800
+AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES = (
+    ADAPTIVE_HYBRID_PROGRAMME.qualified_d14_aperture_count
+    - ADAPTIVE_HYBRID_PROGRAMME.correction_response_reserve_d14_apertures
+)
 CORRECTION_RESPONSE_RESERVE_APERTURES = 1_511
 FIRST_DEPENDENT_DECISION_RESERVE_APERTURES = 600
-ABSOLUTE_WALL_LIMIT_S = 7_200
+ABSOLUTE_WALL_LIMIT_S = ADAPTIVE_HYBRID_PROGRAMME.absolute_wall_limit_s
+INHIBITED_ZERO_WRITE_ABSOLUTE_WALL_LIMIT_S = 7_200
+ARM_OPPORTUNITY_INTERVAL_S = 600
+ARM_SUBMISSION_LIMIT = ABSOLUTE_WALL_LIMIT_S // ARM_OPPORTUNITY_INTERVAL_S
+QUALIFIED_APERTURE_MILESTONES = (21_600, 86_400, 172_800, 259_200)
 SETUP_CODE = ADAPTIVE_HYBRID_PROGRAMME.setup_code
 
 
@@ -210,10 +219,11 @@ class _PurposeLimits:
     maximum_outstanding_requests: int
     setup_code: int | None
     automatic_application_admission_deadline_apertures: int
+    absolute_wall_limit_s: int
     authority_initially_closed: bool
     authority_closure_trigger: str
     success_terminal: str
-    no_application_terminal: str
+    zero_natural_correction_outcome: str
 
 
 _LIMITS = MappingProxyType(
@@ -227,26 +237,37 @@ _LIMITS = MappingProxyType(
             maximum_outstanding_requests=0,
             setup_code=None,
             automatic_application_admission_deadline_apertures=0,
+            absolute_wall_limit_s=INHIBITED_ZERO_WRITE_ABSOLUTE_WALL_LIMIT_S,
             authority_initially_closed=True,
             authority_closure_trigger="initial_contract_state",
             success_terminal="inhibited_zero_write_complete",
-            no_application_terminal="inhibited_by_contract",
+            zero_natural_correction_outcome="inhibited_by_contract",
         ),
-        SINGLE_AUTOMATIC_APPLICATION: _PurposeLimits(
+        CONTINGENT_72_HOUR_HYBRID_CONTROL: _PurposeLimits(
             setup_application_limit=1,
-            automatic_application_limit=1,
-            required_completed_automatic_applications=1,
-            arm_submission_limit=4,
-            total_dac_value_write_limit=2,
+            automatic_application_limit=(
+                ADAPTIVE_HYBRID_PROGRAMME.authorized_maximum_physical_applications
+            ),
+            required_completed_automatic_applications=0,
+            arm_submission_limit=ARM_SUBMISSION_LIMIT,
+            total_dac_value_write_limit=(
+                1
+                + ADAPTIVE_HYBRID_PROGRAMME.authorized_maximum_physical_applications
+            ),
             maximum_outstanding_requests=1,
             setup_code=SETUP_CODE,
             automatic_application_admission_deadline_apertures=(
                 AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES
             ),
+            absolute_wall_limit_s=ABSOLUTE_WALL_LIMIT_S,
             authority_initially_closed=False,
-            authority_closure_trigger="first_validated_ACT_application",
-            success_terminal="single_automatic_application_recovery_complete",
-            no_application_terminal="bounded_no_natural_correction",
+            authority_closure_trigger="automatic_application_limit_reached",
+            success_terminal=(
+                ADAPTIVE_HYBRID_PROGRAMME.qualified_endpoint_reason
+            ),
+            zero_natural_correction_outcome=(
+                "zero_natural_corrections_valid_at_qualified_endpoint"
+            ),
         ),
     }
 )
@@ -330,7 +351,7 @@ class BenchAttemptEnvelope:
                 "first_dependent_decision_reserve_delta": (
                     FIRST_DEPENDENT_DECISION_RESERVE_APERTURES
                 ),
-                "absolute_wall_limit_s": ABSOLUTE_WALL_LIMIT_S,
+                "absolute_wall_limit_s": limits.absolute_wall_limit_s,
                 "wall_limit_role": "separate_hard_bound_not_decision_counter",
             },
             "causal_state": {
@@ -367,10 +388,26 @@ class BenchAttemptEnvelope:
             "terminal_semantics": {
                 "natural_correction_only": True,
                 "success_terminal": limits.success_terminal,
-                "no_application_terminal": limits.no_application_terminal,
+                "zero_natural_correction_outcome": (
+                    limits.zero_natural_correction_outcome
+                ),
                 "no_retry": True,
                 "no_restore": True,
                 "no_extension": True,
+            },
+            "monitoring_semantics": {
+                "authoritative_source": (
+                    "retained_supervisor_state_and_capture_evidence"
+                ),
+                "accepted_D14_D8_aperture_milestones": (
+                    list(QUALIFIED_APERTURE_MILESTONES)
+                    if self.purpose == CONTINGENT_72_HOUR_HYBRID_CONTROL
+                    else []
+                ),
+                "first_application_milestone_nonterminal": (
+                    self.purpose == CONTINGENT_72_HOUR_HYBRID_CONTROL
+                ),
+                "host_monitor_may_decide_terminal": False,
             },
             "host_discrepancy_semantics": {
                 "transition": "operator_review_hold",
@@ -415,6 +452,7 @@ def validate_bench_attempt_envelope(
         "timing",
         "causal_state",
         "terminal_semantics",
+        "monitoring_semantics",
         "host_discrepancy_semantics",
         "envelope_sha256",
     }

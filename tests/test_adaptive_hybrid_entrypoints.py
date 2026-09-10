@@ -13,6 +13,7 @@ ENTRYPOINTS = (
     "adaptive_hybrid_analyze",
     "adaptive_hybrid_run",
     "adaptive_hybrid_monitor",
+    "adaptive_hybrid_supersede",
 )
 
 

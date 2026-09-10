@@ -6,13 +6,14 @@ programme execution surface. The most important present limitations are:
 - D10/channel 0 is reserved for external-event evidence, and the host contract
   preserves ingest, storage, replay, and zero-authority isolation, but firmware
   does not yet implement a capture backend that is safely isolated from D14;
-- the current code reset has no new physical qualification; its claims are
-  limited to deterministic no-hardware verification and exact fixed-image
-  compilation;
-- live activation is intentionally fail-closed because the current-only host
-  does not yet implement the genuine process/FIFO/command/acknowledgement/
-  obstruction/abort/analysis/sealing rehearsal required for bench entry; the
-  retained structural preflight is explicitly non-authorizing;
+- the current 72-hour contingent hybrid programme is not physically qualified;
+  the completed inhibited zero-write acquisition established its own bounded
+  no-actuation claim only and does not qualify closed-loop control;
+- the current-only host implements the genuine process/FIFO/command/
+  acknowledgement/obstruction/abort/handoff/analysis/sealing rehearsal, but
+  live activation remains fail-closed unless the exact frozen bundle has a
+  successful sealed rehearsal and explicit operator authority; the separate
+  structural preflight remains non-authorizing;
 - D9/D6 evidence establishes digital forwarding/monitor behavior only; it does
   not qualify analog waveform shape, jitter, loading, or independent frequency;
 - the supported instrument still requires a continuously drained sole-owner

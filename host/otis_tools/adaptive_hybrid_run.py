@@ -35,12 +35,16 @@ from .adaptive_hybrid_activation import (
     validate_activation_for_physical_entry,
     validate_frozen_run_manifest,
 )
+from .adaptive_hybrid_health import SETUP_AUTHORITY_PATH
 from .active_status_contract import complete_active_status_snapshots
 from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
 from .adaptive_hybrid_contract import (
     AdaptiveHybridProgramme,
     ADAPTIVE_HYBRID_PROGRAMME,
     BenchAttemptEnvelope,
+    CAUSAL_STATE_CONTRACT_ID,
+    CAUSAL_STATE_SCHEMA_VERSION,
+    INHIBITED_ZERO_WRITE,
     programme_from_mapping,
     validate_bench_attempt_envelope,
 )
@@ -71,6 +75,13 @@ SUPERVISOR_LOG = Path("reports/adaptive_hybrid_hybrid_supervisor.log")
 SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
 ORCHESTRATION_FAILURE = Path("reports/adaptive_hybrid_hybrid_orchestration_failure_v1.json")
 HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
+HOST_REVIEW_RESOLUTION = Path(
+    "reports/adaptive_hybrid_hybrid_host_review_resolution_v1.json"
+)
+CAPTURE_STATE = Path("reports/capture_device_state.json")
+CAPTURE_CLOSURE = Path("reports/capture_segment_closure_v1.json")
+ACTIVE_TRANSACTIONS = Path("csv/active_transactions_v2.csv")
+DAC_STEPS = Path("csv/dac_steps.csv")
 ABORT_DELIVERY_FAILURE = Path(
     "reports/adaptive_hybrid_hybrid_abort_delivery_failure_v1.json"
 )
@@ -518,19 +529,31 @@ def _terminal_expected(
         return False
     result = terminal.get("result")
     semantics = bench_attempt.as_dict()["terminal_semantics"]
-    decision_is_valid = (
-        terminal.get("reason") == semantics["success_terminal"]
-        and terminal.get("preliminary_decision") in programme.healthy_preliminary_decisions
-        if result == "healthy_stop"
-        else terminal.get("primary_decision")
-        in {semantics["no_application_terminal"], "adaptive_hybrid_right_censored_incomplete", *programme.terminal_decisions}
-    )
     static_code = terminal.get("last_confirmed_code")
-    static_code_is_valid = type(static_code) is int or (
-        result == "aborted" and static_code is None
-    )
+    if result == "healthy_stop":
+        static_code_is_valid = (
+            static_code is None
+            if bench_attempt.purpose == INHIBITED_ZERO_WRITE
+            else type(static_code) is int
+            and programme.minimum_code <= static_code <= programme.maximum_code
+        )
+        return bool(
+            terminal.get("reason") == semantics["success_terminal"]
+            and terminal.get("preliminary_decision")
+            in programme.healthy_preliminary_decisions
+            and terminal.get("primary_decision") is None
+            and static_code_is_valid
+        )
+    decision_is_valid = terminal.get("primary_decision") in {
+        "adaptive_hybrid_right_censored_incomplete",
+        *programme.terminal_decisions,
+    }
+    static_code_is_valid = (
+        type(static_code) is int
+        and programme.minimum_code <= static_code <= programme.maximum_code
+    ) or (result == "aborted" and static_code is None)
     return bool(
-        result in {"healthy_stop", "nonpass", "aborted"}
+        result in {"nonpass", "aborted"}
         and decision_is_valid
         and static_code_is_valid
     )
@@ -1527,6 +1550,354 @@ def _journal_phase_complete(journal: dict[str, Any], phase: str) -> bool:
     return journal.get("phases", {}).get(phase) is not None
 
 
+def _recovery_index_path(
+    journal: dict[str, Any], requested: Path | None
+) -> Path:
+    retained = journal.get("index_path")
+    if not isinstance(retained, str) or not retained:
+        raise ValueError("ADAPTIVE_HYBRID finalization journal index is unavailable")
+    retained_path = Path(retained).expanduser().resolve()
+    if requested is not None and requested.expanduser().resolve() != retained_path:
+        raise ValueError(
+            "ADAPTIVE_HYBRID recovery index differs from the retained journal"
+        )
+    return retained_path
+
+
+def _csv_rows(path: Path) -> list[dict[str, str]]:
+    with path.open("r", newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _utc_epoch(value: object) -> float:
+    if not isinstance(value, str) or not value:
+        raise ValueError("zero-write endpoint timestamp is absent")
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError as exc:
+        raise ValueError("zero-write endpoint timestamp is malformed") from exc
+
+
+def _zero_write_review_terminal(
+    *,
+    bench_attempt: BenchAttemptEnvelope,
+    manifest: dict[str, Any],
+    supervisor_state: dict[str, Any],
+    capture_state: dict[str, Any],
+    capture_closure: dict[str, Any],
+    completion: dict[str, Any],
+    health: dict[tuple[str, str], str],
+    active_rows: list[dict[str, str]],
+    dac_rows: list[dict[str, str]],
+    setup_authority_present: bool,
+    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
+) -> dict[str, Any]:
+    """Derive only the exact inhibited endpoint rejected by the old host.
+
+    A zero-write attempt has no physical DAC identity because setup itself is
+    forbidden.  Its static terminal is therefore the proven absence of host
+    authority, firmware application, and DAC movement, not a fabricated code.
+    """
+
+    document = bench_attempt.as_dict()
+    if bench_attempt.purpose != INHIBITED_ZERO_WRITE:
+        raise ValueError("review resolution is limited to inhibited zero-write")
+    if supervisor_state.get("terminal") is not None:
+        raise ValueError("zero-write review resolution found an existing terminal")
+    hold = supervisor_state.get("host_verification_hold")
+    if not (
+        isinstance(hold, dict)
+        and hold.get("source") == "bench_attempt_wall_endpoint_observer"
+        and hold.get("error") == "zero-write wall endpoint lacks a clear static terminal"
+        and hold.get("review_status") == "operator_review_required"
+        and hold.get("new_authority") is False
+    ):
+        raise ValueError("retained hold is not the exact zero-write endpoint mismatch")
+    if completion.get("terminal") is not None or completion.get("orchestration_error") is not None:
+        raise ValueError("completion record contradicts retained review resolution")
+
+    expected_host_state = {
+        "manual_start_sent": False,
+        "setup_requested_utc": None,
+        "setup_confirmed_utc": None,
+        "setup_authorization_sequence": 0,
+        "setup_authority_path": None,
+        "setup_confirmation": None,
+        "arm_pending": False,
+        "arm_sent_at_utc": None,
+        "authorization_sequence": 0,
+        "bench_attempt_arm_admission_closed": True,
+        "bench_attempt_arm_submission_count": 0,
+        "bench_attempt_last_arm_opportunity": None,
+        "bench_attempt_arm_admissions": [],
+        "terminal_static_code": None,
+    }
+    for key, expected in expected_host_state.items():
+        if supervisor_state.get(key) != expected:
+            raise ValueError(f"zero-write retained host state differs for {key}")
+    causal = supervisor_state.get("bench_attempt_causal_state")
+    expected_closure = {
+        "trigger": "initial_contract_state",
+        "bench_attempt_purpose": INHIBITED_ZERO_WRITE,
+        "bench_attempt_envelope_sha256": document["envelope_sha256"],
+    }
+    if not (
+        isinstance(causal, dict)
+        and causal.get("schema_version") == CAUSAL_STATE_SCHEMA_VERSION
+        and causal.get("contract") == CAUSAL_STATE_CONTRACT_ID
+        and causal.get("durable_ACT_application_count") == 0
+        and causal.get("firmware_correction_count") == 0
+        and causal.get("authority_closed") is True
+        and causal.get("closure") == expected_closure
+    ):
+        raise ValueError("zero-write retained causal authority is not exactly closed")
+    if active_rows or dac_rows or setup_authority_present:
+        raise ValueError("zero-write endpoint contains setup, ACT, or DAC authority evidence")
+
+    exact_health = {
+        "state": "DISARMED",
+        "reason": "initialized_disarmed",
+        "hybrid_state": "SETUP_PENDING",
+        "hybrid_reason": "setup_consumers_pending",
+        "capture_lease_live": "true",
+        "manual_start_confirmed": "false",
+        "arm_eligible": "false",
+        "fail_static": "false",
+        "evidence_phase": "evidence_clear",
+        "evidence_pending": "false",
+        "evidence_request_sequence": "0",
+        "confirmed_applied_code_known": "false",
+        "confirmed_applied_code": "unavailable",
+        "correction_count": "0",
+        "cumulative_movement_codes": "0",
+        "dac_epoch": "0",
+        "phase_material_application_count": "0",
+        "phase_nonzero_application_count": "0",
+        "frequency_only_application_count": "0",
+        "first_phase_checkpoint_passed": "false",
+        "automatic_retry": "false",
+        "automatic_restore": "false",
+    }
+    for key, expected in exact_health.items():
+        if health.get(("adaptive_hybrid", key)) != expected:
+            raise ValueError(f"zero-write firmware endpoint differs for {key}")
+
+    firmware = manifest.get("firmware")
+    identities = manifest.get("transaction_identities")
+    if not isinstance(firmware, dict) or not isinstance(identities, dict):
+        raise ValueError("zero-write manifest identity is incomplete")
+    expected_identity = {
+        "run_identity": manifest.get("run_identity"),
+        "build_identity": firmware.get("build_identity"),
+        "image_identity": manifest.get("image_identity"),
+        "active_policy_sha256": identities.get("active_policy_sha256"),
+        "estimator_sha256": identities.get("estimator_sha256"),
+        "model_sha256": identities.get("model_sha256"),
+        "numerical_policy_sha256": identities.get("numerical_policy_sha256"),
+        "response_policy_sha256": identities.get("response_policy_sha256"),
+    }
+    for key, expected in expected_identity.items():
+        if not isinstance(expected, str) or health.get(("adaptive_hybrid", key)) != expected:
+            raise ValueError(f"zero-write firmware identity differs for {key}")
+
+    if not (
+        capture_state.get("capture_active") is False
+        and capture_state.get("serial_open") is False
+        and capture_state.get("physical_serial_open") is False
+        and capture_state.get("logical_segment_closed") is True
+        and capture_closure.get("logical_segment_closed") is True
+        and capture_closure.get("physical_serial_open") is False
+        and capture_closure.get("closure_mode") == "physical_serial_close"
+    ):
+        raise ValueError("zero-write capture did not close as one logical segment")
+    zero_capture_counters = {
+        "commands_rejected",
+        "emergency_aborts_sent",
+        "malformed_utf8",
+        "parser_errors",
+        "reconnect_count",
+    }
+    closure_counters = capture_closure.get("counters")
+    if not isinstance(closure_counters, dict):
+        raise ValueError("zero-write capture closure counters are absent")
+    for key in zero_capture_counters:
+        if capture_state.get(key) != 0 or closure_counters.get(key) != 0:
+            raise ValueError(f"zero-write capture counter is nonzero for {key}")
+    if capture_state.get("intentional_detach_count") != 0:
+        raise ValueError("zero-write capture contains an owner detach")
+
+    wall_origin = supervisor_state.get("wall_origin_utc")
+    wall_limit = int(document["timing"]["absolute_wall_limit_s"])
+    elapsed = _utc_epoch(capture_closure.get("closed_utc")) - _utc_epoch(wall_origin)
+    if not wall_limit <= elapsed <= wall_limit + 240:
+        raise ValueError("zero-write capture closure is outside its bounded wall endpoint")
+
+    baseline = supervisor_state.get("qualified_authoritative_capture_baseline")
+    if not isinstance(baseline, dict):
+        raise ValueError("zero-write authoritative capture baseline is absent")
+    try:
+        for key, value in baseline.items():
+            if int(health[("pps_gate", key)]) != value:
+                raise ValueError(f"zero-write D14/D8 counter changed for {key}")
+        session = int(health[("pps_gate", "snapshot_session")])
+        accepted = int(health[("pps_gate", "accepted_window_count")])
+        reference = int(health[("pps_gate", "boundary_reference_sequence")])
+        origin_accepted = int(supervisor_state["qualified_d14_accepted_window_origin"])
+        origin_reference = int(supervisor_state["qualified_d14_reference_sequence_origin"])
+        progress = int(supervisor_state["qualified_d14_accepted_apertures"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("zero-write D14/D8 endpoint is incomplete") from exc
+    if not (
+        session == supervisor_state.get("initial_session_id")
+        and (accepted - origin_accepted) & 0xFFFFFFFF == progress
+        and (reference - origin_reference) & 0xFFFFFFFF == progress
+        and progress > 0
+        and health.get(("pps_gate", "state")) == "open"
+        and health.get(("pps_gate", "valid")) == "true"
+        and health.get(("pps_gate", "control_eligible")) == "true"
+    ):
+        raise ValueError("zero-write D14/D8 endpoint is not exact")
+
+    return {
+        "result": "healthy_stop",
+        "reason": document["terminal_semantics"]["success_terminal"],
+        "preliminary_decision": "pending_offline_scientific_analysis",
+        "last_confirmed_code": None,
+        "utc": capture_closure["closed_utc"],
+    }
+
+
+def _resolve_zero_write_review(
+    *,
+    run_dir: Path,
+    manifest: dict[str, Any],
+    bench_attempt: BenchAttemptEnvelope,
+    programme: AdaptiveHybridProgramme,
+) -> tuple[dict[str, Any] | None, Path | None]:
+    """Write or validate one immutable no-I/O resolution of the old host hold."""
+
+    terminal = _terminal(run_dir)
+    if terminal is not None or bench_attempt.purpose != INHIBITED_ZERO_WRITE:
+        return terminal, None
+    source_paths = {
+        "supervisor_state": run_dir / SUPERVISOR_STATE,
+        "live_status": run_dir / LIVE_STATE_PATH,
+        "capture_state": run_dir / CAPTURE_STATE,
+        "capture_closure": run_dir / CAPTURE_CLOSURE,
+        "active_transactions": run_dir / ACTIVE_TRANSACTIONS,
+        "dac_steps": run_dir / DAC_STEPS,
+        "completion": run_dir / COMPLETE,
+    }
+    resolution_path = run_dir / HOST_REVIEW_RESOLUTION
+    setup_authority_path = run_dir / SETUP_AUTHORITY_PATH
+    if resolution_path.is_file():
+        resolution = _read_json(resolution_path)
+        if resolution is None:
+            raise ValueError("zero-write review resolution is malformed")
+        retained_sources = resolution.get("source_sha256")
+        if retained_sources != {
+            key: _sha256_file(path) for key, path in source_paths.items()
+        }:
+            raise ValueError("zero-write review resolution source evidence changed")
+        unsigned = {key: value for key, value in resolution.items() if key != "resolution_sha256"}
+        expected_hash = sha256(
+            json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        if resolution.get("resolution_sha256") != expected_hash:
+            raise ValueError("zero-write review resolution identity is invalid")
+        if (
+            resolution.get("absent_artifacts") != [str(SETUP_AUTHORITY_PATH)]
+            or setup_authority_path.exists()
+        ):
+            raise ValueError("zero-write review resolution setup authority differs")
+        retained_terminal = resolution.get("terminal")
+        if not isinstance(retained_terminal, dict):
+            raise ValueError("zero-write review resolution terminal is absent")
+        return retained_terminal, resolution_path
+
+    if setup_authority_path.exists():
+        raise ValueError("zero-write retained setup authority record exists")
+    source_sha256 = {
+        key: _sha256_file(path) for key, path in source_paths.items()
+    }
+    supervisor_state = _read_json(source_paths["supervisor_state"])
+    capture_state = _read_json(source_paths["capture_state"])
+    capture_closure = _read_json(source_paths["capture_closure"])
+    completion = _read_json(source_paths["completion"])
+    live = read_live_health_state(source_paths["live_status"])
+    if any(
+        value is None
+        for value in (
+            supervisor_state,
+            capture_state,
+            capture_closure,
+            completion,
+        )
+    ):
+        raise ValueError("zero-write retained review evidence is incomplete")
+    if live.state != "complete":
+        raise ValueError(f"zero-write final live status is not complete: {live.diagnostic}")
+    terminal = _zero_write_review_terminal(
+        bench_attempt=bench_attempt,
+        manifest=manifest,
+        supervisor_state=supervisor_state,
+        capture_state=capture_state,
+        capture_closure=capture_closure,
+        completion=completion,
+        health=live.health,
+        active_rows=_csv_rows(source_paths["active_transactions"]),
+        dac_rows=_csv_rows(source_paths["dac_steps"]),
+        setup_authority_present=setup_authority_path.exists(),
+        programme=programme,
+    )
+    if source_sha256 != {
+        key: _sha256_file(path) for key, path in source_paths.items()
+    } or setup_authority_path.exists():
+        raise RuntimeError("zero-write review source evidence changed during resolution")
+    tool_bindings = manifest.get("host", {}).get("tool_bindings", {})
+    original_tools = {
+        key: tool_bindings.get(key, {}).get("sha256")
+        for key in (
+            "adaptive_hybrid_supervisor",
+            "adaptive_hybrid_run",
+            "adaptive_hybrid_analyze",
+        )
+    }
+    if any(not isinstance(value, str) for value in original_tools.values()):
+        raise ValueError("zero-write frozen host tool identities are incomplete")
+    unsigned: dict[str, Any] = {
+        "schema_version": 1,
+        "report_type": "adaptive_hybrid_hybrid_host_review_resolution_v1",
+        "recorded_utc": _utc_now(),
+        "resolution": "deterministic_host_endpoint_mismatch_superseded",
+        "original_hold_preserved": True,
+        "physical_rerun": False,
+        "device_or_actuator_io": False,
+        "new_authority": False,
+        "absent_artifacts": [str(SETUP_AUTHORITY_PATH)],
+        "source_sha256": source_sha256,
+        "original_tool_sha256": original_tools,
+        "review_tool_sha256": {
+            "adaptive_hybrid_supervisor": _sha256_file(
+                Path(__file__).with_name("adaptive_hybrid_supervisor.py")
+            ),
+            "adaptive_hybrid_run": _sha256_file(Path(__file__)),
+            "adaptive_hybrid_analyze": _sha256_file(
+                Path(__file__).with_name("adaptive_hybrid_analyze.py")
+            ),
+        },
+        "terminal": terminal,
+    }
+    resolution = {
+        **unsigned,
+        "resolution_sha256": sha256(
+            json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+    }
+    _atomic_new_json(resolution_path, resolution)
+    return terminal, resolution_path
+
+
 def recover_adaptive_hybrid_finalization(
     *, run_dir: Path, evidence_index_path: Path | None = None
 ) -> dict[str, Any]:
@@ -1547,6 +1918,7 @@ def recover_adaptive_hybrid_finalization(
         programme = programme_from_mapping(manifest)
     except ValueError:
         programme = programme_from_mapping(activation)
+    bench_attempt = validate_bench_attempt_envelope(manifest["bench_attempt"])
     raw_path = run_dir / "raw/serial.log"
 
     def retained_identity(path: Path) -> str | None:
@@ -1560,11 +1932,26 @@ def recover_adaptive_hybrid_finalization(
     journal = _read_json(journal_path)
     if journal is None:
         raise ValueError("ADAPTIVE_HYBRID finalization journal is unavailable")
-    index_path = (
-        evidence_index_path.expanduser().resolve()
-        if evidence_index_path is not None
-        else Path(journal["index_path"])
+    terminal, review_resolution = _resolve_zero_write_review(
+        run_dir=run_dir,
+        manifest=manifest,
+        bench_attempt=bench_attempt,
+        programme=programme,
     )
+    if not _journal_phase_complete(journal, "completion"):
+        advance_phase(
+            journal_path,
+            "completion",
+            {
+                "terminal": terminal,
+                "orchestration_error": "",
+                "review_resolution": (
+                    None if review_resolution is None else str(review_resolution)
+                ),
+            },
+        )
+        journal = _read_json(journal_path) or journal
+    index_path = _recovery_index_path(journal, evidence_index_path)
     snapshot = run_dir / EVIDENCE_MANIFEST
     if not snapshot.is_file():
         try:
