@@ -32,6 +32,9 @@ def test_repository_declares_exactly_one_fixed_firmware_image() -> None:
     assert "profiles" not in manifest
     assert manifest["profile_bindings"] == build_firmware.EXPECTED_PROFILE_BINDINGS
     assert manifest["schema_bindings"] == build_firmware.EXPECTED_SCHEMA_BINDINGS
+    assert manifest["contract_bindings"] == (
+        build_firmware.EXPECTED_CONTRACT_BINDINGS
+    )
     assert "negative_compile_cases" not in manifest
     assert not (ROOT / "firmware/arduino/firmware_matrix.json").exists()
 
@@ -89,6 +92,9 @@ def test_builder_generates_every_current_semantic_identity_from_bound_bytes() ->
     assert provenance["configuration"]["schema_bindings"] == (
         build_firmware.schema_binding_report(manifest)
     )
+    assert provenance["configuration"]["contract_bindings"] == (
+        build_firmware.contract_binding_report(manifest)
+    )
     for name, macro in build_firmware.PROFILE_BINDING_MACROS.items():
         digest = current_profile_sha256(name)
         assert f'#define {macro} "{digest}"' in header
@@ -136,6 +142,7 @@ def test_production_code_has_no_unmanaged_literal_semantic_sha256() -> None:
         )
         for path in production_files
         if path.is_file()
+        and not path.name.endswith(".generated.h")
         and literal_sha256.search(
             path.read_text(encoding="utf-8", errors="replace")
         )

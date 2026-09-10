@@ -3,6 +3,8 @@
 #include <limits.h>
 #include <string.h>
 
+#include "otis_firmware_host_contract.generated.h"
+
 namespace {
 
 constexpr char kPolicyId[] = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1";
@@ -12,29 +14,7 @@ constexpr uint32_t kMinimumCode = 0xA800u;
 constexpr uint32_t kMaximumCode = 0xAB00u;
 
 constexpr char kHeader[] =
-    "record_type,schema_version,maintenance_record_sequence,event,"
-    "event_timestamp_ticks,time_domain,run_identity,build_identity,"
-    "image_identity,policy_id,active_policy_sha256,capture_session,"
-    "source_first_sequence,source_last_sequence,frequency_estimator_sha256,"
-    "phase_epoch,phase_observation_sequence,phase_valid,current_applied_code,"
-    "current_dac_epoch,hybrid_record_sequence,decision_sequence,"
-    "transaction_record_sequence,transaction_event,request_sequence,"
-    "application_sequence,actual_applied_code,actual_dac_epoch,"
-    "downstream_epoch_exact,maintenance_state_before,maintenance_state_after,"
-    "frontier_relation,interval_sign,persistence_count_before,"
-    "persistence_count_after,raw_fll_demand_picocodes,"
-    "raw_pll_demand_picocodes,candidate_total_demand_picocodes,safe_cap_codes,"
-    "requested_delta_codes,requested_code,"
-    "committed_fll_debt_before_picocodes,"
-    "committed_pll_debt_before_picocodes,"
-    "committed_fll_debt_after_picocodes,"
-    "committed_pll_debt_after_picocodes,request_pending_before,"
-    "request_pending_after,response_pending_before,response_pending_after,"
-    "metadata_hold_before,metadata_hold_after,"
-    "requalification_window_count_before,requalification_window_count_after,"
-    "requalification_d14_d8_observation_sequence,"
-    "evidence_burst_sequence,evidence_burst_record_ordinal,"
-    "evidence_burst_record_count,reason,actionable\r\n";
+    OTIS_CONTRACT_ACTIVE_HYBRID_MAINTENANCE_V1_HEADER "\r\n";
 
 class BoundedWriter {
  public:

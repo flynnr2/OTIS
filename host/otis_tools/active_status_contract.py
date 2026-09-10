@@ -6,30 +6,20 @@ import csv
 from pathlib import Path
 from typing import Iterable, Mapping
 
-ACTIVE_STATUS_SNAPSHOT_CONTRACT = "adaptive_hybrid_active_status_snapshot_v1"
-ACTIVE_STATUS_COMPONENT = "adaptive_hybrid"
-SNAPSHOT_BEGIN_KEY = "snapshot_generation_begin"
-SNAPSHOT_CONTRACT_KEY = "snapshot_contract"
-SNAPSHOT_COMPLETE_KEY = "snapshot_generation_complete"
-
-ACTIVE_STATUS_KEYS = (
-    "enabled", "run_identity", "build_identity", "image_identity",
-    "estimator_sha256", "model_sha256", "active_policy_sha256",
-    "response_policy_sha256", "numerical_policy_sha256", "state", "reason",
-    "evidence_pending", "evidence_phase", "capture_lease_live",
-    "manual_start_confirmed", "arm_eligible", "fail_static",
-    "setup_gnss_eligible", "setup_reference_eligible", "setup_partition_healthy",
-    "gnss_metadata_hold_active", "gnss_metadata_hold_transaction_pending",
-    "gnss_metadata_hold_entry_sequence", "gnss_metadata_requalification_sequence",
-    "gnss_metadata_qualification_frontier", "d14_d8_observation_sequence",
-    "hybrid_state", "hybrid_reason", "first_phase_checkpoint_passed",
-    "phase_nonzero_application_count", "phase_material_application_count",
-    "frequency_only_application_count", "session_id", "query_nonce",
-    "uptime_s", "evidence_request_sequence", "expected_setup_code",
-    "confirmed_applied_code_known", "confirmed_applied_code", "correction_count",
-    "cumulative_movement_codes", "dac_epoch", "selected_interval_count",
-    "automatic_retry", "automatic_restore",
+from .firmware_host_contract import (
+    ACTIVE_STATUS_COMPONENT,
+    ACTIVE_STATUS_CONTRACT_ID,
+    ACTIVE_STATUS_ENVELOPE,
+    ACTIVE_STATUS_KEYS,
+    RECORD_SCHEMA_VERSIONS,
 )
+
+
+ACTIVE_STATUS_SNAPSHOT_CONTRACT = ACTIVE_STATUS_CONTRACT_ID
+SNAPSHOT_BEGIN_KEY = str(ACTIVE_STATUS_ENVELOPE["begin"])
+SNAPSHOT_CONTRACT_KEY = str(ACTIVE_STATUS_ENVELOPE["contract"])
+SNAPSHOT_COMPLETE_KEY = str(ACTIVE_STATUS_ENVELOPE["complete"])
+HEALTH_SCHEMA_VERSION = str(RECORD_SCHEMA_VERSIONS["health_v1"])
 ACTIVE_STATUS_CONTRACT_KEYS = {ACTIVE_STATUS_SNAPSHOT_CONTRACT: ACTIVE_STATUS_KEYS}
 ACTIVE_STATUS_WIRE_KEYS = (
     SNAPSHOT_BEGIN_KEY, SNAPSHOT_CONTRACT_KEY, *ACTIVE_STATUS_KEYS, SNAPSHOT_COMPLETE_KEY
@@ -94,6 +84,11 @@ def complete_active_status_snapshots(
             ACTIVE_STATUS_COMPONENT
         ):
             continue
+        if row.get("schema_version") != HEALTH_SCHEMA_VERSION:
+            current_generation = None
+            current = {}
+            duplicate_or_invalid = True
+            continue
         key = canonical_active_status_key(row.get("status_key", ""))
         value = row.get("status_value", "")
         if key == SNAPSHOT_BEGIN_KEY:
@@ -106,6 +101,9 @@ def complete_active_status_snapshots(
             duplicate_or_invalid = current_generation is None
             continue
         if current_generation is None:
+            continue
+        if key not in ALL_ACTIVE_STATUS_WIRE_KEYS:
+            duplicate_or_invalid = True
             continue
         if key == SNAPSHOT_COMPLETE_KEY:
             completed_generation = _unsigned_generation(value)

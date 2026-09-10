@@ -239,13 +239,24 @@ class ResponseClassifier:
         self.cumulative_delta_codes += applied_delta_codes
         observed = post_error_hz - pre_error_hz
         cumulative = post_error_hz - self.baseline_error_hz
-        if observed * applied_delta_codes < 0 and abs(observed) >= self.wrong_sign_minimum:
+        if (
+            observed * applied_delta_codes < 0
+            and abs(observed) >= self.wrong_sign_minimum
+        ) or (
+            cumulative * self.cumulative_delta_codes < 0
+            and abs(cumulative) >= self.wrong_sign_minimum
+        ):
             result = (ResponseClass.WRONG_SIGN, "observed_response_opposes_positive_plant_gain")
         elif abs(post_error_hz) > abs(pre_error_hz) + self.growth_margin:
             result = (ResponseClass.GROWING_ERROR, "absolute_error_grew_beyond_frozen_margin")
         elif abs(observed) > abs(applied_delta_codes) * self.gain_max + self.excess_margin:
             result = (ResponseClass.EXCESS_RESPONSE, "response_exceeds_gain_envelope_plus_empirical_margin")
-        elif observed * applied_delta_codes > 0 and abs(observed) >= self.floor:
+        elif (
+            observed * applied_delta_codes > 0 and abs(observed) >= self.floor
+        ) or (
+            cumulative * self.cumulative_delta_codes > 0
+            and abs(cumulative) >= self.floor
+        ):
             result = (ResponseClass.HEALTHY_DETECTED, "response_detected_with_commanded_sign")
         else:
             self.consecutive_indeterminate += 1

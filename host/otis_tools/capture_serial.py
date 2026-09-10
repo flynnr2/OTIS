@@ -9,28 +9,14 @@ import shutil
 import sys
 from typing import Callable
 
-from .contracts import CONTRACT_FIELDS
+from .contracts import CONTRACT_FIELDS, CONTRACT_SCHEMA_VERSIONS
+from .firmware_host_contract import RECORD_TYPE_TO_CONTRACT
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
 
 
-RECORD_CONTRACTS = {
-    "EVT": "raw_events_v1",
-    "REF": "raw_events_v1",
-    "CNT": "count_observations_v1",
-    "SNP": "pps_snapshots_v1",
-    "MNS": "forwarded_monitor_snapshots_v1",
-    "ASL": "association_loss_decisions_v1",
-    "STS": "health_v1",
-    "DAC": "dac_steps_v1",
-    "ENV": "environment_v1",
-    "EST": "estimates_v2",
-    "CTL": "control_previews_v1",
-    "ACT": "active_transactions_v2",
-    "AHY": "active_hybrid_decisions_v2",
-    "AHM": "active_hybrid_maintenance_v1",
-    "RPH": "relative_phase_observations_v1",
-    "PHE": "phase_estimator_outputs_v1",
-    "TDB": "tight_deadband_decisions_v1",
+RECORD_CONTRACTS = dict(RECORD_TYPE_TO_CONTRACT)
+CONTRACT_HEADER_ROWS = {
+    tuple(fields): contract for contract, fields in CONTRACT_FIELDS.items()
 }
 
 # Hardware channel assignment is architectural, not caller-selected. EVT is
@@ -94,6 +80,13 @@ class CsvRecordSplitter:
         record_type = row[0]
         contract = RECORD_CONTRACTS.get(record_type)
         if contract is None:
+            if record_type == "record_type" and tuple(row) in CONTRACT_HEADER_ROWS:
+                return None
+            if self.on_parser_error is not None:
+                self.on_parser_error(
+                    "unknown record type or mismatched contract header "
+                    f"{record_type!r}"
+                )
             return None
         handle = self.handle_by_record_type.get(record_type)
         if handle is None:
@@ -104,6 +97,14 @@ class CsvRecordSplitter:
         if len(row) != expected_columns:
             if self.on_parser_error is not None:
                 self.on_parser_error(f"{record_type} column count {len(row)} does not match {expected_columns}")
+            return None
+        expected_version = str(CONTRACT_SCHEMA_VERSIONS[contract])
+        if row[1] != expected_version:
+            if self.on_parser_error is not None:
+                self.on_parser_error(
+                    f"{record_type} schema_version {row[1]!r} does not match "
+                    f"{expected_version}"
+                )
             return None
         expected_channel = RAW_EVENT_CHANNELS.get(record_type)
         if expected_channel is not None:

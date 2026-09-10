@@ -21,6 +21,7 @@ from .active_status_contract import (
     active_status_wire_keys,
     canonical_active_status_key,
 )
+from .firmware_host_contract import RECORD_SCHEMA_VERSIONS
 
 
 LIVE_STATE_CONTRACT = "adaptive_hybrid_status_live_state_v1"
@@ -30,6 +31,7 @@ LIVE_STATES = frozenset({"in_progress", "complete", "invalid"})
 LIVE_FRONTIER_COMPONENT = "active_status_live_state"
 LIVE_FRONTIER_TICKS_KEY = "frontier_timestamp_ticks"
 LIVE_FRONTIER_DOMAIN_KEY = "frontier_status_domain"
+HEALTH_SCHEMA_VERSION = str(RECORD_SCHEMA_VERSIONS["health_v1"])
 
 
 def _positive_int(value: object) -> int | None:
@@ -117,6 +119,11 @@ class ActiveStatusLiveReducer:
 
         if row.get("record_type") != "STS":
             return None
+        if row.get("schema_version") != HEALTH_SCHEMA_VERSION:
+            return self._invalidate(
+                row,
+                "health schema_version differs from the current firmware/host contract",
+            )
         component = row.get("component", "")
         key = canonical_active_status_key(row.get("status_key", ""))
         if component != ACTIVE_STATUS_COMPONENT:
@@ -151,8 +158,16 @@ class ActiveStatusLiveReducer:
                 "in_progress", row, reason="snapshot_generation_started"
             )
 
-        if self.current_generation is None or key not in ALL_ACTIVE_STATUS_WIRE_KEYS:
+        # The component also emits event/acknowledgement statuses between
+        # snapshots. They are valid health_v1 records, but they cannot update
+        # the atomic ACTIVE view. Only a begun snapshot generation gives the
+        # snapshot vocabulary decision-bearing meaning.
+        if self.current_generation is None:
             return None
+        if key not in ALL_ACTIVE_STATUS_WIRE_KEYS:
+            return self._invalidate(
+                row, f"unknown active snapshot key {key!r}"
+            )
         if key in self.current_active:
             return self._invalidate(
                 row,
@@ -266,6 +281,10 @@ def read_live_health_state(
     for item in records:
         if not isinstance(item, dict) or item.get("record_type") != "STS":
             return _invalid_state("live-health record is malformed")
+        if item.get("schema_version") != HEALTH_SCHEMA_VERSION:
+            return _invalid_state(
+                "live-health record schema_version is not current"
+            )
         component = item.get("component")
         key = item.get("status_key")
         record_key = (component, key)

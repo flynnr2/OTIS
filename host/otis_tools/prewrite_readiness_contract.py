@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 from typing import Mapping, Sequence
 
 from .active_status_contract import ACTIVE_STATUS_KEYS
+from .firmware_host_contract import CONTRACT_ID, CONTRACT_SHA256
 
 
 RUNTIME_CONTRACT_ID = "adaptive_hybrid_prewrite_runtime_contract_v1"
@@ -19,6 +20,8 @@ RAW_PPS_QUALIFICATION_DEADLINE_S = 660
 Health = Mapping[tuple[str, str], str]
 
 HEALTH_INTEGRITY_EXACT = {
+    ("protocol", "contract_id"): CONTRACT_ID,
+    ("protocol", "contract_sha256"): CONTRACT_SHA256,
     ("capture", "dropped_count"): "0",
     ("capture", "pps_count_boundary_dropped_count"): "0",
     ("dual_core", "telemetry_dropped"): "0",

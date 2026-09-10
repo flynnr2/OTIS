@@ -9,19 +9,8 @@ import re
 import stat
 import time
 
+from .firmware_host_contract import COMMAND_FORMS, SIMPLE_COMMANDS
 
-SIMPLE_COMMANDS = frozenset(
-    {
-        "HELP",
-        "CONFIG?",
-        "DUALCORE?",
-        "DAC?",
-        "DAC LIMITS?",
-        "COUNT?",
-        "ACTIVE?",
-        "ACTIVE ABORT",
-    }
-)
 TIMESTAMPED_COMMAND_PREFIX = "OTISQ1"
 
 
@@ -37,7 +26,7 @@ def _collapse_spaces(text: str) -> str:
 def _normalize_code(text: str) -> str | None:
     if not re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)", text):
         return None
-    value = int(text, 0)
+    value = int(text, 16 if text.lower().startswith("0x") else 10)
     if not 0 <= value <= 0xFFFF:
         return None
     if text.lower().startswith("0x"):
@@ -111,54 +100,18 @@ def parse_serial_command(text: str) -> SerialCommand:
 
     if command.startswith("ACTIVE EVIDENCE "):
         fields = command[len("ACTIVE EVIDENCE ") :].split()
-        if len(fields) not in {2, 8} or any(
+        evidence_contract = COMMAND_FORMS["active_evidence"]
+        if len(fields) != len(evidence_contract["arguments"]) or any(
             not re.fullmatch(r"[1-9][0-9]*", field) or int(field, 10) > 0xFFFFFFFF
             for field in fields[:2]
         ):
             raise ValueError(
                 "ACTIVE EVIDENCE requires non-zero request and phase sequences"
             )
-        if int(fields[1], 10) not in {1, 2, 3, 4}:
+        phases = set(evidence_contract["arguments"][1]["values"])
+        if int(fields[1], 10) not in phases:
             raise ValueError(
                 "ACTIVE EVIDENCE phase sequence must be 1, 2, 3, or 4"
-            )
-        if len(fields) == 8:
-            if int(fields[1], 10) != 4:
-                raise ValueError(
-                    "extended ACTIVE EVIDENCE is restricted to phase 4"
-                )
-            unsigned = (fields[2], fields[4], fields[5], fields[6])
-            if any(
-                not re.fullmatch(r"[1-9][0-9]*", field)
-                or int(field, 10) > 0xFFFFFFFF
-                for field in unsigned
-            ):
-                raise ValueError(
-                    "extended ACTIVE EVIDENCE identities must be non-zero uint32 values"
-                )
-            attestation = fields[7].lower()
-            if (
-                re.fullmatch(r"-?(0|[1-9][0-9]*)", fields[3]) is None
-                or not -0x80000000 <= int(fields[3], 10) <= 0x7FFFFFFF
-                or re.fullmatch(r"[0-9a-f]{64}", attestation) is None
-            ):
-                raise ValueError(
-                    "extended ACTIVE EVIDENCE requires canonical response count and SHA-256 attestation"
-                )
-            return SerialCommand(
-                "ACTIVE EVIDENCE "
-                + " ".join(
-                    [
-                        str(int(fields[0], 10)),
-                        "4",
-                        str(int(fields[2], 10)),
-                        str(int(fields[3], 10)),
-                        str(int(fields[4], 10)),
-                        str(int(fields[5], 10)),
-                        str(int(fields[6], 10)),
-                        attestation,
-                    ]
-                )
             )
         return SerialCommand(
             f"ACTIVE EVIDENCE {int(fields[0], 10)} {int(fields[1], 10)}"

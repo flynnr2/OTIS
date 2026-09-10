@@ -67,6 +67,7 @@ from .adaptive_hybrid_transactions import (
 )
 from .contracts import CsvValidationContext, validate_csv
 from .firmware_bindings import current_forwarded_clock_contract
+from .firmware_host_contract import wrapped_suffix_matches
 from .prewrite_readiness_contract import (
     GNSS_OPERATIONAL_PREWRITE_EXACT,
     RAW_PPS_QUALIFICATION_DEADLINE_S,
@@ -2291,10 +2292,17 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         """Match a 64-bit decision coordinate to its 32-bit EST producer."""
         try:
             return (
-                decision.get("time_domain") == "rp2040_monotonic_us64"
-                and estimate.get("time_domain") == "rp2040_monotonic_us32"
-                and (int(decision["decision_timestamp_ticks"]) & 0xFFFFFFFF)
-                == int(estimate["estimator_timestamp_ticks"])
+                wrapped_suffix_matches(
+                    "estimate_tick_is_wrapped_suffix_of_decision_tick",
+                    source=int(estimate["estimator_timestamp_ticks"]),
+                    source_domain=estimate.get("time_domain", ""),
+                    target=int(decision["decision_timestamp_ticks"]),
+                    target_domain=decision.get("time_domain", ""),
+                )
+                and decision.get("source_first_sequence")
+                == estimate.get("source_reference_first_seq")
+                and decision.get("source_last_sequence")
+                == estimate.get("source_reference_last_seq")
             )
         except (KeyError, TypeError, ValueError):
             return False

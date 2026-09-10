@@ -87,6 +87,7 @@ ANALYSIS_SUPERSESSION_TOOL_MODULES = frozenset(
         "evidence_finalization",
         "evidence_index",
         "firmware_binary",
+        "firmware_host_contract",
         "run_loader",
         "run_paths",
         "time_domains",

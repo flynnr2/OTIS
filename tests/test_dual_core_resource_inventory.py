@@ -4,9 +4,17 @@ import json
 from pathlib import Path
 import re
 
+from host.otis_tools.firmware_host_contract import FRONTIERS
+
 
 FIRMWARE = Path("firmware/arduino/otis_nano_rp2040_connect")
 INVENTORY = FIRMWARE / "otis_resource_inventory.json"
+GENERATED_CAPACITIES = {
+    "OTIS_EVIDENCE_QUEUE_DEPTH": FRONTIERS["adaptive_hybrid_evidence"][
+        "queue_depth"
+    ],
+    "OTIS_TELEMETRY_QUEUE_DEPTH": FRONTIERS["telemetry"]["queue_depth"],
+}
 
 
 def test_inventory_matches_every_implemented_queue_and_ring() -> None:
@@ -34,12 +42,20 @@ def test_inventory_matches_every_implemented_queue_and_ring() -> None:
         source = header if "QUEUE_DEPTH" in symbol else (
             FIRMWARE / "otis_config.h"
         ).read_text()
-        match = re.search(
-            rf"{re.escape(symbol)}\s*(?:=|\s)\s*(\d+)u", source
+        if symbol in GENERATED_CAPACITIES:
+            declared = GENERATED_CAPACITIES[symbol]
+            assert symbol in header
+        else:
+            match = re.search(
+                rf"{re.escape(symbol)}\s*(?:=|\s)\s*(\d+)u", source
+            )
+            assert match is not None, symbol
+            declared = int(match.group(1))
+        expected = (
+            declared - 1
+            if resource["capacity_symbol"].endswith("-1")
+            else declared
         )
-        assert match is not None, symbol
-        declared = int(match.group(1))
-        expected = declared - 1 if resource["capacity_symbol"].endswith("-1") else declared
         assert resource["capacity"] == expected
         assert resource["implementation"] in (
             implementation
@@ -54,6 +70,7 @@ def test_inventory_matches_every_implemented_queue_and_ring() -> None:
     assert "response frontier 8" in evidence["maximum_consumer_absence"]
     telemetry = resources["telemetry"]
     assert telemetry["capacity"] == 176
+    assert "max_boot_171" in telemetry["maximum_consumer_absence"]
     assert "max_concurrent_176" in telemetry["maximum_consumer_absence"]
 
 

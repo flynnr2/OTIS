@@ -3,6 +3,8 @@
 #include <ctype.h>
 #include <string.h>
 
+#include "otis_firmware_host_contract.generated.h"
+
 namespace {
 
 char *trim_command(char *text) {
@@ -111,30 +113,74 @@ OtisParsedSerialCommand otis_serial_command_parse(char *line) {
     parsed.kind = OtisSerialCommandKind::CountQuery;
   } else if (strcmp(command, "ACTIVE?") == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveQuery;
-  } else if (strncmp(command, "ACTIVE SNAPSHOT ", 16) == 0) {
+  } else if (strncmp(command, OTIS_COMMAND_ACTIVE_SNAPSHOT_PREFIX " ",
+                     OTIS_COMMAND_ACTIVE_SNAPSHOT_PREFIX_LENGTH + 1u) == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveSnapshot;
-    parsed.text_argument = trim_command(command + 16);
+    parsed.text_argument = trim_command(
+        command + OTIS_COMMAND_ACTIVE_SNAPSHOT_PREFIX_LENGTH + 1u);
     parsed.arguments_valid = parsed.text_argument[0] != '\0';
-  } else if (strncmp(command, "ACTIVE SETUP ", 13) == 0) {
+  } else if (strncmp(command, OTIS_COMMAND_ACTIVE_SETUP_PREFIX " ",
+                     OTIS_COMMAND_ACTIVE_SETUP_PREFIX_LENGTH + 1u) == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveSetup;
-    parsed.text_argument = trim_command(command + 13);
+    parsed.text_argument = trim_command(
+        command + OTIS_COMMAND_ACTIVE_SETUP_PREFIX_LENGTH + 1u);
     parsed.arguments_valid = parsed.text_argument[0] != '\0';
-  } else if (strncmp(command, "ACTIVE LEASE ", 13) == 0) {
+  } else if (strncmp(command, OTIS_COMMAND_ACTIVE_LEASE_PREFIX " ",
+                     OTIS_COMMAND_ACTIVE_LEASE_PREFIX_LENGTH + 1u) == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveLease;
-    parsed.text_argument = trim_command(command + 13);
+    parsed.text_argument = trim_command(
+        command + OTIS_COMMAND_ACTIVE_LEASE_PREFIX_LENGTH + 1u);
     parsed.arguments_valid = parsed.text_argument[0] != '\0';
-  } else if (strncmp(command, "ACTIVE ARM ", 11) == 0) {
+  } else if (strncmp(command, OTIS_COMMAND_ACTIVE_ARM_PREFIX " ",
+                     OTIS_COMMAND_ACTIVE_ARM_PREFIX_LENGTH + 1u) == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveArm;
-    parsed.text_argument = trim_command(command + 11);
+    parsed.text_argument = trim_command(
+        command + OTIS_COMMAND_ACTIVE_ARM_PREFIX_LENGTH + 1u);
     parsed.arguments_valid = parsed.text_argument[0] != '\0';
   } else if (strcmp(command, "ACTIVE ABORT") == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveAbort;
-  } else if (strncmp(command, "ACTIVE EVIDENCE ", 16) == 0) {
+  } else if (strncmp(command, OTIS_COMMAND_ACTIVE_EVIDENCE_PREFIX " ",
+                     OTIS_COMMAND_ACTIVE_EVIDENCE_PREFIX_LENGTH + 1u) == 0) {
     parsed.kind = OtisSerialCommandKind::ActiveEvidence;
-    parsed.text_argument = trim_command(command + 16);
+    parsed.text_argument = trim_command(
+        command + OTIS_COMMAND_ACTIVE_EVIDENCE_PREFIX_LENGTH + 1u);
     parsed.arguments_valid = parsed.text_argument[0] != '\0';
   } else {
     parsed.kind = OtisSerialCommandKind::Unknown;
   }
   return parsed;
+}
+
+bool otis_serial_command_parse_nonzero_decimal_u32_fields(
+    const char *text, uint32_t *values, uint8_t count) {
+  if (text == nullptr || values == nullptr || count == 0u) return false;
+  const char *cursor = text;
+  for (uint8_t index = 0u; index < count; ++index) {
+    while (*cursor != '\0' && isspace((unsigned char)*cursor)) ++cursor;
+    if (*cursor < '1' || *cursor > '9') return false;
+    uint32_t value = 0u;
+    do {
+      const uint32_t digit = (uint32_t)(*cursor - '0');
+      if (value > (UINT32_MAX - digit) / 10u) return false;
+      value = value * 10u + digit;
+      ++cursor;
+    } while (*cursor >= '0' && *cursor <= '9');
+    if (*cursor != '\0' && !isspace((unsigned char)*cursor)) return false;
+    values[index] = value;
+  }
+  while (*cursor != '\0' && isspace((unsigned char)*cursor)) ++cursor;
+  return *cursor == '\0';
+}
+
+bool otis_serial_command_parse_active_evidence(
+    const char *text, uint32_t *request_sequence, uint32_t *phase) {
+  if (request_sequence == nullptr || phase == nullptr) return false;
+  uint32_t values[OTIS_COMMAND_ACTIVE_EVIDENCE_ARGUMENT_COUNT] = {};
+  if (!otis_serial_command_parse_nonzero_decimal_u32_fields(
+          text, values, OTIS_COMMAND_ACTIVE_EVIDENCE_ARGUMENT_COUNT) ||
+      values[1] < 1u || values[1] > 4u)
+    return false;
+  *request_sequence = values[0];
+  *phase = values[1];
+  return true;
 }

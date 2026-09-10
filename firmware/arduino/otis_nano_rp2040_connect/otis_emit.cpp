@@ -1,4 +1,5 @@
 #include "otis_emit.h"
+#include "otis_firmware_host_contract.generated.h"
 #include "otis_protocol.h"
 #include "otis_transport_serial.h"
 
@@ -54,26 +55,20 @@ static void otis_print_int32(int32_t value) {
 }
 
 void otis_emit_csv_headers(void) {
-  otis_transport_write_cstr(
-      "record_type,schema_version,event_seq,channel_id,edge,timestamp_ticks,capture_domain,flags");
+  otis_transport_write_cstr(OTIS_CONTRACT_RAW_EVENTS_V1_HEADER);
+  otis_emit_line_end();
+  otis_transport_write_cstr(OTIS_CONTRACT_COUNT_OBSERVATIONS_V1_HEADER);
+  otis_emit_line_end();
+  otis_transport_write_cstr(OTIS_CONTRACT_HEALTH_V1_HEADER);
+  otis_emit_line_end();
+  otis_transport_write_cstr(OTIS_CONTRACT_DAC_STEPS_V1_HEADER);
+  otis_emit_line_end();
+  otis_transport_write_cstr(OTIS_CONTRACT_ENVIRONMENT_V1_HEADER);
+  otis_emit_line_end();
+  otis_transport_write_cstr(OTIS_CONTRACT_PPS_SNAPSHOTS_V1_HEADER);
   otis_emit_line_end();
   otis_transport_write_cstr(
-      "record_type,schema_version,count_seq,channel_id,gate_open_ticks,gate_close_ticks,gate_domain,counted_edges,source_edge,source_domain,flags");
-  otis_emit_line_end();
-  otis_transport_write_cstr(
-      "record_type,schema_version,status_seq,timestamp_ticks,status_domain,component,status_key,status_value,severity,flags");
-  otis_emit_line_end();
-  otis_transport_write_cstr(
-      "record_type,schema_version,seq,elapsed_ms,step_index,dac_code_requested,dac_code_applied,dac_code_clamped,dac_voltage_measured_v,ocxo_tune_voltage_measured_v,dwell_ms,event,flags");
-  otis_emit_line_end();
-  otis_transport_write_cstr(
-      "record_type,schema_version,env_seq,timestamp_ticks,observation_domain,source,role,temperature_c,relative_humidity_pct,pressure_pa,flags");
-  otis_emit_line_end();
-  otis_transport_write_cstr(
-      "record_type,schema_version,session,snapshot_sequence,cumulative_down_counter,reference_sequence,reference_timestamp_ticks,status,backend");
-  otis_emit_line_end();
-  otis_transport_write_cstr(
-      "record_type,schema_version,session,snapshot_sequence,cumulative_down_counter,reference_sequence,reference_timestamp_ticks,status,backend,channel_id");
+      OTIS_CONTRACT_FORWARDED_MONITOR_SNAPSHOTS_V1_HEADER);
   otis_emit_line_end();
 }
 

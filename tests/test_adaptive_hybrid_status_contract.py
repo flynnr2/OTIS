@@ -14,6 +14,7 @@ from host.otis_tools.active_status_contract import (
 def _row(key: str, value: str) -> dict[str, str]:
     return {
         "record_type": "STS",
+        "schema_version": "1",
         "component": ACTIVE_STATUS_COMPONENT,
         "status_key": key,
         "status_value": value,

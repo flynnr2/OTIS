@@ -1,6 +1,8 @@
 #ifndef OTIS_BUILD_CONFIG_H
 #define OTIS_BUILD_CONFIG_H
 
+#include "otis_firmware_host_contract.generated.h"
+
 // Make fixed-image build provenance visible to every Arduino translation unit.
 #if defined(ARDUINO)
 #if __has_include("otis_build_manifest.generated.h")

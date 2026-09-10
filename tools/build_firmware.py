@@ -18,6 +18,14 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from host.otis_tools.firmware_host_contract import (  # noqa: E402
+    binding as firmware_host_contract_binding,
+    verify_generated_cpp_header,
+)
+
 DEFAULT_MANIFEST = (
     REPO_ROOT / "firmware" / "arduino" / "firmware_build_manifest.json"
 )
@@ -83,6 +91,9 @@ EXPECTED_SCHEMA_BINDINGS = {
     "plant_model": "schemas/plant_model_v1.schema.json",
     "setup_authority": "schemas/adaptive_hybrid_setup_authority_v1.schema.json",
     "run_evidence": "schemas/run_evidence_v1.schema.json",
+}
+EXPECTED_CONTRACT_BINDINGS = {
+    "firmware_host": "data_contracts/otis_firmware_host_contract_v1.json",
 }
 PROFILE_BINDING_MACROS = {
     "adaptive_policy": "OTIS_BUILD_ADAPTIVE_POLICY_SHA256",
@@ -369,6 +380,19 @@ def schema_binding_report(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]
     return report
 
 
+def contract_binding_report(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    declared = manifest.get("contract_bindings")
+    if declared != EXPECTED_CONTRACT_BINDINGS:
+        raise BuildError(
+            "fixed manifest contract bindings differ from the current protocol"
+        )
+    verify_generated_cpp_header()
+    current = firmware_host_contract_binding()
+    if current["path"] != EXPECTED_CONTRACT_BINDINGS["firmware_host"]:
+        raise BuildError("firmware/host contract path differs")
+    return {"firmware_host": current}
+
+
 def load_manifest() -> dict[str, Any]:
     path = DEFAULT_MANIFEST
     try:
@@ -406,6 +430,7 @@ def load_manifest() -> dict[str, Any]:
         )
     profile_binding_report(manifest)
     schema_binding_report(manifest)
+    contract_binding_report(manifest)
     if manifest.get("forwarded_clock_contract") != EXPECTED_FORWARDED_CLOCK_CONTRACT:
         raise BuildError("fixed manifest forwarded-clock contract differs")
     for section in ("target", "toolchain", "resource_budget"):
@@ -633,6 +658,9 @@ def source_input_hash(
         | {
             DEFAULT_MANIFEST.resolve(),
             builder_path.resolve(),
+            _bound_repository_file(
+                EXPECTED_CONTRACT_BINDINGS["firmware_host"]
+            ),
             *(_bound_repository_file(relative) for relative in authoritative_paths),
         },
         key=lambda path: path.resolve().relative_to(REPO_ROOT).as_posix(),
@@ -652,6 +680,7 @@ def _configuration_payload(
     manifest: dict[str, Any], config_source_sha256: str,
     profile_bindings: dict[str, dict[str, Any]],
     schema_bindings: dict[str, dict[str, Any]],
+    contract_bindings: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -661,6 +690,7 @@ def _configuration_payload(
         "config_source_sha256": config_source_sha256,
         "profile_bindings": profile_bindings,
         "schema_bindings": schema_bindings,
+        "contract_bindings": contract_bindings,
         "forwarded_clock_contract": manifest["forwarded_clock_contract"],
     }
 
@@ -670,9 +700,10 @@ def _capture_source_state(manifest: dict[str, Any]) -> dict[str, Any]:
     config_source_sha256 = sha256(CONFIG_HEADER.read_bytes()).hexdigest()
     bindings = profile_binding_report(manifest)
     schemas = schema_binding_report(manifest)
+    contracts = contract_binding_report(manifest)
     authoritative_inputs = authoritative_input_report()
     configuration = _configuration_payload(
-        manifest, config_source_sha256, bindings, schemas
+        manifest, config_source_sha256, bindings, schemas, contracts
     )
     return {
         "git_commit": git_commit,
@@ -684,6 +715,7 @@ def _capture_source_state(manifest: dict[str, Any]) -> dict[str, Any]:
         "config_sha256": _sha256_json(configuration),
         "profile_bindings": bindings,
         "schema_bindings": schemas,
+        "contract_bindings": contracts,
         "authoritative_inputs": authoritative_inputs,
     }
 
@@ -724,6 +756,7 @@ def build_provenance(
         source["config_source_sha256"],
         source["profile_bindings"],
         source["schema_bindings"],
+        source["contract_bindings"],
     )
     source_identity = {
         "git_commit": source["git_commit"],
@@ -792,6 +825,12 @@ def generated_provenance_values(provenance: dict[str, Any]) -> dict[str, str]:
         "OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256": toolchain["installed_sha256"],
         "OTIS_BUILD_ARDUINO_CLI_VERSION": invocation["arduino_cli_version"],
         "OTIS_BUILD_INVOCATION_ID": invocation["id"],
+        "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_ID": config[
+            "contract_bindings"
+        ]["firmware_host"]["contract_id"],
+        "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_SHA256": config[
+            "contract_bindings"
+        ]["firmware_host"]["sha256"],
         "OTIS_BUILD_FORWARDED_CLOCK_CONTRACT_ID": config[
             "forwarded_clock_contract"
         ]["contract_id"],
@@ -978,6 +1017,9 @@ def _binary_report(
     dynamic_markers["forwarded_clock_contract_sha256"] = _sha256_json(
         provenance["configuration"]["forwarded_clock_contract"]
     ).encode("ascii")
+    dynamic_markers["firmware_host_contract_sha256"] = provenance[
+        "configuration"
+    ]["contract_bindings"]["firmware_host"]["sha256"].encode("ascii")
     provenance_markers = {
         name.removeprefix("OTIS_BUILD_").lower(): value.encode("ascii")
         for name, value in generated_provenance_values(provenance).items()
