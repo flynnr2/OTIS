@@ -447,6 +447,15 @@ void otis_frequency_regulation_live_on_boundary(
   const bool boundary_extended = otis_monotonic_us_extension_advance_boundary(
       &timer_extension, observation->pps_timestamp_ticks,
       observation->session, &current_boundary_extended_ticks);
+  // The foreground service can run just after a whole-second boundary even
+  // when the captured D14 edge occurred just before it.  Derive both active
+  // decision timestamp fields from the same captured boundary; a separately
+  // sampled uptime_s would occasionally differ by one second and incorrectly
+  // trip the downstream exact-domain guard.
+  const uint64_t active_decision_timestamp_ticks =
+      boundary_extended ? current_boundary_extended_ticks : 0u;
+  const uint32_t active_decision_timestamp_s = static_cast<uint32_t>(
+      active_decision_timestamp_ticks / kCaptureTicksPerSecond);
   const bool interval_opening_exact =
       boundary_extended && previous_boundary_available &&
       previous_boundary_session == observation->session;
@@ -532,7 +541,7 @@ void otis_frequency_regulation_live_on_boundary(
         control_seq,
         span.selected_first_sequence,
         span.last_sequence,
-        uptime_s,
+        active_decision_timestamp_s,
         decision.current_code,
         decision.limited_delta_codes,
         decision.proposed_code,
@@ -571,7 +580,7 @@ void otis_frequency_regulation_live_on_boundary(
         phase_snapshot_available && phase_snapshot.recorder_published;
     OtisAdaptiveHybridRegulationLiveOutcome local_active_outcome;
     otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
-        &active_decision, current_boundary_extended_ticks,
+        &active_decision, active_decision_timestamp_ticks,
         &local_active_outcome);
     if (active_outcome != nullptr &&
         !(active_outcome->request_created || active_outcome->faulted ||

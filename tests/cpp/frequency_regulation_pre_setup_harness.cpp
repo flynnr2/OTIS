@@ -9,6 +9,9 @@
 #include "../../firmware/arduino/otis_nano_rp2040_connect/otis_frequency_regulation_live.cpp"
 
 OtisEvidenceFrameMessage captured_control = {};
+OtisAdaptiveHybridRegulationLiveDecision captured_active_decision = {};
+uint64_t captured_active_decision_ticks = 0u;
+uint32_t captured_active_decision_count = 0u;
 
 bool otis_dual_core_publish_evidence(const OtisEvidenceFrameMessage *message) {
   if (message == nullptr) return false;
@@ -20,6 +23,27 @@ bool otis_dual_core_timing_owner_active(void) { return false; }
 
 bool otis_dual_core_publish_critical(const OtisCriticalRecordMessage *) {
   return false;
+}
+
+void otis_dual_core_note_timing_estimate(uint32_t) {}
+
+void otis_dual_core_note_timing_progress(OtisTimingProgressPhase, uint64_t) {}
+
+bool otis_phase_preview_live_get_active_snapshot(
+    OtisPhasePreviewActiveSnapshot *snapshot) {
+  if (snapshot != nullptr) *snapshot = {};
+  return false;
+}
+
+void otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
+    const OtisAdaptiveHybridRegulationLiveDecision *decision,
+    uint64_t decision_timestamp_ticks,
+    OtisAdaptiveHybridRegulationLiveOutcome *outcome) {
+  assert(decision != nullptr);
+  captured_active_decision = *decision;
+  captured_active_decision_ticks = decision_timestamp_ticks;
+  captured_active_decision_count++;
+  if (outcome != nullptr) *outcome = {};
 }
 
 int main() {
@@ -107,5 +131,50 @@ int main() {
       &engine, &mismatch_input, &mismatch_decision);
   assert(mismatch_decision.state == OtisFrequencyRegulationState::Fault);
   assert(strcmp(mismatch_decision.reason, "requested_applied_mismatch") == 0);
+
+  // Regression for the attempt-3 firmware fault: the selected D14 boundary
+  // occurred 122 us before the next whole second, while foreground uptime had
+  // already advanced.  The active decision must project seconds from the same
+  // extended capture timestamp supplied to its exact-domain consumer.
+  assert(otis_frequency_regulation_live_begin(0u));
+  current_dac_epoch = 5u;
+  current_applied_code = 0xA844u;
+  warmup_boundary_seen = true;
+  settling_until_s = 0u;
+  exact_settling_deadline_available = false;
+  constexpr uint64_t kFaultBoundaryTicks = 58841999878ull;
+  constexpr uint64_t kPriorBoundaryTicks = kFaultBoundaryTicks - 1000000ull;
+  assert(otis_monotonic_us_extension_seed(
+      &timer_extension, kPriorBoundaryTicks, 1u));
+  previous_boundary_available = true;
+  previous_boundary_session = 1u;
+  previous_boundary_extended_ticks = kPriorBoundaryTicks;
+  estimator.selected_count = OTIS_FREQUENCY_ESTIMATOR_SPAN_INTERVALS - 1u;
+  estimator.selected_sum =
+      static_cast<uint64_t>(OTIS_FREQUENCY_ESTIMATOR_SPAN_INTERVALS - 1u) *
+      10000000ull;
+  estimator.selected_first_sequence = 58240u;
+  const OtisPpsCountBoundaryObservation fault_boundary = {
+      1u,
+      58840u,
+      59840u,
+      kFaultBoundaryTicks % OTIS_RP2040_MONOTONIC_US32_MODULUS,
+      0u,
+      10000000u,
+      0u,
+      0u,
+  };
+  const OtisRegulationStaticCodeState exact_code = {
+      true, true, true, 0xA844u};
+  OtisAdaptiveHybridRegulationLiveOutcome active_outcome = {};
+  otis_frequency_regulation_live_on_boundary(
+      &fault_boundary, 10000000u, true,
+      // Deliberately one second later than the captured boundary projection.
+      58842u, &exact_code, &active_outcome);
+  assert(captured_active_decision_count == 1u);
+  assert(captured_active_decision_ticks == kFaultBoundaryTicks);
+  assert(captured_active_decision.timestamp_s == 58841u);
+  assert(captured_active_decision.timestamp_s ==
+         captured_active_decision_ticks / 1000000ull);
   return 0;
 }

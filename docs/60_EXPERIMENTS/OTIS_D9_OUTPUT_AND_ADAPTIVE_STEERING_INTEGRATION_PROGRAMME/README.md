@@ -91,6 +91,18 @@ extension only if the firmware/session boundary and excluded gap remain
 explicit. See
 [`15_HYBRID_72H_ATTEMPT12_RETRY1_METADATA_HOLD_TERMINAL.md`](15_HYBRID_72H_ATTEMPT12_RETRY1_METADATA_HOLD_TERMINAL.md).
 
+The later contingent Attempt 3 preserved the original firmware, DAC epoch and
+session across a reviewed host-only recovery, then stopped after 56,440
+qualified apertures when firmware paired an exact D14 boundary at
+58,841.999878 seconds with a separately sampled foreground second 58,842. The
+strict exact-domain guard correctly latched fail-static. The transaction fault
+could not be cleared in place, so an operator-directed priority abort was
+delivered and acknowledged before clean capture closure. The package is
+sealed and registered as diagnostic review evidence; the bounded repair now
+derives both active-decision timestamp fields from the same captured D14 tick.
+See
+[`16_CONTINGENT_72H_ATTEMPT3_TIMESTAMP_DOMAIN_TERMINAL.md`](16_CONTINGENT_72H_ATTEMPT3_TIMESTAMP_DOMAIN_TERMINAL.md).
+
 This authority supersedes the original Gate B waveform dependency and the
 Prompt 04 stop boundary only for these explicitly identified engineering
 acquisitions. It does not change the Prompt 02 waveform terminal, qualify the
