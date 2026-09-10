@@ -36,6 +36,8 @@ def test_pre_setup_selected_estimate_remains_safe_observe(tmp_path: Path) -> Non
             str(ROOT / "tests/cpp/frequency_regulation_pre_setup_harness.cpp"),
             str(FIRMWARE / "otis_frequency_regulation_engine.cpp"),
             str(FIRMWARE / "otis_integer_count_tight_deadband.cpp"),
+            str(FIRMWARE / "otis_monotonic_us_extension.cpp"),
+            str(FIRMWARE / "otis_oscillator_snapshot_estimator.cpp"),
             str(FIRMWARE / "otis_decimal_format.cpp"),
             "-I",
             str(FIRMWARE),
