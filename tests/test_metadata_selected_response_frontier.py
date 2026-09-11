@@ -22,7 +22,7 @@ def test_actual_metadata_and_delayed_selected_response_fit_without_consumer(tmp_
     executable = tmp_path / "metadata_selected_response"
     dead_strip = ["-Wl,-dead_strip"] if sys.platform == "darwin" else ["-Wl,--gc-sections"]
     sources = [
-        "otis_regulation_transaction.cpp", "otis_active_hybrid_policy_engine.cpp",
+        "otis_regulation_transaction.cpp", "otis_active_hybrid_decision_types.cpp",
         "otis_active_hybrid_decision_format.cpp", "otis_adaptive_hybrid_regulation.cpp",
         "otis_adaptive_hybrid_maintenance_format.cpp", "otis_adaptive_hybrid_maintenance_record.cpp",
         "otis_adaptive_hybrid_wide.cpp", "otis_decimal_format.cpp", "otis_dual_core_partition.cpp",

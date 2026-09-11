@@ -32,7 +32,7 @@ def test_firmware_active_hybrid_formatter_emits_the_exact_wire_contract(
             "-Werror",
             str(ROOT / "tests/cpp/active_hybrid_decision_format_harness.cpp"),
             str(FIRMWARE / "otis_active_hybrid_decision_format.cpp"),
-            str(FIRMWARE / "otis_active_hybrid_policy_engine.cpp"),
+            str(FIRMWARE / "otis_active_hybrid_decision_types.cpp"),
             str(FIRMWARE / "otis_decimal_format.cpp"),
             "-I",
             str(FIRMWARE),

@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#include "otis_active_hybrid_policy_engine.h"
+#include "otis_active_hybrid_decision_types.h"
 #include "otis_adaptive_hybrid_regulation.h"
 #include "otis_adaptive_hybrid_regulation_live.h"
 #include "otis_decimal_format.h"

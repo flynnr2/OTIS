@@ -6,7 +6,7 @@
 
 #include "otis_config.h"
 #include "otis_active_hybrid_decision_format.h"
-#include "otis_active_hybrid_policy_engine.h"
+#include "otis_active_hybrid_decision_types.h"
 #include "otis_regulation_actuator.h"
 #include "otis_adaptive_hybrid_regulation.h"
 #include "otis_adaptive_hybrid_maintenance_format.h"
@@ -94,14 +94,6 @@ uint32_t gnss_metadata_hold_dac_epoch = 0u;
 bool health_event_ticks_available = false;
 uint64_t health_event_timestamp_ticks = 0u;
 uint64_t pending_application_timestamp_ticks = 0u;
-OtisActiveHybridEngine hybrid_engine = {};
-bool hybrid_engine_ready = false;
-OtisActiveHybridDecision pending_hybrid_decision = {};
-bool pending_hybrid_decision_valid = false;
-OtisRegulationResponseClass pending_hybrid_response_class =
-    OtisRegulationResponseClass::MeasurementOrActuatorFault;
-bool pending_hybrid_response_valid = false;
-bool pending_hybrid_predicted_sign_observed = false;
 OtisDependentResponseIdentity dependent_response_identity = {};
 uint32_t hybrid_record_sequence = 0u;
 uint64_t setup_application_timestamp_ticks = 0u;
@@ -435,15 +427,6 @@ bool queue_adaptive_hybrid_single_async_transition(
   return true;
 }
 
-void hybrid_fail_static(const char *reason) {
-  hybrid_engine.state = OtisActiveHybridState::FailStatic;
-  hybrid_engine.reason = reason;
-  hybrid_engine.fault_reason = reason;
-  hybrid_engine.transaction_outstanding = false;
-  hybrid_engine.outstanding_phase_material = false;
-  pending_hybrid_decision_valid = false;
-}
-
 OtisRegulationBinding expected_binding(uint32_t session_id) {
   return {
       kRunIdentity,
@@ -763,9 +746,7 @@ bool queue_active_hybrid_decision(
       transaction.have_acceptance ? transaction.request.request_sequence : 0u,
       transaction.have_application ? transaction.applied.application_sequence
                                    : 0u,
-      pending_hybrid_response_valid
-          ? otis_regulation_response_class_name(pending_hybrid_response_class)
-          : "unavailable",
+      "unavailable",
       source.phase_recorder_published &&
           source.phase_dac_epoch == source.dac_epoch &&
           source.phase_applied_code == source.current_applied_code,
@@ -920,34 +901,6 @@ bool enter_gnss_metadata_hold(void) {
   return transaction.state == OtisRegulationState::ReferenceHold ||
          otis_regulation_reference_hold(
              &transaction, "gnss_metadata_unqualified_hold");
-
-  if (transaction.state == OtisRegulationState::RequestPending &&
-      evidence_phase == EvidencePhase::Request) {
-    if (!health_event_ticks_available) return false;
-    if (!withdraw_private_request_for_gnss_metadata_hold())
-      return false;
-    pending_actionable_request_valid = false;
-    pending_hybrid_decision_valid = false;
-    evidence_phase = EvidencePhase::None;
-    evidence_request_sequence = 0u;
-    evidence_pending_since_s = 0u;
-    if (!queue_frame("request_withdrawn", health_event_timestamp_ticks,
-                     nullptr, 0.0))
-      return false;
-  }
-
-  if (transaction.state == OtisRegulationState::RequestPending ||
-      transaction.state ==
-          OtisRegulationState::AcceptedAwaitingApplication ||
-      transaction.state == OtisRegulationState::AwaitingResponse ||
-      evidence_phase != EvidencePhase::None) {
-    gnss_metadata_hold_transaction_pending = true;
-    return true;
-  }
-
-  gnss_metadata_hold_transaction_pending = false;
-  return otis_regulation_reference_hold(
-      &transaction, "gnss_metadata_unqualified_hold");
 }
 
 bool maybe_complete_gnss_metadata_requalification(void) {
@@ -1140,14 +1093,6 @@ bool otis_adaptive_hybrid_regulation_live_begin(void) {
   health_event_ticks_available = false;
   health_event_timestamp_ticks = 0u;
   pending_application_timestamp_ticks = 0u;
-  hybrid_engine = {};
-  hybrid_engine_ready = false;
-  pending_hybrid_decision = {};
-  pending_hybrid_decision_valid = false;
-  pending_hybrid_response_class =
-      OtisRegulationResponseClass::MeasurementOrActuatorFault;
-  pending_hybrid_response_valid = false;
-  pending_hybrid_predicted_sign_observed = false;
   otis_dependent_response_identity_reset(&dependent_response_identity);
   hybrid_record_sequence = 0u;
   setup_application_timestamp_ticks = 0u;
@@ -1241,13 +1186,6 @@ void otis_adaptive_hybrid_regulation_live_service(uint32_t now_s) {
     otis_regulation_fault(&transaction,
                             "transaction_evidence_acknowledgement_timeout");
   if (transaction_bound &&
-      (transaction.state == OtisRegulationState::Fault ||
-       transaction.state == OtisRegulationState::Aborted) &&
-      (hybrid_engine_ready
-       ) &&
-      hybrid_engine.state != OtisActiveHybridState::FailStatic)
-    hybrid_fail_static(transaction.reason);
-  if (transaction_bound &&
       (!otis_actuator_guard_check_deadline(
            &timing_actuator_guard, now_s) ||
        otis_dual_core_fail_static()))
@@ -1279,8 +1217,6 @@ void otis_adaptive_hybrid_regulation_live_abort(const char *reason) {
   evidence_phase = EvidencePhase::None;
   evidence_request_sequence = 0u;
   otis_dependent_response_identity_reset(&dependent_response_identity);
-  if (hybrid_engine_ready)
-    hybrid_fail_static(reason == nullptr ? "operator_abort" : reason);
 }
 
 bool otis_adaptive_hybrid_regulation_live_acknowledge_evidence(uint32_t request_sequence,
@@ -1676,8 +1612,6 @@ bool otis_adaptive_hybrid_regulation_live_confirm_setup_consumers_exact(
   }
   adaptive_hybrid_engine = activation_after;
   adaptive_hybrid_engine_ready = true;
-  hybrid_engine = {};
-  hybrid_engine_ready = false;
   return true;
 }
 
@@ -2126,7 +2060,7 @@ static void active_live_on_decision_impl(
         !deferred_application_outcome_valid &&
         pending_application_timestamp_ticks == 0u &&
         setup_application_timestamp_ticks == 0u &&
-        !adaptive_hybrid_engine_ready && !hybrid_engine_ready &&
+        !adaptive_hybrid_engine_ready &&
         !pending_adaptive_hybrid_decision_valid &&
         !pending_adaptive_hybrid_origin_valid &&
         !gnss_metadata_hold_active &&
@@ -2151,213 +2085,7 @@ static void active_live_on_decision_impl(
   adaptive_hybrid_active_live_on_decision_impl(
       *decision, decision_timestamp_ticks, outcome);
   return;
-  outcome->reason = transaction.reason;
-  OtisRegulationEligibility health = eligibility(decision->timestamp_s);
-  // The completed selected estimate is created in this boundary callback;
-  // the periodic health snapshot necessarily trails it by one service loop.
-  health.estimator_valid = decision->measurement_valid;
-  health.model_applicable = decision->model_applicable;
-  const bool completing_response_during_metadata_hold =
-      gnss_metadata_hold_active &&
-      transaction.state == OtisRegulationState::AwaitingResponse;
-  if (completing_response_during_metadata_hold) {
-    // Metadata qualifies admission of a new correction, not the canonical
-    // D14/D8 observation needed to finish an already applied transaction.
-    health.gnss_metadata_valid = true;
-    health.gnss_identity_stable = true;
-    health.gnss_3d_evidence = true;
-  } else if (gnss_metadata_hold_active) {
-    outcome->reason = "gnss_metadata_hold_no_new_request";
-    return;
-  }
-  const OtisAdaptiveHybridRegulationLiveDecision *effective_decision = decision;
-  OtisAdaptiveHybridRegulationLiveDecision hybrid_source = *decision;
-  OtisActiveHybridDecision hybrid_decision = {};
-  if (!hybrid_engine_ready) {
-    otis_regulation_fault(
-        &transaction, "active_hybrid_setup_consumers_not_confirmed");
-    outcome->faulted = true;
-    outcome->reason = transaction.reason;
-    return;
-  }
-  const bool common_health_clean =
-      decision->measurement_valid && decision->model_applicable &&
-      (completing_response_during_metadata_hold ||
-       (health.gnss_metadata_valid && health.gnss_identity_stable &&
-        health.gnss_3d_evidence)) &&
-      health.raw_pps_valid && health.count_valid &&
-      health.applied_code_confirmed && health.capture_owner_live &&
-      health.abort_path_live && latest_health.reference_integrity_valid &&
-      decision->phase_recorder_published;
-  const bool downstream_phase_epoch_exact =
-      decision->phase_recorder_published &&
-      decision->phase_dac_epoch == decision->dac_epoch &&
-      decision->phase_applied_code == decision->current_applied_code;
-  const bool accepted_source_exact =
-      decision->source_acceptance_epoch != 0u &&
-      otis_exact_selected_accepted_span(
-          decision->source_opening_accepted_boundary_ordinal,
-          decision->source_closing_accepted_boundary_ordinal) &&
-      latest_health.accepted_anchor_current &&
-      latest_health.acceptance_epoch == decision->source_acceptance_epoch &&
-      latest_health.accepted_boundary_ordinal ==
-          decision->source_closing_accepted_boundary_ordinal;
-  const OtisActiveHybridObservation hybrid_input = {
-      decision->timestamp_s,
-      decision->capture_session,
-      decision->source_acceptance_epoch,
-      decision->source_opening_accepted_boundary_ordinal,
-      decision->source_closing_accepted_boundary_ordinal,
-      decision->dac_epoch,
-      decision->current_applied_code,
-      decision->frequency_error_hz,
-      decision->accumulated_edge_error_counts,
-      decision->tight_state,
-      decision->phase_epoch,
-      decision->phase_observation_sequence,
-      decision->relative_phase_cycles,
-      decision->phase_dac_epoch,
-      decision->phase_applied_code,
-      decision->phase_continuous,
-      decision->phase_current,
-      decision->phase_step_detected,
-      strcmp(OTIS_BUILD_IMAGE_ID, kExpectedImage) == 0 &&
-          decision->capture_session ==
-              transaction.expected_binding.session_id && accepted_source_exact,
-      common_health_clean,
-      downstream_phase_epoch_exact,
-      hybrid_engine.transaction_outstanding,
-      transaction.state == OtisRegulationState::AwaitingResponse,
-  };
-  const bool hybrid_decided =
-      decision_ticks_available &&
-      otis_active_hybrid_engine_decide_at_ticks(
-          &hybrid_engine, &hybrid_input, decision_timestamp_ticks,
-          &hybrid_decision);
-  if (!hybrid_decided) {
-    hybrid_fail_static("active_hybrid_decision_timing_or_input_fault");
-    otis_regulation_fault(
-        &transaction, "active_hybrid_decision_timing_or_input_fault");
-    outcome->faulted = true;
-    outcome->reason = transaction.reason;
-    return;
-  }
-  if (!queue_active_hybrid_decision(*decision, hybrid_decision,
-                                    decision_timestamp_ticks)) {
-    hybrid_fail_static("active_hybrid_decision_evidence_queue_fault");
-    otis_regulation_fault(
-        &transaction, "active_hybrid_decision_evidence_queue_fault");
-    outcome->faulted = true;
-    outcome->reason = transaction.reason;
-    return;
-  }
-  if (hybrid_engine.state == OtisActiveHybridState::FailStatic) {
-    otis_regulation_fault(&transaction, hybrid_decision.reason);
-    outcome->faulted = true;
-    outcome->reason = transaction.reason;
-    return;
-  }
-  hybrid_source.decision_sequence = hybrid_decision.decision_sequence;
-  hybrid_source.requested_delta_codes =
-      hybrid_decision.requested_delta_codes;
-  hybrid_source.requested_code = hybrid_decision.requested_code;
-  hybrid_source.control_eligible =
-      hybrid_decision.requested_delta_codes != 0;
-  hybrid_source.preview_available = true;
-  effective_decision = &hybrid_source;
-  if (transaction.state == OtisRegulationState::AwaitingResponse) {
-    OtisRegulationResponseResult response;
-    const bool measurement_healthy =
-        decision->measurement_valid &&
-        otis_regulation_response_measurement_valid(&health);
-    // A selected response can arrive while the preview engine is still in its
-    // post-application SETTLE_PREVIEW state. Preview actionability gates a new request,
-    // not acceptance of an already-completed response.  The full live health
-    // and model-applicability contract is the post-response eligibility gate.
-    const bool control_eligible_after_response =
-        otis_regulation_eligibility_valid(&health);
-    const bool accepted = otis_regulation_record_response(
-        &transaction, decision->frequency_error_hz,
-        measurement_healthy, control_eligible_after_response,
-        &response);
-    outcome->response_recorded = true;
-    outcome->response_class = response.classification;
-    outcome->reason = response.reason;
-    outcome->faulted = !accepted;
-    evidence_phase = EvidencePhase::Response;
-    evidence_request_sequence = transaction.request.request_sequence;
-    evidence_pending_since_s = decision->timestamp_s;
-    pending_hybrid_response_class = response.classification;
-    pending_hybrid_response_valid = true;
-    pending_hybrid_predicted_sign_observed =
-        response.observed_response_hz *
-            static_cast<double>(transaction.request.requested_delta_codes) >
-        0.0;
-    if (!queue_frame("response", decision_timestamp_ticks, &response,
-                     decision->frequency_error_hz)) {
-      otis_regulation_fault(&transaction, "response_evidence_queue_fault");
-      outcome->faulted = true;
-      outcome->reason = transaction.reason;
-    }
-    return;
-  }
-  if (transaction.state != OtisRegulationState::Armed) return;
-  const OtisRegulationDecision request_input = {
-      effective_decision->decision_sequence,
-      effective_decision->source_acceptance_epoch,
-      effective_decision->source_opening_accepted_boundary_ordinal,
-      effective_decision->source_closing_accepted_boundary_ordinal,
-      effective_decision->timestamp_s,
-      effective_decision->current_applied_code,
-      effective_decision->requested_delta_codes,
-      effective_decision->requested_code,
-      effective_decision->frequency_error_hz,
-  };
-  OtisRegulationActionableRequest request;
-  // A short-lived arm is issued before the next 600 s observation is known.
-  // If that observation enters or retains the tight band, the regulator
-  // emits an exact zero-delta hold.  Consume the one-shot arm by passing that
-  // zero through the transaction guard, which disarms without producing a
-  // request.  A non-zero ineligible delta would be authority contamination.
-  if (!effective_decision->control_eligible &&
-      effective_decision->requested_delta_codes != 0) {
-    otis_regulation_fault(
-        &transaction, "tight_deadband_ineligible_nonzero_delta");
-    outcome->faulted = true;
-    outcome->reason = transaction.reason;
-    return;
-  }
-  const bool request_created = otis_regulation_make_request(
-      &transaction, &request_input, &health,
-      effective_decision->timestamp_s, &request);
-  if (!request_created) {
-    outcome->faulted = transaction.state == OtisRegulationState::Fault;
-    outcome->reason = transaction.reason;
-    return;
-  }
-  OtisRegulationAcceptedRequest accepted;
-  pending_actionable_request = request;
-  pending_actionable_request_valid = true;
-  estimator_history_reset = false;
-  pending_hybrid_decision = hybrid_decision;
-  pending_hybrid_decision_valid = true;
-  outcome->request_created = true;
-  outcome->request_sequence = request.request_sequence;
-  outcome->requested_code = request.requested_code;
-  outcome->applied_code = transaction.applied_code;
-  outcome->applied = false;
-  outcome->faulted = false;
-  outcome->reason = transaction.reason;
-  evidence_phase = EvidencePhase::Request;
-  evidence_request_sequence = request.request_sequence;
-  evidence_pending_since_s = effective_decision->timestamp_s;
-  if (!queue_frame("request_created", decision_timestamp_ticks,
-                   nullptr, 0.0)) {
-    pending_actionable_request_valid = false;
-    otis_regulation_fault(&transaction, "request_evidence_queue_fault");
-    outcome->faulted = true;
-    outcome->reason = transaction.reason;
-  }
+
 }
 
 void otis_adaptive_hybrid_regulation_live_on_decision(
