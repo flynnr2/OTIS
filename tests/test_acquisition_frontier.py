@@ -1,0 +1,252 @@
+from __future__ import annotations
+
+import csv
+from copy import deepcopy
+import io
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from host.otis_tools.acquisition_frontier import (
+    AcquisitionFrontierTracker, FRONTIER_PATH, FRONTIER_POLICY,
+    FRONTIER_STATE_PATH, read_acquisition_readiness, select_required_replay_rows,
+)
+from host.otis_tools.adaptive_hybrid_replay import _measurement_replay
+from test_raw_measurement_replay import raw_measurement_rows
+
+
+class RecordedStream:
+    def __init__(self, root: Path, rows):
+        self.root, self.rows = root, rows
+        for row in rows["estimates.csv"]:
+            row.update(record_type="EST", schema_version="2")
+        root.mkdir(exist_ok=True)
+        (root / "raw").mkdir()
+        self.raw = root / "raw/serial.log"
+        self.raw.write_bytes(b"")
+        self.manifest = {
+            "acquisition_frontier": FRONTIER_POLICY,
+            "transaction_identities": {"estimator_sha256": "a" * 64},
+            "files": [
+                {"contract": "raw_events_v1", "record_type": "REF", "path": "ref.csv"},
+                {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
+                {"contract": "pps_snapshots_v1", "path": "snapshots.csv"},
+                {"contract": "count_observations_v1", "path": "counts.csv"},
+                {"contract": "estimates_v2", "path": "estimates.csv"},
+            ],
+        }
+        self.paths = {"REF": "ref.csv", "SNP": "snapshots.csv", "CNT": "counts.csv", "EST": "estimates.csv"}
+        self.fields = {}
+        for tag, filename in self.paths.items():
+            self.fields[tag] = list(rows[filename][0])
+            with (root / filename).open("w", newline="") as handle:
+                csv.writer(handle, lineterminator="\n").writerow(self.fields[tag])
+        (root / "evt.csv").write_text("record_type,channel_id\n")
+        self.tracker = AcquisitionFrontierTracker(root, self.manifest)
+        self.line = 0
+
+    def emit(self, row):
+        self.line += 1
+        stream = io.StringIO(newline="")
+        csv.writer(stream, lineterminator="\n").writerow([row[name] for name in self.fields[row["record_type"]]])
+        encoded = stream.getvalue().encode()
+        path = self.root / self.paths[row["record_type"]]
+        offset = path.stat().st_size
+        with path.open("ab") as handle:
+            handle.write(encoded)
+        with self.raw.open("ab") as handle:
+            handle.write(encoded)
+        previous = self.tracker.frontier
+        self.tracker.observe(row, line_number=self.line, csv_byte_offset=offset)
+        if previous is None and self.tracker.frontier is not None:
+            self.tracker.note_marker_search_offset(self.raw.stat().st_size)
+            with self.raw.open("ab") as handle:
+                handle.write(b"# OTIS_HOST " + json.dumps({
+                    "event": "acquisition_frontier_established",
+                    "frontier_sha256": self.tracker.frontier["frontier_sha256"],
+                    "capture_line_ordinal": self.line,
+                }).encode() + b"\n")
+
+    def boundary(self, index):
+        self.emit(self.rows["ref.csv"][index])
+        self.emit(self.rows["snapshots.csv"][index])
+        if index:
+            self.emit(self.rows["counts.csv"][index - 1])
+
+    def readiness(self, identity=None, session=1):
+        return read_acquisition_readiness(self.root, self.manifest,
+            source_estimate_id=identity, expected_capture_session=session)
+
+    def replay(self):
+        return _measurement_replay(SimpleNamespace(root=self.root, files=self.manifest["files"]), self.manifest)
+
+
+def test_mid_session_prefix_retained_anchor_then_full_source_authority(tmp_path):
+    rows = raw_measurement_rows(first_sequence=10, first_ticks=10_000_000)
+    stream = RecordedStream(tmp_path, rows)
+    assert stream.readiness()["errors"] == []
+    stream.boundary(0)
+    orphan = deepcopy(rows["counts.csv"][0])
+    orphan.update(count_seq="10", gate_open_ticks="9000000", gate_close_ticks="10000000")
+    stream.emit(orphan)
+    assert not stream.readiness()["ready"]
+    stream.boundary(1)
+    assert stream.readiness()["ready"]
+    assert not stream.readiness("selected-1")["ready"]
+    artifact = (tmp_path / FRONTIER_PATH).read_bytes()
+    stale = deepcopy(rows["estimates.csv"][0])
+    stale.update(estimate_id="prefix-est", source_reference_first_seq="0", source_reference_last_seq="600",
+        source_count_seq="600", estimator_timestamp_ticks="600000000")
+    for index in range(2, 591):
+        stream.boundary(index)
+    stream.emit(stale)
+    assert not stream.readiness("prefix-est")["ready"]
+    for index in range(591, 601):
+        stream.boundary(index)
+    selected = dict(rows["estimates.csv"][0], estimate_seq="2")
+    stream.emit(selected)
+    assert stream.readiness("selected-1")["ready"], stream.tracker.errors
+    assert (tmp_path / FRONTIER_PATH).read_bytes() == artifact
+    assert len(list(csv.DictReader((tmp_path / "counts.csv").open()))) == 601
+    exact, report, _ = stream.replay()
+    assert exact, report
+    assert report["acquisition_frontier"]["unqualified_prefix_count_count"] == 1
+    assert report["acquisition_frontier"]["unqualified_selected_estimate_ids"] == ["prefix-est"]
+
+
+def test_estimate_may_precede_raw_drain_but_cannot_authorize_until_exact_source(tmp_path):
+    rows = raw_measurement_rows()
+    stream = RecordedStream(tmp_path, rows)
+    stream.boundary(0)
+    stream.boundary(1)
+    stream.emit(rows["estimates.csv"][0])
+    assert not stream.readiness("selected-1")["ready"]
+    assert not stream.tracker.errors
+    for index in range(2, 601):
+        stream.boundary(index)
+    assert stream.readiness("selected-1")["ready"], stream.tracker.errors
+
+
+def test_interior_source_gap_latches_hold_without_advancing_frontier(tmp_path):
+    rows = raw_measurement_rows([10_000_000] * 4)
+    stream = RecordedStream(tmp_path, rows)
+    stream.boundary(0)
+    stream.boundary(1)
+    artifact = (tmp_path / FRONTIER_PATH).read_bytes()
+    stream.boundary(3)
+    assert not stream.readiness()["ready"]
+    assert stream.readiness()["errors"]
+    assert (tmp_path / FRONTIER_PATH).read_bytes() == artifact
+
+
+@pytest.mark.parametrize("mutation", ["errors_absent", "ids_string", "proof_altered", "marker_absent", "source_altered", "raw_source_altered"])
+def test_corrupted_frontier_or_live_proof_never_grants_authority(tmp_path, mutation):
+    rows = raw_measurement_rows([10_000_000] * 2)
+    stream = RecordedStream(tmp_path, rows)
+    stream.boundary(0)
+    stream.boundary(1)
+    stream.emit(rows["estimates.csv"][0])
+    path = tmp_path / FRONTIER_STATE_PATH
+    state = json.loads(path.read_text())
+    if mutation == "errors_absent":
+        del state["errors"]
+    elif mutation == "ids_string":
+        state["qualified_estimate_ids"] = "selected-1"
+    elif mutation == "proof_altered":
+        state["qualified_estimates"] = [{"estimate_id": "invented"}]
+    elif mutation == "marker_absent":
+        stream.raw.write_bytes(b"\n".join(line for line in stream.raw.read_bytes().splitlines() if not line.startswith(b"# OTIS_HOST")) + b"\n")
+    elif mutation == "source_altered":
+        target = tmp_path / "snapshots.csv"
+        target.write_text(target.read_text().replace("4294967295", "4294967294"))
+    else:
+        stream.raw.write_bytes(stream.raw.read_bytes().replace(b"4294967295", b"4294967294"))
+    path.write_text(json.dumps(state))
+    # Raw-source corruption is checked independently by offline full-raw
+    # binding; live authority reads exact CSV rows and its bounded raw marker.
+    if mutation != "raw_source_altered":
+        assert not stream.readiness()["ready"]
+    exact, _, _ = stream.replay()
+    assert not exact
+
+
+def test_session_transition_clears_previous_source_and_waits_for_current_pair(tmp_path):
+    rows = raw_measurement_rows()
+    stream = RecordedStream(tmp_path, rows)
+    for index in range(601):
+        stream.boundary(index)
+    stream.emit(rows["estimates.csv"][0])
+    assert stream.readiness("selected-1")["ready"]
+    later = raw_measurement_rows([10_000_000] * 2, first_ticks=601_000_000, first_event_sequence=1601)
+    for row in later["snapshots.csv"]:
+        row["session"] = "2"
+    stream.rows = later
+    stream.boundary(0)
+    assert not stream.readiness("selected-1", session=2)["ready"]
+    assert not stream.readiness(session=2)["ready"]
+    stream.boundary(1)
+    assert stream.readiness(session=2)["ready"], stream.tracker.errors
+    assert not stream.readiness("selected-1", session=2)["ready"]
+
+
+def test_nonfinite_estimate_becomes_local_discrepancy(tmp_path):
+    rows = raw_measurement_rows()
+    stream = RecordedStream(tmp_path, rows)
+    for index in range(601):
+        stream.boundary(index)
+    bad = dict(rows["estimates.csv"][0], frequency_error_hz="NaN")
+    stream.emit(bad)
+    assert stream.tracker.errors
+    assert not stream.readiness("selected-1")["ready"]
+
+
+def test_frontier_is_first_complete_pair_even_when_aperture_is_invalid(tmp_path):
+    rows = raw_measurement_rows([0, 10_000_000])
+    rows["counts.csv"][0]["flags"] = str(16 | (1 << 5) | (1 << 9))
+    stream = RecordedStream(tmp_path, rows)
+    stream.boundary(0)
+    stream.boundary(1)
+    assert stream.readiness()["ready"]
+    assert stream.tracker.frontier["first_count"]["record"]["counted_edges"] == "0"
+    artifact = (tmp_path / FRONTIER_PATH).read_bytes()
+    stream.boundary(2)
+    assert (tmp_path / FRONTIER_PATH).read_bytes() == artifact
+
+
+def test_new_authority_before_recorded_marker_cannot_be_repaired_offline(tmp_path):
+    rows = raw_measurement_rows()
+    stream = RecordedStream(tmp_path, rows)
+    for index in range(601):
+        stream.boundary(index)
+    stream.emit(rows["estimates.csv"][0])
+    assert stream.replay()[0]
+    premature = b'# OTIS_HOST {"event":"host_command_sent","command":"ACTIVE ARM 1 2 3"}\n'
+    stream.raw.write_bytes(premature + stream.raw.read_bytes())
+    exact, report, _ = stream.replay()
+    assert not exact
+    assert "precedes" in report["acquisition_frontier"]["errors"][0]
+
+
+def test_duplicate_changed_estimate_identity_revokes_source_readiness(tmp_path):
+    rows = raw_measurement_rows()
+    stream = RecordedStream(tmp_path, rows)
+    for index in range(601):
+        stream.boundary(index)
+    stream.emit(rows["estimates.csv"][0])
+    assert stream.readiness("selected-1")["ready"]
+    stream.emit(dict(rows["estimates.csv"][0], estimate_seq="2", frequency_error_hz="1.0"))
+    assert not stream.readiness("selected-1")["ready"]
+    assert any("duplicated" in error for error in stream.tracker.errors)
+
+
+def test_ordinary_counts_do_not_rewrite_live_state_each_second(tmp_path):
+    rows = raw_measurement_rows([10_000_000] * 10)
+    stream = RecordedStream(tmp_path, rows)
+    stream.boundary(0)
+    stream.boundary(1)
+    state = (tmp_path / FRONTIER_STATE_PATH).read_bytes()
+    for index in range(2, 11):
+        stream.boundary(index)
+    assert (tmp_path / FRONTIER_STATE_PATH).read_bytes() == state

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from host.otis_tools import adaptive_hybrid_replay as replay
+from host.otis_tools import raw_measurement_replay as raw
 
 
 MODULUS = 1 << 32
@@ -51,7 +52,7 @@ def run_measurement(monkeypatch, rows):
 
 
 def raw_replay(rows):
-    return replay._raw_count_replay(rows["snapshots.csv"], rows["ref.csv"], rows["counts.csv"])
+    return raw._raw_count_replay(rows["snapshots.csv"], rows["ref.csv"], rows["counts.csv"])
 
 
 def test_valid_raw_count_and_native_timestamp_wrap_replay(monkeypatch):
@@ -209,7 +210,7 @@ def test_actual_operational_rehearsal_bootstrap_has_one_replayable_aperture():
     instrument._emit_initial_observations()
     assert [int(row["event_seq"]) for row in emitted
             if row["record_type"] in {"EVT", "REF"}] == [1000, 1001, 1002]
-    exact, report, intervals = replay._raw_count_replay(
+    exact, report, intervals = raw._raw_count_replay(
         [row for row in emitted if row["record_type"] == "SNP"],
         [row for row in emitted if row["record_type"] == "REF"],
         [row for row in emitted if row["record_type"] == "CNT"],

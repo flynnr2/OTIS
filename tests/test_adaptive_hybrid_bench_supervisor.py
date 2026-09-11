@@ -295,6 +295,7 @@ def test_one_application_setup_is_submitted_once(tmp_path: Path) -> None:
     supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor._identity_ready = lambda _health: True
     supervisor._prewrite_readiness = lambda _health: SimpleNamespace(ready=True)
+    supervisor._acquisition_authority_ready = lambda **_kwargs: True
     request = {
         "authorization_sequence": 1,
         "status_generation": 2,
@@ -311,6 +312,8 @@ def test_one_application_setup_is_submitted_once(tmp_path: Path) -> None:
     health = {
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "manual_start_confirmed"): "false",
+        ("adaptive_hybrid", "session_id"): "5",
+        ("pps_gate", "snapshot_session"): "5",
     }
 
     supervisor._maybe_start_or_arm(health)
@@ -350,6 +353,7 @@ def test_application_frontier_is_durable_before_phase_three_command(
     health = {
         ("adaptive_hybrid", "snapshot_generation_complete"): "12",
         ("adaptive_hybrid", "query_nonce"): "91",
+        ("adaptive_hybrid", "session_id"): "5",
         ("adaptive_hybrid", "evidence_phase"): "application_pending",
         ("adaptive_hybrid", "evidence_request_sequence"): "7",
         ("adaptive_hybrid", "correction_count"): "1",
@@ -652,6 +656,7 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
         }
     )
     supervisor._identity_ready = lambda _health: True
+    supervisor._acquisition_authority_ready = lambda **_kwargs: True
     supervisor._close_bench_arm_admission_if_required = lambda _health: False
     supervisor._arm_progress_epoch_ready = lambda _preview, _progress: True
     supervisor._save = lambda: None
@@ -668,9 +673,10 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
         supervisor_module,
         "_read_csv",
         lambda _path: [
-            {
-                "decision_id": "natural-opportunity-1",
-                "preview_available": "true",
+                {
+                    "decision_id": "natural-opportunity-1",
+                    "est_input_ref": "est:fixture:1",
+                    "preview_available": "true",
                 "preview_eligibility": "true",
             }
         ],
@@ -686,10 +692,12 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
         ("adaptive_hybrid", "evidence_phase"): "evidence_clear",
         ("adaptive_hybrid", "evidence_pending"): "false",
         ("adaptive_hybrid", "uptime_s"): "700",
+        ("adaptive_hybrid", "session_id"): "5",
         ("adaptive_hybrid", "snapshot_generation_complete"): "12",
         ("adaptive_hybrid", "query_nonce"): "91",
-        ("pps_gate", "accepted_window_count"): "700",
-        ("pps_gate", "boundary_reference_sequence"): "800",
+            ("pps_gate", "accepted_window_count"): "700",
+            ("pps_gate", "boundary_reference_sequence"): "800",
+            ("pps_gate", "snapshot_session"): "5",
     }
 
     supervisor._maybe_start_or_arm(health)
@@ -725,6 +733,8 @@ def test_contingent_arm_waits_for_first_natural_opportunity(
         }
     )
     supervisor._identity_ready = lambda _health: True
+    supervisor._acquisition_authority_ready = lambda **_kwargs: True
+    supervisor._acquisition_authority_ready = lambda **_kwargs: True
     supervisor._close_bench_arm_admission_if_required = lambda _health: False
     supervisor._arm_progress_epoch_ready = lambda *_args: (_ for _ in ()).throw(
         AssertionError("ARM progress evaluated without a natural opportunity")
@@ -818,6 +828,7 @@ def test_contingent_arm_coordinate_failure_does_not_publish_ghost_authority(
         }
     )
     supervisor._identity_ready = lambda _health: True
+    supervisor._acquisition_authority_ready = lambda **_kwargs: True
     supervisor._close_bench_arm_admission_if_required = lambda _health: False
     supervisor._arm_progress_epoch_ready = lambda _preview, _progress: True
     supervisor._qualified_d14_apertures = lambda _health: None
@@ -828,9 +839,10 @@ def test_contingent_arm_coordinate_failure_does_not_publish_ghost_authority(
         supervisor_module,
         "_read_csv",
         lambda _path: [
-            {
-                "decision_id": "natural-opportunity-1",
-                "preview_available": "true",
+                {
+                    "decision_id": "natural-opportunity-1",
+                    "est_input_ref": "est:fixture:1",
+                    "preview_available": "true",
                 "preview_eligibility": "true",
             }
         ],
@@ -846,6 +858,8 @@ def test_contingent_arm_coordinate_failure_does_not_publish_ghost_authority(
         ("adaptive_hybrid", "evidence_phase"): "evidence_clear",
         ("adaptive_hybrid", "evidence_pending"): "false",
         ("adaptive_hybrid", "uptime_s"): "700",
+        ("adaptive_hybrid", "session_id"): "5",
+        ("pps_gate", "snapshot_session"): "5",
     }
 
     with pytest.raises(ValueError, match="lacks an accepted-aperture coordinate"):

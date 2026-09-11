@@ -227,6 +227,16 @@ already committed. The metadata transition and selected response together
 reserve a nine-frame evidence frontier; qualification must not depend on the
 other core draining a slot midway through it.
 
+Attachment to an already running producer requires a separate proof of recorded
+measurement coverage. The host freezes a prospective acquisition policy and
+records the first complete retained D14/SNP/CNT pair while capture is running.
+An incomplete attachment prefix stays in raw evidence and canonical CSVs with
+no measurement authority. Manual setup readiness and a complete 600-interval
+selected-estimator source are separate gates; feedback cannot use a recent
+estimate whose source predates the recorder. Interior loss causes a diagnostic
+hold and never moves the recorded frontier. See
+`data_contracts/acquisition_frontier_v1.md`.
+
 The receiver message's metadata age at publication and its subsequent age on
 Core 1 are additive. Compare their sum against the configured age limit in
 local microseconds; two individually acceptable ages are not two separate

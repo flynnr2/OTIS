@@ -122,6 +122,8 @@ def test_full_process_operational_rehearsal_reaches_registered_boundary(
             for name in sorted(
                 {
                     "capture_device",
+                    "acquisition_frontier",
+                    "raw_measurement_replay",
                     "adaptive_hybrid_operational_rehearsal",
                     "adaptive_hybrid_supervisor",
                     "adaptive_hybrid_run",

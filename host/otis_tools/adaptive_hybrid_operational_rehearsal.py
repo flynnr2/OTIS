@@ -40,6 +40,11 @@ from .active_status_contract import (
     SNAPSHOT_CONTRACT_KEY,
 )
 from .active_status_live_state import read_live_health_state
+from .acquisition_frontier import (
+    FRONTIER_PATH,
+    FRONTIER_POLICY,
+    FRONTIER_STATE_PATH,
+)
 from .adaptive_hybrid_bundle import validate_bundle
 from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
@@ -69,6 +74,7 @@ from .adaptive_hybrid_supervisor import (
 )
 from .authoritative_inputs import (
     ROOT_PROFILE,
+    transaction_identities_from_bundle,
     authoritative_binding,
     authoritative_document,
     validate_authoritative_inputs,
@@ -314,6 +320,7 @@ def _rehearsal_files() -> list[dict[str, Any]]:
     ]
 
 
+
 def _channels() -> list[dict[str, Any]]:
     return [
         {
@@ -384,6 +391,7 @@ def create_rehearsal_run_manifest(
         "actuation_authorized": False,
         "authority_effective": False,
         "closed_loop_control": False,
+        "acquisition_frontier": dict(FRONTIER_POLICY),
         "bundle": {
             **_binding(bundle_path),
             "bundle_sha256": bundle["bundle_sha256"],
@@ -399,6 +407,7 @@ def create_rehearsal_run_manifest(
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
         "policy": bundle["policy"],
+        "transaction_identities": transaction_identities_from_bundle(bundle),
         "host": {
             "version": TOOL_ID,
             "source_revision": str(bundle["firmware"]["source_revision"]),
@@ -464,6 +473,8 @@ def create_rehearsal_run_manifest(
             SEGMENT_CLOSURE.as_posix(),
             PROCESS_EVIDENCE_PATH.as_posix(),
             MONITOR_SAMPLES_PATH.as_posix(),
+            FRONTIER_PATH,
+            FRONTIER_STATE_PATH,
             TRANSITION_MANIFEST_PATH.as_posix(),
             TRANSITION_CLOSURE_PATH.as_posix(),
             TRANSITION_CAPTURE_STATE_PATH.as_posix(),
@@ -478,6 +489,8 @@ def create_rehearsal_run_manifest(
             SEGMENT_CLOSURE.as_posix(),
             PROCESS_EVIDENCE_PATH.as_posix(),
             MONITOR_SAMPLES_PATH.as_posix(),
+            FRONTIER_PATH,
+            FRONTIER_STATE_PATH,
             TRANSITION_MANIFEST_PATH.as_posix(),
             TRANSITION_CLOSURE_PATH.as_posix(),
             TRANSITION_CAPTURE_STATE_PATH.as_posix(),
@@ -518,6 +531,8 @@ def _validate_manifest_value(
         SEGMENT_CLOSURE.as_posix(),
         PROCESS_EVIDENCE_PATH.as_posix(),
         MONITOR_SAMPLES_PATH.as_posix(),
+        FRONTIER_PATH,
+        FRONTIER_STATE_PATH,
         TRANSITION_MANIFEST_PATH.as_posix(),
         TRANSITION_CLOSURE_PATH.as_posix(),
         TRANSITION_CAPTURE_STATE_PATH.as_posix(),
@@ -595,12 +610,14 @@ def _validate_manifest_value(
         "actuation_authorized",
         "authority_effective",
         "closed_loop_control",
+        "acquisition_frontier",
         "bundle",
         "proposal",
         "activation",
         "firmware",
         "authoritative_inputs",
         "policy",
+        "transaction_identities",
         "host",
         programme.manifest_section,
         "domains",
@@ -634,6 +651,7 @@ def _validate_manifest_value(
         and value.get("actuation_authorized") is False
         and value.get("authority_effective") is False
         and value.get("closed_loop_control") is False
+        and value.get("acquisition_frontier") == FRONTIER_POLICY
         and value.get("board") == "deterministic_pty_no_physical_hardware"
         and value.get("capture_mode") == "real_capture_device_process_over_pty"
         and _is_pty(device)
@@ -647,6 +665,8 @@ def _validate_manifest_value(
         and value.get("firmware") == bundle.get("firmware")
         and value.get("authoritative_inputs") == bundle.get("authoritative_inputs")
         and value.get("policy") == bundle.get("policy")
+        and value.get("transaction_identities")
+        == transaction_identities_from_bundle(bundle)
         and value.get("bundle", {}).get("bundle_sha256") == bundle.get("bundle_sha256")
         and value.get("proposal", {}).get("proposal_sha256") == proposal.get("proposal_sha256")
         and proposal.get("exact_bundle", {}).get("bundle_sha256") == bundle.get("bundle_sha256")
@@ -897,6 +917,10 @@ class _LifecycleBuilder:
         combined_hz = (
             decision.raw_combined_picocodes / 1_000_000_000_000 * conservative_gain
         )
+        selected_frequency_hz = float(
+            600 * 10_000_000 + observation.accumulated_edge_error_counts
+        ) / 600.0
+        frequency_error_hz = selected_frequency_hz - 10_000_000.0
         row = {field: "0" for field in ACTIVE_HYBRID_DECISION_V2_FIELDS}
         row.update(
             {
@@ -914,7 +938,7 @@ class _LifecycleBuilder:
                 "source_first_sequence": str(observation.source_first_sequence),
                 "source_last_sequence": str(observation.source_last_sequence),
                 "frequency_estimator_sha256": self.bindings["frequency_estimator"]["sha256"],
-                "frequency_error_hz": f"{-observation.accumulated_edge_error_counts / 600.0:.12f}",
+                "frequency_error_hz": f"{frequency_error_hz:.12f}",
                 "accumulated_edge_error_counts": str(observation.accumulated_edge_error_counts),
                 "tight_state": observation.tight_state,
                 "phase_estimator_sha256": self.bindings["phase_estimator"]["sha256"],
@@ -1163,7 +1187,11 @@ class _LifecycleBuilder:
             decision.requested_delta_codes
         )
         dac_epoch = self.controller.dac_epoch + 1
-        frequency_error = -observation.accumulated_edge_error_counts / 600.0
+        frequency_error = (
+            float(600 * 10_000_000 + observation.accumulated_edge_error_counts)
+            / 600.0
+            - 10_000_000.0
+        )
         observed_response = decision.requested_delta_codes * 0.00017008467693813145
         post_error = frequency_error + observed_response
         common = {
@@ -1669,6 +1697,25 @@ class DeterministicPtyInstrument:
         self.evidence_phase = "evidence_clear"
         self.metadata_state = "normal"
         self.first_checkpoint = False
+        self.raw_snapshot_sequence = 1
+        self.raw_reference_event_sequence = 1002
+        self.raw_cumulative_down_counter = (0xFFFFFFFF - 10_000_000) % (1 << 32)
+        self.estimate_sequence = 0
+        self.control_sequence = 0
+        source_decisions = (
+            self.fixture.first_transaction.request_decision,
+            self.fixture.first_transaction.response_decision,
+            self.fixture.first_requalification_decision,
+            self.fixture.second_requalification_decision,
+            self.fixture.second_transaction.request_decision,
+            self.fixture.second_transaction.response_decision,
+        )
+        self.raw_interval_adjustments = {
+            int(row["source_last_sequence"]): int(
+                row["accumulated_edge_error_counts"]
+            )
+            for row in source_decisions
+        }
         self._lock = threading.Lock()
         self._timers: list[threading.Timer] = []
 
@@ -1987,9 +2034,9 @@ class DeterministicPtyInstrument:
         )
 
     def _emit_initial_observations(self) -> None:
-        # Exercise one real-contract raw aperture. The first SNP/REF is an
-        # anchor; only the adjacent successor produces CNT. This fixture does
-        # not claim the 600-interval physical selected-estimator qualification.
+        # The first SNP/REF is an anchor; only its adjacent successor produces
+        # CNT. The live capture observer freezes this earliest complete pair
+        # before the supervisor can submit SETUP.
         self._emit_rows(
             CONTRACT_FIELDS["raw_events_v1"],
             [{
@@ -2022,6 +2069,183 @@ class DeterministicPtyInstrument:
                 "source_edge": "R", "source_domain": "h1_oscillator_10mhz", "flags": "16",
             }],
         )
+
+    @staticmethod
+    def _source_ticks(sequence: int) -> int:
+        return (sequence * 1_000_000) % (1 << 32)
+
+    def _emit_source_through(self, target_sequence: int) -> None:
+        """Emit every retained D14/D8 aperture up to an exact source bound."""
+
+        if target_sequence < self.raw_snapshot_sequence:
+            raise RuntimeError("rehearsal raw source cannot move backwards")
+        payload = bytearray()
+        while self.raw_snapshot_sequence < target_sequence:
+            opening_sequence = self.raw_snapshot_sequence
+            closing_sequence = opening_sequence + 1
+            opening_ticks = self._source_ticks(opening_sequence)
+            closing_ticks = self._source_ticks(closing_sequence)
+            counted_edges = 10_000_000 + self.raw_interval_adjustments.get(
+                closing_sequence, 0
+            )
+            self.raw_cumulative_down_counter = (
+                self.raw_cumulative_down_counter - counted_edges
+            ) % (1 << 32)
+            self.raw_reference_event_sequence += 1
+            payload.extend(
+                _wire_row(
+                    CONTRACT_FIELDS["raw_events_v1"],
+                    {
+                        "record_type": "REF",
+                        "schema_version": "1",
+                        "event_seq": str(self.raw_reference_event_sequence),
+                        "channel_id": "1",
+                        "edge": "R",
+                        "timestamp_ticks": str(closing_ticks),
+                        "capture_domain": "rp2040_monotonic_us32",
+                        "flags": "16",
+                    },
+                )
+            )
+            payload.extend(
+                _wire_row(
+                    CONTRACT_FIELDS["pps_snapshots_v1"],
+                    {
+                        "record_type": "SNP",
+                        "schema_version": "1",
+                        "session": "1",
+                        "snapshot_sequence": str(closing_sequence),
+                        "cumulative_down_counter": str(
+                            self.raw_cumulative_down_counter
+                        ),
+                        "reference_sequence": str(closing_sequence),
+                        "reference_timestamp_ticks": str(closing_ticks),
+                        "status": "0",
+                        "backend": "pio_wait_cumulative_snapshot_dma_v1",
+                    },
+                )
+            )
+            payload.extend(
+                _wire_row(
+                    CONTRACT_FIELDS["count_observations_v1"],
+                    {
+                        "record_type": "CNT",
+                        "schema_version": "1",
+                        "count_seq": str(closing_sequence),
+                        "channel_id": "2",
+                        "gate_open_ticks": str(opening_ticks),
+                        "gate_close_ticks": str(closing_ticks),
+                        "gate_domain": "rp2040_monotonic_us32",
+                        "counted_edges": str(counted_edges),
+                        "source_edge": "R",
+                        "source_domain": "h1_oscillator_10mhz",
+                        "flags": "16",
+                    },
+                )
+            )
+            self.raw_snapshot_sequence = closing_sequence
+        if payload:
+            with self._lock:
+                _write_all_fd(self.master_fd, bytes(payload))
+
+    def _emit_selected_estimate(self, decision: dict[str, str]) -> dict[str, str]:
+        first = int(decision["source_first_sequence"])
+        last = int(decision["source_last_sequence"])
+        accumulated = int(decision["accumulated_edge_error_counts"])
+        selected_frequency = float(600 * 10_000_000 + accumulated) / 600.0
+        frequency_error = selected_frequency - 10_000_000.0
+        estimate_id = f"rehearsal:selected:{self.estimate_sequence}"
+        row = {field: "" for field in CONTRACT_FIELDS["estimates_v2"]}
+        row.update(
+            {
+                "record_type": "EST",
+                "schema_version": "2",
+                "estimate_seq": str(self.estimate_sequence),
+                "estimate_id": estimate_id,
+                "estimator_timestamp_ticks": str(self._source_ticks(last)),
+                "time_domain": "rp2040_monotonic_us32",
+                "source_count_seq": str(last),
+                "source_count_ref": f"live:CNT:{last}",
+                "source_reference_first_seq": str(first),
+                "source_reference_last_seq": str(last),
+                "source_status_refs": f"live:SNP:{first}:{last}",
+                "source_dac_ref": f"live:DAC:{decision['dac_epoch']}",
+                "manifest_ref": "run_manifest",
+                "estimator_version": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
+                "config_hash": self.identities["estimator_sha256"],
+                "observation_validity": "valid",
+                "observation_reason_codes": "complete_selected_window",
+                "reference_validity": "valid",
+                "reference_age_s": "0",
+                "reference_continuity": "true",
+                "count_validity": "valid",
+                "count_age_s": "0",
+                "count_continuity": "true",
+                "diagnostic_health": "healthy",
+                "diagnostic_reason_codes": "none",
+                "frequency_observation_hz": f"{selected_frequency:.12f}",
+                "accepted_sample_count": "600",
+                "estimator_confidence": "high",
+                "frequency_estimate_hz": f"{selected_frequency:.12f}",
+                "frequency_error_hz": f"{frequency_error:.12f}",
+                "dispersion_hz": "0.000000000000",
+                "uncertainty_status": "unavailable",
+                "uncertainty_reason_codes": "uncertainty_model_unavailable",
+                "correlation_policy": "not_combined_missing_components",
+                "uncertainty_model_ref": "unavailable:rehearsal_fixture",
+                "drift_enabled": "false",
+                "preview_eligibility": "true",
+                "eligibility_reason_codes": "eligible",
+            }
+        )
+        self.estimate_sequence += 1
+        self._emit_rows(CONTRACT_FIELDS["estimates_v2"], [row])
+        return row
+
+    def _emit_control_preview(
+        self, estimate: dict[str, str], decision: dict[str, str]
+    ) -> None:
+        self.control_sequence += 1
+        current_code = int(decision["current_applied_code"])
+        requested_delta = int(decision["requested_delta_codes"])
+        row = {
+            "record_type": "CTL",
+            "schema_version": "1",
+            "control_seq": str(self.control_sequence),
+            "decision_id": f"rehearsal:control:{self.control_sequence}",
+            "decision_timestamp_ticks": estimate["estimator_timestamp_ticks"],
+            "time_domain": "rp2040_monotonic_us32",
+            "est_input_ref": estimate["estimate_id"],
+            "plant_model_ref": "model:pps_gated_oscillator_plant_v1",
+            "plant_model_id": "OTIS_PPS_GATED_OSCILLATOR_PLANT_V1",
+            "plant_model_version": "1",
+            "plant_model_hash": self.identities["model_sha256"],
+            "policy_version": self.programme.programme_id,
+            "config_hash": self.identities["active_policy_sha256"],
+            "control_state": "LOCKED_PREVIEW",
+            "previous_control_state": "LOCKED_PREVIEW",
+            "state_transition": "false",
+            "transition_reason_code": "selected_estimate_complete",
+            "preview_eligibility": "true",
+            "eligibility_reason_codes": "eligible",
+            "diagnostic_health": "healthy",
+            "model_applicability": "applicable",
+            "model_reason_codes": "model_applicable",
+            "current_dac_code": str(current_code),
+            "frequency_error_hz": estimate["frequency_error_hz"],
+            "hz_per_code": "0.000170084677",
+            "raw_delta_codes": str(requested_delta),
+            "limited_delta_codes": str(requested_delta),
+            "proposed_dac_code": str(current_code + requested_delta),
+            "step_limited": "false",
+            "range_clamped": "false",
+            "preview_available": "true",
+            "preview_only": "true",
+            "actuation_authorized": "false",
+            "actionable": "false",
+            "decision_reason_code": "eligible_preview",
+        }
+        self._emit_rows(CONTRACT_FIELDS["control_previews_v1"], [row])
 
     def _emit_transaction(self, transaction: TransactionFixture) -> None:
         self._emit_rows(
@@ -2056,6 +2280,17 @@ class DeterministicPtyInstrument:
             return
         self.metadata_state = "requalified"
         self.selected_interval_count = 0
+        for decision in (
+            self.fixture.first_requalification_decision,
+            self.fixture.second_requalification_decision,
+        ):
+            self._emit_source_through(int(decision["source_last_sequence"]))
+            estimate = self._emit_selected_estimate(decision)
+            self._emit_control_preview(estimate, decision)
+        next_decision = self.fixture.second_transaction.request_decision
+        self._emit_source_through(int(next_decision["source_last_sequence"]))
+        estimate = self._emit_selected_estimate(next_decision)
+        self._emit_control_preview(estimate, next_decision)
         self._emit_rows(
             ACTIVE_HYBRID_DECISION_V2_FIELDS,
             [
@@ -2109,6 +2344,10 @@ class DeterministicPtyInstrument:
                 ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
                 [self.fixture.policy_activation],
             )
+            decision = self.fixture.first_transaction.request_decision
+            self._emit_source_through(int(decision["source_last_sequence"]))
+            estimate = self._emit_selected_estimate(decision)
+            self._emit_control_preview(estimate, decision)
             self._emit_snapshot()
             # The real supervisor must first consume this low-progress setup
             # generation before the same epoch becomes armable at 600.
@@ -2126,6 +2365,12 @@ class DeterministicPtyInstrument:
                 if self.transaction_index == 1
                 else self.fixture.second_transaction
             )
+            response_decision = transaction.response_decision
+            self._emit_source_through(
+                int(response_decision["source_last_sequence"])
+            )
+            response_estimate = self._emit_selected_estimate(response_decision)
+            self._emit_control_preview(response_estimate, response_decision)
             self._emit_transaction(transaction)
             self._emit_snapshot()
             return

@@ -201,6 +201,17 @@ success claim is rejected without being indexed as a successful package.
 
 ## Host-only reanalysis and supersession
 
+New adaptive-hybrid acquisitions declare their recording-frontier policy in
+the frozen manifest. The capture owner records the first reconstructable
+opening pair live and retains its immutable identity plus live readiness state.
+The initial incomplete prefix remains in full raw/CSV evidence. At closure,
+the analyzer verifies that previously recorded selection and strictly replays
+all required subsequent observations; it must not choose a later frontier or
+invent one during analysis. An estimate received after attachment may still
+have unretained source history and therefore remain unqualified. See
+`data_contracts/acquisition_frontier_v1.md`. This prospective scope cannot be
+applied retroactively to change an existing campaign's acceptance rules.
+
 A failed analysis does not invalidate a complete raw acquisition when the
 defect is demonstrably downstream of capture. Reanalysis may supersede the
 earlier verdict without repeating hardware only when all of these conditions

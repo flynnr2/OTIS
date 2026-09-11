@@ -1064,6 +1064,8 @@ def test_rehearsal_authorization_contract_binds_real_path_and_denies_authority()
         name: {"path": f"/frozen/{name}.py", "sha256": "1" * 64, "size_bytes": 1}
         for name in (
             "capture_device",
+            "acquisition_frontier",
+            "raw_measurement_replay",
             "adaptive_hybrid_operational_rehearsal",
             "adaptive_hybrid_supervisor",
             "adaptive_hybrid_run",
@@ -1129,6 +1131,8 @@ def _passing_rehearsal_report(
     host_tools: dict[str, object] = {}
     for name in (
         "capture_device",
+        "acquisition_frontier",
+        "raw_measurement_replay",
         "adaptive_hybrid_operational_rehearsal",
         "adaptive_hybrid_supervisor",
         "adaptive_hybrid_run",

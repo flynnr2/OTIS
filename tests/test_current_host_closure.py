@@ -130,7 +130,11 @@ def test_current_host_closure_has_no_retired_programme_modules() -> None:
     # authoritative inputs, one independently inspects UF2 payload bytes, one
     # resolves current build bindings without caching mutable files, and one
     # projects the shared firmware/host contract.
-    assert len(closure) <= 33, f"current host closure unexpectedly broad: {len(closure)}"
+    # The prospective recorder frontier adds one policy module. Its shared
+    # REF/SNP/CNT reconstruction is a second, lower-level module so both live
+    # observation and aggregate offline replay depend on the same pure logic
+    # without a frontier/replay import cycle. The prior ceiling was 33.
+    assert len(closure) <= 35, f"current host closure unexpectedly broad: {len(closure)}"
 
 
 def test_every_semantic_adaptive_hybrid_module_is_in_current_closure() -> None:

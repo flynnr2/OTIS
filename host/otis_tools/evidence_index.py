@@ -82,6 +82,7 @@ ANALYSIS_SUPERSESSION_JOURNAL = Path("original_finalization_journal.json")
 REGISTRATION_SUPERSESSION_KIND = "append_only_package_finalization_v1"
 ANALYSIS_SUPERSESSION_TOOL_MODULES = frozenset(
     {
+        "acquisition_frontier",
         "active_status_contract",
         "active_status_live_state",
         "adaptive_hybrid_activation",
@@ -101,6 +102,7 @@ ANALYSIS_SUPERSESSION_TOOL_MODULES = frozenset(
         "evidence_index",
         "firmware_binary",
         "firmware_host_contract",
+        "raw_measurement_replay",
         "run_loader",
         "run_paths",
         "time_domains",

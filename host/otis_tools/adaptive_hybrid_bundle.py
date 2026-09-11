@@ -67,6 +67,8 @@ HOST_TOOL_MODULES = (
     "adaptive_hybrid_proposal.py",
     "adaptive_hybrid_evidence.py",
     "adaptive_hybrid_replay.py",
+    "acquisition_frontier.py",
+    "raw_measurement_replay.py",
     "adaptive_hybrid_transactions.py",
     "adaptive_hybrid_transport.py",
     "adaptive_hybrid_health.py",

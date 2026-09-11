@@ -497,6 +497,8 @@ def operational_rehearsal_authorization_contract(
         raise ValueError("rehearsal authorization inputs are incomplete")
     required_tools = {
         "capture_device",
+        "acquisition_frontier",
+        "raw_measurement_replay",
         "adaptive_hybrid_operational_rehearsal",
         "adaptive_hybrid_supervisor",
         "adaptive_hybrid_run",
