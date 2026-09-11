@@ -156,6 +156,21 @@ recorded frontier cannot advance to exclude later faults. An estimator source
 is complete only when every interval on which it depends is retained after
 that frontier and independently verified.
 
+### Accepted reference and accepted span
+
+A reference observation admitted under an explicit, versioned selection
+policy. The last accepted reference is an interpretation anchor; it is
+distinct from the latest raw edge, the raw capture session and the recorder's
+retained acquisition frontier. An excluded candidate cannot silently become
+that anchor.
+
+An accepted span is a derived D8 count between two admitted raw D14/SNP
+endpoints. It retains the complete intervening raw source, including any
+excluded candidates. Its accepted-boundary ordinal and acceptance epoch must
+not be substituted for raw source ordinals or a phase epoch. These are the
+semantics of the prospective native acceptance candidate; the current live
+adjacent-aperture path is not implicitly redefined by this terminology.
+
 ### Host written
 
 A host-operation observation that the sole serial carrier completed writing a
