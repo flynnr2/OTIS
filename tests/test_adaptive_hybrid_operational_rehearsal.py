@@ -94,6 +94,16 @@ def _frozen_inputs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Pat
     return bundle_path, proposal_path
 
 
+def test_rehearsal_startup_snapshot_does_not_invent_capture_lease(monkeypatch, tmp_path):
+    bundle_path, _ = _frozen_inputs(monkeypatch, tmp_path)
+    instrument = rehearsal_module.DeterministicPtyInstrument(
+        -1, json.loads(bundle_path.read_text())
+    )
+    assert instrument._active_health()[("adaptive_hybrid", "capture_lease_live")] == "false"
+    instrument._handle_command("ACTIVE LEASE 1")
+    assert instrument._active_health()[("adaptive_hybrid", "capture_lease_live")] == "true"
+
+
 def test_full_process_operational_rehearsal_reaches_registered_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

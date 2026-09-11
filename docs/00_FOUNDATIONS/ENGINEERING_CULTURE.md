@@ -145,6 +145,23 @@ and turn an otherwise valid finite endpoint into an avoidable platform escape.
 
 # Deliver the Instrument
 
+The intended instrument should eventually discipline its oscillator and
+provide its output without requiring a host to run the control loop. A host
+attaches to an instrument that may already be acquiring, steering, held, or
+faulted; it discovers that state before requesting authority or a transition.
+Connecting a recorder is not an implicit reset or a claim that the actuator
+starts at a known code. The current acknowledged campaign protocol remains
+binding until a standalone operating policy is explicitly implemented and
+qualified.
+
+Compact serial evidence and full replay are different reporting contracts,
+not different owners of timing or control. Characterization and future output
+division should use the same instrument services with explicit policies and
+resource ownership. Service-latency diagnostics help demonstrate that service
+work stays isolated from hardware capture, but cannot establish latch-to-ISR
+delay unless both endpoints and their common clock relation are actually
+observable.
+
 The deliverable is working firmware, a working operational host path, and
 reproducible evidence sufficient to support the next decision. Test harnesses
 and campaign scaffolding are supporting infrastructure, not parallel products.

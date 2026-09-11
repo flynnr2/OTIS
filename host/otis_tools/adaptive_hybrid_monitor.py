@@ -727,6 +727,14 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
             ),
         },
         "progress": {
+            "startup_census": (
+                None if supervisor is None else supervisor.get("startup_census")
+            ),
+            "startup_census_authority_admitted": (
+                False
+                if supervisor is None
+                else supervisor.get("startup_census_authority_admitted", False)
+            ),
             "qualification_started_utc": (
                 None if supervisor is None else supervisor.get("qualification_started_utc")
             ),

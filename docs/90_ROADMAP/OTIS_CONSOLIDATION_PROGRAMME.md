@@ -63,6 +63,7 @@ failure records even when publishing a later classification correction.
 | 3. Reference acceptance contract | State acquisition, tracking, rejection, loss, and causal requalification rules, with explicit accepted-reference anchor and counter domains. | Deterministic examples cover early/late/extra/missing edges, recovery, rollover, session changes, and ambiguous evidence. |
 | 4. Firmware and measurement integration | Repair metadata-driven history loss and queue ownership; verify every derived aperture against raw evidence. | Producer-to-first-consumer regressions, raw counter replay, and exact fixed-image build pass. |
 | 5. Operational host simplification | One source for campaign predicates, explicit state transitions, independent operator-abort servicing, integrated monitoring, bounded/deduplicated reporting. | Actual runner topology exercises two transactions, holds, command obstruction, abort delivery, owner-preserving closure, analysis, and registration. |
+| 5a. Explicit instrument ownership | Close the ownership audit against the intended standalone instrument; publish internal metadata without a host, remove the unreachable old controller, and discover state before extending host authority. | Focused dispatch/transaction/startup regressions, current release build and complete process rehearsal; future autonomous policy remains separate. |
 | 6. Bench readiness | Freeze and rehearse the exact source, image, host tools, contract and launch configuration. | Full current release gate, then genuine I/O rehearsal on bench Mac including startup permission and failure behavior. |
 | 7. D14 investigation and qualification | One bounded discriminating receiver/line/capture-path investigation, then the authorized sustained campaign. | Record findings or explicit inconclusive result; qualification uses prospectively frozen policy and full retained evidence. |
 | 8. Instrument completion | Safely isolated D10 capture, metrology/analysis products and relevant output characterization. | Advance only after the acquisition/control foundation is dependable; optional features cannot veto D14/D8. |
@@ -350,3 +351,30 @@ package is 9,084,964 bytes and remains outside Git.
 The remaining physical gate is an exact-bundle bench rehearsal on the rig,
 followed only then by the authorized finite qualification. No firmware was
 flashed and the original sealed experiment was not modified during this work.
+
+PR #176 was merged as `c175f5a0610a9ca92d625bc87065bdf555c5542d`.
+The operator then clarified the intended standalone instrument and requested
+that the broader ownership simplification be closed before bench entry.
+The [ownership review](../50_SOFTWARE/INSTRUMENT_OWNERSHIP.md) records the
+current owners, independent verification boundaries, and future direction.
+Autonomous hybrid steering, compact serial evidence, characterization modes,
+integer output division and true latch-to-service latency remain prospective.
+D10 scaffolding and formats may be replaced completely without compatibility
+requirements; its external-event role and D14/D8 isolation remain fixed.
+
+The current repair scope is carrier-independent internal metadata publication,
+removal of the unreachable old controller, state discovery before host lease
+or control admission, and propagation of a runner review hold to the actual
+supervisor command boundary. Publication of a hold request and confirmation
+of its consumption are separate facts.
+
+Stage 5a's finite offline gate is complete: **634 current tests passed**,
+including one complete operational process rehearsal with two corrections,
+and the current fixed firmware build and 7,936-case PIO instruction proof
+passed. The [ownership verification record](../50_SOFTWARE/INSTRUMENT_OWNERSHIP.md#verification-boundaries)
+binds the exact image and states which restart and physical boundaries remain
+unexercised. All 131 firmware build inputs remain identical to the tested
+clean firmware commit; host changes do not pretend to be that embedded commit.
+No new physical acquisition or intervention occurred. Next is Stage 6: the
+exact merged bundle and real bench launch-context rehearsal, before Stage 7
+qualification. Autonomous operation remains a separate coupled implementation.

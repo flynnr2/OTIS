@@ -19,6 +19,8 @@ from typing import Any, Mapping
 PROGRAMME_ID = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
 PROFILE_ID = "adaptive_hybrid_regulation"
 RUNTIME_RUN_IDENTITY = "adaptive_hybrid_regulation:1"
+HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
+ORCHESTRATION_FAILURE = Path("reports/adaptive_hybrid_hybrid_orchestration_failure_v1.json")
 
 
 @dataclass(frozen=True)

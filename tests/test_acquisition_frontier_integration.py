@@ -412,6 +412,7 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
         setup_code=0xAA00,
     )
     setup.state = {"host_verification_hold": None, "manual_start_sent": False}
+    setup._startup_census_admitted = lambda: True
     setup._identity_ready = lambda _health: True
     setup._prewrite_readiness = lambda _health: SimpleNamespace(ready=True)
     setup._command = commands.append
@@ -457,6 +458,7 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
         "setup_confirmation": {"session_id": 1, "applied_code": 0xAA00, "dac_epoch": 1},
         "initial_session_id": 1,
     }
+    arm._startup_census_admitted = lambda: True
     arm._identity_ready = lambda _health: True
     arm._close_response_horizon_if_required = lambda _health: False
     arm._arm_progress_epoch_ready = lambda _preview, _progress: True

@@ -1701,6 +1701,7 @@ class DeterministicPtyInstrument:
         self.status_sequence = 0
         self.latest_event_timestamp_ticks = 1200 * RP2040_US
         self.query_nonce = 1
+        self.capture_lease_received = False
         self.setup = False
         self.selected_interval_count = 0
         self.transaction_index = 0
@@ -1871,6 +1872,7 @@ class DeterministicPtyInstrument:
         active.update(
             {
                 "query_nonce": str(self.query_nonce),
+                "capture_lease_live": str(self.capture_lease_received).lower(),
                 "uptime_s": str(max(1200, self.accepted_boundary_ordinal)),
                 "gnss_metadata_hold_active": "false",
                 "gnss_metadata_hold_transaction_pending": "false",
@@ -2414,6 +2416,7 @@ class DeterministicPtyInstrument:
             self._emit_nonactive_health()
             return
         if command.startswith("ACTIVE LEASE "):
+            self.capture_lease_received = True
             return
         if command.startswith("ACTIVE SNAPSHOT "):
             self.query_nonce = int(command.rsplit(" ", 1)[1])

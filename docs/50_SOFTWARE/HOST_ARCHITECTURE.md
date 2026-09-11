@@ -6,6 +6,12 @@ define or modify a timestamp.
 
 ## Current boundary
 
+The current ownership ledger and standalone design boundary are recorded in
+[Instrument ownership](INSTRUMENT_OWNERSHIP.md). Firmware operating policy and
+serial evidence detail are separate concerns. The current campaign protocol
+still requires host leases and progressive evidence acknowledgements;
+autonomous startup and compact serial output are not implemented.
+
 Current HEAD supports one operating path, `adaptive_hybrid_regulation`. The
 host package is a closed, acyclic dependency graph. It contains no readers,
 aliases, programme registries, compatibility branches, or command-line tools
