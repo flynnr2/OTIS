@@ -150,6 +150,26 @@ def test_live_physical_owner_failure_does_not_trigger_generic_cleanup(tmp_path):
         owner.close_after_capture_closed()
 
 
+def test_physical_entry_rejects_invalid_index_before_authority_or_device_io(monkeypatch, tmp_path):
+    from host.otis_tools import adaptive_hybrid_run as runner
+    from host.otis_tools.evidence_index import REPO_ROOT
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid storage configuration must fail before physical entry")
+
+    for name in ("_read_json", "validate_activation_for_physical_entry",
+                 "_reserve_activation_attempt", "_fresh_auto_detect_device",
+                 "read_board_identity", "_upload_exact_firmware"):
+        monkeypatch.setattr(runner, name, forbidden)
+    run_dir = tmp_path / "unstarted"
+    with pytest.raises(ValueError, match="outside the Git repository"):
+        runner.run_adaptive_hybrid_qualification(
+            activation_path=tmp_path / "activation.json", run_dir=run_dir,
+            evidence_index_path=REPO_ROOT / "runs" / "invalid-index.json",
+        )
+    assert not run_dir.exists()
+
+
 def test_physical_runner_retains_partial_support_launch_then_registers_closure_diagnostic(monkeypatch, tmp_path):
     """Real runner/control flow and session processes; hardware entry is doubled."""
     from types import SimpleNamespace

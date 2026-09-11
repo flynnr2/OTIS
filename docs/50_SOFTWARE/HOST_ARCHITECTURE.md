@@ -33,6 +33,11 @@ remain explicitly partial and retain diagnostic/carrier/provenance evidence;
 missing or malformed required evidence cannot produce a successful seal.
 Rehearsal and physical finalization persist registration intent before using
 the same idempotent registration operation.
+Entry validates the index location before authority reservation or capture.
+After sealing, interrupted rehearsal registration and authorization-report
+publication can be completed offline at the recorded tool revision. Recovery
+retains destination corrections and tool identity in the external journal;
+the sealed package stays unchanged.
 
 ## Current boundary
 

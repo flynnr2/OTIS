@@ -175,12 +175,32 @@ def test_full_process_operational_rehearsal_reaches_registered_boundary(
         return original_start(instrument)
 
     monkeypatch.setattr(rehearsal_module.DeterministicPtyInstrument, "start", start_after_capture_owns_slave)
-    report_path = run_operational_rehearsal(
-        bundle_path=bundle_path,
-        proposal_path=proposal_path,
-        run_dir=run_dir,
-        evidence_index_path=tmp_path / "evidence_index_v1.json",
-    )
+    index_path = tmp_path / "evidence_index_v1.json"
+    original_publish = rehearsal_module._atomic_json
+    report_path = run_dir.parent / f"{run_dir.name}-{rehearsal_module.REPORT_NAME}"
+
+    def fail_report_publication(path, *args, **kwargs):
+        if path == report_path:
+            raise OSError("injected report publication interruption")
+        return original_publish(path, *args, **kwargs)
+
+    if command_effect_delay_s == 0.0:
+        monkeypatch.setattr(rehearsal_module, "_atomic_json", fail_report_publication)
+        with pytest.raises(OSError, match="report publication interruption"):
+            run_operational_rehearsal(
+                bundle_path=bundle_path, proposal_path=proposal_path,
+                run_dir=run_dir, evidence_index_path=index_path,
+            )
+        assert not report_path.exists()
+        monkeypatch.setattr(rehearsal_module, "_atomic_json", original_publish)
+        report_path = rehearsal_module.recover_operational_rehearsal(
+            run_dir=run_dir, evidence_index_path=index_path,
+        )
+    else:
+        report_path = run_operational_rehearsal(
+            bundle_path=bundle_path, proposal_path=proposal_path,
+            run_dir=run_dir, evidence_index_path=index_path,
+        )
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
@@ -230,12 +250,15 @@ def test_full_process_operational_rehearsal_reaches_registered_boundary(
         "adaptive_hybrid_operational_rehearsal_passed"
     )
 
-    from host.otis_tools.evidence_finalization import journal_path_for, recover_registration
     from host.otis_tools.evidence_index import package_identity
     before_recovery = package_identity(run_dir)
+    report_before_recovery = report_path.read_bytes()
     for _ in range(2):
-        recovered = recover_registration(journal_path_for(run_dir))
-        assert recovered["content_sha256"] == before_recovery["content_sha256"]
+        recovered = rehearsal_module.recover_operational_rehearsal(
+            run_dir=run_dir, evidence_index_path=index_path,
+        )
+        assert recovered == report_path
+        assert report_path.read_bytes() == report_before_recovery
         assert package_identity(run_dir) == before_recovery
 
     process_path = run_dir / (

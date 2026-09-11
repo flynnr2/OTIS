@@ -107,6 +107,19 @@ shape drift and prevents an index write preceding durable registration intent.
 Tests interrupt the real index-write/journal boundary and recover twice without
 changing package content or adding a second index entry.
 
+A production-bundle rehearsal at `64ed8fb` completed acquisition, analysis and
+sealing, then rejected a coordinator-supplied evidence-index location inside the
+repository. Its unchanged package remains completed through seal, unpromoted,
+with content SHA-256
+`cd89d2290ac43d38a27d388e70302c7293fcab0ae1b3d2031378f7623a49fa73`.
+This was a configuration escape at registration, not an acquisition failure.
+Physical and rehearsal entry now reject that location before authority or I/O.
+The external authorization report also uses one projection for normal completion
+and same-revision sealed-package recovery. A destination correction and recovery
+tool identity are recorded outside the package; neither recovery nor registration
+rewrites scientific evidence. The changed producer receives a fresh frozen host
+rehearsal; the prior package is not promoted using newer source bindings.
+
 The monitor seal predicate now checks observation of the fixture's completed
 transaction frontier, rather than asking a current-state observer to claim a
 full-history row total. Independent raw replay and complete transaction/history
@@ -124,13 +137,14 @@ separate product work. No hardware portability programme is introduced.
 
 ## Verification
 
-The final current release sweep passed **715 tests** excluding the two full
-process cases. Both full process cases passed: normal command effects and a
-four-second device-side delay on every evidence acknowledgement. The delayed
-case completed in 112.23 seconds, including shared analysis, sealing and
-registration. Each successful package was registered through shared recovery
-twice without a content change. This is 717 current tests across the release
-and focused process runs, not 717 hardware tests.
+The final current release sweep passed **725 tests** excluding the two full
+process cases. The normal full-process case passed in 83.12 seconds, including
+an injected final-report write failure, offline recovery, and two further
+recoveries that preserve report and package bytes. The earlier delayed case
+passed in 112.23 seconds with a four-second device-side delay on every evidence
+acknowledgement, including shared analysis, sealing and registration. The later
+finalization repair changes no causal-wait or process-lifetime behavior. These
+are host software checks, not hardware tests.
 
 The full-path checks exposed and repaired implementation integration errors:
 a duplicate Python method shadowed the current query nonce, a seal consumer

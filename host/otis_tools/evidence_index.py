@@ -1268,10 +1268,15 @@ def _assert_index_outside_repo(index_path: Path) -> Path:
     raise ValueError("evidence index must be stored outside the Git repository")
 
 
-def validate_index_location(index_path: Path) -> Path:
+def validate_index_location(
+    index_path: Path, *, package_path: Path | None = None,
+) -> Path:
     """Validate and resolve an index location without creating any files."""
 
-    return _assert_index_outside_repo(index_path)
+    destination = _assert_index_outside_repo(index_path)
+    if package_path is not None and destination.is_relative_to(package_path.expanduser().resolve()):
+        raise ValueError("evidence index must be outside the immutable package")
+    return destination
 
 
 def _empty_index(now: str | None = None) -> dict[str, Any]:

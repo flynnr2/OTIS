@@ -112,11 +112,13 @@ from .evidence import (
 from .evidence_finalization import (
     advance_phase,
     begin_finalization,
+    journal_path_for,
+    prepare_registration_recovery,
     record_failure,
     recover_registration,
     set_registration_intent,
 )
-from .evidence_index import package_identity, register_package, validate_index
+from .evidence_index import package_identity, register_package, validate_index, validate_index_location
 from .prewrite_readiness_contract import (
     GNSS_PREWRITE_EXACT,
     HEALTH_INTEGRITY_EXACT,
@@ -3836,16 +3838,7 @@ def _run_validated(
     """Run an already validated frozen bundle without any physical operation."""
 
     run_dir = run_dir.resolve()
-    evidence_index_path = evidence_index_path.expanduser().resolve()
-    try:
-        evidence_index_path.relative_to(run_dir)
-    except ValueError:
-        pass
-    else:
-        raise ValueError(
-            "operational rehearsal evidence index must be outside the immutable "
-            "package"
-        )
+    evidence_index_path = validate_index_location(evidence_index_path, package_path=run_dir)
     run_dir.mkdir(parents=True, exist_ok=False)
     master_fd, slave_fd = pty.openpty()
     device = os.path.realpath(os.ttyname(slave_fd))
@@ -3991,15 +3984,36 @@ def _run_validated(
         classification="successful_rehearsal",
         reason="adaptive-hybrid operational rehearsal passed",
     )
-    registration_metadata = success_metadata
-    successful_registration = True
-    success_error: str | None = None
     set_registration_intent(
         journal,
-        registration=registration_metadata,
+        registration=success_metadata,
         expected_content_sha256=identity["content_sha256"],
     )
     registration = recover_registration(journal)
+    return _publish_authorization_report(
+        run_dir=run_dir, bundle=bundle, proposal=proposal,
+        identity=identity, registration=registration,
+        evidence_index_path=evidence_index_path,
+    )
+
+
+def _publish_authorization_report(
+    *, run_dir: Path, bundle: dict[str, Any], proposal: dict[str, Any],
+    identity: dict[str, Any], registration: dict[str, Any], evidence_index_path: Path,
+) -> Path:
+    """Project the validated sealed result; never synthesize acquisition evidence."""
+
+    manifest_path = run_dir / "run_manifest.json"
+    snapshot_path = run_dir / "evidence_manifest.json"
+    snapshot = _read_object(snapshot_path, "rehearsal snapshot")
+    seal = _read_object(run_dir / SEAL_PATH, "rehearsal seal")
+    if (registration.get("attempt_classification") != "successful_rehearsal"
+        or registration.get("content_sha256") != identity["content_sha256"]):
+        raise ValueError("authorization report requires exact successful registration")
+    report_path = run_dir.parent / f"{run_dir.name}-{REPORT_NAME}"
+    existing = _read_object(report_path, "rehearsal report") if report_path.exists() else None
+    if existing is not None and not _explicit_utc(existing.get("created_utc")):
+        raise ValueError("retained rehearsal report creation timestamp is malformed")
     seal_checks = seal["checks"]
     boundary_results = {
         "continuous_capture_and_exact_frozen_identity_consumption": bool(
@@ -4039,11 +4053,13 @@ def _run_validated(
             seal.get("status") == "passed"
             and seal_checks["shared_current_analyzer_consumers_exact"]
             and snapshot.get("run_state") == "complete"
-            and successful_registration
+            and registration["attempt_classification"] == "successful_rehearsal"
         ),
     }
     if tuple(boundary_results) != REQUIRED_BOUNDARIES:
         raise RuntimeError("derived rehearsal boundary ordering differs")
+    if not all(boundary_results.values()):
+        raise ValueError("authorization report lacks a complete passed rehearsal boundary")
     authorization_contract = operational_rehearsal_authorization_contract(
         bundle=bundle, proposal=proposal
     )
@@ -4051,21 +4067,15 @@ def _run_validated(
     required_evidence["shared_current_analyzer_consumers_exact"] = bool(
         seal_checks["shared_current_analyzer_consumers_exact"]
     )
-    required_evidence["successful_rehearsal_registration"] = (
-        successful_registration
-    )
+    required_evidence["successful_rehearsal_registration"] = True
     claim_boundary = dict(authorization_contract["claim_boundary"])
-    claim_boundary["authorizes_activation_input_only"] = successful_registration
+    claim_boundary["authorizes_activation_input_only"] = True
     report: dict[str, Any] = {
         **authorization_contract,
         "tool": TOOL_ID,
-        "tool_binding": _binding(Path(__file__)),
-        "status": (
-            "passed"
-            if successful_registration
-            else "passed_pending_successful_rehearsal_registration"
-        ),
-        "created_utc": _utc_now(),
+        "tool_binding": bundle["host_tools"]["adaptive_hybrid_operational_rehearsal"],
+        "status": "passed",
+        "created_utc": existing["created_utc"] if existing is not None else _utc_now(),
         "boundary_results": boundary_results,
         "required_evidence": required_evidence,
         "package": {
@@ -4085,24 +4095,67 @@ def _run_validated(
             "index_path": str(evidence_index_path.resolve()),
             "content_sha256": registration["content_sha256"],
             "attempt_classification": registration["attempt_classification"],
-            "successful_rehearsal_validation_error": success_error,
+            "successful_rehearsal_validation_error": None,
         },
-        "activation_input_ready": successful_registration,
-        "minimal_remaining_extension": (
-            None
-            if successful_registration
-            else (
-                "evidence_index._validated_success_package must dispatch "
-                "successful_rehearsal to validate_operational_rehearsal_package "
-                "for the new seal path instead of the physical campaign seal"
-            )
-        ),
+        "activation_input_ready": True,
+        "minimal_remaining_extension": None,
         "claim_boundary": claim_boundary,
     }
     report["report_sha256"] = _canonical_sha256(report)
-    report_path = run_dir.parent / f"{run_dir.name}-{REPORT_NAME}"
-    _atomic_json(report_path, report, exclusive=True)
+    if existing is not None:
+        if existing != report:
+            raise ValueError("retained rehearsal authorization report differs")
+    else:
+        _atomic_json(report_path, report, exclusive=True)
     return report_path
+
+
+
+def recover_operational_rehearsal(
+    *, run_dir: Path, evidence_index_path: Path,
+) -> Path:
+    """Finish same-revision sealed rehearsal registration/report without I/O."""
+
+    run_dir = run_dir.resolve()
+    evidence_index_path = validate_index_location(evidence_index_path, package_path=run_dir)
+    if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
+        raise ValueError("cannot recover rehearsal while capture is active")
+    journal = journal_path_for(run_dir)
+    retained = _read_object(journal, "rehearsal finalization journal")
+    if (retained.get("run_dir") != str(run_dir)
+        or retained.get("required_seal") != SEAL_PATH.as_posix()
+        or retained.get("registration", {}).get("attempt_classification") != "successful_rehearsal"):
+        raise ValueError("recovery requires the exact sealed successful-rehearsal intent")
+    identity = package_identity(run_dir)
+    if identity["content_sha256"] != retained.get("expected_content_sha256"):
+        raise ValueError("sealed rehearsal differs from registration intent")
+    prepare_registration_recovery(
+        journal, index_path=evidence_index_path, recovery_tool_path=Path(__file__),
+    )
+    # The existing independent validator enforces recorded producer/tool bytes;
+    # this is not a historical-reader or changed-criteria recovery path.
+    registration = recover_registration(journal)
+    manifest = _read_object(run_dir / "run_manifest.json", "rehearsal manifest")
+    def bound_input(name: str, semantic_field: str) -> dict[str, Any]:
+        binding = manifest[name]
+        source = Path(binding["path"])
+        data = source.read_bytes()
+        document = json.loads(data)
+        if (not isinstance(document, dict)
+            or binding.get("size_bytes") != len(data)
+            or binding.get("sha256") != sha256(data).hexdigest()
+            or binding.get(semantic_field) != document.get(semantic_field)):
+            raise ValueError(f"recovery {name} differs from the sealed manifest binding")
+        return document
+    bundle = bound_input("bundle", "bundle_sha256")
+    proposal = bound_input("proposal", "proposal_sha256")
+    if package_identity(run_dir) != identity:
+        raise ValueError("sealed rehearsal changed during registration recovery")
+    return _publish_authorization_report(
+        run_dir=run_dir, bundle=bundle, proposal=proposal,
+        identity=identity, registration=registration,
+        evidence_index_path=evidence_index_path,
+    )
 
 
 def run_operational_rehearsal(
@@ -4112,6 +4165,7 @@ def run_operational_rehearsal(
     run_dir: Path,
     evidence_index_path: Path,
 ) -> Path:
+    evidence_index_path = validate_index_location(evidence_index_path, package_path=run_dir)
     bundle_path = bundle_path.resolve()
     proposal_path = proposal_path.resolve()
     bundle = validate_bundle(bundle_path, ADAPTIVE_HYBRID_PROGRAMME)
@@ -4134,6 +4188,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--proposal", type=Path, required=True)
     run.add_argument("--run-dir", type=Path, required=True)
     run.add_argument("--evidence-index", type=Path, required=True)
+    recover = operations.add_parser("recover")
+    recover.add_argument("--run-dir", type=Path, required=True)
+    recover.add_argument("--evidence-index", type=Path, required=True)
     supervisor = operations.add_parser("_supervisor_worker")
     supervisor.add_argument("--manifest", type=Path, required=True)
     supervisor.add_argument("--run-dir", type=Path, required=True)
@@ -4151,6 +4208,11 @@ def main(argv: list[str] | None = None) -> int:
                 evidence_index_path=args.evidence_index,
             )
             print(path)
+            return 0
+        if args.operation == "recover":
+            print(recover_operational_rehearsal(
+                run_dir=args.run_dir, evidence_index_path=args.evidence_index,
+            ))
             return 0
         if args.operation == "_supervisor_worker":
             return _supervisor_worker(args.manifest, args.run_dir)

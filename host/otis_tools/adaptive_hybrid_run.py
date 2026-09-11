@@ -72,6 +72,7 @@ from .evidence_index import (
     campaign_attempt_classification,
     package_identity,
     register_package,
+    validate_index_location,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
 from .serial_commands import send_timestamped_command_to_fifo
@@ -1148,6 +1149,7 @@ def run_adaptive_hybrid_qualification(
     evidence_index_path: Path = DEFAULT_INDEX,
     arduino_cli: str = "arduino-cli",
 ) -> dict[str, Any]:
+    evidence_index_path = validate_index_location(evidence_index_path, package_path=run_dir)
     activation_path = activation_path.resolve()
     activation_value = _read_json(activation_path)
     if activation_value is None:
