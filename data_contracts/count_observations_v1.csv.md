@@ -15,7 +15,7 @@ emits compact observations.
 |---|---|---|
 | `record_type` | enum | compact record tag; `CNT` |
 | `schema_version` | uint | schema revision; currently `1` |
-| `count_seq` | uint64 | monotonic count-observation sequence within the run |
+| `count_seq` | uint32 | strictly increasing closing-boundary sequence within a current capture segment; rollover is not admissible inside that segment |
 | `channel_id` | uint16 | oscillator/count observation channel |
 | `gate_open_ticks` | uint64 | timestamp of gate/window open in `gate_domain` |
 | `gate_close_ticks` | uint64 | timestamp of gate/window close in `gate_domain` |
@@ -75,8 +75,9 @@ timestamp interval and nonzero count do not establish a complete physical
 aperture: `GATE_INCOMPLETE`, boundary overrun/order flags, snapshot failure,
 zero count, or saturation make the row ineligible. A sequence gap with no
 defensible opening timestamp produces `REF` plus `STS`, not a fabricated
-`CNT`. Its `count_seq` is the modulo-\(2^{32}\) closing boundary sequence, so a
-lost boundary remains visible as a sequence gap.
+`CNT`. Its `count_seq` is the 32-bit closing-boundary sequence, so a lost
+boundary remains visible as a sequence gap. A current capture segment must end
+before that sequence rolls over.
 
 See `docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md` for the full
 contract.

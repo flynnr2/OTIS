@@ -14,8 +14,8 @@ failure events preserve an unsuccessful or ambiguous physical attempt.
 |---|---|---|
 | `record_type` | enum | compact record tag; `DAC` |
 | `schema_version` | uint | schema revision; currently `1` |
-| `seq` | uint64 | monotonic DAC telemetry sequence within the run |
-| `elapsed_ms` | uint64 | firmware elapsed milliseconds at emission |
+| `seq` | uint32 | strictly increasing DAC telemetry sequence within a current capture segment; rollover is not admissible inside that segment |
+| `elapsed_ms` | uint32 | modulo-\(2^{32}\) firmware elapsed milliseconds at emission |
 | `step_index` | int | setup command sequence or adaptive request sequence |
 | `dac_code_requested` | uint16 | requested DAC code for this event |
 | `dac_code_applied` | uint16 | accepted/applied DAC code, after safety validation |

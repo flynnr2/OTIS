@@ -649,6 +649,17 @@ class CaptureDeviceRunner:
                 parsed_fields=parsed_fields,
                 parser_errors=self.parser_errors,
             )
+        elif splitter.last_disposition in {
+            "late_attach_boot_fragment",
+            "raw_only_diagnostic",
+        }:
+            _write_marker(
+                raw_writer,
+                "firmware_raw_only_diagnostic",
+                line_number=self.lines_seen,
+                record_type=splitter.last_record_type,
+                disposition=splitter.last_disposition,
+            )
         if contract is not None:
             self.lines_parsed += 1
             if (

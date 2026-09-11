@@ -37,6 +37,20 @@ FIRMWARE_VERSION = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
 BUILDER_VERSION = 1
 PROVENANCE_FORMAT = "otis_fixed_firmware_build_v1"
 EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".h", ".map", ".uf2")
+FIRMWARE_SOURCE_SUFFIXES = (
+    ".S",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".hxx",
+    ".ino",
+    ".pio",
+    ".s",
+)
 INSTALLATION_NOISE_NAMES = {".DS_Store", "installed.json"}
 HEX40_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 HEX64_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -95,6 +109,9 @@ EXPECTED_SCHEMA_BINDINGS = {
 EXPECTED_CONTRACT_BINDINGS = {
     "firmware_host": "data_contracts/otis_firmware_host_contract_v1.json",
 }
+FIRMWARE_HOST_BINDING_HELPER = (
+    REPO_ROOT / "host" / "otis_tools" / "firmware_host_contract.py"
+)
 PROFILE_BINDING_MACROS = {
     "adaptive_policy": "OTIS_BUILD_ADAPTIVE_POLICY_SHA256",
     "frequency_estimator": "OTIS_BUILD_FREQUENCY_ESTIMATOR_SHA256",
@@ -625,15 +642,95 @@ def verify_environment(
     }
 
 
-def _git_identity(repo_root: Path = REPO_ROOT) -> tuple[str, str]:
+def _git_identity(
+    repo_root: Path = REPO_ROOT,
+    *,
+    pathspecs: tuple[str, ...] | None = None,
+) -> tuple[str, str]:
     commit = _run(["git", "rev-parse", "HEAD"], cwd=repo_root).stdout.strip()
     if not HEX40_PATTERN.fullmatch(commit):
         raise BuildError(f"Git returned a malformed commit identity: {commit!r}")
+    status_arguments = ["git", "status", "--porcelain=v1", "--untracked-files=all"]
+    if pathspecs is not None:
+        if not pathspecs:
+            raise BuildError("firmware operational source path set is empty")
+        status_arguments.extend(["--", *pathspecs])
     status = _run(
-        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        status_arguments,
         cwd=repo_root,
     ).stdout
     return commit, "dirty" if status else "clean"
+
+
+def source_input_paths(
+    manifest: dict[str, Any],
+    *,
+    sketch: Path = SKETCH,
+    builder_path: Path = Path(__file__).resolve(),
+    authoritative_inputs: dict[str, Any] | None = None,
+) -> tuple[Path, ...]:
+    """Return the exact repository files that can affect the firmware build."""
+
+    authoritative_inputs = authoritative_inputs or authoritative_input_report()
+    authoritative_paths = {
+        str(item["path"])
+        for group in ("profiles", "schemas")
+        for item in authoritative_inputs[group]
+    }
+    return tuple(
+        sorted(
+            {
+                path
+                for path in sketch.rglob("*")
+                if path.is_file()
+                and path.name != GENERATED_HEADER_NAME
+                and path.suffix in FIRMWARE_SOURCE_SUFFIXES
+            }
+            | {
+                DEFAULT_MANIFEST.resolve(),
+                builder_path.resolve(),
+                FIRMWARE_HOST_BINDING_HELPER.resolve(),
+                _bound_repository_file(
+                    EXPECTED_CONTRACT_BINDINGS["firmware_host"]
+                ),
+                *(
+                    _bound_repository_file(relative)
+                    for relative in authoritative_paths
+                ),
+            },
+            key=lambda path: path.resolve().relative_to(REPO_ROOT).as_posix(),
+        )
+    )
+
+
+def operational_source_pathspecs(
+    *,
+    authoritative_inputs: dict[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Return the Git scope whose cleanliness can affect firmware identity."""
+
+    authoritative_inputs = authoritative_inputs or authoritative_input_report()
+    authoritative_paths = {
+        str(item["path"])
+        for group in ("profiles", "schemas")
+        for item in authoritative_inputs[group]
+    }
+    sketch_relative = SKETCH.relative_to(REPO_ROOT).as_posix()
+    positive = {
+        DEFAULT_MANIFEST.relative_to(REPO_ROOT).as_posix(),
+        Path(__file__).resolve().relative_to(REPO_ROOT).as_posix(),
+        FIRMWARE_HOST_BINDING_HELPER.relative_to(REPO_ROOT).as_posix(),
+        EXPECTED_CONTRACT_BINDINGS["firmware_host"],
+        *authoritative_paths,
+        *(
+            f":(glob){sketch_relative}/**/*{suffix}"
+            for suffix in FIRMWARE_SOURCE_SUFFIXES
+        ),
+    }
+    return (
+        *sorted(positive),
+        f":(exclude){sketch_relative}/{GENERATED_HEADER_NAME}",
+    )
 
 
 def source_input_hash(
@@ -644,26 +741,11 @@ def source_input_hash(
     authoritative_inputs: dict[str, Any] | None = None,
 ) -> str:
     authoritative_inputs = authoritative_inputs or authoritative_input_report()
-    authoritative_paths = {
-        str(item["path"])
-        for group in ("profiles", "schemas")
-        for item in authoritative_inputs[group]
-    }
-    paths = sorted(
-        {
-            path
-            for path in sketch.rglob("*")
-            if path.is_file() and path.name != GENERATED_HEADER_NAME
-        }
-        | {
-            DEFAULT_MANIFEST.resolve(),
-            builder_path.resolve(),
-            _bound_repository_file(
-                EXPECTED_CONTRACT_BINDINGS["firmware_host"]
-            ),
-            *(_bound_repository_file(relative) for relative in authoritative_paths),
-        },
-        key=lambda path: path.resolve().relative_to(REPO_ROOT).as_posix(),
+    paths = source_input_paths(
+        manifest,
+        sketch=sketch,
+        builder_path=builder_path,
+        authoritative_inputs=authoritative_inputs,
     )
     digest = sha256()
     for path in paths:
@@ -695,13 +777,19 @@ def _configuration_payload(
     }
 
 
-def _capture_source_state(manifest: dict[str, Any]) -> dict[str, Any]:
-    git_commit, source_state = _git_identity()
+def capture_source_state(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Capture byte identity and cleanliness of operational build inputs only."""
+
     config_source_sha256 = sha256(CONFIG_HEADER.read_bytes()).hexdigest()
     bindings = profile_binding_report(manifest)
     schemas = schema_binding_report(manifest)
     contracts = contract_binding_report(manifest)
     authoritative_inputs = authoritative_input_report()
+    git_commit, source_state = _git_identity(
+        pathspecs=operational_source_pathspecs(
+            authoritative_inputs=authoritative_inputs
+        )
+    )
     configuration = _configuration_payload(
         manifest, config_source_sha256, bindings, schemas, contracts
     )
@@ -717,6 +805,23 @@ def _capture_source_state(manifest: dict[str, Any]) -> dict[str, Any]:
         "schema_bindings": schemas,
         "contract_bindings": contracts,
         "authoritative_inputs": authoritative_inputs,
+    }
+
+
+def _capture_source_state(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Compatibility wrapper for existing in-repository callers."""
+
+    return capture_source_state(manifest)
+
+
+def repository_context_report() -> dict[str, Any]:
+    """Record repository state without granting it firmware identity authority."""
+
+    git_commit, working_tree_state = _git_identity()
+    return {
+        "git_commit": git_commit,
+        "working_tree_state": working_tree_state,
+        "firmware_identity_authority": False,
     }
 
 
@@ -1142,6 +1247,7 @@ def build_firmware(
             "schema_version": 1,
             "capabilities": manifest["capabilities"],
             "provenance": provenance,
+            "repository_context": repository_context_report(),
             "resource_budget": resource,
             "binary_contract": binary,
             "artifacts": artifacts,

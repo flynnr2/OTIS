@@ -4,7 +4,29 @@ from pathlib import Path
 
 from host.otis_tools.capture_serial import CsvRecordSplitter, RECORD_CONTRACTS
 from host.otis_tools.contracts import CONTRACT_FIELDS
+from host.otis_tools.firmware_host_contract import (
+    RECORD_FIELD_WIRE_TYPES,
+    WIRE_TYPES,
+)
 from host.otis_tools.run_paths import default_csv_files
+
+
+def _canonical_wire_value(contract: str, field: str) -> str:
+    wire_type = WIRE_TYPES[RECORD_FIELD_WIRE_TYPES[contract][field]]
+    kind = wire_type["kind"]
+    if kind == "optional":
+        return ""
+    if kind == "integer" or kind == "finite_decimal":
+        return "0"
+    if kind == "enum":
+        return str(wire_type["values"][0])
+    if kind == "escaped_atom":
+        return "value"
+    if kind == "lower_hex":
+        return "0" * int(wire_type["length"])
+    if kind == "lower_hex_or_literal":
+        return str(wire_type["literal"])
+    raise AssertionError(f"{contract}.{field} needs explicit fixed value")
 
 
 def test_current_capture_inventory_matches_writer_backed_contract_registry() -> None:
@@ -49,7 +71,9 @@ def test_live_interpreted_products_are_split_without_touching_raw_evidence(
                 "active_hybrid_decisions_v2",
             } else 1
             row = [record_type, str(version)]
-            row.extend("" for _ in fields[2:])
+            row.extend(
+                _canonical_wire_value(contract, field) for field in fields[2:]
+            )
             assert splitter.process_line(",".join(row)) == contract
 
     for contract, path in targets.items():

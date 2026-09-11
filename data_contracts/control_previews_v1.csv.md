@@ -14,7 +14,7 @@ mandatory. No field in this contract is permission to write a DAC.
 |---|---|---|
 | `record_type` | enum | Always `CTL`. |
 | `schema_version` | uint | Always `1`. |
-| `control_seq` | uint64 | Strictly increasing decision sequence. |
+| `control_seq` | uint32 | Strictly increasing decision sequence within a current capture segment; rollover is not admissible inside that segment. |
 | `decision_id` | string | Stable run-local decision identifier. |
 | `decision_timestamp_ticks` | uint64 | Policy evaluation timestamp. |
 | `time_domain` | string | Native evaluation timestamp domain. |

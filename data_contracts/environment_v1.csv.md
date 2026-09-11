@@ -15,7 +15,7 @@ drift analysis. It has no timing, validity, setup, or regulation authority.
 |---|---|---|
 | `record_type` | enum | compact tag; always `ENV` |
 | `schema_version` | uint | schema revision |
-| `env_seq` | uint64 | monotonic environmental observation counter |
+| `env_seq` | uint32 | strictly increasing observation counter within a current capture segment; rollover is not admissible inside that segment |
 | `timestamp_ticks` | uint64 | timestamp in `observation_domain` |
 | `observation_domain` | string | native time domain for `timestamp_ticks` |
 | `source` | string | sensor source, for example `sht4x` or `bmp280` |

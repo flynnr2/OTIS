@@ -36,6 +36,7 @@ from .authoritative_inputs import (
 )
 from .firmware_binary import verify_uf2
 from .firmware_host_contract import binding as firmware_host_contract_binding
+from tools import build_firmware
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -125,25 +126,17 @@ def _binding(path: Path) -> dict[str, Any]:
 
 def _require_current_clean_checkout(expected_revision: str) -> None:
     try:
-        revision = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        status = subprocess.run(
-            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-    except (FileNotFoundError, subprocess.CalledProcessError) as error:
+        source = build_firmware.capture_source_state(
+            build_firmware.load_manifest()
+        )
+    except (OSError, build_firmware.BuildError) as error:
         raise ValueError("cannot establish current firmware source identity") from error
-    if revision != expected_revision or status:
+    if (
+        source.get("git_commit") != expected_revision
+        or source.get("source_state") != "clean"
+    ):
         raise ValueError(
-            "firmware authorization requires the matching clean current checkout"
+            "firmware authorization requires matching clean operational inputs"
         )
 
 

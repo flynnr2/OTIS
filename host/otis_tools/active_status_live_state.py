@@ -21,7 +21,10 @@ from .active_status_contract import (
     active_status_wire_keys,
     canonical_active_status_key,
 )
-from .firmware_host_contract import RECORD_SCHEMA_VERSIONS
+from .firmware_host_contract import (
+    RECORD_SCHEMA_VERSIONS,
+    active_status_value_error,
+)
 
 
 LIVE_STATE_CONTRACT = "adaptive_hybrid_status_live_state_v1"
@@ -134,6 +137,13 @@ class ActiveStatusLiveReducer:
             return None
 
         if key == SNAPSHOT_BEGIN_KEY:
+            wire_error = active_status_value_error(
+                key, str(row.get("status_value", ""))
+            )
+            if wire_error is not None:
+                return self._invalidate(
+                    row, f"snapshot begin generation {wire_error}"
+                )
             if self.current_generation is not None:
                 return self._invalidate(
                     row,
@@ -173,6 +183,13 @@ class ActiveStatusLiveReducer:
                 row,
                 f"duplicate active snapshot key {key!r} in generation "
                 f"{self.current_generation}",
+            )
+        wire_error = active_status_value_error(
+            key, str(row.get("status_value", ""))
+        )
+        if wire_error is not None:
+            return self._invalidate(
+                row, f"active snapshot value for {key!r} {wire_error}"
             )
         self.current_active[key] = _record(row)
         if key != SNAPSHOT_COMPLETE_KEY:

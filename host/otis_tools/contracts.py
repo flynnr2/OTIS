@@ -13,6 +13,7 @@ from .firmware_host_contract import (
     RECORD_TYPES as AUTHORITY_RECORD_TYPES,
     RECORDS as FIRMWARE_HOST_RECORDS,
     integer_projection_matches,
+    validate_record_wire_values,
 )
 
 
@@ -2699,6 +2700,13 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                     errors.append(f"row {row_count}: malformed row missing field {field_name}")
             _check_schema_version(context.contract, row, row_count, errors)
             _check_record_type(context.contract, row, row_count, errors)
+            errors.extend(
+                f"row {row_count}: {error}"
+                for error in validate_record_wire_values(
+                    context.contract,
+                    [row.get(field_name) or "" for field_name in expected_fields],
+                )
+            )
             sequence_value: int | None = None
             try:
                 sequence_value = int(

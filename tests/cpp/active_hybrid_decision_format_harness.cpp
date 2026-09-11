@@ -5,6 +5,8 @@
 #include "otis_adaptive_hybrid_regulation_live.h"
 
 int main() {
+  constexpr char kSha[] =
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const OtisAdaptiveHybridRegulationLiveDecision source = {
       1u, 1799u, 2399u, 5000u, 43068u, 0, 43068u, 0.00166666694,
       true, true, true, true, 1u, 1, "OUTSIDE", 1u, 1u, 2394u, 4,
@@ -38,16 +40,16 @@ int main() {
       "adaptive_hybrid_regulation:1",
       "source_sha256:config_sha256",
       "adaptive_hybrid_regulation",
-      "frequency_estimator_sha256",
-      "phase_estimator_sha256",
+      kSha,
+      kSha,
       "ARMED",
       0u,
       0u,
       0u,
       "unavailable",
       true,
-      "active_policy_sha256",
-      "response_policy_sha256",
+      kSha,
+      kSha,
       false,
   };
   char output[1536] = "";

@@ -10,7 +10,13 @@ import sys
 from typing import Callable
 
 from .contracts import CONTRACT_FIELDS, CONTRACT_SCHEMA_VERSIONS
-from .firmware_host_contract import RECORD_TYPE_TO_CONTRACT
+from .firmware_host_contract import (
+    RAW_ONLY_DIAGNOSTIC_RECORD_TYPES,
+    RECORD_TYPE_TO_CONTRACT,
+    is_admissible_late_attach_fragment,
+    validate_raw_only_diagnostic,
+    validate_record_wire_values,
+)
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
 
 
@@ -39,6 +45,10 @@ class CsvRecordSplitter:
         self.handles: dict[tuple[str, Path], object] = {}
         self.handle_by_contract: dict[str, object] = {}
         self.handle_by_record_type: dict[str, object] = {}
+        self.recognized_protocol_line_seen = False
+        self.late_attach_fragment_seen = False
+        self.last_disposition: str | None = None
+        self.last_record_type: str | None = None
 
     def __enter__(self) -> "CsvRecordSplitter":
         targets: list[tuple[str, Path]] = list(self.file_by_contract.items())
@@ -66,50 +76,94 @@ class CsvRecordSplitter:
             handle.close()
 
     def process_line(self, line: str) -> str | None:
+        self.last_disposition = None
+        self.last_record_type = None
         clean = line.strip()
         if not clean:
+            self.last_disposition = "empty"
             return None
         try:
             row = next(csv.reader([clean]))
         except csv.Error as exc:
+            self.last_disposition = "error"
             if self.on_parser_error is not None:
                 self.on_parser_error(f"CSV parse error: {exc}")
             return None
         if not row:
+            self.last_disposition = "empty"
             return None
         record_type = row[0]
+        self.last_record_type = record_type
+        if record_type in RAW_ONLY_DIAGNOSTIC_RECORD_TYPES:
+            self.recognized_protocol_line_seen = True
+            wire_errors = validate_raw_only_diagnostic(row)
+            if wire_errors:
+                self.last_disposition = "error"
+                if self.on_parser_error is not None:
+                    self.on_parser_error(
+                        f"{record_type} raw-only diagnostic mismatch: "
+                        + "; ".join(wire_errors)
+                    )
+                return None
+            self.last_disposition = "raw_only_diagnostic"
+            return None
         contract = RECORD_CONTRACTS.get(record_type)
         if contract is None:
             if record_type == "record_type" and tuple(row) in CONTRACT_HEADER_ROWS:
+                self.recognized_protocol_line_seen = True
+                self.last_disposition = "contract_header"
                 return None
+            if is_admissible_late_attach_fragment(
+                clean,
+                recognized_protocol_line_seen=self.recognized_protocol_line_seen,
+                prior_fragment_seen=self.late_attach_fragment_seen,
+            ):
+                self.late_attach_fragment_seen = True
+                self.last_disposition = "late_attach_boot_fragment"
+                return None
+            self.last_disposition = "error"
             if self.on_parser_error is not None:
                 self.on_parser_error(
                     "unknown record type or mismatched contract header "
                     f"{record_type!r}"
                 )
             return None
+        self.recognized_protocol_line_seen = True
         handle = self.handle_by_record_type.get(record_type)
         if handle is None:
             handle = self.handle_by_contract.get(contract)
         if handle is None:
+            self.last_disposition = "unselected_contract"
             return None
         expected_columns = len(CONTRACT_FIELDS[contract])
         if len(row) != expected_columns:
+            self.last_disposition = "error"
             if self.on_parser_error is not None:
                 self.on_parser_error(f"{record_type} column count {len(row)} does not match {expected_columns}")
             return None
         expected_version = str(CONTRACT_SCHEMA_VERSIONS[contract])
         if row[1] != expected_version:
+            self.last_disposition = "error"
             if self.on_parser_error is not None:
                 self.on_parser_error(
                     f"{record_type} schema_version {row[1]!r} does not match "
                     f"{expected_version}"
                 )
             return None
+        wire_errors = validate_record_wire_values(contract, row)
+        if wire_errors:
+            self.last_disposition = "error"
+            if self.on_parser_error is not None:
+                self.on_parser_error(
+                    f"{record_type} current wire contract mismatch: "
+                    + "; ".join(wire_errors)
+                )
+            return None
         expected_channel = RAW_EVENT_CHANNELS.get(record_type)
         if expected_channel is not None:
             channel_index = CONTRACT_FIELDS[contract].index("channel_id")
             if row[channel_index] != expected_channel:
+                self.last_disposition = "error"
                 if self.on_parser_error is not None:
                     self.on_parser_error(
                         f"{record_type} must use channel_id={expected_channel}; "
@@ -118,6 +172,7 @@ class CsvRecordSplitter:
                 return None
         handle.write(clean + "\n")
         handle.flush()
+        self.last_disposition = "contract_record"
         return contract
 
 

@@ -8,6 +8,11 @@ import subprocess
 
 import pytest
 
+from host.otis_tools.firmware_host_contract import (
+    RECORD_TYPE_TO_CONTRACT,
+    validate_record_wire_values,
+)
+
 
 FIRMWARE = Path("firmware/arduino/otis_nano_rp2040_connect")
 
@@ -149,9 +154,8 @@ def test_invalid_control_byte_is_rejected_before_parsing(
     ]
 
 
-def test_textual_csv_fields_are_percent_encoded_and_single_line(
-    tmp_path: Path,
-) -> None:
+@pytest.fixture()
+def csv_emission_harness(tmp_path: Path) -> Path:
     binary = tmp_path / "csv_emission"
     subprocess.run(
         [
@@ -165,7 +169,13 @@ def test_textual_csv_fields_are_percent_encoded_and_single_line(
         ],
         check=True,
     )
-    emitted = subprocess.check_output([str(binary)])
+    return binary
+
+
+def test_textual_csv_fields_are_percent_encoded_and_single_line(
+    csv_emission_harness: Path,
+) -> None:
+    emitted = subprocess.check_output([str(csv_emission_harness)])
     assert emitted.count(b"\r\n") == 1
     text = emitted.decode("ascii")
     row = next(csv.reader(io.StringIO(text)))
@@ -181,3 +191,25 @@ def test_textual_csv_fields_are_percent_encoded_and_single_line(
         "WARN",
         "0",
     ]
+    assert validate_record_wire_values("health_v1", row) == ()
+
+
+def test_production_raw_emitters_cross_the_host_at_storage_boundaries(
+    csv_emission_harness: Path,
+) -> None:
+    emitted = subprocess.check_output([str(csv_emission_harness), "boundaries"])
+    assert emitted.decode("ascii").count("\r\n") == 13
+    rows = list(csv.reader(io.StringIO(emitted.decode("ascii"))))
+    assert len(rows) == 13
+    contracts = [RECORD_TYPE_TO_CONTRACT[row[0]] for row in rows]
+    assert contracts.count("raw_events_v1") == 2
+    assert contracts.count("count_observations_v1") == 2
+    assert contracts.count("health_v1") == 1
+    assert contracts.count("dac_steps_v1") == 2
+    assert contracts.count("environment_v1") == 2
+    assert contracts.count("pps_snapshots_v1") == 2
+    assert contracts.count("forwarded_monitor_snapshots_v1") == 2
+    assert all(
+        validate_record_wire_values(contract, row) == ()
+        for contract, row in zip(contracts, rows, strict=True)
+    )

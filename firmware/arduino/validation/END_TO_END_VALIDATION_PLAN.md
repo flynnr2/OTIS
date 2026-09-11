@@ -31,16 +31,30 @@ The release gate must establish:
 
 ## Operational-path rehearsal
 
-Current HEAD does not yet provide this rehearsal producer and therefore keeps
-live activation fail-closed. Before bench entry, use the exact frozen current
-bundle and exercise the real host process topology with deterministic or
-accelerated evidence. Rehearsal
-must cover progressive commands and acknowledgements, the first dependent
-decision, transport obstruction, priority abort delivery, serial-owner
-handoff, clean stop, analyzer replay, and evidence sealing.
+The current rehearsal producer keeps live activation fail-closed unless the
+activation binds a passing result from this exact current bundle. Before bench
+entry, run it with the frozen bundle and exercise the real host process topology
+with deterministic and accelerated evidence. The rehearsal must cover
+progressive commands and acknowledgements, repeated requests, the first
+dependent decision, transport obstruction, priority abort delivery,
+serial-owner handoff without an ownerless interval, clean stop, analyzer replay,
+and evidence sealing. It must begin with the documented late-attachment carrier
+fragment and typed raw-only boot diagnostics so the strict unknown-tag hold is
+exercised at the same pre-authority boundary seen on the physical carrier.
+The focused transport regression must also exercise attachment at every byte
+offset of every declared boot-diagnostic envelope, plus the fragment-size bound
+and strict handling after the first recognized protocol line.
 
-The rehearsal does not prove physical capture, cross-core electrical behavior,
-or plant response. Those remaining boundaries belong to a separately
+The rehearsal report must bind the exact source, firmware/host contract, fixed
+binary, bundle and proposal identities used by the prospective run. A prior
+rehearsal cannot be rebound after an operationally significant identity changes.
+
+The rehearsal exercises the production host topology and actual process, FIFO,
+command, acknowledgement, abort, analyzer and sealing paths with a deterministic
+serial fixture. It does not prove physical capture, firmware cross-core/device
+driver propagation, electrical behavior, or plant response. Deterministic
+native firmware regressions cover the cheapest available producer and
+first-consumer boundaries; the remaining boundaries belong to a separately
 authorized finite bench run.
 
 ## Historical evidence

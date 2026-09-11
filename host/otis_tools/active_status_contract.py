@@ -12,6 +12,7 @@ from .firmware_host_contract import (
     ACTIVE_STATUS_ENVELOPE,
     ACTIVE_STATUS_KEYS,
     RECORD_SCHEMA_VERSIONS,
+    active_status_value_error,
 )
 
 
@@ -92,6 +93,11 @@ def complete_active_status_snapshots(
         key = canonical_active_status_key(row.get("status_key", ""))
         value = row.get("status_value", "")
         if key == SNAPSHOT_BEGIN_KEY:
+            if active_status_value_error(key, value) is not None:
+                current_generation = None
+                current = {}
+                duplicate_or_invalid = True
+                continue
             current_generation = _unsigned_generation(value)
             if current_generation is not None:
                 newest_started_generation = max(
@@ -103,6 +109,9 @@ def complete_active_status_snapshots(
         if current_generation is None:
             continue
         if key not in ALL_ACTIVE_STATUS_WIRE_KEYS:
+            duplicate_or_invalid = True
+            continue
+        if active_status_value_error(key, value) is not None:
             duplicate_or_invalid = True
             continue
         if key == SNAPSHOT_COMPLETE_KEY:

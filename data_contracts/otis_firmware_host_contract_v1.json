@@ -8,6 +8,1049 @@
     "unknown_record_type": "protocol_discrepancy_hold",
     "unknown_schema_version": "protocol_discrepancy_hold"
   },
+  "raw_only_diagnostics": {
+    "disposition": "raw_evidence_only_never_control_or_terminal",
+    "first_consumer": "capture_device.raw_serial_log",
+    "late_attach_fragment": {
+      "admissible_before_first_recognized_protocol_line_only": true,
+      "content": "bounded_uninterpreted_carrier_fragment",
+      "maximum_bytes": 1024
+    },
+    "record_types": {
+      "BOOT": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "atom": [
+                "phase",
+                "prev_phase",
+                "prev_fatal"
+              ],
+              "bool01": [
+                "prev_valid",
+                "watchdog",
+                "watchdog_enable",
+                "safe_mode"
+              ],
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "hex_uint32": [
+                "reset_reason",
+                "prev_reset_reason"
+              ],
+              "uint32": [
+                "boot_count",
+                "failure_count"
+              ]
+            },
+            "fields": [
+              "v",
+              "boot_count",
+              "phase",
+              "prev_valid",
+              "prev_phase",
+              "prev_fatal",
+              "reset_reason",
+              "watchdog",
+              "watchdog_enable",
+              "failure_count",
+              "safe_mode",
+              "prev_reset_reason"
+            ]
+          }
+        ]
+      },
+      "BOOTDIAG": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "hex_uint32": [
+                "wd_reason",
+                "wd_s0",
+                "wd_s1",
+                "wd_s2",
+                "wd_s3",
+                "wd_s4",
+                "wd_s5",
+                "wd_s6",
+                "wd_s7",
+                "resets_reset",
+                "resets_done",
+                "clk_ref_ctrl",
+                "clk_ref_div",
+                "clk_sys_ctrl",
+                "clk_sys_div",
+                "clk_peri_ctrl",
+                "clk_peri_div",
+                "xosc_status",
+                "rosc_status",
+                "rosc_ctrl",
+                "pll_sys_cs",
+                "pll_usb_cs",
+                "vreg",
+                "bod",
+                "chip_id",
+                "platform",
+                "gitref_rp2040"
+              ]
+            },
+            "fields": [
+              "v",
+              "wd_reason",
+              "wd_s0",
+              "wd_s1",
+              "wd_s2",
+              "wd_s3",
+              "wd_s4",
+              "wd_s5",
+              "wd_s6",
+              "wd_s7",
+              "resets_reset",
+              "resets_done",
+              "clk_ref_ctrl",
+              "clk_ref_div",
+              "clk_sys_ctrl",
+              "clk_sys_div",
+              "clk_peri_ctrl",
+              "clk_peri_div",
+              "xosc_status",
+              "rosc_status",
+              "rosc_ctrl",
+              "pll_sys_cs",
+              "pll_usb_cs",
+              "vreg",
+              "bod",
+              "chip_id",
+              "platform",
+              "gitref_rp2040"
+            ]
+          }
+        ]
+      },
+      "BOOT_FATAL": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "atom": [
+                "fatal",
+                "phase"
+              ],
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "boot_count",
+                "failure_count"
+              ]
+            },
+            "fields": [
+              "v",
+              "fatal",
+              "phase",
+              "boot_count",
+              "failure_count"
+            ]
+          }
+        ]
+      },
+      "BOOT_WARN": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "atom": [
+                "key"
+              ],
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "wait_ms"
+              ]
+            },
+            "fields": [
+              "v",
+              "key",
+              "wait_ms"
+            ]
+          },
+          {
+            "field_wire_types": {
+              "atom": [
+                "key",
+                "reason",
+                "prev_phase",
+                "prev_fatal"
+              ],
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "failure_count",
+                "threshold"
+              ]
+            },
+            "fields": [
+              "v",
+              "key",
+              "reason",
+              "failure_count",
+              "threshold",
+              "prev_phase",
+              "prev_fatal"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "wire_types": {
+    "atom": {
+      "kind": "escaped_atom",
+      "optional": false
+    },
+    "binary64_decimal": {
+      "kind": "finite_decimal",
+      "optional": false,
+      "storage": "ieee754_binary64"
+    },
+    "bool": {
+      "kind": "enum",
+      "values": [
+        "false",
+        "true"
+      ]
+    },
+    "bool01": {
+      "kind": "enum",
+      "values": [
+        "0",
+        "1"
+      ]
+    },
+    "diagnostic_schema_v1": {
+      "kind": "enum",
+      "values": [
+        "1"
+      ]
+    },
+    "hex_uint16": {
+      "digits": 4,
+      "kind": "hex_integer",
+      "maximum": 65535,
+      "minimum": 0,
+      "prefix": "0x",
+      "uppercase": true
+    },
+    "hex_uint32": {
+      "digits": 8,
+      "kind": "hex_integer",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "prefix": "0x",
+      "uppercase": false
+    },
+    "int128": {
+      "kind": "integer",
+      "maximum": 170141183460469231731687303715884105727,
+      "minimum": -170141183460469231731687303715884105727,
+      "signed": true
+    },
+    "int32": {
+      "kind": "integer",
+      "maximum": 2147483647,
+      "minimum": -2147483648,
+      "signed": true
+    },
+    "int64": {
+      "kind": "integer",
+      "maximum": 9223372036854775807,
+      "minimum": -9223372036854775808,
+      "signed": true
+    },
+    "int8": {
+      "kind": "integer",
+      "maximum": 127,
+      "minimum": -128,
+      "signed": true
+    },
+    "optional_atom": {
+      "kind": "escaped_atom",
+      "optional": true
+    },
+    "optional_binary64_decimal": {
+      "kind": "finite_decimal",
+      "optional": true,
+      "storage": "ieee754_binary64"
+    },
+    "optional_int32": {
+      "base": "int32",
+      "kind": "optional"
+    },
+    "optional_int64": {
+      "base": "int64",
+      "kind": "optional"
+    },
+    "optional_uint16": {
+      "base": "uint16",
+      "kind": "optional"
+    },
+    "optional_uint32": {
+      "base": "uint32",
+      "kind": "optional"
+    },
+    "record_type": {
+      "kind": "record_type"
+    },
+    "schema_version": {
+      "kind": "schema_version"
+    },
+    "sha256": {
+      "kind": "lower_hex",
+      "length": 64
+    },
+    "sha256_or_live_stream": {
+      "kind": "lower_hex_or_literal",
+      "length": 64,
+      "literal": "live_stream_unsealed"
+    },
+    "uint16": {
+      "kind": "integer",
+      "maximum": 65535,
+      "minimum": 0,
+      "signed": false
+    },
+    "uint16_or_unavailable": {
+      "base": "uint16",
+      "kind": "literal_or",
+      "literal": "unavailable"
+    },
+    "uint32": {
+      "kind": "integer",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "signed": false
+    },
+    "uint64": {
+      "kind": "integer",
+      "maximum": 18446744073709551615,
+      "minimum": 0,
+      "signed": false
+    },
+    "uint8": {
+      "kind": "integer",
+      "maximum": 255,
+      "minimum": 0,
+      "signed": false
+    }
+  },
+  "record_field_wire_types": {
+    "active_hybrid_decisions_v2": {
+      "atom": [
+        "time_domain",
+        "run_identity",
+        "build_identity",
+        "image_identity",
+        "tight_state",
+        "state_before",
+        "state_after",
+        "authority_state",
+        "response_class",
+        "reason"
+      ],
+      "binary64_decimal": [
+        "frequency_error_hz",
+        "frequency_term_hz",
+        "phase_term_hz",
+        "combined_demand_hz",
+        "raw_combined_delta_codes"
+      ],
+      "bool": [
+        "phase_continuous",
+        "phase_current",
+        "phase_step_detected",
+        "phase_recorder_published",
+        "phase_materially_influenced",
+        "step_limited",
+        "range_clamped",
+        "cadence_limited",
+        "count_limited",
+        "cumulative_budget_limited",
+        "downstream_epoch_exact",
+        "actionable"
+      ],
+      "int32": [
+        "accumulated_edge_error_counts",
+        "requested_delta_codes",
+        "counterfactual_frequency_only_delta_codes"
+      ],
+      "int64": [
+        "relative_phase_cycles"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "sha256": [
+        "frequency_estimator_sha256",
+        "phase_estimator_sha256",
+        "active_policy_sha256",
+        "response_policy_sha256"
+      ],
+      "uint16": [
+        "current_applied_code",
+        "phase_applied_code",
+        "requested_code",
+        "correction_count_before",
+        "cumulative_movement_before_codes",
+        "actual_applied_code"
+      ],
+      "uint32": [
+        "hybrid_record_sequence",
+        "decision_sequence",
+        "decision_timestamp_s",
+        "capture_session",
+        "source_first_sequence",
+        "source_last_sequence",
+        "phase_epoch",
+        "phase_observation_sequence",
+        "dac_epoch",
+        "phase_dac_epoch",
+        "request_sequence",
+        "acceptance_sequence",
+        "application_sequence",
+        "actual_dac_epoch"
+      ],
+      "uint64": [
+        "decision_timestamp_ticks"
+      ]
+    },
+    "active_hybrid_maintenance_v1": {
+      "atom": [
+        "event",
+        "time_domain",
+        "run_identity",
+        "build_identity",
+        "image_identity",
+        "policy_id",
+        "transaction_event",
+        "maintenance_state_before",
+        "maintenance_state_after",
+        "frontier_relation",
+        "reason"
+      ],
+      "bool": [
+        "phase_valid",
+        "downstream_epoch_exact",
+        "request_pending_before",
+        "request_pending_after",
+        "response_pending_before",
+        "response_pending_after",
+        "metadata_hold_before",
+        "metadata_hold_after",
+        "actionable"
+      ],
+      "int128": [
+        "raw_fll_demand_picocodes",
+        "raw_pll_demand_picocodes",
+        "candidate_total_demand_picocodes"
+      ],
+      "int32": [
+        "requested_delta_codes"
+      ],
+      "int64": [
+        "committed_fll_debt_before_picocodes",
+        "committed_pll_debt_before_picocodes",
+        "committed_fll_debt_after_picocodes",
+        "committed_pll_debt_after_picocodes"
+      ],
+      "int8": [
+        "interval_sign"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "sha256": [
+        "active_policy_sha256",
+        "frequency_estimator_sha256"
+      ],
+      "uint32": [
+        "current_applied_code",
+        "actual_applied_code",
+        "requested_code",
+        "evidence_burst_record_ordinal",
+        "evidence_burst_record_count"
+      ],
+      "uint64": [
+        "maintenance_record_sequence",
+        "event_timestamp_ticks",
+        "capture_session",
+        "source_first_sequence",
+        "source_last_sequence",
+        "phase_epoch",
+        "phase_observation_sequence",
+        "current_dac_epoch",
+        "hybrid_record_sequence",
+        "decision_sequence",
+        "transaction_record_sequence",
+        "request_sequence",
+        "application_sequence",
+        "actual_dac_epoch",
+        "requalification_d14_d8_observation_sequence",
+        "evidence_burst_sequence"
+      ],
+      "uint8": [
+        "persistence_count_before",
+        "persistence_count_after",
+        "safe_cap_codes",
+        "requalification_window_count_before",
+        "requalification_window_count_after"
+      ]
+    },
+    "active_transactions_v2": {
+      "atom": [
+        "event",
+        "time_domain",
+        "run_identity",
+        "build_identity",
+        "image_identity",
+        "active_state",
+        "response_class",
+        "reason",
+        "evidence_state"
+      ],
+      "binary64_decimal": [
+        "pre_error_hz",
+        "post_error_hz",
+        "observed_response_hz",
+        "cumulative_response_hz"
+      ],
+      "bool": [
+        "i2c_ok",
+        "clamped",
+        "ambiguous",
+        "estimator_history_reset",
+        "actionable"
+      ],
+      "int32": [
+        "requested_delta_codes"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "sha256": [
+        "estimator_sha256",
+        "model_sha256",
+        "active_policy_sha256",
+        "response_policy_sha256",
+        "numerical_policy_sha256"
+      ],
+      "uint16": [
+        "current_applied_code",
+        "requested_code",
+        "correction_ordinal",
+        "cumulative_after_codes",
+        "accepted_code",
+        "applied_code",
+        "application_sequence",
+        "correction_count",
+        "cumulative_movement_codes",
+        "consecutive_indeterminate"
+      ],
+      "uint32": [
+        "transaction_record_sequence",
+        "session_id",
+        "authorization_sequence",
+        "nonce",
+        "request_sequence",
+        "decision_sequence",
+        "source_first_sequence",
+        "source_last_sequence",
+        "decision_timestamp_s",
+        "accepted_timestamp_s",
+        "application_timestamp_s",
+        "dac_epoch"
+      ],
+      "uint64": [
+        "event_timestamp_ticks"
+      ]
+    },
+    "association_loss_decisions_v1": {
+      "atom": [
+        "reason",
+        "classification",
+        "core1_phase"
+      ],
+      "bool": [
+        "next_reference_present",
+        "snapshot_initialized",
+        "snapshot_running",
+        "snapshot_fault_latched"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint32": [
+        "decision_sequence",
+        "pending_reference_sequence",
+        "boundary_depth",
+        "boundary_dropped_count",
+        "next_reference_sequence",
+        "snapshot_fault_flags",
+        "snapshot_session",
+        "snapshot_producer_ordinal",
+        "snapshot_consumer_ordinal",
+        "snapshot_backlog_depth",
+        "snapshot_backlog_high_water",
+        "snapshot_overwrite_count",
+        "snapshot_continuity_loss_count",
+        "snapshot_pio_rxstall_count",
+        "snapshot_dma_error_count",
+        "snapshot_dma_stopped_count",
+        "core1_loop_sequence",
+        "core1_last_snapshot_session",
+        "core1_last_snapshot_sequence"
+      ],
+      "uint64": [
+        "decision_ticks",
+        "pending_reference_ticks",
+        "pending_age_ticks",
+        "next_reference_ticks",
+        "core1_phase_enter_ticks",
+        "core1_last_progress_ticks"
+      ]
+    },
+    "control_previews_v1": {
+      "atom": [
+        "decision_id",
+        "time_domain",
+        "est_input_ref",
+        "plant_model_ref",
+        "plant_model_id",
+        "policy_version",
+        "control_state",
+        "previous_control_state",
+        "transition_reason_code",
+        "eligibility_reason_codes",
+        "diagnostic_health",
+        "model_applicability",
+        "model_reason_codes",
+        "decision_reason_code"
+      ],
+      "binary64_decimal": [
+        "hz_per_code"
+      ],
+      "bool": [
+        "state_transition",
+        "preview_eligibility",
+        "step_limited",
+        "range_clamped",
+        "preview_available",
+        "preview_only",
+        "actuation_authorized",
+        "actionable"
+      ],
+      "optional_binary64_decimal": [
+        "frequency_error_hz",
+        "raw_delta_codes"
+      ],
+      "optional_int32": [
+        "limited_delta_codes"
+      ],
+      "optional_uint16": [
+        "current_dac_code",
+        "proposed_dac_code"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "sha256": [
+        "plant_model_hash",
+        "config_hash"
+      ],
+      "uint32": [
+        "control_seq",
+        "plant_model_version"
+      ],
+      "uint64": [
+        "decision_timestamp_ticks"
+      ]
+    },
+    "count_observations_v1": {
+      "atom": [
+        "gate_domain",
+        "source_edge",
+        "source_domain"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint32": [
+        "count_seq",
+        "channel_id",
+        "flags"
+      ],
+      "uint64": [
+        "gate_open_ticks",
+        "gate_close_ticks",
+        "counted_edges"
+      ]
+    },
+    "dac_steps_v1": {
+      "atom": [
+        "event"
+      ],
+      "bool01": [
+        "dac_code_clamped"
+      ],
+      "int32": [
+        "step_index"
+      ],
+      "optional_binary64_decimal": [
+        "dac_voltage_measured_v",
+        "ocxo_tune_voltage_measured_v"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint16": [
+        "dac_code_requested",
+        "dac_code_applied"
+      ],
+      "uint32": [
+        "seq",
+        "elapsed_ms",
+        "dwell_ms",
+        "flags"
+      ]
+    },
+    "environment_v1": {
+      "atom": [
+        "observation_domain",
+        "source",
+        "role"
+      ],
+      "optional_binary64_decimal": [
+        "temperature_c",
+        "relative_humidity_pct",
+        "pressure_pa"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint32": [
+        "env_seq",
+        "flags"
+      ],
+      "uint64": [
+        "timestamp_ticks"
+      ]
+    },
+    "estimates_v2": {
+      "atom": [
+        "estimate_id",
+        "time_domain",
+        "source_count_ref",
+        "source_status_refs",
+        "source_dac_ref",
+        "manifest_ref",
+        "estimator_version",
+        "observation_validity",
+        "observation_reason_codes",
+        "reference_validity",
+        "count_validity",
+        "diagnostic_health",
+        "diagnostic_reason_codes",
+        "estimator_confidence",
+        "uncertainty_status",
+        "uncertainty_reason_codes",
+        "correlation_policy",
+        "uncertainty_model_ref",
+        "eligibility_reason_codes"
+      ],
+      "binary64_decimal": [
+        "reference_age_s",
+        "count_age_s",
+        "frequency_observation_hz",
+        "frequency_estimate_hz",
+        "frequency_error_hz"
+      ],
+      "bool": [
+        "reference_continuity",
+        "count_continuity",
+        "drift_enabled",
+        "preview_eligibility"
+      ],
+      "optional_binary64_decimal": [
+        "dispersion_hz",
+        "count_quantization_standard_uncertainty_hz",
+        "counter_aperture_standard_uncertainty_hz",
+        "reference_standard_uncertainty_hz",
+        "calibration_standard_uncertainty_hz",
+        "model_standard_uncertainty_hz",
+        "combined_standard_uncertainty_hz",
+        "coverage_factor",
+        "expanded_uncertainty_hz",
+        "drift_hz_per_s"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "sha256": [
+        "config_hash"
+      ],
+      "uint32": [
+        "estimate_seq",
+        "source_count_seq",
+        "source_reference_first_seq",
+        "source_reference_last_seq",
+        "accepted_sample_count"
+      ],
+      "uint64": [
+        "estimator_timestamp_ticks"
+      ]
+    },
+    "forwarded_monitor_snapshots_v1": {
+      "atom": [
+        "backend"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint32": [
+        "session",
+        "reference_session",
+        "snapshot_sequence",
+        "cumulative_down_counter",
+        "reference_sequence",
+        "status",
+        "channel_id"
+      ],
+      "uint64": [
+        "reference_timestamp_ticks"
+      ]
+    },
+    "health_v1": {
+      "atom": [
+        "status_domain",
+        "component",
+        "status_key",
+        "status_value",
+        "severity"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint32": [
+        "status_seq",
+        "flags"
+      ],
+      "uint64": [
+        "timestamp_ticks"
+      ]
+    },
+    "phase_estimator_outputs_v1": {
+      "atom": [
+        "source_relative_phase_observation",
+        "estimator_id",
+        "qualification_state",
+        "uncertainty_status",
+        "reason_codes"
+      ],
+      "int64": [
+        "raw_relative_phase_cycles",
+        "raw_relative_phase_time_ns",
+        "filtered_relative_phase_cycles"
+      ],
+      "optional_binary64_decimal": [
+        "estimated_frequency_error_hz",
+        "estimate_age_s"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "sha256": [
+        "configuration_sha256"
+      ],
+      "uint32": [
+        "phase_epoch",
+        "observation_sequence"
+      ]
+    },
+    "pps_snapshots_v1": {
+      "atom": [
+        "backend"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint32": [
+        "session",
+        "snapshot_sequence",
+        "cumulative_down_counter",
+        "reference_sequence",
+        "status"
+      ],
+      "uint64": [
+        "reference_timestamp_ticks"
+      ]
+    },
+    "raw_events_v1": {
+      "atom": [
+        "edge",
+        "capture_domain"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint32": [
+        "event_seq",
+        "channel_id",
+        "flags"
+      ],
+      "uint64": [
+        "timestamp_ticks"
+      ]
+    },
+    "relative_phase_observations_v1": {
+      "atom": [
+        "source_backend",
+        "method_id",
+        "qualification_state",
+        "calibrated_uncertainty_status"
+      ],
+      "int64": [
+        "relative_phase_cycles",
+        "relative_phase_time_ns"
+      ],
+      "optional_atom": [
+        "discontinuity_reason"
+      ],
+      "optional_binary64_decimal": [
+        "observation_age_s"
+      ],
+      "optional_int64": [
+        "edge_error_cycles"
+      ],
+      "optional_uint32": [
+        "interval_edges"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "sha256": [
+        "configuration_sha256"
+      ],
+      "sha256_or_live_stream": [
+        "source_file_sha256"
+      ],
+      "uint32": [
+        "phase_epoch",
+        "observation_sequence",
+        "capture_session",
+        "opening_snapshot_sequence",
+        "closing_snapshot_sequence",
+        "opening_reference_sequence",
+        "closing_reference_sequence",
+        "dac_epoch"
+      ]
+    },
+    "tight_deadband_decisions_v1": {
+      "atom": [
+        "estimate_id",
+        "time_domain",
+        "state_before",
+        "state_after",
+        "policy_id",
+        "reason_codes"
+      ],
+      "bool": [
+        "transition",
+        "frequency_controller_eligible",
+        "requalified",
+        "three_count_band_inside",
+        "two_count_band_inside",
+        "actionable",
+        "actuation_authorized",
+        "authorization_consumed"
+      ],
+      "int64": [
+        "integer_edge_error_counts"
+      ],
+      "optional_atom": [
+        "requalification_reason"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "sha256": [
+        "policy_sha256"
+      ],
+      "uint32": [
+        "decision_sequence"
+      ],
+      "uint64": [
+        "decision_timestamp_ticks",
+        "capture_session",
+        "dac_epoch",
+        "absolute_edge_error_counts"
+      ],
+      "uint8": [
+        "entry_counter",
+        "release_counter"
+      ]
+    }
+  },
   "commands": {
     "forms": {
       "active_arm": {
@@ -987,6 +2030,11 @@
         "complete": "snapshot_generation_complete",
         "contract": "snapshot_contract"
       },
+      "envelope_value_wire_types": {
+        "begin": "uint32",
+        "complete": "uint32",
+        "contract": "atom"
+      },
       "first_consumer": "active_status_live_state.ActiveStatusLiveReducer",
       "keys": [
         "enabled",
@@ -1039,7 +2087,68 @@
       "ordering": "exact",
       "record_contract": "health_v1",
       "schema_version": 1,
-      "unknown_key": "protocol_discrepancy_hold"
+      "unknown_key": "protocol_discrepancy_hold",
+      "value_wire_types": {
+        "atom": [
+          "run_identity",
+          "build_identity",
+          "image_identity",
+          "state",
+          "reason",
+          "evidence_phase",
+          "hybrid_state",
+          "hybrid_reason"
+        ],
+        "bool": [
+          "enabled",
+          "evidence_pending",
+          "capture_lease_live",
+          "manual_start_confirmed",
+          "arm_eligible",
+          "fail_static",
+          "setup_gnss_eligible",
+          "setup_reference_eligible",
+          "setup_partition_healthy",
+          "gnss_metadata_hold_active",
+          "gnss_metadata_hold_transaction_pending",
+          "first_phase_checkpoint_passed",
+          "confirmed_applied_code_known",
+          "automatic_retry",
+          "automatic_restore"
+        ],
+        "hex_uint16": [
+          "expected_setup_code"
+        ],
+        "sha256": [
+          "estimator_sha256",
+          "model_sha256",
+          "active_policy_sha256",
+          "response_policy_sha256",
+          "numerical_policy_sha256"
+        ],
+        "uint16": [
+          "phase_nonzero_application_count",
+          "phase_material_application_count",
+          "frequency_only_application_count",
+          "correction_count",
+          "cumulative_movement_codes",
+          "selected_interval_count"
+        ],
+        "uint16_or_unavailable": [
+          "confirmed_applied_code"
+        ],
+        "uint32": [
+          "gnss_metadata_hold_entry_sequence",
+          "gnss_metadata_requalification_sequence",
+          "gnss_metadata_qualification_frontier",
+          "d14_d8_observation_sequence",
+          "session_id",
+          "query_nonce",
+          "uptime_s",
+          "evidence_request_sequence",
+          "dac_epoch"
+        ]
+      }
     }
   }
 }
