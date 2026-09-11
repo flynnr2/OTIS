@@ -383,3 +383,18 @@ superstructure before another bench gate. Passing the old readiness check is
 not a prerequisite for this simplification. Stage 6 then freezes and rehearses
 the successor bundle on the real bench launch context; Stage 7 remains physical
 qualification. Autonomous operation remains a separate coupled implementation.
+
+Stage 5b's finite shared-session gate is complete. The old runtime-envelope
+loaders and duplicate process launch/monitor loops are replaced; static input
+validation now produces an immutable context. All 656 current tests passed
+across the release and affected-boundary runs. A separate real-build,
+production-bundle PTY rehearsal passed all eight operational boundaries and
+registered its 55-file, 9,115,744-byte package. The
+[superstructure record](../60_EXPERIMENTS/STARTUP_VALIDATION_REPAIR_2026_09_11.md)
+binds those claims and the directly repaired PTY startup race.
+
+This machinery remains removable campaign tooling. The operator has explicitly
+required ruthless deletion of unnecessary scaffolding, no retired compatibility
+layers, and an eventual ordinary experience of power on and use D9 with an
+optional recording/inspection host. Stage 6 on the older Mac remains next for
+the current qualification; standalone operation remains separate product work.

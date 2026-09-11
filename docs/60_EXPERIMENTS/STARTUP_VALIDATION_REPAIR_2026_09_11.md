@@ -36,9 +36,9 @@ checks. Schema syntax checks consumed 5.735 of the 5.820 profiled seconds.
 
 The first discriminating repair reused successful schema syntax checks by
 complete canonical schema content, with a bounded 32-entry process-local cache. It neither caches
-an authority decision nor trusts a supplied hash. Each consuming call still
-checks current embedded bytes, set identity, profile closure, bindings and
-profile instances. Invalid syntax is not cached; callers receive freshly
+an authority decision nor trusts a supplied hash. At that intermediate step,
+each consuming call still checked embedded bytes, set identity, profile
+closure, bindings and profile instances. Invalid syntax is not cached; callers receive freshly
 parsed documents, so mutation cannot poison a cached result.
 
 A fresh local process after that narrow repair took 0.199 profiled seconds for the
@@ -95,8 +95,8 @@ capture-ready boundary before starting the synthetic stream, and the process
 test asserts this exact ordering.
 
 The process test uses synthetic build metadata. A separate normal production
-bundle and PTY gate using the real fixed build is being completed below; the
-two claims must remain distinct. Both exercise real host child processes and
+bundle and PTY gate using the real fixed build also passed; the two claims
+remain distinct. Both exercise real host child processes and
 PTY I/O, not physical firmware execution.
 
 The fixed firmware build passed at clean operational source revision
@@ -120,3 +120,17 @@ later host files existed in that firmware commit.
 No hardware was accessed. A successor merged bundle must still pass on the
 older Mac before bench entry. The original failed attempt remains diagnostic
 evidence and cannot be promoted by a successful successor run.
+
+The production gate used normal bundle creation, proposal creation and the
+public operational-rehearsal entry point, including independent deterministic
+firmware reproduction. No synthetic build validation or private authority
+bypass was substituted. All eight required operational boundaries passed and
+the package was sealed and registered as `successful_rehearsal` with no
+registration error. Its 55 files total 9,115,744 bytes; content SHA-256 is
+`faf09d3fbae7ed2c21952cb4c3fad4937c9ca2e2c427528828268c38294b9bd5`.
+The semantic seal SHA-256 is
+`ca7efe3730a13b0b626c1c6d736333644bb858a96534fd874d6830ee8c5578c9`.
+The package, report and index are retained under
+`runs/rehearsals/shared-host-session-2026-09-11/`, outside Git. This completes
+Stage 5b's finite local integration gate, not physical qualification or the
+older Mac's launch-context rehearsal.
