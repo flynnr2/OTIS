@@ -155,6 +155,14 @@ def test_full_process_operational_rehearsal_reaches_registered_boundary(
 ) -> None:
     bundle_path, proposal_path = _frozen_inputs(monkeypatch, tmp_path)
     run_dir = tmp_path / "rehearsal-run"
+    original_start = rehearsal_module.DeterministicPtyInstrument.start
+
+    def start_after_capture_owns_slave(instrument):
+        session = json.loads((run_dir / "reports/adaptive_hybrid_session_v1.json").read_text())
+        assert session["phase"] == "capture_ready"
+        return original_start(instrument)
+
+    monkeypatch.setattr(rehearsal_module.DeterministicPtyInstrument, "start", start_after_capture_owns_slave)
     report_path = run_operational_rehearsal(
         bundle_path=bundle_path,
         proposal_path=proposal_path,

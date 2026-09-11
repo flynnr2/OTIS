@@ -34,8 +34,8 @@ supervisor factory, stopping before `run()` or any serial operation. Profiling
 found 29 full authoritative-input validations and 348 JSON-schema syntax
 checks. Schema syntax checks consumed 5.735 of the 5.820 profiled seconds.
 
-The first discriminating repair reused successful schema syntax checks by the complete canonical
-schema content, with a bounded 32-entry process-local cache. It neither caches
+The first discriminating repair reused successful schema syntax checks by
+complete canonical schema content, with a bounded 32-entry process-local cache. It neither caches
 an authority decision nor trusts a supplied hash. Each consuming call still
 checks current embedded bytes, set identity, profile closure, bindings and
 profile instances. Invalid syntax is not cached; callers receive freshly
@@ -46,8 +46,8 @@ same validation/construction path: 29 authority validations remained, while
 syntax validation required seven checks and 341 cache hits. This diagnostic
 used explicitly rebound copies for changed host-tool bytes and retained the
 real build input. It is not a frozen live-bundle rehearsal and does not predict
-the older Mac's runtime. That narrow experiment retained the old readiness predicate and ten-second
-deadline. The broader implementation below replaces the readiness predicate
+the older Mac's runtime. That narrow experiment retained the old readiness
+predicate and ten-second deadline. The broader implementation below replaces the readiness predicate
 with actual initialized-worker receipts.
 
 The rehearsal worker now records startup phases and the parent includes the
@@ -82,12 +82,41 @@ Fresh device census, exact pending-phase acknowledgement, retained raw-source
 replay and command guards remain decision-bearing. D14/D8 timing semantics,
 firmware control ownership and prospective standalone features are unchanged.
 
-## Verification boundary
+## Integration verification
 
-Integration verification is pending. The 61 focused immutable-input, raw-replay
-and frontier tests passed after consumer migration. The final gate must exercise
-the common lifecycle, repeated transactions, holds, obstruction, abort delivery,
-closure and actual analysis/sealing/registration, plus current release checks.
-A subsequent frozen production bundle must pass on the older Mac before any
-hardware entry. The original failed attempt remains diagnostic evidence and
-cannot be promoted by a successful successor run.
+The current 656-test set is covered by 654 passing release checks, the newly
+added partial-launch/closure regression in a 19-test affected-boundary rerun,
+and the full process test. The full process test passed in 91.76 seconds after
+one directly observed simulator startup repair. The first attempt hit a PTY
+write `EIO` before capture opened the slave; cleanup then closed capture and
+the supervisor reported that secondary transport closure. The old topology
+also emitted before ownership readiness. The adapter now waits for the shared
+capture-ready boundary before starting the synthetic stream, and the process
+test asserts this exact ordering.
+
+The process test uses synthetic build metadata. A separate normal production
+bundle and PTY gate using the real fixed build is being completed below; the
+two claims must remain distinct. Both exercise real host child processes and
+PTY I/O, not physical firmware execution.
+
+The fixed firmware build passed at clean operational source revision
+`ed47d362954b05464fc9e1380159064cb06e6ec1`. Firmware input hash remains
+`9b52d002d57a2bf21d76c9c7e63f6260c0d86554a23f40d582cf9358eed5ad36`;
+all firmware/configuration inputs are unchanged from the prior verified image.
+The current build uses configuration hash
+`1c81c04d069abe64caa1aaae2b6efc105e9d8fc1767ebde8e32f21d3e3ddffde`,
+build session `4f13deb9451626db`, and UF2 SHA-256
+`2055a85935bdbb3e9ee5de39ace7697381184324bc69f685a8bd964fd5cdfe26`.
+Program storage is 223,020 bytes, static memory 154,140 bytes and runtime
+headroom 108,004 bytes. The previous 7,936-case PIO proof is reused because
+its firmware and configuration inputs are unchanged; it was not rerun to
+qualify host-only changes.
+
+The host bytes frozen into the production bundle include the subsequent PTY
+startup-ordering repair; their individual hashes are in the bundle. The
+embedded firmware revision identifies its build inputs, not a claim that the
+later host files existed in that firmware commit.
+
+No hardware was accessed. A successor merged bundle must still pass on the
+older Mac before bench entry. The original failed attempt remains diagnostic
+evidence and cannot be promoted by a successful successor run.

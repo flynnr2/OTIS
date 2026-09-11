@@ -2877,9 +2877,11 @@ def _run_process_topology(
         )
         os.close(slave_fd)
         slave_fd = -1
+        # Do not write the synthetic boot stream until the child actually owns
+        # the slave. A launched PID alone leaves a PTY-open race (EIO on macOS).
+        session.wait_capture_ready(10.0)
         emulator = DeterministicPtyInstrument(master_fd, bundle)
         emulator_thread = emulator.start()
-        session.wait_capture_ready(10.0)
 
         supervisor, monitor = session.launch_support(
             supervisor_command=_process_command(
