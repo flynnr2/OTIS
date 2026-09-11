@@ -17,6 +17,12 @@ from .raw_measurement_replay import (
     SELECTED_ESTIMATOR_ID, _RAW_REFERENCE_DOMAIN, _U32_MODULUS,
     _raw_count_replay, _u32,
 )
+from .accepted_span_replay import (
+    POLICY_PATH as REFERENCE_ACCEPTANCE_POLICY_PATH,
+    accepted_window_ref,
+    replay_accepted_spans,
+)
+from .authoritative_inputs import authoritative_binding, authoritative_document
 SERIALIZED_12_DECIMAL_HALF_UNIT = Decimal("0.0000000000005")
 
 
@@ -75,17 +81,19 @@ def _measurement_replay(
     manifest: Any,
     manifest_value: dict[str, Any],
 ) -> tuple[bool, dict[str, Any], dict[str, dict[str, str]]]:
-    """Recompute D14-gated D8 frequency estimates; retain D10 separately."""
+    """Recompute selected estimates from retained accepted PPS spans."""
+
     counts = _read_csv(_single_contract_path(manifest, "count_observations_v1"))
     snapshots = _read_csv(_single_contract_path(manifest, "pps_snapshots_v1"))
     references = _read_csv(_raw_event_path(manifest, "REF"))
+    spans = _read_csv(_single_contract_path(manifest, "accepted_pps_spans_v1"))
+    estimates = _read_csv(_single_contract_path(manifest, "estimates_v3"))
     d10_local_error: str | None = None
     try:
         external_events = _read_csv(_raw_event_path(manifest, "EVT"))
     except (OSError, UnicodeError, csv.Error) as error:
         external_events = []
         d10_local_error = f"{type(error).__name__}: {error}"
-    estimates = _read_csv(_single_contract_path(manifest, "estimates_v2"))
     d10_channel_exact = d10_local_error is None and all(
         row.get("record_type") == "EVT" and row.get("channel_id") == "0"
         for row in external_events
@@ -94,40 +102,54 @@ def _measurement_replay(
         row.get("record_type") == "REF" and row.get("channel_id") == "1"
         for row in references
     )
-    if not counts or not snapshots or not references or not estimates:
+    if not counts or not snapshots or not references or not spans or not estimates:
         return False, {
-            "reason": "D14/D8 measurement replay source is empty",
-            "D10": {
-                "row_count": len(external_events),
-                "channel_exact": d10_channel_exact,
-                "local_error": d10_local_error,
-            },
+            "reason": "accepted D14/D8 measurement replay source is empty",
+            "D10": {"row_count": len(external_events), "channel_exact": d10_channel_exact,
+                    "local_error": d10_local_error},
         }, {}
+    frozen_inputs = manifest_value.get("authoritative_inputs")
+    policy = authoritative_document(frozen_inputs, REFERENCE_ACCEPTANCE_POLICY_PATH)
+    policy_binding = authoritative_binding(frozen_inputs, REFERENCE_ACCEPTANCE_POLICY_PATH)
+    policy_sha256 = str(policy_binding["sha256"])
+    expected_reference_acceptance = {
+        "policy_id": policy.get("policy_id"),
+        "policy_sha256": policy_sha256,
+        "path": REFERENCE_ACCEPTANCE_POLICY_PATH,
+    }
+    if manifest_value.get("reference_acceptance") != expected_reference_acceptance:
+        raise ValueError("run manifest reference-acceptance binding differs")
     expected_hash = _selected_frequency_estimator_sha256(manifest_value)
     acquisition_report: dict[str, Any] | None = None
-    unqualified_estimate_ids: set[str] = set()
     if "acquisition_frontier" in manifest_value:
         from .acquisition_frontier import select_required_replay_rows
         try:
-            snapshots, references, counts, unqualified_estimate_ids, acquisition_report = select_required_replay_rows(
-                manifest.root, manifest_value, snapshots=snapshots, references=references, counts=counts, estimates=estimates,
+            snapshots, references, counts, _, acquisition_report = select_required_replay_rows(
+                manifest.root, manifest_value, snapshots=snapshots,
+                references=references, counts=counts, estimates=estimates,
             )
         except (OSError, KeyError, TypeError, ValueError) as error:
-            return False, {"reason": "acquisition frontier verification failed", "acquisition_frontier": {"exact": False, "errors": [str(error)]}}, {}
-    raw_exact, raw_report, raw_intervals = _raw_count_replay(snapshots, references, counts)
+            return False, {"reason": "acquisition frontier verification failed",
+                           "acquisition_frontier": {"exact": False, "errors": [str(error)]}}, {}
+    span_exact, span_report, verified_spans = replay_accepted_spans(
+        snapshots, references, counts, spans,
+        acceptance_policy=policy, acceptance_policy_sha256=policy_sha256,
+    )
     estimate_sequences = [_u32(row, "estimate_seq") for row in estimates]
     sequence_exact = all(
         current == (previous + 1) % _U32_MODULUS
         for previous, current in zip(estimate_sequences, estimate_sequences[1:])
     )
-    raw_closings: dict[tuple[int, int], list[int]] = {}
-    for index, interval in enumerate(raw_intervals):
-        raw_closings.setdefault((interval["closing_sequence"], interval["closing_ticks"]), []).append(index)
-    exact = sequence_exact and d14_channel_exact and raw_exact
+    spans_by_stream: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for span in verified_spans:
+        spans_by_stream.setdefault(
+            (span["capture_session"], span["acceptance_epoch"]), []
+        ).append(span)
+    exact = sequence_exact and d14_channel_exact and span_exact
     identifiers: set[str] = set()
-    selected_windows: list[tuple[int, int]] = []
+    selected_windows: list[tuple[int, int, int, int]] = []
     comparisons: list[dict[str, Any]] = []
-    selected_estimate_sources: list[dict[str, Any]] = []
+    selected_sources: list[dict[str, Any]] = []
     estimates_by_id: dict[str, dict[str, str]] = {}
     for row in estimates:
         identifier = row["estimate_id"]
@@ -135,68 +157,78 @@ def _measurement_replay(
         identifiers.add(identifier)
         estimates_by_id[identifier] = row
         exact &= unique
-        if row.get("estimator_version") != SELECTED_ESTIMATOR_ID or identifier in unqualified_estimate_ids:
+        if row.get("estimator_version") != SELECTED_ESTIMATOR_ID:
             continue
-        first = int(row["source_reference_first_seq"])
-        last = int(row["source_reference_last_seq"])
-        # EST's source_reference_* names carry SNP boundary sequences in the
-        # current firmware. Its exact closing timestamp disambiguates rearm.
-        closing_ticks = row.get("estimator_timestamp_ticks", "")
-        candidates = raw_closings.get((last, int(closing_ticks)), []) if closing_ticks.isdecimal() else []
-        # Retained source positions express non-overlap across both counter
-        # rollover and session rearm, without comparing unrelated sequences.
-        selected_windows.append((candidates[0] - 599, candidates[0] + 1) if len(candidates) == 1 else (-1, -1))
-        sources = []
-        if len(candidates) == 1 and candidates[0] >= 599:
-            sources = raw_intervals[candidates[0] - 599:candidates[0] + 1]
-        source_exact = (
-            len(sources) == 600
-            and row.get("time_domain") == _RAW_REFERENCE_DOMAIN
-            and sources[0]["opening_sequence"] == first
-            and len({item["session"] for item in sources}) == 1
-            and all(item["count_exact"] and item["measurement_valid"] for item in sources)
-        )
-        if source_exact:
-            total = sum(item["counted_edges"] for item in sources)
-            # The selected firmware estimator performs both operations in its
-            # declared binary64 implementation domain before serializing each
-            # result to 12 decimal places.  Replaying the rational quotient
-            # instead invents precision that the producer never possessed at
-            # a 10 MHz magnitude (and can reject its separately computed error
-            # even when the source edge total is exact).
-            frequency_binary64 = float(total) / 600.0
-            error_binary64 = frequency_binary64 - 10_000_000.0
-            frequency = Decimal.from_float(frequency_binary64)
-            error = Decimal.from_float(error_binary64)
-            frequency_difference = abs(Decimal(row["frequency_estimate_hz"]) - frequency)
-            error_difference = abs(Decimal(row["frequency_error_hz"]) - error)
-        else:
+        try:
+            session = _u32(row, "capture_session")
+            epoch = _u32(row, "source_acceptance_epoch")
+            opening = _u32(row, "source_opening_accepted_boundary_ordinal")
+            closing = _u32(row, "source_closing_accepted_boundary_ordinal")
+            available = spans_by_stream.get((session, epoch), [])
+            sources = [span for span in available if
+                       0 < (span["accepted_boundary_ordinal"] - opening) % _U32_MODULUS <= 600]
+            sources.sort(key=lambda span: (span["accepted_boundary_ordinal"] - opening) % _U32_MODULUS)
+            source_exact = (
+                opening != closing
+                and (closing - opening) % _U32_MODULUS == 600
+                and len(sources) == 600
+                and [((span["accepted_boundary_ordinal"] - opening) % _U32_MODULUS)
+                     for span in sources] == list(range(1, 601))
+                and row.get("source_accepted_spans_ref")
+                    == accepted_window_ref(session, epoch, opening, closing)
+                and _u32(row, "source_opening_snapshot_sequence")
+                    == sources[0]["opening_snapshot_sequence"]
+                and _u32(row, "source_closing_snapshot_sequence")
+                    == sources[-1]["closing_snapshot_sequence"]
+                and _u32(row, "source_opening_reference_sequence")
+                    == sources[0]["opening_reference_sequence"]
+                and _u32(row, "source_closing_reference_sequence")
+                    == sources[-1]["closing_reference_sequence"]
+                and _u32(row, "estimator_timestamp_ticks")
+                    == sources[-1]["closing_reference_timestamp_ticks"]
+            )
+            total = sum(span["counted_edges"] for span in sources) if source_exact else None
+            if total is None:
+                frequency_difference = error_difference = Decimal("Infinity")
+            else:
+                frequency_binary64 = float(total) / 600.0
+                error_binary64 = frequency_binary64 - 10_000_000.0
+                frequency_difference = abs(
+                    Decimal(row["frequency_estimate_hz"])
+                    - Decimal.from_float(frequency_binary64)
+                )
+                error_difference = abs(
+                    Decimal(row["frequency_error_hz"])
+                    - Decimal.from_float(error_binary64)
+                )
+            row_exact = (
+                unique and source_exact
+                and row.get("time_domain") == _RAW_REFERENCE_DOMAIN
+                and int(row["accepted_sample_count"]) == 600
+                and row["config_hash"] == expected_hash
+                and all(row.get(field) == "valid" for field in
+                        ("observation_validity", "reference_validity", "count_validity"))
+                and frequency_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
+                and error_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
+            )
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            session = epoch = opening = closing = 0
+            sources = []
             total = None
-            frequency_difference = Decimal("Infinity")
-            error_difference = Decimal("Infinity")
-        row_exact = (
-            unique
-            and source_exact
-            and int(row["source_count_seq"]) == last
-            and int(row["accepted_sample_count"]) == 600
-            and row["config_hash"] == expected_hash
-            and row["observation_validity"] == "valid"
-            and row["reference_validity"] == "valid"
-            and row["count_validity"] == "valid"
-            and frequency_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
-            and error_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
-        )
+            frequency_difference = error_difference = Decimal("Infinity")
+            source_exact = row_exact = False
         exact &= row_exact
-        source_summary = {
+        selected_windows.append((session, epoch, opening, closing))
+        summary = {
             "estimate_id": identifier,
             "estimator_sha256": row.get("config_hash"),
-            "source_capture_session": (
-                sources[0]["session"] if source_exact else None
-            ),
-            "source_reference_first_seq": first,
-            "source_reference_last_seq": last,
+            "source_capture_session": session,
+            "source_acceptance_epoch": epoch,
+            "source_opening_accepted_boundary_ordinal": opening,
+            "source_closing_accepted_boundary_ordinal": closing,
             "estimator_timestamp_ticks": (
-                int(closing_ticks) if closing_ticks.isdecimal() else None
+                int(row["estimator_timestamp_ticks"])
+                if row.get("estimator_timestamp_ticks", "").isdecimal() else None
             ),
             "time_domain": row.get("time_domain"),
             "frequency_error_hz": row.get("frequency_error_hz"),
@@ -206,44 +238,35 @@ def _measurement_replay(
             "source_exact": source_exact,
             "pass": row_exact,
         }
-        selected_estimate_sources.append(source_summary)
-        comparisons.append(
-            {
-                **source_summary,
-                "total_counted_edges": total,
-                "absolute_frequency_difference_hz": (
-                    None if frequency_difference.is_infinite() else float(frequency_difference)
-                ),
-                "absolute_error_difference_hz": (
-                    None if error_difference.is_infinite() else float(error_difference)
-                ),
-                "pass": row_exact,
-            }
-        )
+        selected_sources.append(summary)
+        comparisons.append({
+            **summary, "total_counted_edges": total,
+            "absolute_frequency_difference_hz": (
+                None if frequency_difference.is_infinite() else float(frequency_difference)
+            ),
+            "absolute_error_difference_hz": (
+                None if error_difference.is_infinite() else float(error_difference)
+            ),
+        })
     nonoverlap = bool(selected_windows) and all(
-        later_first >= earlier_last
-        for (_, earlier_last), (later_first, _) in zip(selected_windows, selected_windows[1:])
+        later[:2] != earlier[:2]
+        or (later[2] - earlier[3]) % _U32_MODULUS < (1 << 31)
+        for earlier, later in zip(selected_windows, selected_windows[1:])
     )
     exact &= nonoverlap
     return bool(exact), {
         "estimate_sequence_exact": sequence_exact,
-        "raw_count_replay": raw_report,
+        "accepted_span_replay": span_report,
         "acquisition_frontier": acquisition_report,
         "calculation_domain": "firmware_ieee754_binary64_then_fixed_12_decimal",
-        "selected_count": len(selected_windows),
-        "selected_nonoverlap": nonoverlap,
-        "D10": {
-            "row_count": len(external_events),
-            "channel_exact": d10_channel_exact,
-            "local_error": d10_local_error,
-            "authority": "evidence_only",
-            "enters_D14_D8_replay": False,
-        },
+        "selected_count": len(selected_windows), "selected_nonoverlap": nonoverlap,
+        "D10": {"row_count": len(external_events), "channel_exact": d10_channel_exact,
+                "local_error": d10_local_error, "authority": "evidence_only",
+                "enters_D14_D8_replay": False},
         "D14": {"row_count": len(references), "channel_exact": d14_channel_exact},
         "comparisons": comparisons,
-        "selected_estimate_sources": selected_estimate_sources,
+        "selected_estimate_sources": selected_sources,
     }, estimates_by_id
-
 
 def replay_active_decision_measurement_sources(
     manifest: Any, measurement: dict[str, Any]
@@ -262,28 +285,30 @@ def replay_active_decision_measurement_sources(
     joins: list[dict[str, Any]] = []
     try:
         decisions = _read_csv(
-            _single_contract_path(manifest, "active_hybrid_decisions_v2")
+            _single_contract_path(manifest, "active_hybrid_decisions_v3")
         )
         sources = measurement.get("selected_estimate_sources")
         if not isinstance(sources, list):
             raise ValueError("selected measurement source summaries are unavailable")
-        source_index: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
+        source_index: dict[tuple[int, int, int, int], list[dict[str, Any]]] = {}
         for source in sources:
             if not isinstance(source, dict):
                 raise ValueError("selected measurement comparison is malformed")
             session = source.get("source_capture_session")
-            first = source.get("source_reference_first_seq")
-            last = source.get("source_reference_last_seq")
-            if not all(type(value) is int for value in (session, first, last)):
+            epoch = source.get("source_acceptance_epoch")
+            opening = source.get("source_opening_accepted_boundary_ordinal")
+            closing = source.get("source_closing_accepted_boundary_ordinal")
+            if not all(type(value) is int for value in (session, epoch, opening, closing)):
                 continue
-            source_index.setdefault((session, first, last), []).append(source)
+            source_index.setdefault((session, epoch, opening, closing), []).append(source)
         for decision in decisions:
-            key: tuple[int, int, int] | None = None
+            key: tuple[int, int, int, int] | None = None
             try:
                 key = (
                     int(decision["capture_session"]),
-                    int(decision["source_first_sequence"]),
-                    int(decision["source_last_sequence"]),
+                    int(decision["source_acceptance_epoch"]),
+                    int(decision["source_opening_accepted_boundary_ordinal"]),
+                    int(decision["source_closing_accepted_boundary_ordinal"]),
                 )
                 candidates = source_index.get(key, [])
                 source = candidates[0] if len(candidates) == 1 else None
@@ -341,6 +366,85 @@ def replay_active_decision_measurement_sources(
     }
 
 
+def replay_phase_accepted_sources(manifest: Any) -> dict[str, Any]:
+    """Bind qualified RPH rows to APS and every PHE row to its exact RPH."""
+
+    errors: list[str] = []
+    joins: list[dict[str, Any]] = []
+    try:
+        spans = _read_csv(_single_contract_path(manifest, "accepted_pps_spans_v1"))
+        phase_rows = _read_csv(
+            _single_contract_path(manifest, "relative_phase_observations_v2")
+        )
+        outputs = _read_csv(
+            _single_contract_path(manifest, "phase_estimator_outputs_v2")
+        )
+        span_index: dict[tuple[int, int, int], list[dict[str, str]]] = {}
+        for row in spans:
+            key = (
+                int(row["capture_session"]), int(row["acceptance_epoch"]),
+                int(row["accepted_boundary_ordinal"]),
+            )
+            span_index.setdefault(key, []).append(row)
+        phase_index: dict[tuple[int, int], list[dict[str, str]]] = {}
+        for row in phase_rows:
+            key = (int(row["phase_epoch"]), int(row["observation_sequence"]))
+            phase_index.setdefault(key, []).append(row)
+            if row.get("qualification_state") != "qualified":
+                if row.get("source_accepted_span_ref"):
+                    errors.append(f"RPH {key} claims APS while non-qualified")
+                continue
+            accepted_key = (
+                int(row["capture_session"]), int(row["acceptance_epoch"]),
+                int(row["accepted_boundary_ordinal"]),
+            )
+            candidates = span_index.get(accepted_key, [])
+            span = candidates[0] if len(candidates) == 1 else None
+            exact = (
+                span is not None
+                and row.get("source_accepted_span_ref")
+                    == f"live:APS:{accepted_key[0]}:{accepted_key[1]}:{accepted_key[2]}"
+                and all(row.get(target) == span.get(source) for target, source in (
+                    ("opening_snapshot_sequence", "opening_snapshot_sequence"),
+                    ("closing_snapshot_sequence", "closing_snapshot_sequence"),
+                    ("opening_reference_sequence", "opening_reference_sequence"),
+                    ("closing_reference_sequence", "closing_reference_sequence"),
+                    ("interval_edges", "counted_edges"),
+                ))
+            )
+            joins.append({"kind": "RPH_to_APS", "source_key": list(accepted_key),
+                          "phase_key": list(key), "exact": exact})
+            if not exact:
+                errors.append(f"qualified RPH {key} lacks one exact APS source")
+        for row in outputs:
+            key = (int(row["phase_epoch"]), int(row["observation_sequence"]))
+            candidates = phase_index.get(key, [])
+            source = candidates[0] if len(candidates) == 1 else None
+            exact = (
+                source is not None
+                and row.get("source_relative_phase_observation")
+                    == f"RPH:{key[0]}:{key[1]}"
+                and all(row.get(target) == source.get(source_field)
+                        for target, source_field in (
+                    ("capture_session", "capture_session"),
+                    ("acceptance_epoch", "acceptance_epoch"),
+                    ("accepted_boundary_ordinal", "accepted_boundary_ordinal"),
+                    ("raw_relative_phase_cycles", "relative_phase_cycles"),
+                    ("raw_relative_phase_time_ns", "relative_phase_time_ns"),
+                    ("qualification_state", "qualification_state"),
+                ))
+            )
+            joins.append({"kind": "PHE_to_RPH", "phase_key": list(key), "exact": exact})
+            if not exact:
+                errors.append(f"PHE {key} lacks one exact RPH source")
+    except (OSError, UnicodeError, csv.Error, KeyError, TypeError, ValueError) as error:
+        errors.append(str(error))
+    return {
+        "exact": not errors,
+        "joins": joins,
+        "errors": errors[:20],
+        "error_count": len(errors),
+    }
 class ResponseClass(str, Enum):
     HEALTHY_DETECTED = "healthy_detected"
     HEALTHY_INDETERMINATE = "healthy_indeterminate_near_resolution"

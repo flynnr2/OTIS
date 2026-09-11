@@ -12,7 +12,7 @@ from jsonschema import Draft202012Validator
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROOT_PROFILE = "profiles/discipline/adaptive_hybrid_regulation_v1.json"
-CONTRACT = "otis_adaptive_hybrid_authoritative_inputs_v1"
+CONTRACT = "otis_adaptive_hybrid_authoritative_inputs_v2"
 PROFILE_SCHEMA_BINDINGS = {
     ROOT_PROFILE: "schemas/adaptive_hybrid_regulation_v1.schema.json",
     "profiles/discipline/response_classification_v1.json": (
@@ -28,6 +28,8 @@ PROFILE_SCHEMA_BINDINGS = {
         "schemas/plant_model_v1.schema.json"
     ),
 }
+REFERENCE_ACCEPTANCE_POLICY_PATH = "data_contracts/reference_acceptance_policy_v1.json"
+CURRENT_CONTRACT_PATHS = frozenset({REFERENCE_ACCEPTANCE_POLICY_PATH})
 CURRENT_PROFILE_PATHS = frozenset(PROFILE_SCHEMA_BINDINGS)
 CURRENT_SCHEMA_PATHS = frozenset(
     {
@@ -152,6 +154,8 @@ def collect_authoritative_inputs(
         "root_profile": root_profile,
         "profiles": [profile_entries[path] for path in sorted(profile_entries)],
         "schemas": schema_entries,
+        "contracts": [_entry(relative, _safe_repository_path(repo_root, relative, "data_contracts").read_bytes())
+                      for relative in sorted(CURRENT_CONTRACT_PATHS)],
         "profile_schema_bindings": dict(PROFILE_SCHEMA_BINDINGS),
     }
     return {**unsigned, "set_sha256": _canonical_sha256(unsigned)}
@@ -210,7 +214,7 @@ def validate_authoritative_inputs(value: object) -> dict[str, dict[str, Any]]:
     if (
         set(value)
         != {
-            "contract", "root_profile", "profiles", "schemas",
+            "contract", "root_profile", "profiles", "schemas", "contracts",
             "profile_schema_bindings", "set_sha256",
         }
         or value.get("contract") != CONTRACT
@@ -229,6 +233,17 @@ def validate_authoritative_inputs(value: object) -> dict[str, dict[str, Any]]:
     )
     if set(schema_entries) != CURRENT_SCHEMA_PATHS:
         raise ValueError("frozen schema set is not the exact current schema set")
+    contract_entries, contract_documents = _validate_entries(
+        value.get("contracts"), prefix="data_contracts"
+    )
+    if set(contract_entries) != CURRENT_CONTRACT_PATHS:
+        raise ValueError("frozen contract set differs from the current instrument")
+    policy_entry = contract_entries[REFERENCE_ACCEPTANCE_POLICY_PATH]
+    for path in ("profiles/estimators/pps_gated_frequency_estimator_v1.json",
+                 "profiles/estimators/relative_phase_estimator_v1.json"):
+        if (profile_documents[path].get("reference_acceptance_policy_ref") != REFERENCE_ACCEPTANCE_POLICY_PATH
+            or profile_documents[path].get("reference_acceptance_policy_sha256") != policy_entry["sha256"]):
+            raise ValueError("estimator acceptance policy binding differs from retained policy bytes")
     discovered = {ROOT_PROFILE}
     pending = [ROOT_PROFILE]
     while pending:
@@ -261,7 +276,7 @@ def validate_authoritative_inputs(value: object) -> dict[str, dict[str, Any]]:
             )
     for schema in schema_documents.values():
         Draft202012Validator.check_schema(schema)
-    return {**profile_documents, **schema_documents}
+    return {**profile_documents, **schema_documents, **contract_documents}
 
 
 def authoritative_document(value: object, relative: str) -> dict[str, Any]:
@@ -275,7 +290,7 @@ def authoritative_document(value: object, relative: str) -> dict[str, Any]:
 def authoritative_binding(value: object, relative: str) -> dict[str, Any]:
     validate_authoritative_inputs(value)
     assert isinstance(value, dict)
-    for group in ("profiles", "schemas"):
+    for group in ("profiles", "schemas", "contracts"):
         entries = value[group]
         assert isinstance(entries, list)
         for item in entries:
@@ -301,6 +316,10 @@ def authoritative_summary(value: object) -> dict[str, Any]:
         "schemas": [
             {key: item[key] for key in ("path", "sha256", "size_bytes")}
             for item in value["schemas"]
+        ],
+        "contracts": [
+            {key: item[key] for key in ("path", "sha256", "size_bytes")}
+            for item in value["contracts"]
         ],
         "profile_schema_bindings": value["profile_schema_bindings"],
         "set_sha256": value["set_sha256"],

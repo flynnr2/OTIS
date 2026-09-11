@@ -57,8 +57,9 @@ struct OtisAdaptiveHybridMaintenanceRecord {
   const char *image_identity;
   const char *active_policy_sha256;
   uint64_t capture_session;
-  uint64_t source_first_sequence;
-  uint64_t source_last_sequence;
+  uint64_t source_acceptance_epoch;
+  uint64_t source_opening_accepted_boundary_ordinal;
+  uint64_t source_closing_accepted_boundary_ordinal;
   const char *frequency_estimator_sha256;
   uint64_t phase_epoch;
   uint64_t phase_observation_sequence;
@@ -98,7 +99,7 @@ struct OtisAdaptiveHybridMaintenanceRecord {
   bool metadata_hold_after;
   uint8_t requalification_window_count_before;
   uint8_t requalification_window_count_after;
-  uint64_t requalification_d14_d8_observation_sequence;
+  uint64_t requalification_accepted_boundary_ordinal;
   uint64_t evidence_burst_sequence;
   uint32_t evidence_burst_record_ordinal;
   uint32_t evidence_burst_record_count;
@@ -108,9 +109,9 @@ struct OtisAdaptiveHybridMaintenanceRecord {
 // Both functions return the number of bytes written (excluding the terminating
 // NUL), or -1 for invalid input or insufficient output capacity.  Successful
 // output includes CRLF and is always NUL terminated.
-int otis_format_adaptive_hybrid_maintenance_v1_header(char *output, size_t output_size);
+int otis_format_adaptive_hybrid_maintenance_v2_header(char *output, size_t output_size);
 
-int otis_format_adaptive_hybrid_maintenance_v1(
+int otis_format_adaptive_hybrid_maintenance_v2(
     char *output, size_t output_size,
     const OtisAdaptiveHybridMaintenanceRecord *record);
 

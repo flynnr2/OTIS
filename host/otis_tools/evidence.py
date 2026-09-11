@@ -292,13 +292,14 @@ def _operational_rehearsal_files() -> list[dict[str, Any]]:
         },
         {"path": "csv/count_observations.csv", "contract": "count_observations_v1", "optional": True},
         {"path": "csv/pps_snapshots.csv", "contract": "pps_snapshots_v1", "optional": True},
+        {"path": "csv/accepted_pps_spans_v1.csv", "contract": "accepted_pps_spans_v1", "optional": True},
         {"path": "csv/health.csv", "contract": "health_v1"},
         {"path": "csv/dac_steps.csv", "contract": "dac_steps_v1", "optional": True},
-        {"path": "csv/estimates_v2.csv", "contract": "estimates_v2", "optional": True},
+        {"path": "csv/estimates_v3.csv", "contract": "estimates_v3", "optional": True},
         {"path": "csv/control_previews_v1.csv", "contract": "control_previews_v1", "optional": True},
-        {"path": "csv/active_transactions_v2.csv", "contract": "active_transactions_v2"},
-        {"path": "csv/active_hybrid_decisions_v2.csv", "contract": "active_hybrid_decisions_v2"},
-        {"path": "csv/active_hybrid_maintenance_v1.csv", "contract": "active_hybrid_maintenance_v1"},
+        {"path": "csv/active_transactions_v3.csv", "contract": "active_transactions_v3"},
+        {"path": "csv/active_hybrid_decisions_v3.csv", "contract": "active_hybrid_decisions_v3"},
+        {"path": "csv/active_hybrid_maintenance_v2.csv", "contract": "active_hybrid_maintenance_v2"},
     ]
 
 
@@ -386,7 +387,7 @@ def _validate_operational_rehearsal_manifest(
         entry["contract"]: (
             2
             if entry["contract"]
-            in {"estimates_v2", "active_transactions_v2", "active_hybrid_decisions_v2"}
+            in {"estimates_v3", "active_transactions_v3", "active_hybrid_decisions_v3"}
             else 1
         )
         for entry in files

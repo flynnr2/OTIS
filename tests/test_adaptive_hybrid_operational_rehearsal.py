@@ -172,3 +172,61 @@ def test_full_process_operational_rehearsal_reaches_registered_boundary(
             ),
             analyzer_identity=producer_sha256,
         )
+
+
+def test_rehearsal_raw_accepted_sources_and_phase_are_coherent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import csv
+    import io
+    from host.otis_tools.accepted_span_replay import replay_accepted_spans
+    from host.otis_tools.authoritative_inputs import authoritative_document
+    from host.otis_tools.contracts import CONTRACT_FIELDS
+
+    bundle_path, _ = _frozen_inputs(monkeypatch, tmp_path)
+    bundle = json.loads(bundle_path.read_text())
+    wire = bytearray()
+    monkeypatch.setattr(rehearsal_module, "_write_all_fd", lambda _fd, payload: wire.extend(payload))
+    instrument = rehearsal_module.DeterministicPtyInstrument(17, bundle)
+    instrument._emit_initial_observations()
+    instrument._emit_source_through(7803)
+    for decision in instrument.fixture.decisions:
+        instrument._emit_selected_estimate(decision)
+    contracts = {"REF": "raw_events_v1", "SNP": "pps_snapshots_v1",
+                 "CNT": "count_observations_v1", "APS": "accepted_pps_spans_v1",
+                 "EST": "estimates_v3", "RPH": "relative_phase_observations_v2",
+                 "PHE": "phase_estimator_outputs_v2"}
+    rows: dict[str, list[dict[str, str]]] = {name: [] for name in contracts}
+    for values in csv.reader(io.StringIO(wire.decode())):
+        if values[0] in contracts:
+            rows[values[0]].append(dict(zip(CONTRACT_FIELDS[contracts[values[0]]], values, strict=True)))
+    policy = authoritative_document(bundle["authoritative_inputs"], "data_contracts/reference_acceptance_policy_v1.json")
+    exact, report, accepted = replay_accepted_spans(
+        rows["SNP"], rows["REF"], rows["CNT"], rows["APS"],
+        acceptance_policy=policy,
+        acceptance_policy_sha256=rehearsal_module._reference_acceptance_binding(bundle)["policy_sha256"],
+    )
+    assert exact, report
+    assert len(accepted) == 7803
+    assert len(rows["CNT"]) == 7804
+    split = rows["APS"][1499]
+    assert (split["opening_snapshot_sequence"], split["closing_snapshot_sequence"],
+            split["excluded_candidate_count"], split["counted_edges"]) == ("1499", "1501", "1", "10000000")
+    assert [(row["counted_edges"], row["flags"]) for row in rows["CNT"][1499:1503]] == [
+        ("2462937", "4120"), ("7537063", "4120"), ("10000000", "4120"), ("10000000", "16")]
+    assert [int(row["relative_phase_cycles"]) for row in rows["RPH"]] == [-6, -6, -3, 0, 6, 6]
+    applications = [int(item.phases[2]["event_timestamp_ticks"]) for item in (
+        instrument.fixture.first_transaction, instrument.fixture.second_transaction)]
+    for index, (decision, estimate) in enumerate(zip(instrument.fixture.decisions, rows["EST"], strict=True)):
+        opening = int(estimate["source_opening_accepted_boundary_ordinal"])
+        closing = int(estimate["source_closing_accepted_boundary_ordinal"])
+        assert closing - opening == 600
+        assert closing == int(decision["decision_timestamp_s"])
+        assert sum(int(row["counted_edges"]) - 10000000 for row in rows["APS"][opening:closing]) == int(decision["accumulated_edge_error_counts"])
+        if index in (0, 1, 5):
+            application = 1200071551 if index == 0 else applications[0 if index == 1 else 1]
+            assert opening * 1000000 >= application + 900000000
+    for transaction in (instrument.fixture.first_transaction, instrument.fixture.second_transaction):
+        response = transaction.phases[3]
+        assert response["post_error_hz"] == transaction.response_decision["frequency_error_hz"]
+        assert float(response["observed_response_hz"]) == pytest.approx(-float(response["pre_error_hz"]), abs=1e-12)

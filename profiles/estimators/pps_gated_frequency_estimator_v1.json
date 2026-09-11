@@ -2,7 +2,7 @@
   "schema_version": 1,
   "profile_id": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
   "status": "selected_production_estimator",
-  "method_id": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1",
+  "method_id": "PPS_ACCEPTED_SPAN_FREQUENCY_V1",
   "base_estimator": {
     "counter_direction": "down",
     "counter_width_bits": 32,
@@ -25,9 +25,9 @@
   },
   "invalidation_policy": {
     "reset_on": [
-      "invalid_adjacent_D14_D8_interval",
+      "accepted_reference_qualification_loss",
       "capture_session_boundary",
-      "sequence_discontinuity",
+      "accepted_span_sequence_discontinuity",
       "reference_association_failure",
       "snapshot_or_counter_fault",
       "parser_or_transport_loss",
@@ -35,5 +35,7 @@
       "declared_settling_exclusion"
     ],
     "D10_external_event_anomaly_resets_estimator": false
-  }
+  },
+  "reference_acceptance_policy_ref": "data_contracts/reference_acceptance_policy_v1.json",
+  "reference_acceptance_policy_sha256": "ccbac9f756a0ff2932a3f1c160c464af06eaaa1713d8bbc0ceba73762f80fad3"
 }

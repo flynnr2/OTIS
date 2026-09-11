@@ -134,7 +134,9 @@ def test_current_host_closure_has_no_retired_programme_modules() -> None:
     # REF/SNP/CNT reconstruction is a second, lower-level module so both live
     # observation and aggregate offline replay depend on the same pure logic
     # without a frontier/replay import cycle. The prior ceiling was 33.
-    assert len(closure) <= 35, f"current host closure unexpectedly broad: {len(closure)}"
+    # Accepted-span reconstruction is one shared leaf used by live readiness
+    # and offline verification; it does not introduce another operational path.
+    assert len(closure) <= 36, f"current host closure unexpectedly broad: {len(closure)}"
 
 
 def test_every_semantic_adaptive_hybrid_module_is_in_current_closure() -> None:

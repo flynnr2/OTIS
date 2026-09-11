@@ -199,8 +199,9 @@ enum class OtisCriticalMessageKind : uint8_t {
 struct OtisCrossCoreActuatorRequest {
   uint32_t request_sequence;
   uint32_t decision_sequence;
-  uint32_t source_first_sequence;
-  uint32_t source_last_sequence;
+  uint32_t source_acceptance_epoch;
+  uint32_t source_opening_accepted_boundary_ordinal;
+  uint32_t source_closing_accepted_boundary_ordinal;
   uint64_t decision_reference_ticks;
   // Transaction liveness uses the RP2040/Arduino monotonic millisecond
   // counter projected to wrapping uint32 seconds on both cores.  Capture
@@ -282,6 +283,8 @@ struct OtisPhasePreviewRecordMessage {
   uint32_t phase_epoch;
   uint32_t observation_sequence;
   uint32_t capture_session;
+  uint32_t acceptance_epoch;
+  uint32_t accepted_boundary_ordinal;
   uint32_t opening_snapshot_sequence;
   uint32_t closing_snapshot_sequence;
   uint32_t opening_reference_sequence;

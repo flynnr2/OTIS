@@ -699,7 +699,7 @@ class CaptureDeviceRunner:
             if (
                 acquisition_frontier_tracker is not None
                 and self.acquisition_frontier_observer_error is None
-                and splitter.last_record_type in {"REF", "SNP", "CNT", "EST"}
+                and splitter.last_record_type in {"REF", "SNP", "CNT", "APS", "EST"}
             ):
                 fields = CONTRACT_FIELDS[contract]
                 record = dict(zip(

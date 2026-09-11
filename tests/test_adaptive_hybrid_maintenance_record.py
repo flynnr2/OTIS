@@ -10,7 +10,7 @@ import subprocess
 import pytest
 
 from host.otis_tools.contracts import (
-    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
     CsvValidationContext,
     validate_csv,
 )
@@ -69,10 +69,10 @@ def test_native_builder_emits_host_valid_exact_lifecycle(
     )
     assert completed.stdout.endswith(b"\r\n")
     rows = list(csv.reader(io.StringIO(completed.stdout.decode("ascii"))))
-    assert rows[0] == ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS
-    assert all(len(row) == len(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS) for row in rows[1:])
+    assert rows[0] == ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS
+    assert all(len(row) == len(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS) for row in rows[1:])
     records = [
-        dict(zip(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS, row, strict=True))
+        dict(zip(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS, row, strict=True))
         for row in rows[1:]
     ]
     assert [record["event"] for record in records] == [
@@ -117,10 +117,10 @@ def test_native_builder_emits_host_valid_exact_lifecycle(
     assert records[6]["metadata_hold_before"] == "true"
     assert records[6]["metadata_hold_after"] == "true"
     assert records[6]["requalification_window_count_after"] == "0"
-    assert records[6]["source_last_sequence"] == "1201"
-    assert records[6]["requalification_d14_d8_observation_sequence"] == "1501"
+    assert records[6]["source_closing_accepted_boundary_ordinal"] == "1201"
+    assert records[6]["requalification_accepted_boundary_ordinal"] == "1501"
     assert all(
-        record["requalification_d14_d8_observation_sequence"] == "0"
+        record["requalification_accepted_boundary_ordinal"] == "0"
         for index, record in enumerate(records)
         if index != 6
     )
@@ -135,12 +135,12 @@ def test_native_builder_emits_host_valid_exact_lifecycle(
     assert records[10]["transaction_event"] == "application_fault"
     assert records[10]["maintenance_state_after"] == "FAIL_STATIC"
 
-    csv_path = tmp_path / "active_hybrid_maintenance_v1.csv"
+    csv_path = tmp_path / "active_hybrid_maintenance_v2.csv"
     csv_path.write_bytes(completed.stdout)
     result = validate_csv(
         csv_path,
         CsvValidationContext(
-            "active_hybrid_maintenance_v1",
+            "active_hybrid_maintenance_v2",
             frozenset(),
             frozenset({"rp2040_monotonic_us64"}),
         ),

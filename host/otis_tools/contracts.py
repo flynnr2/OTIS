@@ -160,61 +160,81 @@ ENVIRONMENT_FIELDS = [
     "flags",
 ]
 
-ESTIMATE_COMMON_FIELDS = [
-    "record_type",
-    "schema_version",
-    "estimate_seq",
-    "estimate_id",
-    "estimator_timestamp_ticks",
-    "time_domain",
-    "source_count_seq",
-    "source_count_ref",
-    "source_reference_first_seq",
-    "source_reference_last_seq",
-    "source_status_refs",
-    "source_dac_ref",
-    "manifest_ref",
-    "estimator_version",
-    "config_hash",
-    "observation_validity",
-    "observation_reason_codes",
-    "reference_validity",
-    "reference_age_s",
-    "reference_continuity",
-    "count_validity",
-    "count_age_s",
-    "count_continuity",
-    "diagnostic_health",
-    "diagnostic_reason_codes",
-    "frequency_observation_hz",
-    "accepted_sample_count",
-    "estimator_confidence",
-    "frequency_estimate_hz",
-    "frequency_error_hz",
-    "frequency_uncertainty_hz",
-    "dispersion_hz",
-    "drift_enabled",
-    "drift_hz_per_s",
-    "preview_eligibility",
-    "eligibility_reason_codes",
+ACCEPTED_PPS_SPAN_V1_FIELDS = [
+    'record_type',
+    'schema_version',
+    'capture_session',
+    'acceptance_epoch',
+    'accepted_boundary_ordinal',
+    'opening_snapshot_sequence',
+    'closing_snapshot_sequence',
+    'opening_reference_sequence',
+    'closing_reference_sequence',
+    'opening_reference_timestamp_ticks',
+    'closing_reference_timestamp_ticks',
+    'time_domain',
+    'source_count_first_sequence',
+    'source_count_last_sequence',
+    'source_count_record_count',
+    'counted_edges',
+    'excluded_candidate_count',
+    'nominal_interval_count',
+    'acceptance_policy_sha256'
 ]
 
-ESTIMATE_V2_FIELDS = [
-    *ESTIMATE_COMMON_FIELDS[:30],
-    "dispersion_hz",
-    "uncertainty_status",
-    "uncertainty_reason_codes",
-    "count_quantization_standard_uncertainty_hz",
-    "counter_aperture_standard_uncertainty_hz",
-    "reference_standard_uncertainty_hz",
-    "calibration_standard_uncertainty_hz",
-    "model_standard_uncertainty_hz",
-    "combined_standard_uncertainty_hz",
-    "coverage_factor",
-    "expanded_uncertainty_hz",
-    "correlation_policy",
-    "uncertainty_model_ref",
-    *ESTIMATE_COMMON_FIELDS[32:],
+ESTIMATE_V3_FIELDS = [
+    'record_type',
+    'schema_version',
+    'estimate_seq',
+    'estimate_id',
+    'estimator_timestamp_ticks',
+    'time_domain',
+    'capture_session',
+    'source_acceptance_epoch',
+    'source_opening_accepted_boundary_ordinal',
+    'source_closing_accepted_boundary_ordinal',
+    'source_opening_snapshot_sequence',
+    'source_closing_snapshot_sequence',
+    'source_opening_reference_sequence',
+    'source_closing_reference_sequence',
+    'source_accepted_spans_ref',
+    'source_status_refs',
+    'source_dac_ref',
+    'manifest_ref',
+    'estimator_version',
+    'config_hash',
+    'observation_validity',
+    'observation_reason_codes',
+    'reference_validity',
+    'reference_age_s',
+    'reference_continuity',
+    'count_validity',
+    'count_age_s',
+    'count_continuity',
+    'diagnostic_health',
+    'diagnostic_reason_codes',
+    'frequency_observation_hz',
+    'accepted_sample_count',
+    'estimator_confidence',
+    'frequency_estimate_hz',
+    'frequency_error_hz',
+    'dispersion_hz',
+    'uncertainty_status',
+    'uncertainty_reason_codes',
+    'count_quantization_standard_uncertainty_hz',
+    'counter_aperture_standard_uncertainty_hz',
+    'reference_standard_uncertainty_hz',
+    'calibration_standard_uncertainty_hz',
+    'model_standard_uncertainty_hz',
+    'combined_standard_uncertainty_hz',
+    'coverage_factor',
+    'expanded_uncertainty_hz',
+    'correlation_policy',
+    'uncertainty_model_ref',
+    'drift_enabled',
+    'drift_hz_per_s',
+    'preview_eligibility',
+    'eligibility_reason_codes'
 ]
 
 CONTROL_PREVIEW_V1_FIELDS = [
@@ -255,228 +275,237 @@ CONTROL_PREVIEW_V1_FIELDS = [
     "decision_reason_code",
 ]
 
-ACTIVE_TRANSACTION_V2_FIELDS = [
-    "record_type",
-    "schema_version",
-    "transaction_record_sequence",
-    "event",
-    "event_timestamp_ticks",
-    "time_domain",
-    "run_identity",
-    "build_identity",
-    "image_identity",
-    "session_id",
-    "authorization_sequence",
-    "nonce",
-    "request_sequence",
-    "decision_sequence",
-    "source_first_sequence",
-    "source_last_sequence",
-    "decision_timestamp_s",
-    "current_applied_code",
-    "requested_delta_codes",
-    "requested_code",
-    "correction_ordinal",
-    "cumulative_after_codes",
-    "pre_error_hz",
-    "accepted_code",
-    "accepted_timestamp_s",
-    "applied_code",
-    "application_sequence",
-    "application_timestamp_s",
-    "i2c_ok",
-    "clamped",
-    "ambiguous",
-    "dac_epoch",
-    "estimator_history_reset",
-    "correction_count",
-    "cumulative_movement_codes",
-    "post_error_hz",
-    "observed_response_hz",
-    "cumulative_response_hz",
-    "consecutive_indeterminate",
-    "active_state",
-    "response_class",
-    "reason",
-    "estimator_sha256",
-    "model_sha256",
-    "active_policy_sha256",
-    "response_policy_sha256",
-    "numerical_policy_sha256",
-    "actionable",
-    "evidence_state",
+ACTIVE_TRANSACTION_V3_FIELDS = [
+    'record_type',
+    'schema_version',
+    'transaction_record_sequence',
+    'event',
+    'event_timestamp_ticks',
+    'time_domain',
+    'run_identity',
+    'build_identity',
+    'image_identity',
+    'session_id',
+    'authorization_sequence',
+    'nonce',
+    'request_sequence',
+    'decision_sequence',
+    'source_acceptance_epoch',
+    'source_opening_accepted_boundary_ordinal',
+    'source_closing_accepted_boundary_ordinal',
+    'decision_timestamp_s',
+    'current_applied_code',
+    'requested_delta_codes',
+    'requested_code',
+    'correction_ordinal',
+    'cumulative_after_codes',
+    'pre_error_hz',
+    'accepted_code',
+    'accepted_timestamp_s',
+    'applied_code',
+    'application_sequence',
+    'application_timestamp_s',
+    'i2c_ok',
+    'clamped',
+    'ambiguous',
+    'dac_epoch',
+    'estimator_history_reset',
+    'correction_count',
+    'cumulative_movement_codes',
+    'post_error_hz',
+    'observed_response_hz',
+    'cumulative_response_hz',
+    'consecutive_indeterminate',
+    'active_state',
+    'response_class',
+    'reason',
+    'estimator_sha256',
+    'model_sha256',
+    'active_policy_sha256',
+    'response_policy_sha256',
+    'numerical_policy_sha256',
+    'actionable',
+    'evidence_state'
 ]
 
-ACTIVE_HYBRID_DECISION_V2_FIELDS = [
-    "record_type",
-    "schema_version",
-    "hybrid_record_sequence",
-    "decision_sequence",
-    "decision_timestamp_ticks",
-    "time_domain",
-    "decision_timestamp_s",
-    "run_identity",
-    "build_identity",
-    "image_identity",
-    "capture_session",
-    "source_first_sequence",
-    "source_last_sequence",
-    "frequency_estimator_sha256",
-    "frequency_error_hz",
-    "accumulated_edge_error_counts",
-    "tight_state",
-    "phase_estimator_sha256",
-    "phase_epoch",
-    "phase_observation_sequence",
-    "relative_phase_cycles",
-    "phase_continuous",
-    "phase_current",
-    "phase_step_detected",
-    "phase_recorder_published",
-    "current_applied_code",
-    "dac_epoch",
-    "phase_applied_code",
-    "phase_dac_epoch",
-    "state_before",
-    "state_after",
-    "frequency_term_hz",
-    "phase_term_hz",
-    "combined_demand_hz",
-    "raw_combined_delta_codes",
-    "requested_delta_codes",
-    "requested_code",
-    "counterfactual_frequency_only_delta_codes",
-    "phase_materially_influenced",
-    "step_limited",
-    "range_clamped",
-    "cadence_limited",
-    "count_limited",
-    "cumulative_budget_limited",
-    "correction_count_before",
-    "cumulative_movement_before_codes",
-    "authority_state",
-    "request_sequence",
-    "acceptance_sequence",
-    "application_sequence",
-    "response_class",
-    "actual_applied_code",
-    "actual_dac_epoch",
-    "downstream_epoch_exact",
-    "reason",
-    "active_policy_sha256",
-    "response_policy_sha256",
-    "actionable",
+ACTIVE_HYBRID_DECISION_V3_FIELDS = [
+    'record_type',
+    'schema_version',
+    'hybrid_record_sequence',
+    'decision_sequence',
+    'decision_timestamp_ticks',
+    'time_domain',
+    'decision_timestamp_s',
+    'run_identity',
+    'build_identity',
+    'image_identity',
+    'capture_session',
+    'source_acceptance_epoch',
+    'source_opening_accepted_boundary_ordinal',
+    'source_closing_accepted_boundary_ordinal',
+    'frequency_estimator_sha256',
+    'frequency_error_hz',
+    'accumulated_edge_error_counts',
+    'tight_state',
+    'phase_estimator_sha256',
+    'phase_epoch',
+    'phase_observation_sequence',
+    'relative_phase_cycles',
+    'phase_continuous',
+    'phase_current',
+    'phase_step_detected',
+    'phase_recorder_published',
+    'current_applied_code',
+    'dac_epoch',
+    'phase_applied_code',
+    'phase_dac_epoch',
+    'state_before',
+    'state_after',
+    'frequency_term_hz',
+    'phase_term_hz',
+    'combined_demand_hz',
+    'raw_combined_delta_codes',
+    'requested_delta_codes',
+    'requested_code',
+    'counterfactual_frequency_only_delta_codes',
+    'phase_materially_influenced',
+    'step_limited',
+    'range_clamped',
+    'cadence_limited',
+    'count_limited',
+    'cumulative_budget_limited',
+    'correction_count_before',
+    'cumulative_movement_before_codes',
+    'authority_state',
+    'request_sequence',
+    'acceptance_sequence',
+    'application_sequence',
+    'response_class',
+    'actual_applied_code',
+    'actual_dac_epoch',
+    'downstream_epoch_exact',
+    'reason',
+    'active_policy_sha256',
+    'response_policy_sha256',
+    'actionable'
 ]
 
 # AHM is decision-bearing controller-state evidence. It is separate from
 # AHY controller content so persistence and provenance-tagged correction debt
 # remain reconstructable across request,
 # application, response, GNSS-hold, and fail-static transitions.
-ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS = [
-    "record_type",
-    "schema_version",
-    "maintenance_record_sequence",
-    "event",
-    "event_timestamp_ticks",
-    "time_domain",
-    "run_identity",
-    "build_identity",
-    "image_identity",
-    "policy_id",
-    "active_policy_sha256",
-    "capture_session",
-    "source_first_sequence",
-    "source_last_sequence",
-    "frequency_estimator_sha256",
-    "phase_epoch",
-    "phase_observation_sequence",
-    "phase_valid",
-    "current_applied_code",
-    "current_dac_epoch",
-    "hybrid_record_sequence",
-    "decision_sequence",
-    "transaction_record_sequence",
-    "transaction_event",
-    "request_sequence",
-    "application_sequence",
-    "actual_applied_code",
-    "actual_dac_epoch",
-    "downstream_epoch_exact",
-    "maintenance_state_before",
-    "maintenance_state_after",
-    "frontier_relation",
-    "interval_sign",
-    "persistence_count_before",
-    "persistence_count_after",
-    "raw_fll_demand_picocodes",
-    "raw_pll_demand_picocodes",
-    "candidate_total_demand_picocodes",
-    "safe_cap_codes",
-    "requested_delta_codes",
-    "requested_code",
-    "committed_fll_debt_before_picocodes",
-    "committed_pll_debt_before_picocodes",
-    "committed_fll_debt_after_picocodes",
-    "committed_pll_debt_after_picocodes",
-    "request_pending_before",
-    "request_pending_after",
-    "response_pending_before",
-    "response_pending_after",
-    "metadata_hold_before",
-    "metadata_hold_after",
-    "requalification_window_count_before",
-    "requalification_window_count_after",
-    "requalification_d14_d8_observation_sequence",
-    "evidence_burst_sequence",
-    "evidence_burst_record_ordinal",
-    "evidence_burst_record_count",
-    "reason",
-    "actionable",
+ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS = [
+    'record_type',
+    'schema_version',
+    'maintenance_record_sequence',
+    'event',
+    'event_timestamp_ticks',
+    'time_domain',
+    'run_identity',
+    'build_identity',
+    'image_identity',
+    'policy_id',
+    'active_policy_sha256',
+    'capture_session',
+    'source_acceptance_epoch',
+    'source_opening_accepted_boundary_ordinal',
+    'source_closing_accepted_boundary_ordinal',
+    'frequency_estimator_sha256',
+    'phase_epoch',
+    'phase_observation_sequence',
+    'phase_valid',
+    'current_applied_code',
+    'current_dac_epoch',
+    'hybrid_record_sequence',
+    'decision_sequence',
+    'transaction_record_sequence',
+    'transaction_event',
+    'request_sequence',
+    'application_sequence',
+    'actual_applied_code',
+    'actual_dac_epoch',
+    'downstream_epoch_exact',
+    'maintenance_state_before',
+    'maintenance_state_after',
+    'frontier_relation',
+    'interval_sign',
+    'persistence_count_before',
+    'persistence_count_after',
+    'raw_fll_demand_picocodes',
+    'raw_pll_demand_picocodes',
+    'candidate_total_demand_picocodes',
+    'safe_cap_codes',
+    'requested_delta_codes',
+    'requested_code',
+    'committed_fll_debt_before_picocodes',
+    'committed_pll_debt_before_picocodes',
+    'committed_fll_debt_after_picocodes',
+    'committed_pll_debt_after_picocodes',
+    'request_pending_before',
+    'request_pending_after',
+    'response_pending_before',
+    'response_pending_after',
+    'metadata_hold_before',
+    'metadata_hold_after',
+    'requalification_window_count_before',
+    'requalification_window_count_after',
+    'requalification_accepted_boundary_ordinal',
+    'evidence_burst_sequence',
+    'evidence_burst_record_ordinal',
+    'evidence_burst_record_count',
+    'reason',
+    'actionable'
 ]
 
 # RPH is the immutable raw relative-phase boundary. PHE adds the selected
 # retained frequency support without authority or an actuator request.
-RELATIVE_PHASE_OBSERVATION_V1_FIELDS = [
-    "record_type",
-    "schema_version",
-    "phase_epoch",
-    "observation_sequence",
-    "capture_session",
-    "opening_snapshot_sequence",
-    "closing_snapshot_sequence",
-    "opening_reference_sequence",
-    "closing_reference_sequence",
-    "dac_epoch",
-    "source_backend",
-    "source_file_sha256",
-    "method_id",
-    "configuration_sha256",
-    "interval_edges",
-    "edge_error_cycles",
-    "relative_phase_cycles",
-    "relative_phase_time_ns",
-    "qualification_state",
-    "observation_age_s",
-    "discontinuity_reason",
-    "calibrated_uncertainty_status",
+RELATIVE_PHASE_OBSERVATION_V2_FIELDS = [
+    'record_type',
+    'schema_version',
+    'phase_epoch',
+    'observation_sequence',
+    'capture_session',
+    'acceptance_epoch',
+    'accepted_boundary_ordinal',
+    'source_accepted_span_ref',
+    'opening_snapshot_sequence',
+    'closing_snapshot_sequence',
+    'opening_reference_sequence',
+    'closing_reference_sequence',
+    'dac_epoch',
+    'source_backend',
+    'source_file_sha256',
+    'method_id',
+    'configuration_sha256',
+    'interval_edges',
+    'edge_error_cycles',
+    'relative_phase_cycles',
+    'relative_phase_time_ns',
+    'qualification_state',
+    'observation_age_s',
+    'discontinuity_reason',
+    'calibrated_uncertainty_status'
 ]
 
-PHASE_ESTIMATOR_OUTPUT_V1_FIELDS = [
-    "record_type",
-    "schema_version",
-    "phase_epoch",
-    "observation_sequence",
-    "source_relative_phase_observation",
-    "raw_relative_phase_cycles",
-    "raw_relative_phase_time_ns",
-    "filtered_relative_phase_cycles",
-    "estimated_frequency_error_hz",
-    "estimator_id",
-    "configuration_sha256",
-    "estimate_age_s",
-    "qualification_state",
-    "uncertainty_status",
-    "reason_codes",
+PHASE_ESTIMATOR_OUTPUT_V2_FIELDS = [
+    'record_type',
+    'schema_version',
+    'phase_epoch',
+    'observation_sequence',
+    'capture_session',
+    'acceptance_epoch',
+    'accepted_boundary_ordinal',
+    'source_relative_phase_observation',
+    'raw_relative_phase_cycles',
+    'raw_relative_phase_time_ns',
+    'filtered_relative_phase_cycles',
+    'estimated_frequency_error_hz',
+    'estimator_id',
+    'configuration_sha256',
+    'estimate_age_s',
+    'qualification_state',
+    'uncertainty_status',
+    'reason_codes'
 ]
 
 TIGHT_DEADBAND_DECISION_V1_FIELDS = [
@@ -517,13 +546,14 @@ CONTRACT_FIELDS = {
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
-    "estimates_v2": ESTIMATE_V2_FIELDS,
+    "accepted_pps_spans_v1": ACCEPTED_PPS_SPAN_V1_FIELDS,
+    "estimates_v3": ESTIMATE_V3_FIELDS,
     "control_previews_v1": CONTROL_PREVIEW_V1_FIELDS,
-    "active_transactions_v2": ACTIVE_TRANSACTION_V2_FIELDS,
-    "active_hybrid_decisions_v2": ACTIVE_HYBRID_DECISION_V2_FIELDS,
-    "active_hybrid_maintenance_v1": ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
-    "relative_phase_observations_v1": RELATIVE_PHASE_OBSERVATION_V1_FIELDS,
-    "phase_estimator_outputs_v1": PHASE_ESTIMATOR_OUTPUT_V1_FIELDS,
+    "active_transactions_v3": ACTIVE_TRANSACTION_V3_FIELDS,
+    "active_hybrid_decisions_v3": ACTIVE_HYBRID_DECISION_V3_FIELDS,
+    "active_hybrid_maintenance_v2": ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
+    "relative_phase_observations_v2": RELATIVE_PHASE_OBSERVATION_V2_FIELDS,
+    "phase_estimator_outputs_v2": PHASE_ESTIMATOR_OUTPUT_V2_FIELDS,
     "tight_deadband_decisions_v1": TIGHT_DEADBAND_DECISION_V1_FIELDS,
 }
 
@@ -536,13 +566,14 @@ CONTRACT_RECORD_TYPES = {
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
-    "estimates_v2": {"EST"},
+    "accepted_pps_spans_v1": {"APS"},
+    "estimates_v3": {"EST"},
     "control_previews_v1": {"CTL"},
-    "active_transactions_v2": {"ACT"},
-    "active_hybrid_decisions_v2": {"AHY"},
-    "active_hybrid_maintenance_v1": {"AHM"},
-    "relative_phase_observations_v1": {"RPH"},
-    "phase_estimator_outputs_v1": {"PHE"},
+    "active_transactions_v3": {"ACT"},
+    "active_hybrid_decisions_v3": {"AHY"},
+    "active_hybrid_maintenance_v2": {"AHM"},
+    "relative_phase_observations_v2": {"RPH"},
+    "phase_estimator_outputs_v2": {"PHE"},
     "tight_deadband_decisions_v1": {"TDB"},
 }
 
@@ -555,13 +586,14 @@ CONTRACT_SCHEMA_VERSIONS = {
     "health_v1": 1,
     "dac_steps_v1": 1,
     "environment_v1": 1,
-    "estimates_v2": 2,
+    "accepted_pps_spans_v1": 1,
+    "estimates_v3": 3,
     "control_previews_v1": 1,
-    "active_transactions_v2": 2,
-    "active_hybrid_decisions_v2": 2,
-    "active_hybrid_maintenance_v1": 1,
-    "relative_phase_observations_v1": 1,
-    "phase_estimator_outputs_v1": 1,
+    "active_transactions_v3": 3,
+    "active_hybrid_decisions_v3": 3,
+    "active_hybrid_maintenance_v2": 2,
+    "relative_phase_observations_v2": 2,
+    "phase_estimator_outputs_v2": 2,
     "tight_deadband_decisions_v1": 1,
 }
 
@@ -594,13 +626,14 @@ SEQUENCE_FIELDS = {
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
-    "estimates_v2": "estimate_seq",
+    "accepted_pps_spans_v1": "accepted_boundary_ordinal",
+    "estimates_v3": "estimate_seq",
     "control_previews_v1": "control_seq",
-    "active_transactions_v2": "transaction_record_sequence",
-    "active_hybrid_decisions_v2": "hybrid_record_sequence",
-    "active_hybrid_maintenance_v1": "maintenance_record_sequence",
-    "relative_phase_observations_v1": "observation_sequence",
-    "phase_estimator_outputs_v1": "observation_sequence",
+    "active_transactions_v3": "transaction_record_sequence",
+    "active_hybrid_decisions_v3": "hybrid_record_sequence",
+    "active_hybrid_maintenance_v2": "maintenance_record_sequence",
+    "relative_phase_observations_v2": "observation_sequence",
+    "phase_estimator_outputs_v2": "observation_sequence",
     "tight_deadband_decisions_v1": "decision_sequence",
 }
 
@@ -613,13 +646,14 @@ TIMESTAMP_FIELDS = {
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
-    "estimates_v2": ("estimator_timestamp_ticks",),
+    "accepted_pps_spans_v1": ("opening_reference_timestamp_ticks", "closing_reference_timestamp_ticks"),
+    "estimates_v3": ("estimator_timestamp_ticks",),
     "control_previews_v1": ("decision_timestamp_ticks",),
-    "active_transactions_v2": ("event_timestamp_ticks",),
-    "active_hybrid_decisions_v2": ("decision_timestamp_ticks",),
-    "active_hybrid_maintenance_v1": ("event_timestamp_ticks",),
-    "relative_phase_observations_v1": (),
-    "phase_estimator_outputs_v1": (),
+    "active_transactions_v3": ("event_timestamp_ticks",),
+    "active_hybrid_decisions_v3": ("decision_timestamp_ticks",),
+    "active_hybrid_maintenance_v2": ("event_timestamp_ticks",),
+    "relative_phase_observations_v2": (),
+    "phase_estimator_outputs_v2": (),
     "tight_deadband_decisions_v1": ("decision_timestamp_ticks",),
 }
 
@@ -638,13 +672,14 @@ DOMAIN_FIELDS = {
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
-    "estimates_v2": ("time_domain",),
+    "accepted_pps_spans_v1": ("time_domain",),
+    "estimates_v3": ("time_domain",),
     "control_previews_v1": ("time_domain",),
-    "active_transactions_v2": ("time_domain",),
-    "active_hybrid_decisions_v2": ("time_domain",),
-    "active_hybrid_maintenance_v1": ("time_domain",),
-    "relative_phase_observations_v1": (),
-    "phase_estimator_outputs_v1": (),
+    "active_transactions_v3": ("time_domain",),
+    "active_hybrid_decisions_v3": ("time_domain",),
+    "active_hybrid_maintenance_v2": ("time_domain",),
+    "relative_phase_observations_v2": (),
+    "phase_estimator_outputs_v2": (),
     "tight_deadband_decisions_v1": ("time_domain",),
 }
 
@@ -659,9 +694,13 @@ SESSION_FIELDS = {
     "pps_snapshots_v1": "session",
     "forwarded_monitor_snapshots_v1": "session",
     "tight_deadband_decisions_v1": "capture_session",
-    "active_transactions_v2": "session_id",
-    "active_hybrid_decisions_v2": "capture_session",
-    "active_hybrid_maintenance_v1": "capture_session",
+    "accepted_pps_spans_v1": "capture_session",
+    "estimates_v3": "capture_session",
+    "active_transactions_v3": "session_id",
+    "active_hybrid_decisions_v3": "capture_session",
+    "active_hybrid_maintenance_v2": "capture_session",
+    "relative_phase_observations_v2": "capture_session",
+    "phase_estimator_outputs_v2": "capture_session",
 }
 
 if SEQUENCE_FIELDS != {
@@ -914,8 +953,9 @@ def _check_sequence(contract: str, row: dict[str, str], row_number: int, previou
     if contract in {
         "pps_snapshots_v1",
         "forwarded_monitor_snapshots_v1",
-        "relative_phase_observations_v1",
-        "phase_estimator_outputs_v1",
+        "accepted_pps_spans_v1",
+        "relative_phase_observations_v2",
+        "phase_estimator_outputs_v2",
     }:
         return current if current is not None else previous
     if current is not None and previous is not None and current <= previous:
@@ -1055,6 +1095,91 @@ def _check_pps_snapshot(row: dict[str, str], row_number: int, errors: list[str])
             )
     if not row.get("backend"):
         errors.append(f"row {row_number}: backend must not be empty")
+
+
+def _check_accepted_pps_span_v1(
+    row: dict[str, str], row_number: int, errors: list[str]
+) -> None:
+    values = {
+        field_name: _parse_non_negative_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        for field_name in (
+            "capture_session",
+            "acceptance_epoch",
+            "accepted_boundary_ordinal",
+            "opening_snapshot_sequence",
+            "closing_snapshot_sequence",
+            "opening_reference_sequence",
+            "closing_reference_sequence",
+            "opening_reference_timestamp_ticks",
+            "closing_reference_timestamp_ticks",
+            "source_count_first_sequence",
+            "source_count_last_sequence",
+            "source_count_record_count",
+            "counted_edges",
+            "excluded_candidate_count",
+            "nominal_interval_count",
+        )
+    }
+    if row.get("time_domain") != "rp2040_monotonic_us32":
+        errors.append(
+            f"row {row_number}: APS time_domain must be rp2040_monotonic_us32"
+        )
+    _check_sha256(row, "acceptance_policy_sha256", row_number, errors)
+    if values["capture_session"] == 0 or values["acceptance_epoch"] == 0:
+        errors.append(
+            f"row {row_number}: APS capture_session and acceptance_epoch must be non-zero"
+        )
+    if values["nominal_interval_count"] != 1:
+        errors.append(f"row {row_number}: APS nominal_interval_count must equal 1")
+    excluded = values["excluded_candidate_count"]
+    count_records = values["source_count_record_count"]
+    if excluded is not None and excluded > 8:
+        errors.append(f"row {row_number}: APS excluded_candidate_count exceeds 8")
+    if None not in (excluded, count_records) and count_records != excluded + 1:
+        errors.append(
+            f"row {row_number}: APS source_count_record_count must equal excluded_candidate_count + 1"
+        )
+    opening_ticks = values["opening_reference_timestamp_ticks"]
+    closing_ticks = values["closing_reference_timestamp_ticks"]
+    if None not in (opening_ticks, closing_ticks):
+        interval = (closing_ticks - opening_ticks) & 0xFFFFFFFF
+        if not 998_750 <= interval <= 1_001_250:
+            errors.append(
+                f"row {row_number}: APS accepted interval is outside 998750..1001250 ticks"
+            )
+    for opening_name, closing_name in (
+        ("opening_snapshot_sequence", "closing_snapshot_sequence"),
+        ("opening_reference_sequence", "closing_reference_sequence"),
+    ):
+        opening = values[opening_name]
+        closing = values[closing_name]
+        if None not in (opening, closing, count_records):
+            delta = (closing - opening) & 0xFFFFFFFF
+            if delta != count_records or delta > 9:
+                errors.append(
+                    f"row {row_number}: APS {closing_name} distance must equal its raw count range"
+                )
+    opening_snapshot = values["opening_snapshot_sequence"]
+    first_count = values["source_count_first_sequence"]
+    closing_snapshot = values["closing_snapshot_sequence"]
+    last_count = values["source_count_last_sequence"]
+    if None not in (opening_snapshot, first_count) and first_count != (
+        opening_snapshot + 1
+    ) & 0xFFFFFFFF:
+        errors.append(
+            f"row {row_number}: APS first raw CNT must close after the opening snapshot"
+        )
+    if None not in (closing_snapshot, last_count) and last_count != closing_snapshot:
+        errors.append(
+            f"row {row_number}: APS last raw CNT must close at the closing snapshot"
+        )
+    counted_edges = values["counted_edges"]
+    if counted_edges is not None and not 0 < counted_edges <= 159_600_000:
+        errors.append(
+            f"row {row_number}: APS counted_edges is outside the frozen physical bound"
+        )
 
 
 def _check_forwarded_monitor_snapshot(
@@ -1247,7 +1372,7 @@ def _check_estimate_common(row: dict[str, str], row_number: int, errors: list[st
         errors,
         (
             "estimate_id",
-            "source_count_ref",
+            "source_accepted_spans_ref",
             "source_status_refs",
             "source_dac_ref",
             "manifest_ref",
@@ -1294,19 +1419,52 @@ def _check_estimate_common(row: dict[str, str], row_number: int, errors: list[st
         "frequency_observation_hz",
         "frequency_estimate_hz",
         "frequency_error_hz",
-        "frequency_uncertainty_hz",
         "dispersion_hz",
     ):
         _parse_optional_float(row.get(field_name), field_name, row_number, errors)
     _parse_non_negative_int(row.get("accepted_sample_count", ""), "accepted_sample_count", row_number, errors)
-    if row.get("source_count_seq"):
-        _parse_non_negative_int(row.get("source_count_seq", ""), "source_count_seq", row_number, errors)
-    for field_name in ("source_reference_first_seq", "source_reference_last_seq"):
-        if row.get(field_name):
-            _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    source_values = {
+        field_name: _parse_non_negative_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        for field_name in (
+            "capture_session",
+            "source_acceptance_epoch",
+            "source_opening_accepted_boundary_ordinal",
+            "source_closing_accepted_boundary_ordinal",
+            "source_opening_snapshot_sequence",
+            "source_closing_snapshot_sequence",
+            "source_opening_reference_sequence",
+            "source_closing_reference_sequence",
+        )
+    }
+    session = source_values["capture_session"]
+    epoch = source_values["source_acceptance_epoch"]
+    opening = source_values["source_opening_accepted_boundary_ordinal"]
+    closing = source_values["source_closing_accepted_boundary_ordinal"]
+    samples = _parse_non_negative_int(
+        row.get("accepted_sample_count", ""),
+        "accepted_sample_count",
+        row_number,
+        errors,
+    )
+    if session == 0 or epoch == 0:
+        errors.append(f"row {row_number}: EST accepted source session and epoch must be non-zero")
+    if None not in (opening, closing, samples):
+        span_count = (closing - opening) & 0xFFFFFFFF
+        if span_count == 0 or span_count > 0x7FFFFFFF or span_count != samples:
+            errors.append(
+                f"row {row_number}: EST accepted-boundary range must equal accepted_sample_count"
+            )
+    if None not in (session, epoch, opening, closing):
+        expected_ref = f"live:APS:{session}:{epoch}:{opening}:{closing}"
+        if row.get("source_accepted_spans_ref") != expected_ref:
+            errors.append(
+                f"row {row_number}: source_accepted_spans_ref must equal {expected_ref!r}"
+            )
 
 
-def _check_estimate_v2(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+def _check_estimate_v3(row: dict[str, str], row_number: int, errors: list[str]) -> None:
     _check_estimate_common(row, row_number, errors)
     status = row.get("uncertainty_status")
     if status not in VALID_UNCERTAINTY_STATUS:
@@ -1530,7 +1688,36 @@ def _check_control_preview_v1(row: dict[str, str], row_number: int, errors: list
         errors.append(f"row {row_number}: inhibited preview must not contain proposed_dac_code")
 
 
-def _check_active_transaction_v2(
+def _check_accepted_source_range(
+    row: dict[str, str], row_number: int, errors: list[str], *, required: bool
+) -> None:
+    names = (
+        "source_acceptance_epoch",
+        "source_opening_accepted_boundary_ordinal",
+        "source_closing_accepted_boundary_ordinal",
+    )
+    values = {
+        name: _parse_non_negative_int(row.get(name, ""), name, row_number, errors)
+        for name in names
+    }
+    epoch = values[names[0]]
+    opening = values[names[1]]
+    closing = values[names[2]]
+    if not required and (epoch, opening, closing) == (0, 0, 0):
+        return
+    if epoch in {None, 0} or opening is None or closing is None:
+        errors.append(
+            f"row {row_number}: accepted source identity must be complete and use a non-zero epoch"
+        )
+        return
+    distance = (closing - opening) & 0xFFFFFFFF
+    if distance == 0 or distance > 0x7FFFFFFF:
+        errors.append(
+            f"row {row_number}: accepted source boundary range is empty or backward"
+        )
+
+
+def _check_active_transaction_v3(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
     _check_required_text(
@@ -1597,8 +1784,9 @@ def _check_active_transaction_v2(
         "nonce",
         "request_sequence",
         "decision_sequence",
-        "source_first_sequence",
-        "source_last_sequence",
+        "source_acceptance_epoch",
+        "source_opening_accepted_boundary_ordinal",
+        "source_closing_accepted_boundary_ordinal",
         "decision_timestamp_s",
         "current_applied_code",
         "requested_code",
@@ -1639,11 +1827,13 @@ def _check_active_transaction_v2(
         row.get("request_sequence", ""), "request_sequence", row_number, []
     )
     if event == "manual_start":
+        _check_accepted_source_range(row, row_number, errors, required=False)
         if request_sequence != 0 or row.get("evidence_state") != "evidence_clear":
             errors.append(
                 f"row {row_number}: manual_start must have request_sequence=0 and evidence_clear"
             )
     else:
+        _check_accepted_source_range(row, row_number, errors, required=True)
         if request_sequence in (None, 0):
             errors.append(f"row {row_number}: {event} requires a non-zero request_sequence")
         expected_evidence = {
@@ -1683,7 +1873,7 @@ def _check_active_transaction_v2(
         errors.append(f"row {row_number}: response requires a response classification")
 
 
-def _check_active_hybrid_decision_v2(
+def _check_active_hybrid_decision_v3(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
     _check_required_text(
@@ -1746,8 +1936,9 @@ def _check_active_hybrid_decision_v2(
         "decision_timestamp_ticks",
         "decision_timestamp_s",
         "capture_session",
-        "source_first_sequence",
-        "source_last_sequence",
+        "source_acceptance_epoch",
+        "source_opening_accepted_boundary_ordinal",
+        "source_closing_accepted_boundary_ordinal",
         "phase_epoch",
         "phase_observation_sequence",
         "current_applied_code",
@@ -1764,6 +1955,7 @@ def _check_active_hybrid_decision_v2(
         "actual_dac_epoch",
     ):
         _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    _check_accepted_source_range(row, row_number, errors, required=True)
     try:
         decision_ticks = int(row["decision_timestamp_ticks"], 10)
         decision_seconds = int(row["decision_timestamp_s"], 10)
@@ -1848,7 +2040,7 @@ def _check_active_hybrid_decision_v2(
         errors.append(f"row {row_number}: limited active decision retained a non-zero delta")
 
 
-def _check_active_hybrid_maintenance_v1(
+def _check_active_hybrid_maintenance_v2(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
     """Validate one adaptive-hybrid maintenance lifecycle record.
@@ -1933,8 +2125,9 @@ def _check_active_hybrid_maintenance_v1(
         "maintenance_record_sequence",
         "event_timestamp_ticks",
         "capture_session",
-        "source_first_sequence",
-        "source_last_sequence",
+        "source_acceptance_epoch",
+        "source_opening_accepted_boundary_ordinal",
+        "source_closing_accepted_boundary_ordinal",
         "phase_epoch",
         "phase_observation_sequence",
         "current_applied_code",
@@ -1952,7 +2145,7 @@ def _check_active_hybrid_maintenance_v1(
         "requested_code",
         "requalification_window_count_before",
         "requalification_window_count_after",
-        "requalification_d14_d8_observation_sequence",
+        "requalification_accepted_boundary_ordinal",
         "evidence_burst_sequence",
         "evidence_burst_record_ordinal",
         "evidence_burst_record_count",
@@ -2015,17 +2208,7 @@ def _check_active_hybrid_maintenance_v1(
             errors.append(
                 f"row {row_number}: {field_name} is outside A800..AB00"
             )
-    source_first = parsed_unsigned["source_first_sequence"]
-    source_last = parsed_unsigned["source_last_sequence"]
-    if (
-        source_first not in {None, 0}
-        and source_last not in {None, 0}
-        and source_last <= source_first
-    ):
-        errors.append(
-            f"row {row_number}: source_last_sequence must be greater than "
-            "source_first_sequence for (opening, closing] support"
-        )
+    _check_accepted_source_range(row, row_number, errors, required=False)
     current_code = parsed_unsigned["current_applied_code"]
     requested_code = parsed_unsigned["requested_code"]
     if (
@@ -2096,8 +2279,9 @@ def _check_active_hybrid_maintenance_v1(
     hybrid_join_fields = (
         "hybrid_record_sequence",
         "decision_sequence",
-        "source_first_sequence",
-        "source_last_sequence",
+        "source_acceptance_epoch",
+        "source_opening_accepted_boundary_ordinal",
+        "source_closing_accepted_boundary_ordinal",
     )
     transaction_join_fields = (
         "transaction_record_sequence",
@@ -2324,7 +2508,7 @@ def _check_active_hybrid_maintenance_v1(
             and row.get("metadata_hold_after") == "true"
             and parsed_unsigned["requalification_window_count_after"] == 0
             and parsed_unsigned[
-                "requalification_d14_d8_observation_sequence"
+                "requalification_accepted_boundary_ordinal"
             ] not in {None, 0}
         ):
             errors.append(
@@ -2332,13 +2516,13 @@ def _check_active_hybrid_maintenance_v1(
                 "hold at a zero post-requalification window count and bind a "
                 "non-zero D14/D8 observation frontier"
             )
-    elif parsed_unsigned["requalification_d14_d8_observation_sequence"] not in {
+    elif parsed_unsigned["requalification_accepted_boundary_ordinal"] not in {
         None,
         0,
     }:
         errors.append(
             f"row {row_number}: only gnss_metadata_requalified may bind "
-            "requalification_d14_d8_observation_sequence"
+            "requalification_accepted_boundary_ordinal"
         )
     if event == "decision" and row.get("metadata_hold_before") == "true":
         requalification_before = parsed_unsigned[
@@ -2410,7 +2594,7 @@ def _check_rph_source_identity(row: dict[str, str], row_number: int, errors: lis
         _check_sha256(row, "source_file_sha256", row_number, errors)
 
 
-def _check_relative_phase_observation_v1(
+def _check_relative_phase_observation_v2(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
     _check_required_text(
@@ -2430,6 +2614,8 @@ def _check_relative_phase_observation_v1(
         "phase_epoch",
         "observation_sequence",
         "capture_session",
+        "acceptance_epoch",
+        "accepted_boundary_ordinal",
         "opening_snapshot_sequence",
         "closing_snapshot_sequence",
         "opening_reference_sequence",
@@ -2437,6 +2623,27 @@ def _check_relative_phase_observation_v1(
         "dac_epoch",
     ):
         _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    qualified = row.get("qualification_state") == "qualified"
+    try:
+        session = int(row["capture_session"])
+        acceptance_epoch = int(row["acceptance_epoch"])
+        accepted_ordinal = int(row["accepted_boundary_ordinal"])
+    except (KeyError, TypeError, ValueError):
+        pass
+    else:
+        if qualified and (session == 0 or acceptance_epoch == 0):
+            errors.append(
+                f"row {row_number}: qualified RPH source session and acceptance epoch must be non-zero"
+            )
+        expected_ref = f"live:APS:{session}:{acceptance_epoch}:{accepted_ordinal}"
+        if qualified and row.get("source_accepted_span_ref") != expected_ref:
+            errors.append(
+                f"row {row_number}: source_accepted_span_ref must equal {expected_ref!r}"
+            )
+        elif not qualified and row.get("source_accepted_span_ref"):
+            errors.append(
+                f"row {row_number}: non-qualified RPH must not claim an accepted span"
+            )
     for field_name in ("interval_edges", "edge_error_cycles", "relative_phase_cycles"):
         if row.get(field_name):
             _parse_int(row[field_name], field_name, row_number, errors)
@@ -2456,17 +2663,16 @@ def _check_relative_phase_observation_v1(
         )
     _check_rph_source_identity(row, row_number, errors)
     _check_sha256(row, "configuration_sha256", row_number, errors)
-    accepted = row.get("qualification_state") == "qualified"
     interval_fields = ("interval_edges", "edge_error_cycles")
-    if accepted and any(not row.get(field_name) for field_name in interval_fields):
+    if qualified and any(not row.get(field_name) for field_name in interval_fields):
         errors.append(f"row {row_number}: qualified RPH requires interval_edges and edge_error_cycles")
-    if not accepted and any(row.get(field_name) for field_name in interval_fields):
+    if not qualified and any(row.get(field_name) for field_name in interval_fields):
         errors.append(f"row {row_number}: non-qualified RPH must not claim interval edge values")
-    if not accepted and not row.get("discontinuity_reason"):
+    if not qualified and not row.get("discontinuity_reason"):
         errors.append(f"row {row_number}: non-qualified RPH requires discontinuity_reason")
 
 
-def _check_phase_estimator_output_v1(
+def _check_phase_estimator_output_v2(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
     _check_required_text(
@@ -2482,8 +2688,21 @@ def _check_phase_estimator_output_v1(
             "reason_codes",
         ),
     )
-    for field_name in ("phase_epoch", "observation_sequence"):
+    for field_name in (
+        "phase_epoch",
+        "observation_sequence",
+        "capture_session",
+        "acceptance_epoch",
+        "accepted_boundary_ordinal",
+    ):
         _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+    try:
+        if int(row["capture_session"]) == 0 or int(row["acceptance_epoch"]) == 0:
+            errors.append(
+                f"row {row_number}: PHE source session and acceptance epoch must be non-zero"
+            )
+    except (KeyError, TypeError, ValueError):
+        pass
     _parse_int(
         row.get("raw_relative_phase_cycles", ""),
         "raw_relative_phase_cycles",
@@ -2763,6 +2982,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_count_observation(row, row_count, errors)
             if context.contract == "pps_snapshots_v1":
                 _check_pps_snapshot(row, row_count, errors)
+            if context.contract == "accepted_pps_spans_v1":
+                _check_accepted_pps_span_v1(row, row_count, errors)
             if context.contract == "forwarded_monitor_snapshots_v1":
                 _check_forwarded_monitor_snapshot(row, row_count, errors)
             if context.contract == "association_loss_decisions_v1":
@@ -2773,20 +2994,20 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_dac_step(row, row_count, errors)
             if context.contract == "environment_v1":
                 _check_environment(row, row_count, errors)
-            if context.contract == "estimates_v2":
-                _check_estimate_v2(row, row_count, errors)
+            if context.contract == "estimates_v3":
+                _check_estimate_v3(row, row_count, errors)
             if context.contract == "control_previews_v1":
                 _check_control_preview_v1(row, row_count, errors)
-            if context.contract == "active_transactions_v2":
-                _check_active_transaction_v2(row, row_count, errors)
-            if context.contract == "active_hybrid_decisions_v2":
-                _check_active_hybrid_decision_v2(row, row_count, errors)
-            if context.contract == "active_hybrid_maintenance_v1":
-                _check_active_hybrid_maintenance_v1(row, row_count, errors)
-            if context.contract == "relative_phase_observations_v1":
-                _check_relative_phase_observation_v1(row, row_count, errors)
-            if context.contract == "phase_estimator_outputs_v1":
-                _check_phase_estimator_output_v1(row, row_count, errors)
+            if context.contract == "active_transactions_v3":
+                _check_active_transaction_v3(row, row_count, errors)
+            if context.contract == "active_hybrid_decisions_v3":
+                _check_active_hybrid_decision_v3(row, row_count, errors)
+            if context.contract == "active_hybrid_maintenance_v2":
+                _check_active_hybrid_maintenance_v2(row, row_count, errors)
+            if context.contract == "relative_phase_observations_v2":
+                _check_relative_phase_observation_v2(row, row_count, errors)
+            if context.contract == "phase_estimator_outputs_v2":
+                _check_phase_estimator_output_v2(row, row_count, errors)
             if context.contract == "tight_deadband_decisions_v1":
                 _check_tight_deadband_decision_v1(
                     row,

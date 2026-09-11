@@ -13,13 +13,23 @@
     "expected_snapshot_backend",
     "authoritative_denominator",
     "authoritative_policy",
-    "invalidation_policy"
+    "invalidation_policy",
+    "reference_acceptance_policy_ref",
+    "reference_acceptance_policy_sha256"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "profile_id": {"const": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1"},
-    "status": {"const": "selected_production_estimator"},
-    "method_id": {"const": "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1"},
+    "schema_version": {
+      "const": 1
+    },
+    "profile_id": {
+      "const": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1"
+    },
+    "status": {
+      "const": "selected_production_estimator"
+    },
+    "method_id": {
+      "const": "PPS_ACCEPTED_SPAN_FREQUENCY_V1"
+    },
     "base_estimator": {
       "type": "object",
       "additionalProperties": false,
@@ -35,19 +45,41 @@
         "criteria_rationale_document"
       ],
       "properties": {
-        "counter_direction": {"const": "down"},
-        "counter_width_bits": {"const": 32},
-        "accumulator_width_bits": {"const": 64},
-        "nominal_reference_interval_s": {"const": 1.0},
-        "timer_domain": {"const": "rp2040_monotonic_us32"},
-        "timer_nominal_hz": {"const": 1000000},
-        "maximum_captured_edge_rate_hz": {"const": 133000000},
-        "uncertainty_policy": {"const": "unknown_components_unavailable"},
-        "criteria_rationale_document": {"const": "docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md"}
+        "counter_direction": {
+          "const": "down"
+        },
+        "counter_width_bits": {
+          "const": 32
+        },
+        "accumulator_width_bits": {
+          "const": 64
+        },
+        "nominal_reference_interval_s": {
+          "const": 1.0
+        },
+        "timer_domain": {
+          "const": "rp2040_monotonic_us32"
+        },
+        "timer_nominal_hz": {
+          "const": 1000000
+        },
+        "maximum_captured_edge_rate_hz": {
+          "const": 133000000
+        },
+        "uncertainty_policy": {
+          "const": "unknown_components_unavailable"
+        },
+        "criteria_rationale_document": {
+          "const": "docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md"
+        }
       }
     },
-    "expected_snapshot_backend": {"const": "pio_wait_cumulative_snapshot_dma_v1"},
-    "authoritative_denominator": {"const": "nominal_accepted_D14_interval_count"},
+    "expected_snapshot_backend": {
+      "const": "pio_wait_cumulative_snapshot_dma_v1"
+    },
+    "authoritative_denominator": {
+      "const": "nominal_accepted_D14_interval_count"
+    },
     "authoritative_policy": {
       "type": "object",
       "additionalProperties": false,
@@ -59,23 +91,36 @@
         "count_increment_hz"
       ],
       "properties": {
-        "span_s": {"const": 600},
-        "output_mode": {"const": "non_overlapping"},
-        "output_cadence_s": {"const": 600},
-        "fresh_support_recovery_time_s": {"const": 600},
-        "count_increment_hz": {"const": 0.0016666666666666668}
+        "span_s": {
+          "const": 600
+        },
+        "output_mode": {
+          "const": "non_overlapping"
+        },
+        "output_cadence_s": {
+          "const": 600
+        },
+        "fresh_support_recovery_time_s": {
+          "const": 600
+        },
+        "count_increment_hz": {
+          "const": 0.0016666666666666668
+        }
       }
     },
     "invalidation_policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["reset_on", "D10_external_event_anomaly_resets_estimator"],
+      "required": [
+        "reset_on",
+        "D10_external_event_anomaly_resets_estimator"
+      ],
       "properties": {
         "reset_on": {
           "const": [
-            "invalid_adjacent_D14_D8_interval",
+            "accepted_reference_qualification_loss",
             "capture_session_boundary",
-            "sequence_discontinuity",
+            "accepted_span_sequence_discontinuity",
             "reference_association_failure",
             "snapshot_or_counter_fault",
             "parser_or_transport_loss",
@@ -83,8 +128,17 @@
             "declared_settling_exclusion"
           ]
         },
-        "D10_external_event_anomaly_resets_estimator": {"const": false}
+        "D10_external_event_anomaly_resets_estimator": {
+          "const": false
+        }
       }
+    },
+    "reference_acceptance_policy_ref": {
+      "const": "data_contracts/reference_acceptance_policy_v1.json"
+    },
+    "reference_acceptance_policy_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   }
 }

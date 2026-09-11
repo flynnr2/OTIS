@@ -56,7 +56,7 @@ def _snapshot(generation: int, *, contract: str = ACTIVE_STATUS_SNAPSHOT_CONTRAC
 def test_exact_adaptive_status_contract_is_complete_and_selected() -> None:
     snapshot = latest_complete_active_status(_snapshot(7))
     assert snapshot[SNAPSHOT_CONTRACT_KEY] == (
-        "adaptive_hybrid_active_status_snapshot_v1"
+        "adaptive_hybrid_active_status_snapshot_v2"
     )
     assert snapshot[SNAPSHOT_BEGIN_KEY] == "7"
     assert snapshot[SNAPSHOT_COMPLETE_KEY] == "7"

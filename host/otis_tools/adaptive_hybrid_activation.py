@@ -34,6 +34,9 @@ from .adaptive_hybrid_proposal import (
     validate_frozen_proposal,
 )
 from .authoritative_inputs import (
+    REFERENCE_ACCEPTANCE_POLICY_PATH,
+    authoritative_binding,
+    authoritative_document,
     transaction_identities_from_bundle,
     validate_authoritative_inputs,
 )
@@ -46,6 +49,17 @@ ACTIVATION_ID = ADAPTIVE_HYBRID_PROGRAMME.activation_id
 PROGRAMME_ID = ADAPTIVE_HYBRID_PROGRAMME.programme_id
 OPERATION = ADAPTIVE_HYBRID_PROGRAMME.operation
 LIVE_STAGE = ADAPTIVE_HYBRID_PROGRAMME.live_stage
+
+
+def _reference_acceptance(bundle: dict[str, Any]) -> dict[str, str]:
+    frozen = bundle.get("authoritative_inputs")
+    policy = authoritative_document(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
+    binding = authoritative_binding(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
+    return {
+        "policy_id": str(policy["policy_id"]),
+        "policy_sha256": str(binding["sha256"]),
+        "path": REFERENCE_ACCEPTANCE_POLICY_PATH,
+    }
 RUNTIME_RUN_IDENTITY = ADAPTIVE_HYBRID_PROGRAMME.runtime_run_identity
 EXPECTED_BAUD = 115200
 RUN_ACTIVATION_PATH = ADAPTIVE_HYBRID_PROGRAMME.run_activation_path
@@ -319,6 +333,7 @@ def _activation_unsigned(
         "device": _device_contract(bench_attempt),
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
+        "reference_acceptance": _reference_acceptance(bundle),
         "policy": bundle["policy"],
         "host_tools": bundle["host_tools"],
         "topology": {
@@ -804,10 +819,10 @@ def _require_current_reproduction_capability(
 def _required_files() -> list[dict[str, Any]]:
     required = {
         "raw_events_v1", "count_observations_v1", "pps_snapshots_v1",
-        "estimates_v2",
-        "active_transactions_v2", "active_hybrid_decisions_v2",
-        "active_hybrid_maintenance_v1", "relative_phase_observations_v1",
-        "phase_estimator_outputs_v1",
+        "accepted_pps_spans_v1", "estimates_v3",
+        "active_transactions_v3", "active_hybrid_decisions_v3",
+        "active_hybrid_maintenance_v2", "relative_phase_observations_v2",
+        "phase_estimator_outputs_v2",
     }
     files = [dict(item) for item in adaptive_hybrid_csv_files()]
     for item in files:
@@ -972,13 +987,22 @@ def _channels() -> list[dict[str, Any]]:
 
 
 def _contract_versions(files: list[dict[str, Any]]) -> dict[str, int]:
+    version_three = {
+        "estimates_v3",
+        "active_transactions_v3",
+        "active_hybrid_decisions_v3",
+    }
     version_two = {
-        "estimates_v2",
-        "active_transactions_v2",
-        "active_hybrid_decisions_v2",
+        "active_hybrid_maintenance_v2",
+        "relative_phase_observations_v2",
+        "phase_estimator_outputs_v2",
     }
     return {
-        item["contract"]: 2 if item["contract"] in version_two else 1
+        item["contract"]: (
+            3 if item["contract"] in version_three
+            else 2 if item["contract"] in version_two
+            else 1
+        )
         for item in files
     }
 
@@ -1088,6 +1112,7 @@ def create_run_manifest(
         "activation": {**_binding(activation_path), "activation_sha256": activation["activation_sha256"]},
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
+        "reference_acceptance": _reference_acceptance(bundle),
         "policy": bundle["policy"],
         "transaction_identities": transaction_identities_from_bundle(bundle),
         "host": _host_contract(serial_device, bundle, bench_attempt),
@@ -1205,6 +1230,7 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         },
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
+        "reference_acceptance": _reference_acceptance(bundle),
         "policy": bundle["policy"],
         "transaction_identities": transaction_identities_from_bundle(bundle),
         "host": _host_contract(str(serial_device), bundle, bench_attempt),

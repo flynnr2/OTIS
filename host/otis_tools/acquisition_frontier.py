@@ -11,6 +11,8 @@ from .raw_measurement_replay import (
     SELECTED_ESTIMATOR_ID, _RAW_REFERENCE_DOMAIN, _SNAPSHOT_BACKEND,
     _U32_MODULUS, _raw_count_replay, _u32,
 )
+from .accepted_span_replay import POLICY_PATH, replay_accepted_spans
+from .authoritative_inputs import authoritative_binding, authoritative_document
 from .time_domains import forward_progress
 
 FRONTIER_PATH = "reports/acquisition_frontier_v1.json"
@@ -19,7 +21,7 @@ FRONTIER_POLICY = {
     "policy_id": "otis_prospective_acquisition_frontier_v1",
     "selection": "first_unique_retained_adjacent_REF_SNP_CNT_pair",
     "prefix": "retained_unqualified",
-    "authority": "manual_setup_requires_anchor_feedback_requires_complete_600_interval_source",
+    "authority": "manual_setup_requires_raw_anchor_feedback_requires_complete_600_accepted_span_source",
     "advancement": "forbidden",
 }
 
@@ -88,6 +90,7 @@ def read_acquisition_readiness(
         if source_estimate_id is not None and source_estimate_id in ids:
             proof = proofs[ids.index(source_estimate_id)]
             _bind_source_at_offset(run_dir, manifest_value, "EST", proof)
+            _bind_accepted_span_window(run_dir, manifest_value, proof)
             if proof.get("capture_session") != result["capture_session"]:
                 raise ValueError("selected EST proof belongs to a different capture session")
             result["source_proof"] = proof
@@ -115,9 +118,12 @@ class AcquisitionFrontierTracker:
         self.frontier: dict[str, Any] | None = None
         self.errors: list[str] = []
         self.ordinals: dict[str, int] = {}
-        self.references: deque[dict[str, Any]] = deque(maxlen=2048)
-        self.snapshots: deque[dict[str, Any]] = deque(maxlen=1202)
-        self.counts: deque[dict[str, Any]] = deque(maxlen=1201)
+        # Six hundred admitted spans may each contain eight excluded raw
+        # candidates. Retain exactly that bounded worst-case source horizon.
+        self.references: deque[dict[str, Any]] = deque(maxlen=5402)
+        self.snapshots: deque[dict[str, Any]] = deque(maxlen=5402)
+        self.counts: deque[dict[str, Any]] = deque(maxlen=5401)
+        self.spans: deque[dict[str, Any]] = deque(maxlen=601)
         self.qualified_estimate_ids: deque[str] = deque(maxlen=2)
         self.qualified_estimates: deque[dict[str, Any]] = deque(maxlen=2)
         self.pending_estimates: dict[str, dict[str, Any]] = {}
@@ -163,7 +169,7 @@ class AcquisitionFrontierTracker:
 
     def observe(self, record: dict[str, str], *, line_number: int, csv_byte_offset: int | None = None) -> None:
         tag = record.get("record_type")
-        if tag not in {"REF", "SNP", "CNT", "EST"}:
+        if tag not in {"REF", "SNP", "CNT", "APS", "EST"}:
             return  # D10 is never a source or veto for this frontier.
         try:
             if type(line_number) is not int or line_number <= self.last_line:
@@ -182,6 +188,8 @@ class AcquisitionFrontierTracker:
                 self._snapshot(source)
             elif tag == "CNT":
                 self._count(source)
+            elif tag == "APS":
+                self._span(source)
             else:
                 self._estimate(source)
         except (KeyError, TypeError, ValueError, ArithmeticError) as error:
@@ -218,6 +226,7 @@ class AcquisitionFrontierTracker:
                 self.qualified_estimate_ids.clear()
                 self.qualified_estimates.clear()
                 self.pending_estimates.clear()
+                self.spans.clear()
                 self.closed_sessions.add(int(before["session"]))
                 if session in self.closed_sessions:
                     raise ValueError("SNP returns to a closed session")
@@ -294,6 +303,34 @@ class AcquisitionFrontierTracker:
             self._publish()
         self._reconsider_estimates(force_publish=session_pair_became_ready)
 
+    def _span(self, source: dict[str, Any]) -> None:
+        row = source["record"]
+        session = _u32(row, "capture_session")
+        epoch = _u32(row, "acceptance_epoch")
+        ordinal = _u32(row, "accepted_boundary_ordinal")
+        if not session or not epoch:
+            raise ValueError("APS source identity is zero")
+        binding = authoritative_binding(
+            self.manifest.get("authoritative_inputs"), POLICY_PATH
+        )
+        if row.get("acceptance_policy_sha256") != binding["sha256"]:
+            raise ValueError("APS acceptance policy differs from frozen inputs")
+        if self.current_capture_session is not None and session != self.current_capture_session:
+            raise ValueError("APS capture session differs from current raw capture")
+        if self.spans:
+            before = self.spans[-1]["record"]
+            before_identity = (
+                int(before["capture_session"]), int(before["acceptance_epoch"]),
+                int(before["accepted_boundary_ordinal"]),
+            )
+            if (session, epoch) == before_identity[:2]:
+                if ordinal != (before_identity[2] + 1) % _U32_MODULUS:
+                    raise ValueError("APS accepted boundary ordinal is discontinuous")
+            elif session == before_identity[0] and epoch <= before_identity[1]:
+                raise ValueError("APS acceptance epoch moved backward")
+        self.spans.append(source)
+        self._reconsider_estimates(force_publish=False)
+
     def _estimate(self, source: dict[str, Any]) -> None:
         row = source["record"]
         sequence = _u32(row, "estimate_seq")
@@ -331,57 +368,59 @@ class AcquisitionFrontierTracker:
                     "csv_byte_offset": source["csv_byte_offset"],
                     "record": source["record"],
                     "capture_session": self.current_capture_session,
+                    "source_acceptance_epoch": int(source["record"]["source_acceptance_epoch"]),
+                    "source_opening_accepted_boundary_ordinal": int(source["record"]["source_opening_accepted_boundary_ordinal"]),
+                    "source_closing_accepted_boundary_ordinal": int(source["record"]["source_closing_accepted_boundary_ordinal"]),
+                    "accepted_span_sources": source["accepted_span_sources"],
                 })
         if force_publish:
             self._publish()
 
     def _evaluate_estimate(self, source: dict[str, Any]) -> str:
         row = source["record"]
-        snapshots = list(self.snapshots)
-        closing_key = (int(row["source_reference_last_seq"]), int(row["estimator_timestamp_ticks"]))
-        positions = [index for index, item in enumerate(snapshots)
-                     if (int(item["record"]["snapshot_sequence"]), int(item["record"]["reference_timestamp_ticks"])) == closing_key]
-        if len(positions) > 1:
-            raise ValueError("selected EST closing source identity is ambiguous")
-        if not positions:
-            if not snapshots:
-                return "pending"
-            forward = (closing_key[0] - int(snapshots[-1]["record"]["snapshot_sequence"])) % _U32_MODULUS
-            if 0 < forward <= 2048:
-                return "pending"  # EST may lead the independent raw output queue.
-            if self.frontier is None:
-                return "unqualified_prefix"
-            raise ValueError("selected EST closing source is missing or outside retained history")
-        closing = positions[0]
         if self.frontier is None:
             return "pending"
-        opening_ordinal = self.frontier["opening_snapshot"]["csv_row_ordinal"]
-        if snapshots[closing]["csv_row_ordinal"] - 600 < opening_ordinal:
-            return "unqualified_prefix"
-        if closing < 600:
-            raise ValueError("selected EST complete source was not retained in the bounded observer")
-        snapshots = snapshots[closing - 600:closing + 1]
-        first, last = snapshots[0], snapshots[-1]
-        if (row.get("time_domain") != "rp2040_monotonic_us32"
-            or row.get("source_reference_first_seq") != first["record"]["snapshot_sequence"]
-            or row.get("source_count_seq") != last["record"]["snapshot_sequence"]
+        try:
+            session = _u32(row, "capture_session")
+            epoch = _u32(row, "source_acceptance_epoch")
+            opening = _u32(row, "source_opening_accepted_boundary_ordinal")
+            closing = _u32(row, "source_closing_accepted_boundary_ordinal")
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("selected EST accepted source identity is malformed")
+        available = [item for item in self.spans
+                     if int(item["record"]["capture_session"]) == session
+                     and int(item["record"]["acceptance_epoch"]) == epoch]
+        source_spans = [item for item in available
+                        if 0 < (int(item["record"]["accepted_boundary_ordinal"]) - opening) % _U32_MODULUS <= 600]
+        source_spans.sort(key=lambda item: (int(item["record"]["accepted_boundary_ordinal"]) - opening) % _U32_MODULUS)
+        if len(source_spans) < 600:
+            return "pending"
+        if len(source_spans) != 600 or (closing - opening) % _U32_MODULUS != 600:
+            raise ValueError("selected EST accepted source range is not exactly 600 spans")
+        policy = authoritative_document(self.manifest.get("authoritative_inputs"), POLICY_PATH)
+        policy_sha = authoritative_binding(self.manifest.get("authoritative_inputs"), POLICY_PATH)["sha256"]
+        exact, report, verified = replay_accepted_spans(
+            [item["record"] for item in self.snapshots],
+            [item["record"] for item in self.references],
+            [item["record"] for item in self.counts],
+            [item["record"] for item in source_spans],
+            acceptance_policy=policy, acceptance_policy_sha256=str(policy_sha),
+        )
+        if not exact or len(verified) != 600:
+            raise ValueError("selected EST source is not 600 exact accepted spans: " + "; ".join(report["errors"]))
+        first, last = verified[0], verified[-1]
+        from .accepted_span_replay import accepted_window_ref
+        if (row.get("time_domain") != _RAW_REFERENCE_DOMAIN
+            or row.get("source_accepted_spans_ref") != accepted_window_ref(session, epoch, opening, closing)
+            or int(row.get("source_opening_snapshot_sequence", -1)) != first["opening_snapshot_sequence"]
+            or int(row.get("source_closing_snapshot_sequence", -1)) != last["closing_snapshot_sequence"]
+            or int(row.get("source_opening_reference_sequence", -1)) != first["opening_reference_sequence"]
+            or int(row.get("source_closing_reference_sequence", -1)) != last["closing_reference_sequence"]
             or row.get("accepted_sample_count") != "600"
             or row.get("config_hash") != self.manifest.get("transaction_identities", {}).get("estimator_sha256")
             or any(row.get(field) != "valid" for field in ("observation_validity", "reference_validity", "count_validity"))):
-            raise ValueError("selected EST does not match its complete retained source identity")
-        if not all(item.get("reference") for item in snapshots):
-            raise ValueError("selected EST source lacks retained REF association")
-        keys = {(item["record"]["snapshot_sequence"], item["record"]["reference_timestamp_ticks"]) for item in snapshots[1:]}
-        counts = [item["record"] for item in self.counts if (item["record"]["count_seq"], item["record"]["gate_close_ticks"]) in keys]
-        if len(counts) < 600 and (not self.counts or (int(self.counts[-1]["record"]["count_seq"]), int(self.counts[-1]["record"]["gate_close_ticks"])) != closing_key):
-            return "pending"
-        exact, report, intervals = _raw_count_replay(
-            [item["record"] for item in snapshots],
-            [item["reference"]["record"] for item in snapshots], counts,
-        )
-        if not exact or len(intervals) != 600 or not all(item["measurement_valid"] for item in intervals):
-            raise ValueError("selected EST source is not 600 complete valid retained intervals: " + "; ".join(report["errors"]))
-        total = sum(item["counted_edges"] for item in intervals)
+            raise ValueError("selected EST does not match its accepted source identity")
+        total = sum(item["counted_edges"] for item in verified)
         # Firmware computes its double frequency before serializing 12 places.
         from decimal import Decimal
         frequency = Decimal.from_float(float(total) / 600.0)
@@ -393,6 +432,15 @@ class AcquisitionFrontierTracker:
             raise ValueError("selected EST arithmetic is not finite")
         if abs(reported_frequency - frequency) > tolerance or abs(reported_error - error_hz) > tolerance:
             raise ValueError("selected EST arithmetic differs from retained raw source")
+        source["accepted_span_sources"] = [
+            {
+                "csv_row_ordinal": item["csv_row_ordinal"],
+                "capture_line_ordinal": item["capture_line_ordinal"],
+                "csv_byte_offset": item["csv_byte_offset"],
+                "row_sha256": item["row_sha256"],
+            }
+            for item in source_spans
+        ]
         return "qualified"
 
 
@@ -480,24 +528,9 @@ def select_required_replay_rows(
         if exact:
             raise ValueError("recorded frontier skipped an earlier complete retained pair")
     required_snapshots = snapshots[opening:]
-    closing_positions: dict[tuple[str, str], list[int]] = {}
-    for position, row in enumerate(required_snapshots):
-        closing_positions.setdefault((row["snapshot_sequence"], row["reference_timestamp_ticks"]), []).append(position)
-    prefix_estimates: set[str] = set()
-    for row in estimates:
-        if row.get("estimator_version") != SELECTED_ESTIMATOR_ID:
-            continue
-        positions = closing_positions.get((row["source_reference_last_seq"], row["estimator_timestamp_ticks"]), [])
-        if len(positions) == 1 and positions[0] < 600:
-            prefix_estimates.add(row["estimate_id"])
-        elif not positions:
-            # A closing occurrence can itself precede the anchor. Require its
-            # exact retained pre-frontier SNP identity rather than infer age.
-            before = [item for item in snapshots[:opening]
-                      if (item["snapshot_sequence"], item["reference_timestamp_ticks"]) == (row["source_reference_last_seq"], row["estimator_timestamp_ticks"])]
-            if len(before) == 1:
-                prefix_estimates.add(row["estimate_id"])
-    return required_snapshots, references[reference:], counts[first_count:], prefix_estimates, {
+    # Accepted-span replay, rather than raw elapsed position, now decides
+    # whether an EST has a complete retained 600-span source.
+    return required_snapshots, references[reference:], counts[first_count:], set(), {
         "exact": True,
         "frontier_sha256": artifact["frontier_sha256"],
         "policy": FRONTIER_POLICY,
@@ -505,7 +538,7 @@ def select_required_replay_rows(
         "unqualified_prefix_count_count": first_count,
         "unqualified_prefix_snapshot_count": opening,
         "unqualified_prefix_reference_count": reference,
-        "unqualified_selected_estimate_ids": sorted(prefix_estimates),
+        "unqualified_selected_estimate_ids": [],
         "raw_and_full_csv_preserved": True,
     }
 
@@ -554,7 +587,7 @@ def _bind_source_at_offset(run_dir: Path, manifest: dict[str, Any], tag: str, so
     offset = source.get("csv_byte_offset")
     if type(offset) is not int or offset < 0:
         raise ValueError("live source proof lacks an exact canonical CSV byte offset")
-    contract = {"REF": "raw_events_v1", "SNP": "pps_snapshots_v1", "CNT": "count_observations_v1", "EST": "estimates_v2"}[tag]
+    contract = {"REF": "raw_events_v1", "SNP": "pps_snapshots_v1", "CNT": "count_observations_v1", "APS": "accepted_pps_spans_v1", "EST": "estimates_v3"}[tag]
     files = [entry for entry in manifest.get("files", []) if entry.get("contract") == contract
              and (tag != "REF" or entry.get("record_type") == "REF")]
     if len(files) != 1:
@@ -573,6 +606,30 @@ def _bind_source_at_offset(run_dir: Path, manifest: dict[str, Any], tag: str, so
     values = next(csv.reader([raw.decode("utf-8").strip()]))
     if len(fields) != len(values) or _digest(dict(zip(fields, values))) != source["row_sha256"]:
         raise ValueError("live source differs from its retained canonical CSV byte position")
+
+
+def _bind_accepted_span_window(
+    run_dir: Path, manifest: dict[str, Any], proof: dict[str, Any]
+) -> None:
+    sources = proof.get("accepted_span_sources")
+    if not isinstance(sources, list) or len(sources) != 600:
+        raise ValueError("live selected EST lacks its 600-span proof")
+    previous_ordinal = 0
+    for source in sources:
+        if (
+            not isinstance(source, dict)
+            or set(source) != {
+                "csv_row_ordinal", "capture_line_ordinal", "csv_byte_offset",
+                "row_sha256",
+            }
+        ):
+            raise ValueError("live accepted-span proof entry is malformed")
+        _bind_source_at_offset(run_dir, manifest, "APS", source)
+        ordinal = source["csv_row_ordinal"]
+        if type(ordinal) is not int or ordinal != previous_ordinal + 1:
+            if previous_ordinal:
+                raise ValueError("live accepted-span CSV rows are not contiguous")
+        previous_ordinal = ordinal
 
 
 def _live_marker_at_offset(run_dir: Path, artifact: dict[str, Any], offset: int | None) -> bool:
@@ -630,6 +687,15 @@ def _validate_live_state(state: Any, manifest_value: dict[str, Any]) -> tuple[li
             raise ValueError("acquisition live state omits a mandatory binding")
     if len(ids) > 2 or any(type(item.get("capture_session")) is not int or type(item.get("csv_row_ordinal")) is not int or item["csv_row_ordinal"] < 1
                           or type(item.get("capture_line_ordinal")) is not int or item["capture_line_ordinal"] < 1
-                          or item["record"].get("estimate_id") != item["estimate_id"] for item in proofs):
+                          or item["record"].get("estimate_id") != item["estimate_id"]
+                          or type(item.get("source_acceptance_epoch")) is not int
+                          or item["source_acceptance_epoch"] <= 0
+                          or any(type(item.get(field)) is not int or not 0 <= item[field] < _U32_MODULUS for field in (
+                              "source_opening_accepted_boundary_ordinal",
+                              "source_closing_accepted_boundary_ordinal",
+                          ))
+                          or not isinstance(item.get("accepted_span_sources"), list)
+                          or len(item["accepted_span_sources"]) != 600
+                          for item in proofs):
         raise ValueError("acquisition selected source proof identity is malformed")
     return ids, proofs

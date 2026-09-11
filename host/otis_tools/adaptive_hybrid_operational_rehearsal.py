@@ -91,10 +91,11 @@ from .capture_device import (
     _serial_owner_pids,
 )
 from .contracts import (
-    ACTIVE_HYBRID_DECISION_V2_FIELDS,
-    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
-    ACTIVE_TRANSACTION_V2_FIELDS,
+    ACTIVE_HYBRID_DECISION_V3_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
+    ACTIVE_TRANSACTION_V3_FIELDS,
     CONTRACT_FIELDS,
+    CONTRACT_SCHEMA_VERSIONS,
 )
 from .evidence import (
     create_evidence_snapshot,
@@ -310,13 +311,16 @@ def _rehearsal_files() -> list[dict[str, Any]]:
         },
         {"path": "csv/count_observations.csv", "contract": "count_observations_v1", "optional": True},
         {"path": "csv/pps_snapshots.csv", "contract": "pps_snapshots_v1", "optional": True},
+        {"path": "csv/accepted_pps_spans_v1.csv", "contract": "accepted_pps_spans_v1", "optional": True},
+        {"path": "csv/relative_phase_observations_v2.csv", "contract": "relative_phase_observations_v2", "optional": True},
+        {"path": "csv/phase_estimator_outputs_v2.csv", "contract": "phase_estimator_outputs_v2", "optional": True},
         {"path": "csv/health.csv", "contract": "health_v1"},
         {"path": "csv/dac_steps.csv", "contract": "dac_steps_v1", "optional": True},
-        {"path": "csv/estimates_v2.csv", "contract": "estimates_v2", "optional": True},
+        {"path": "csv/estimates_v3.csv", "contract": "estimates_v3", "optional": True},
         {"path": "csv/control_previews_v1.csv", "contract": "control_previews_v1", "optional": True},
-        {"path": "csv/active_transactions_v2.csv", "contract": "active_transactions_v2"},
-        {"path": "csv/active_hybrid_decisions_v2.csv", "contract": "active_hybrid_decisions_v2"},
-        {"path": "csv/active_hybrid_maintenance_v1.csv", "contract": "active_hybrid_maintenance_v1"},
+        {"path": "csv/active_transactions_v3.csv", "contract": "active_transactions_v3"},
+        {"path": "csv/active_hybrid_decisions_v3.csv", "contract": "active_hybrid_decisions_v3"},
+        {"path": "csv/active_hybrid_maintenance_v2.csv", "contract": "active_hybrid_maintenance_v2"},
     ]
 
 
@@ -353,6 +357,15 @@ def _channels() -> list[dict[str, Any]]:
             "terminal_authority": False,
         },
     ]
+
+
+def _reference_acceptance_binding(bundle: dict[str, Any]) -> dict[str, str]:
+    path = "data_contracts/reference_acceptance_policy_v1.json"
+    return {
+        "path": path,
+        "policy_id": authoritative_document(bundle["authoritative_inputs"], path)["policy_id"],
+        "policy_sha256": authoritative_binding(bundle["authoritative_inputs"], path)["sha256"],
+    }
 
 
 def create_rehearsal_run_manifest(
@@ -392,6 +405,7 @@ def create_rehearsal_run_manifest(
         "authority_effective": False,
         "closed_loop_control": False,
         "acquisition_frontier": dict(FRONTIER_POLICY),
+        "reference_acceptance": _reference_acceptance_binding(bundle),
         "bundle": {
             **_binding(bundle_path),
             "bundle_sha256": bundle["bundle_sha256"],
@@ -455,15 +469,7 @@ def create_rehearsal_run_manifest(
             canonical_domain_declaration("h1_oscillator_10mhz"),
         ],
         "channels": _channels(),
-        "contracts": {
-            entry["contract"]: (
-                2
-                if entry["contract"]
-                in {"estimates_v2", "active_transactions_v2", "active_hybrid_decisions_v2"}
-                else 1
-            )
-            for entry in files
-        },
+        "contracts": {entry["contract"]: CONTRACT_SCHEMA_VERSIONS[entry["contract"]] for entry in files},
         "files": files,
         "expected_artifacts": [
             "raw/serial.log",
@@ -576,19 +582,7 @@ def _validate_manifest_value(
             "enters_D14_D8_validity_control_or_terminal": False,
         },
     }
-    expected_contracts = {
-        entry["contract"]: (
-            2
-            if entry["contract"]
-            in {
-                "estimates_v2",
-                "active_transactions_v2",
-                "active_hybrid_decisions_v2",
-            }
-            else 1
-        )
-        for entry in _rehearsal_files()
-    }
+    expected_contracts = {entry["contract"]: CONTRACT_SCHEMA_VERSIONS[entry["contract"]] for entry in _rehearsal_files()}
     expected_top_level = {
         "schema_version",
         "template",
@@ -611,6 +605,7 @@ def _validate_manifest_value(
         "authority_effective",
         "closed_loop_control",
         "acquisition_frontier",
+        "reference_acceptance",
         "bundle",
         "proposal",
         "activation",
@@ -652,6 +647,7 @@ def _validate_manifest_value(
         and value.get("authority_effective") is False
         and value.get("closed_loop_control") is False
         and value.get("acquisition_frontier") == FRONTIER_POLICY
+        and value.get("reference_acceptance") == _reference_acceptance_binding(bundle)
         and value.get("board") == "deterministic_pty_no_physical_hardware"
         and value.get("capture_mode") == "real_capture_device_process_over_pty"
         and _is_pty(device)
@@ -845,15 +841,15 @@ class _LifecycleBuilder:
 
     def _frontier_relation(self, observation: AdaptiveHybridObservation) -> str:
         closing = (
-            self.controller._requalification_last_closing_frontier
+            self.controller._requalification_last_closing_accepted_boundary_ordinal
             if self.controller.metadata_requalified
-            else self.controller.last_closing_frontier
+            else self.controller.last_closing_accepted_boundary_ordinal
         )
         if closing is None:
             return "first"
-        if observation.source_first_sequence < closing:
+        if observation.source_opening_accepted_boundary_ordinal < closing:
             return "overlap"
-        if observation.source_first_sequence == closing:
+        if observation.source_opening_accepted_boundary_ordinal == closing:
             return "contiguous"
         return "gap"
 
@@ -876,8 +872,9 @@ class _LifecycleBuilder:
             timestamp_s=timestamp_s,
             timestamp_ticks=timestamp_s * RP2040_US,
             capture_session=1,
-            source_first_sequence=source_first,
-            source_last_sequence=source_last,
+            source_acceptance_epoch=1,
+            source_opening_accepted_boundary_ordinal=source_first,
+            source_closing_accepted_boundary_ordinal=source_last,
             dac_epoch=self.controller.dac_epoch,
             applied_code=self.controller.applied_code,
             accumulated_edge_error_counts=counts,
@@ -921,11 +918,11 @@ class _LifecycleBuilder:
             600 * 10_000_000 + observation.accumulated_edge_error_counts
         ) / 600.0
         frequency_error_hz = selected_frequency_hz - 10_000_000.0
-        row = {field: "0" for field in ACTIVE_HYBRID_DECISION_V2_FIELDS}
+        row = {field: "0" for field in ACTIVE_HYBRID_DECISION_V3_FIELDS}
         row.update(
             {
                 "record_type": "AHY",
-                "schema_version": "2",
+                "schema_version": "3",
                 "hybrid_record_sequence": str(self.hybrid_sequence),
                 "decision_sequence": str(decision.decision_sequence),
                 "decision_timestamp_ticks": str(observation.timestamp_ticks),
@@ -935,15 +932,16 @@ class _LifecycleBuilder:
                 "build_identity": str(self.bundle["firmware"]["build_identity"]),
                 "image_identity": self.programme.profile_id,
                 "capture_session": str(observation.capture_session),
-                "source_first_sequence": str(observation.source_first_sequence),
-                "source_last_sequence": str(observation.source_last_sequence),
+                "source_acceptance_epoch": str(observation.source_acceptance_epoch),
+                "source_opening_accepted_boundary_ordinal": str(observation.source_opening_accepted_boundary_ordinal),
+                "source_closing_accepted_boundary_ordinal": str(observation.source_closing_accepted_boundary_ordinal),
                 "frequency_estimator_sha256": self.bindings["frequency_estimator"]["sha256"],
                 "frequency_error_hz": f"{frequency_error_hz:.12f}",
                 "accumulated_edge_error_counts": str(observation.accumulated_edge_error_counts),
                 "tight_state": observation.tight_state,
                 "phase_estimator_sha256": self.bindings["phase_estimator"]["sha256"],
                 "phase_epoch": str(observation.phase_epoch),
-                "phase_observation_sequence": str(observation.source_last_sequence),
+                "phase_observation_sequence": str(observation.source_closing_accepted_boundary_ordinal),
                 "relative_phase_cycles": str(observation.relative_phase_cycles),
                 "phase_continuous": str(observation.phase_valid).lower(),
                 "phase_current": str(observation.phase_valid).lower(),
@@ -1038,11 +1036,11 @@ class _LifecycleBuilder:
     ) -> dict[str, str]:
         self.maintenance_sequence += 1
         self.burst_sequence += 1
-        row = {field: "0" for field in ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS}
+        row = {field: "0" for field in ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS}
         row.update(
             {
                 "record_type": "AHM",
-                "schema_version": "1",
+                "schema_version": "2",
                 "maintenance_record_sequence": str(self.maintenance_sequence),
                 "event": event,
                 "event_timestamp_ticks": str(timestamp_ticks),
@@ -1101,10 +1099,10 @@ class _LifecycleBuilder:
                 "requalification_window_count_after": str(
                     self.controller.requalification_window_count
                 ),
-                "requalification_d14_d8_observation_sequence": (
-                    str(self.controller.requalification_frontier)
+                "requalification_accepted_boundary_ordinal": (
+                    str(self.controller.requalification_accepted_boundary_ordinal)
                     if event == "gnss_metadata_requalified"
-                    and self.controller.requalification_frontier is not None
+                    and self.controller.requalification_accepted_boundary_ordinal is not None
                     else "0"
                 ),
                 "evidence_burst_sequence": str(self.burst_sequence),
@@ -1122,10 +1120,11 @@ class _LifecycleBuilder:
             row.update(
                 {
                     "capture_session": str(observation.capture_session),
-                    "source_first_sequence": str(observation.source_first_sequence),
-                    "source_last_sequence": str(observation.source_last_sequence),
+                    "source_acceptance_epoch": str(observation.source_acceptance_epoch),
+                "source_opening_accepted_boundary_ordinal": str(observation.source_opening_accepted_boundary_ordinal),
+                    "source_closing_accepted_boundary_ordinal": str(observation.source_closing_accepted_boundary_ordinal),
                     "phase_epoch": str(observation.phase_epoch),
-                    "phase_observation_sequence": str(observation.source_last_sequence),
+                    "phase_observation_sequence": str(observation.source_closing_accepted_boundary_ordinal),
                     "phase_valid": str(observation.phase_valid).lower(),
                 }
             )
@@ -1133,8 +1132,9 @@ class _LifecycleBuilder:
             for key in (
                 "hybrid_record_sequence",
                 "decision_sequence",
-                "source_first_sequence",
-                "source_last_sequence",
+                "source_acceptance_epoch",
+                "source_opening_accepted_boundary_ordinal",
+                "source_closing_accepted_boundary_ordinal",
             ):
                 row[key] = hybrid[key]
         if decision is not None:
@@ -1192,11 +1192,11 @@ class _LifecycleBuilder:
             / 600.0
             - 10_000_000.0
         )
-        observed_response = decision.requested_delta_codes * 0.00017008467693813145
-        post_error = frequency_error + observed_response
+        post_error = 0.0
+        observed_response = post_error - frequency_error
         common = {
             "record_type": "ACT",
-            "schema_version": "2",
+            "schema_version": "3",
             "time_domain": "rp2040_monotonic_us64",
             "run_identity": self.programme.runtime_run_identity,
             "build_identity": str(self.bundle["firmware"]["build_identity"]),
@@ -1206,8 +1206,9 @@ class _LifecycleBuilder:
             "nonce": str(7_000_000 + request_sequence),
             "request_sequence": str(request_sequence),
             "decision_sequence": str(decision.decision_sequence),
-            "source_first_sequence": str(observation.source_first_sequence),
-            "source_last_sequence": str(observation.source_last_sequence),
+            "source_acceptance_epoch": str(observation.source_acceptance_epoch),
+                "source_opening_accepted_boundary_ordinal": str(observation.source_opening_accepted_boundary_ordinal),
+            "source_closing_accepted_boundary_ordinal": str(observation.source_closing_accepted_boundary_ordinal),
             "decision_timestamp_s": str(observation.timestamp_s),
             "current_applied_code": str(observation.applied_code),
             "requested_delta_codes": str(decision.requested_delta_codes),
@@ -1251,9 +1252,9 @@ class _LifecycleBuilder:
             },
             {
                 "event": "request_accepted",
-                "event_timestamp_ticks": str(observation.timestamp_ticks + RP2040_US),
+                "event_timestamp_ticks": str(observation.timestamp_ticks + 100_000),
                 "accepted_code": str(decision.requested_code),
-                "accepted_timestamp_s": str(observation.timestamp_s + 1),
+                "accepted_timestamp_s": str(observation.timestamp_s),
                 "applied_code": "0",
                 "application_sequence": "0",
                 "application_timestamp_s": "0",
@@ -1276,12 +1277,12 @@ class _LifecycleBuilder:
             },
             {
                 "event": "application",
-                "event_timestamp_ticks": str(observation.timestamp_ticks + 2 * RP2040_US),
+                "event_timestamp_ticks": str(observation.timestamp_ticks + 200_000),
                 "accepted_code": str(decision.requested_code),
-                "accepted_timestamp_s": str(observation.timestamp_s + 1),
+                "accepted_timestamp_s": str(observation.timestamp_s),
                 "applied_code": str(decision.requested_code),
                 "application_sequence": str(application_sequence),
-                "application_timestamp_s": str(observation.timestamp_s + 2),
+                "application_timestamp_s": str(observation.timestamp_s),
                 "i2c_ok": "true",
                 "clamped": "false",
                 "ambiguous": "false",
@@ -1301,10 +1302,10 @@ class _LifecycleBuilder:
                 "event": "response",
                 "event_timestamp_ticks": str(response_timestamp_s * RP2040_US),
                 "accepted_code": str(decision.requested_code),
-                "accepted_timestamp_s": str(observation.timestamp_s + 1),
+                "accepted_timestamp_s": str(observation.timestamp_s),
                 "applied_code": str(decision.requested_code),
                 "application_sequence": str(application_sequence),
-                "application_timestamp_s": str(observation.timestamp_s + 2),
+                "application_timestamp_s": str(observation.timestamp_s),
                 "i2c_ok": "true",
                 "clamped": "false",
                 "ambiguous": "false",
@@ -1323,7 +1324,7 @@ class _LifecycleBuilder:
         )
         return tuple(
             {
-                **{field: "" for field in ACTIVE_TRANSACTION_V2_FIELDS},
+                **{field: "" for field in ACTIVE_TRANSACTION_V3_FIELDS},
                 **common,
                 **phase,
                 "transaction_record_sequence": str(first_record + offset),
@@ -1343,7 +1344,7 @@ class _LifecycleBuilder:
     ) -> TransactionFixture:
         decision, hybrid, before = self._append_decision(observation)
         if decision.requested_delta_codes == 0:
-            raise RuntimeError("rehearsal transaction did not request control")
+            raise RuntimeError(f"rehearsal transaction did not request control: {decision}")
         phases = self._transaction_rows(
             decision=decision,
             observation=observation,
@@ -1391,9 +1392,9 @@ class _LifecycleBuilder:
 
         response_observation = self._observation(
             timestamp_s=response_timestamp_s,
-            source_first=observation.source_last_sequence,
+            source_first=response_source_last - 600,
             source_last=response_source_last,
-            counts=observation.accumulated_edge_error_counts,
+            counts=0,
             phase=observation.relative_phase_cycles,
         )
         response_decision, response_hybrid, response_before = self._append_decision(
@@ -1454,11 +1455,11 @@ class _LifecycleBuilder:
         # fixture shaped like that producer output so the host must validate
         # the declared floor-second projection rather than exact divisibility.
         setup_timestamp_ticks = 1_200 * RP2040_US + 71_551
-        manual = {field: "" for field in ACTIVE_TRANSACTION_V2_FIELDS}
+        manual = {field: "" for field in ACTIVE_TRANSACTION_V3_FIELDS}
         manual.update(
             {
                 "record_type": "ACT",
-                "schema_version": "2",
+                "schema_version": "3",
                 "transaction_record_sequence": "1",
                 "event": "manual_start",
                 "event_timestamp_ticks": str(setup_timestamp_ticks),
@@ -1471,8 +1472,9 @@ class _LifecycleBuilder:
                 "nonce": "0",
                 "request_sequence": "0",
                 "decision_sequence": "0",
-                "source_first_sequence": "0",
-                "source_last_sequence": "0",
+                "source_acceptance_epoch": "0",
+                "source_opening_accepted_boundary_ordinal": "0",
+                "source_closing_accepted_boundary_ordinal": "0",
                 "decision_timestamp_s": "1200",
                 "current_applied_code": str(setup),
                 "requested_delta_codes": "0",
@@ -1524,24 +1526,24 @@ class _LifecycleBuilder:
 
         first = self._transaction(
             self._observation(
-                timestamp_s=1800,
-                source_first=1200,
-                source_last=1800,
+                timestamp_s=2701,
+                source_first=2101,
+                source_last=2701,
                 counts=-1,
                 phase=-6,
             ),
             first_record=2,
             request_sequence=1,
             application_sequence=1,
-            response_timestamp_s=3300,
-            response_source_last=2400,
+            response_timestamp_s=4202,
+            response_source_last=4202,
         )
 
         hold_origin = self._observation(
-            timestamp_s=3300,
-            source_first=1800,
-            source_last=2400,
-            counts=-1,
+            timestamp_s=4202,
+            source_first=3602,
+            source_last=4202,
+            counts=0,
             phase=-6,
         )
         hold_before = self._snapshot("before")
@@ -1549,28 +1551,28 @@ class _LifecycleBuilder:
         metadata_hold = self._maintenance_row(
             "gnss_metadata_hold_enter",
             before=hold_before,
-            timestamp_ticks=3_301 * RP2040_US,
+            timestamp_ticks=4_203 * RP2040_US,
             reason="recoverable_gnss_metadata_anomaly",
             observation=hold_origin,
             hybrid=first.response_decision,
         )
         requalified_before = self._snapshot("before")
-        self.controller.requalify_metadata(2400)
+        self.controller.requalify_metadata(acceptance_epoch=1, accepted_boundary_ordinal=4202)
         metadata_requalified = self._maintenance_row(
             "gnss_metadata_requalified",
             before=requalified_before,
-            timestamp_ticks=3_302 * RP2040_US,
+            timestamp_ticks=4_204 * RP2040_US,
             reason="fresh_same_receiver_metadata",
             observation=hold_origin,
             hybrid=first.response_decision,
         )
 
         first_requalification_observation = self._observation(
-            timestamp_s=3900,
-            source_first=2400,
-            source_last=3000,
-            counts=0,
-            phase=0,
+            timestamp_s=4802,
+            source_first=4202,
+            source_last=4802,
+            counts=3,
+            phase=-3,
         )
         first_rq, first_rq_hybrid, first_rq_before = self._append_decision(
             first_requalification_observation, authority_state="REFERENCE_HOLD"
@@ -1588,10 +1590,10 @@ class _LifecycleBuilder:
         )
 
         second_requalification_observation = self._observation(
-            timestamp_s=4500,
-            source_first=3000,
-            source_last=3600,
-            counts=0,
+            timestamp_s=5402,
+            source_first=4802,
+            source_last=5402,
+            counts=3,
             phase=0,
         )
         second_rq, second_rq_hybrid, second_rq_before = self._append_decision(
@@ -1613,17 +1615,17 @@ class _LifecycleBuilder:
 
         second = self._transaction(
             self._observation(
-                timestamp_s=5100,
-                source_first=3600,
-                source_last=4200,
+                timestamp_s=6302,
+                source_first=5702,
+                source_last=6302,
                 counts=1,
                 phase=6,
             ),
             first_record=6,
             request_sequence=2,
             application_sequence=2,
-            response_timestamp_s=6600,
-            response_source_last=4800,
+            response_timestamp_s=7803,
+            response_source_last=7803,
         )
         return LifecycleFixture(
             manual_start=manual,
@@ -1698,6 +1700,7 @@ class DeterministicPtyInstrument:
         self.metadata_state = "normal"
         self.first_checkpoint = False
         self.raw_snapshot_sequence = 1
+        self.accepted_boundary_ordinal = 1
         self.raw_reference_event_sequence = 1002
         self.raw_cumulative_down_counter = (0xFFFFFFFF - 10_000_000) % (1 << 32)
         self.estimate_sequence = 0
@@ -1711,11 +1714,12 @@ class DeterministicPtyInstrument:
             self.fixture.second_transaction.response_decision,
         )
         self.raw_interval_adjustments = {
-            int(row["source_last_sequence"]): int(
+            int(row["source_closing_accepted_boundary_ordinal"]): int(
                 row["accumulated_edge_error_counts"]
             )
             for row in source_decisions
         }
+        self.raw_interval_adjustments.update({1600: -5, 5500: 5})
         self._lock = threading.Lock()
         self._timers: list[threading.Timer] = []
 
@@ -1859,8 +1863,12 @@ class DeterministicPtyInstrument:
                 "gnss_metadata_hold_transaction_pending": "false",
                 "gnss_metadata_hold_entry_sequence": "0",
                 "gnss_metadata_requalification_sequence": "0",
-                "gnss_metadata_qualification_frontier": "0",
-                "d14_d8_observation_sequence": "0",
+                "gnss_metadata_qualification_accepted_boundary_ordinal": "0",
+                "accepted_boundary_ordinal": str(self.accepted_boundary_ordinal),
+                "acceptance_epoch": "1",
+                "accepted_anchor_current": "true",
+                "reference_acceptance_state": "tracking",
+                "reference_acceptance_policy_sha256": _reference_acceptance_binding(self.bundle)["policy_sha256"],
                 "hybrid_state": "SETUP_PENDING",
                 "hybrid_reason": "awaiting_exact_setup",
                 "first_phase_checkpoint_passed": "false",
@@ -1915,11 +1923,11 @@ class DeterministicPtyInstrument:
                     "gnss_metadata_requalification_sequence": (
                         "2" if self.metadata_state == "requalified" else "0"
                     ),
-                    "gnss_metadata_qualification_frontier": (
-                        "2400" if self.metadata_state == "requalified" else "0"
+                    "gnss_metadata_qualification_accepted_boundary_ordinal": (
+                        "4202" if self.metadata_state == "requalified" else "0"
                     ),
-                    "d14_d8_observation_sequence": (
-                        "3600" if self.metadata_state == "requalified" else "2400"
+                    "accepted_boundary_ordinal": (
+                        str(self.accepted_boundary_ordinal)
                     ),
                     "first_phase_checkpoint_passed": str(
                         self.first_checkpoint
@@ -2070,105 +2078,119 @@ class DeterministicPtyInstrument:
             }],
         )
 
+        self._emit_rows(CONTRACT_FIELDS["accepted_pps_spans_v1"], [self._accepted_span(1)])
+
     @staticmethod
-    def _source_ticks(sequence: int) -> int:
-        return (sequence * 1_000_000) % (1 << 32)
+    def _source_ticks(accepted_ordinal: int) -> int:
+        return (accepted_ordinal * RP2040_US) % (1 << 32)
+
+    @staticmethod
+    def _raw_sequence(accepted_ordinal: int) -> int:
+        # One retained early candidate occurs inside accepted span 1500.
+        return accepted_ordinal + int(accepted_ordinal >= 1500)
+
+    def _accepted_span(self, ordinal: int) -> dict[str, str]:
+        opening = self._raw_sequence(ordinal - 1)
+        closing = self._raw_sequence(ordinal)
+        return {
+            "record_type": "APS", "schema_version": "1",
+            "capture_session": "1", "acceptance_epoch": "1",
+            "accepted_boundary_ordinal": str(ordinal),
+            "opening_snapshot_sequence": str(opening),
+            "closing_snapshot_sequence": str(closing),
+            "opening_reference_sequence": str(opening),
+            "closing_reference_sequence": str(closing),
+            "opening_reference_timestamp_ticks": str(self._source_ticks(ordinal - 1)),
+            "closing_reference_timestamp_ticks": str(self._source_ticks(ordinal)),
+            "time_domain": "rp2040_monotonic_us32",
+            "source_count_first_sequence": str(opening + 1),
+            "source_count_last_sequence": str(closing),
+            "source_count_record_count": str(closing - opening),
+            "counted_edges": str(10_000_000 + self.raw_interval_adjustments.get(ordinal, 0)),
+            "excluded_candidate_count": str(closing - opening - 1),
+            "nominal_interval_count": "1",
+            "acceptance_policy_sha256": _reference_acceptance_binding(self.bundle)["policy_sha256"],
+        }
 
     def _emit_source_through(self, target_sequence: int) -> None:
-        """Emit every retained D14/D8 aperture up to an exact source bound."""
-
-        if target_sequence < self.raw_snapshot_sequence:
-            raise RuntimeError("rehearsal raw source cannot move backwards")
+        """Retain every raw pair and derived accepted span, including exclusion."""
+        if target_sequence < self.accepted_boundary_ordinal:
+            raise RuntimeError("rehearsal accepted source cannot move backwards")
         payload = bytearray()
-        while self.raw_snapshot_sequence < target_sequence:
-            opening_sequence = self.raw_snapshot_sequence
-            closing_sequence = opening_sequence + 1
-            opening_ticks = self._source_ticks(opening_sequence)
-            closing_ticks = self._source_ticks(closing_sequence)
-            counted_edges = 10_000_000 + self.raw_interval_adjustments.get(
-                closing_sequence, 0
+        while self.accepted_boundary_ordinal < target_sequence:
+            ordinal = self.accepted_boundary_ordinal + 1
+            opening_ticks = self._source_ticks(ordinal - 1)
+            fragments = (
+                [(self._source_ticks(1499) + 246294, 2462937, 4120),
+                 (self._source_ticks(1500), 7537063, 4120)]
+                if ordinal == 1500 else
+                [(self._source_ticks(ordinal),
+                  10_000_000 + self.raw_interval_adjustments.get(ordinal, 0),
+                  4120 if ordinal == 1501 else 16)]
             )
-            self.raw_cumulative_down_counter = (
-                self.raw_cumulative_down_counter - counted_edges
-            ) % (1 << 32)
-            self.raw_reference_event_sequence += 1
-            payload.extend(
-                _wire_row(
-                    CONTRACT_FIELDS["raw_events_v1"],
-                    {
-                        "record_type": "REF",
-                        "schema_version": "1",
+            for closing_ticks, counted_edges, flags in fragments:
+                self.raw_snapshot_sequence += 1
+                self.raw_reference_event_sequence += 1
+                self.raw_cumulative_down_counter = (
+                    self.raw_cumulative_down_counter - counted_edges
+                ) % (1 << 32)
+                sequence = self.raw_snapshot_sequence
+                for contract, row in (
+                    ("raw_events_v1", {
+                        "record_type": "REF", "schema_version": "1",
                         "event_seq": str(self.raw_reference_event_sequence),
-                        "channel_id": "1",
-                        "edge": "R",
-                        "timestamp_ticks": str(closing_ticks),
-                        "capture_domain": "rp2040_monotonic_us32",
-                        "flags": "16",
-                    },
-                )
-            )
-            payload.extend(
-                _wire_row(
-                    CONTRACT_FIELDS["pps_snapshots_v1"],
-                    {
-                        "record_type": "SNP",
-                        "schema_version": "1",
-                        "session": "1",
-                        "snapshot_sequence": str(closing_sequence),
-                        "cumulative_down_counter": str(
-                            self.raw_cumulative_down_counter
-                        ),
-                        "reference_sequence": str(closing_sequence),
-                        "reference_timestamp_ticks": str(closing_ticks),
-                        "status": "0",
-                        "backend": "pio_wait_cumulative_snapshot_dma_v1",
-                    },
-                )
-            )
-            payload.extend(
-                _wire_row(
-                    CONTRACT_FIELDS["count_observations_v1"],
-                    {
-                        "record_type": "CNT",
-                        "schema_version": "1",
-                        "count_seq": str(closing_sequence),
-                        "channel_id": "2",
-                        "gate_open_ticks": str(opening_ticks),
-                        "gate_close_ticks": str(closing_ticks),
-                        "gate_domain": "rp2040_monotonic_us32",
-                        "counted_edges": str(counted_edges),
-                        "source_edge": "R",
-                        "source_domain": "h1_oscillator_10mhz",
-                        "flags": "16",
-                    },
-                )
-            )
-            self.raw_snapshot_sequence = closing_sequence
+                        "channel_id": "1", "edge": "R", "timestamp_ticks": str(closing_ticks),
+                        "capture_domain": "rp2040_monotonic_us32", "flags": "16",
+                    }),
+                    ("pps_snapshots_v1", {
+                        "record_type": "SNP", "schema_version": "1", "session": "1",
+                        "snapshot_sequence": str(sequence),
+                        "cumulative_down_counter": str(self.raw_cumulative_down_counter),
+                        "reference_sequence": str(sequence), "reference_timestamp_ticks": str(closing_ticks),
+                        "status": "0", "backend": "pio_wait_cumulative_snapshot_dma_v1",
+                    }),
+                    ("count_observations_v1", {
+                        "record_type": "CNT", "schema_version": "1", "count_seq": str(sequence),
+                        "channel_id": "2", "gate_open_ticks": str(opening_ticks),
+                        "gate_close_ticks": str(closing_ticks), "gate_domain": "rp2040_monotonic_us32",
+                        "counted_edges": str(counted_edges), "source_edge": "R",
+                        "source_domain": "h1_oscillator_10mhz", "flags": str(flags),
+                    }),
+                ):
+                    payload.extend(_wire_row(CONTRACT_FIELDS[contract], row))
+                opening_ticks = closing_ticks
+            payload.extend(_wire_row(CONTRACT_FIELDS["accepted_pps_spans_v1"], self._accepted_span(ordinal)))
+            self.accepted_boundary_ordinal = ordinal
         if payload:
             with self._lock:
                 _write_all_fd(self.master_fd, bytes(payload))
 
     def _emit_selected_estimate(self, decision: dict[str, str]) -> dict[str, str]:
-        first = int(decision["source_first_sequence"])
-        last = int(decision["source_last_sequence"])
+        first = int(decision["source_opening_accepted_boundary_ordinal"])
+        last = int(decision["source_closing_accepted_boundary_ordinal"])
         accumulated = int(decision["accumulated_edge_error_counts"])
         selected_frequency = float(600 * 10_000_000 + accumulated) / 600.0
         frequency_error = selected_frequency - 10_000_000.0
         estimate_id = f"rehearsal:selected:{self.estimate_sequence}"
-        row = {field: "" for field in CONTRACT_FIELDS["estimates_v2"]}
+        row = {field: "" for field in CONTRACT_FIELDS["estimates_v3"]}
         row.update(
             {
                 "record_type": "EST",
-                "schema_version": "2",
+                "schema_version": "3",
                 "estimate_seq": str(self.estimate_sequence),
                 "estimate_id": estimate_id,
                 "estimator_timestamp_ticks": str(self._source_ticks(last)),
                 "time_domain": "rp2040_monotonic_us32",
-                "source_count_seq": str(last),
-                "source_count_ref": f"live:CNT:{last}",
-                "source_reference_first_seq": str(first),
-                "source_reference_last_seq": str(last),
-                "source_status_refs": f"live:SNP:{first}:{last}",
+                "capture_session": "1",
+                "source_acceptance_epoch": "1",
+                "source_opening_accepted_boundary_ordinal": str(first),
+                "source_closing_accepted_boundary_ordinal": str(last),
+                "source_opening_snapshot_sequence": str(self._raw_sequence(first)),
+                "source_closing_snapshot_sequence": str(self._raw_sequence(last)),
+                "source_opening_reference_sequence": str(self._raw_sequence(first)),
+                "source_closing_reference_sequence": str(self._raw_sequence(last)),
+                "source_accepted_spans_ref": f"live:APS:1:1:{first}:{last}",
+                "source_status_refs": f"live:SNP:{self._raw_sequence(first)}:{self._raw_sequence(last)}",
                 "source_dac_ref": f"live:DAC:{decision['dac_epoch']}",
                 "manifest_ref": "run_manifest",
                 "estimator_version": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
@@ -2199,8 +2221,51 @@ class DeterministicPtyInstrument:
             }
         )
         self.estimate_sequence += 1
-        self._emit_rows(CONTRACT_FIELDS["estimates_v2"], [row])
+        self._emit_rows(CONTRACT_FIELDS["estimates_v3"], [row])
+        self._emit_phase_source(decision)
         return row
+
+    def _emit_phase_source(self, decision: dict[str, str]) -> None:
+        ordinal = int(decision["source_closing_accepted_boundary_ordinal"])
+        span = self._accepted_span(ordinal)
+        # Phase opens at setup. Every adjustment since then is retained in raw APS.
+        phase = sum(delta for closing, delta in self.raw_interval_adjustments.items()
+                    if 1200 < closing <= ordinal)
+        if phase != int(decision["relative_phase_cycles"]):
+            raise RuntimeError("rehearsal phase differs from retained cumulative D8 counts")
+        phase_hash = authoritative_binding(self.bundle["authoritative_inputs"],
+            authoritative_document(self.bundle["authoritative_inputs"], ROOT_PROFILE)["bindings"]["phase_estimator"])["sha256"]
+        row = {
+            "record_type": "RPH", "schema_version": "2", "phase_epoch": "1",
+            "observation_sequence": str(ordinal), "capture_session": "1",
+            "acceptance_epoch": "1", "accepted_boundary_ordinal": str(ordinal),
+            "source_accepted_span_ref": f"live:APS:1:1:{ordinal}",
+            **{key: span[key] for key in ("opening_snapshot_sequence", "closing_snapshot_sequence",
+                                         "opening_reference_sequence", "closing_reference_sequence")},
+            "dac_epoch": decision["dac_epoch"],
+            "source_backend": "pio_wait_cumulative_snapshot_dma_v1",
+            "source_file_sha256": "live_stream_unsealed",
+            "method_id": "D14_ACCEPTED_SPAN_RELATIVE_PHASE_ACCUMULATOR_V1",
+            "configuration_sha256": phase_hash,
+            "interval_edges": span["counted_edges"],
+            "edge_error_cycles": str(int(span["counted_edges"]) - 10_000_000),
+            "relative_phase_cycles": str(phase), "relative_phase_time_ns": str(phase * 100),
+            "qualification_state": "qualified", "observation_age_s": "0",
+            "discontinuity_reason": "", "calibrated_uncertainty_status": "unavailable",
+        }
+        self._emit_rows(CONTRACT_FIELDS["relative_phase_observations_v2"], [row])
+        self._emit_rows(CONTRACT_FIELDS["phase_estimator_outputs_v2"], [{
+            "record_type": "PHE", "schema_version": "2", "phase_epoch": "1",
+            "observation_sequence": str(ordinal), "capture_session": "1",
+            "acceptance_epoch": "1", "accepted_boundary_ordinal": str(ordinal),
+            "source_relative_phase_observation": f"RPH:1:{ordinal}",
+            "raw_relative_phase_cycles": str(phase), "raw_relative_phase_time_ns": str(phase * 100),
+            "filtered_relative_phase_cycles": str(phase),
+            "estimated_frequency_error_hz": decision["frequency_error_hz"],
+            "estimator_id": "OTIS_RELATIVE_PHASE_ESTIMATOR_V1", "configuration_sha256": phase_hash,
+            "estimate_age_s": "0", "qualification_state": "qualified",
+            "uncertainty_status": "unavailable", "reason_codes": "uncertainty_model_unavailable",
+        }])
 
     def _emit_control_preview(
         self, estimate: dict[str, str], decision: dict[str, str]
@@ -2249,12 +2314,12 @@ class DeterministicPtyInstrument:
 
     def _emit_transaction(self, transaction: TransactionFixture) -> None:
         self._emit_rows(
-            ACTIVE_HYBRID_DECISION_V2_FIELDS,
+            ACTIVE_HYBRID_DECISION_V3_FIELDS,
             [transaction.request_decision, transaction.response_decision],
         )
-        self._emit_rows(ACTIVE_TRANSACTION_V2_FIELDS, transaction.phases)
+        self._emit_rows(ACTIVE_TRANSACTION_V3_FIELDS, transaction.phases)
         self._emit_rows(
-            ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
+            ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
             [
                 transaction.request_maintenance,
                 transaction.application_maintenance,
@@ -2268,7 +2333,7 @@ class DeterministicPtyInstrument:
             return
         self.metadata_state = "hold"
         self._emit_rows(
-            ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS, [self.fixture.metadata_hold]
+            ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS, [self.fixture.metadata_hold]
         )
         self._emit_snapshot()
         # Retain the anomaly state long enough for the real supervisor loop to
@@ -2284,22 +2349,22 @@ class DeterministicPtyInstrument:
             self.fixture.first_requalification_decision,
             self.fixture.second_requalification_decision,
         ):
-            self._emit_source_through(int(decision["source_last_sequence"]))
+            self._emit_source_through(int(decision["source_closing_accepted_boundary_ordinal"]))
             estimate = self._emit_selected_estimate(decision)
             self._emit_control_preview(estimate, decision)
         next_decision = self.fixture.second_transaction.request_decision
-        self._emit_source_through(int(next_decision["source_last_sequence"]))
+        self._emit_source_through(int(next_decision["source_closing_accepted_boundary_ordinal"]))
         estimate = self._emit_selected_estimate(next_decision)
         self._emit_control_preview(estimate, next_decision)
         self._emit_rows(
-            ACTIVE_HYBRID_DECISION_V2_FIELDS,
+            ACTIVE_HYBRID_DECISION_V3_FIELDS,
             [
                 self.fixture.first_requalification_decision,
                 self.fixture.second_requalification_decision,
             ],
         )
         self._emit_rows(
-            ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
+            ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
             [
                 self.fixture.metadata_requalified,
                 self.fixture.first_requalification_maintenance,
@@ -2338,14 +2403,14 @@ class DeterministicPtyInstrument:
             self.setup = True
             self.selected_interval_count = 0
             self._emit_rows(
-                ACTIVE_TRANSACTION_V2_FIELDS, [self.fixture.manual_start]
+                ACTIVE_TRANSACTION_V3_FIELDS, [self.fixture.manual_start]
             )
             self._emit_rows(
-                ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
+                ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
                 [self.fixture.policy_activation],
             )
             decision = self.fixture.first_transaction.request_decision
-            self._emit_source_through(int(decision["source_last_sequence"]))
+            self._emit_source_through(int(decision["source_closing_accepted_boundary_ordinal"]))
             estimate = self._emit_selected_estimate(decision)
             self._emit_control_preview(estimate, decision)
             self._emit_snapshot()
@@ -2367,7 +2432,7 @@ class DeterministicPtyInstrument:
             )
             response_decision = transaction.response_decision
             self._emit_source_through(
-                int(response_decision["source_last_sequence"])
+                int(response_decision["source_closing_accepted_boundary_ordinal"])
             )
             response_estimate = self._emit_selected_estimate(response_decision)
             self._emit_control_preview(response_estimate, response_decision)
@@ -3309,7 +3374,7 @@ def analyze_and_seal_rehearsal(
         "rehearsal setup authority",
     )
     setup_request = authority.get("request", {})
-    transactions = _read_csv(run_dir / "csv/active_transactions_v2.csv")
+    transactions = _read_csv(run_dir / "csv/active_transactions_v3.csv")
     manual_start = transactions[0] if transactions else {}
     authority_unsigned = {
         key: value for key, value in authority.items() if key != "record_sha256"

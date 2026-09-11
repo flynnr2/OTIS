@@ -77,7 +77,7 @@ bool valid_engine(const OtisAdaptiveHybridEngine &engine) {
       (engine.request_pending && engine.response_pending) ||
       (engine.metadata_requalified && !engine.metadata_hold) ||
       (engine.metadata_requalified &&
-       !engine.requalification_frontier_available))
+       !engine.requalification_accepted_boundary_ordinal_available))
     return false;
   if (engine.request_pending) {
     if (engine.pending_decision_sequence == 0u ||
@@ -138,14 +138,19 @@ bool exact_hybrid_join(const OtisAdaptiveHybridMaintenanceBuildInput &input) {
   const OtisAdaptiveHybridMaintenanceHybridJoin &join = *input.hybrid_join;
   if (join.hybrid_record_sequence == 0u ||
       join.decision_sequence == 0u || join.capture_session == 0u ||
-      join.source_first_sequence == 0u ||
-      join.source_last_sequence <= join.source_first_sequence ||
+      join.source_acceptance_epoch == 0u ||
+      !otis_exact_selected_accepted_span(
+          join.source_opening_accepted_boundary_ordinal,
+          join.source_closing_accepted_boundary_ordinal) ||
       join.phase_observation_sequence == 0u)
     return false;
   return join.decision_sequence == decision.decision_sequence &&
          join.capture_session == observation.capture_session &&
-         join.source_first_sequence == observation.source_first_sequence &&
-         join.source_last_sequence == observation.source_last_sequence &&
+         join.source_acceptance_epoch == observation.source_acceptance_epoch &&
+         join.source_opening_accepted_boundary_ordinal ==
+             observation.source_opening_accepted_boundary_ordinal &&
+         join.source_closing_accepted_boundary_ordinal ==
+             observation.source_closing_accepted_boundary_ordinal &&
          join.phase_epoch == observation.phase_epoch &&
          join.phase_valid == observation.phase_valid;
 }
@@ -162,8 +167,11 @@ bool exact_transaction_join(const OtisAdaptiveHybridMaintenanceBuildInput &input
       join.request_sequence == 0u || join.transaction_event != event ||
       join.decision_sequence != decision.decision_sequence ||
       join.capture_session != observation.capture_session ||
-      join.source_first_sequence != observation.source_first_sequence ||
-      join.source_last_sequence != observation.source_last_sequence)
+      join.source_acceptance_epoch != observation.source_acceptance_epoch ||
+      join.source_opening_accepted_boundary_ordinal !=
+          observation.source_opening_accepted_boundary_ordinal ||
+      join.source_closing_accepted_boundary_ordinal !=
+          observation.source_closing_accepted_boundary_ordinal)
     return false;
 
   const bool any_application = join.application_sequence != 0u ||
@@ -222,8 +230,10 @@ bool decision_reconstructable(const OtisAdaptiveHybridMaintenanceBuildInput &inp
   const OtisAdaptiveHybridDecision &decision = *input.originating_decision;
   const int64_t requested = static_cast<int64_t>(observation.applied_code) +
                             decision.requested_delta_codes;
-  if (observation.source_first_sequence == 0u ||
-      observation.source_last_sequence <= observation.source_first_sequence ||
+  if (observation.source_acceptance_epoch == 0u ||
+      !otis_exact_selected_accepted_span(
+          observation.source_opening_accepted_boundary_ordinal,
+          observation.source_closing_accepted_boundary_ordinal) ||
       observation.capture_session == 0u || observation.dac_epoch == 0u ||
       observation.timestamp_s != observation.timestamp_ticks / 1000000ull ||
       observation.applied_code < kMinimumWireCode ||
@@ -256,16 +266,17 @@ bool decision_reconstructable(const OtisAdaptiveHybridMaintenanceBuildInput &inp
 OtisAdaptiveHybridFrontierRelation frontier_relation(
     const OtisAdaptiveHybridEngine &before,
     const OtisAdaptiveHybridObservation &observation) {
-  bool available = before.last_closing_frontier_available;
-  uint64_t closing = before.last_closing_frontier;
+  bool available = before.last_closing_accepted_boundary_ordinal_available;
+  uint64_t closing = before.last_closing_accepted_boundary_ordinal;
   if (before.metadata_requalified) {
-    available = before.requalification_last_closing_frontier_available;
-    closing = before.requalification_last_closing_frontier;
+    available = before.requalification_last_closing_accepted_boundary_ordinal_available;
+    closing = before.requalification_last_closing_accepted_boundary_ordinal;
   }
   if (!available) return OtisAdaptiveHybridFrontierRelation::First;
-  if (observation.source_first_sequence < closing)
+  if (!otis_accepted_ordinal_at_or_after(
+          observation.source_opening_accepted_boundary_ordinal, closing))
     return OtisAdaptiveHybridFrontierRelation::Overlap;
-  if (observation.source_first_sequence == closing)
+  if (observation.source_opening_accepted_boundary_ordinal == closing)
     return OtisAdaptiveHybridFrontierRelation::Contiguous;
   return OtisAdaptiveHybridFrontierRelation::Gap;
 }
@@ -424,7 +435,7 @@ bool valid_transition(const OtisAdaptiveHybridMaintenanceBuildInput &input) {
              input.transaction_join == nullptr && before.metadata_hold &&
              after.metadata_hold && !before.metadata_requalified &&
              after.metadata_requalified &&
-             after.requalification_frontier_available &&
+             after.requalification_accepted_boundary_ordinal_available &&
              after.requalification_window_count == 0u &&
              !after.request_pending && !after.response_pending &&
              after.persistence_count == 0u &&
@@ -507,10 +518,14 @@ bool otis_adaptive_hybrid_build_maintenance_record(
   record->frequency_estimator_sha256 =
       input->identity.frequency_estimator_sha256;
   record->capture_session = observation == nullptr ? 0u : observation->capture_session;
-  record->source_first_sequence =
-      observation == nullptr ? 0u : observation->source_first_sequence;
-  record->source_last_sequence =
-      observation == nullptr ? 0u : observation->source_last_sequence;
+  record->source_acceptance_epoch =
+      observation == nullptr ? 0u : observation->source_acceptance_epoch;
+  record->source_opening_accepted_boundary_ordinal = observation == nullptr
+      ? 0u
+      : observation->source_opening_accepted_boundary_ordinal;
+  record->source_closing_accepted_boundary_ordinal = observation == nullptr
+      ? 0u
+      : observation->source_closing_accepted_boundary_ordinal;
   record->phase_epoch = observation == nullptr ? 0u : observation->phase_epoch;
   record->phase_observation_sequence =
       hybrid == nullptr ? 0u : hybrid->phase_observation_sequence;
@@ -580,9 +595,9 @@ bool otis_adaptive_hybrid_build_maintenance_record(
       before.requalification_window_count;
   record->requalification_window_count_after =
       after.requalification_window_count;
-  record->requalification_d14_d8_observation_sequence =
+  record->requalification_accepted_boundary_ordinal =
       input->event == OtisAdaptiveHybridMaintenanceEvent::GnssMetadataRequalified
-          ? after.requalification_frontier
+          ? after.requalification_accepted_boundary_ordinal
           : 0u;
   record->evidence_burst_sequence = input->evidence_burst_sequence;
   record->evidence_burst_record_ordinal =

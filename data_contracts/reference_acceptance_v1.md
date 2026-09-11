@@ -2,15 +2,15 @@
 
 ## Status and scope
 
-This is the prospective stage-3 acceptance contract and native candidate for
+This is the prospective acceptance contract and integrated measurement candidate for
 the existing D14/D8 instrument. Numerical parameters are defined once in
-`reference_acceptance_policy_v1.json`. The candidate has no control authority
-and is not connected to the live firmware measurement or host campaign path.
-Promotion requires the complete source-to-consumer cutover described below,
-the affected firmware build, and the actual operational-path rehearsal.
+`reference_acceptance_policy_v1.json`. Selection has no direct actuator authority. The candidate connects one selected
+span to both firmware measurement consumers and the versioned host path.
+Promotion to a physical campaign requires a complete release gate, exact
+firmware build and actual operational-path rehearsal.
 
-The current live implementation still reconstructs adjacent raw apertures and
-uses its existing reference-hold rules. This contract does not change any
+Raw adjacent apertures remain recorded under their original semantics; APS
+records express acceptance separately. This contract does not change any
 closed experiment's acceptance criteria or scientific outcome.
 
 ## Evidence supporting the initial window
@@ -112,8 +112,12 @@ it cannot invent physical reference loss or discard an in-window observation.
 
 The native candidate exposes this frontier requirement explicitly. Its caller
 must not infer proof from process liveness, an empty host log, or a recent
-status generation. The firmware cutover must establish the real cross-core /
-PIO / association propagation invariant before using that interface live.
+status generation. The current live owner deliberately does not call that expiry interface. It
+holds new authority when the accepted anchor is overdue, preserves history
+while evidence is delayed, and lets a later paired candidate establish a
+continuity loss. It never manufactures a complete producer frontier. A
+source-coordinate ambiguity withdraws model qualification with an explicit
+reason, without asserting physical edge absence.
 
 ## Limits of timing admission
 
@@ -164,3 +168,23 @@ raw count reconstruction, selection, frequency and phase consumers, their
 emitted records, real recorder, host source checks, control admission, analyzer
 and sealing. The native candidate alone establishes none of those unexercised
 live boundaries and does not authorize another 72-hour run.
+
+## Current protocol and attachment boundary
+
+The integrated candidate emits APS v1, EST v3, RPH/PHE v2, AHY/ACT v3 and AHM v2.
+Raw REF/SNP/CNT keep their original versions. The exact wire layouts are in
+`otis_firmware_host_contract_v1.json`; ACTIVE snapshot v2 binds the current
+acceptance epoch, accepted ordinal, policy and health coherently.
+
+A late-attached recorder may begin after the original reference acquisition.
+The first completely retained APS opens at a producer-declared accepted anchor;
+it does not prove unrecorded startup acquisition. Any APS whose opening or
+interior raw observations predate retention remains unqualified prefix evidence.
+Feedback requires 600 fully retained consecutive APS records in one session and
+acceptance epoch. Earlier closed experiments do not acquire this attachment or
+acceptance contract retrospectively.
+
+The policy bytes are embedded in the authoritative-input set and bound by the
+run manifest's `reference_acceptance` identity. The generated firmware policy
+header and fixed build check those exact bytes. Numerical policy changes
+therefore change firmware/profile/campaign identity together.

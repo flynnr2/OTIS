@@ -19,7 +19,7 @@
 
 namespace {
 
-constexpr char kEstimatorMethod[] = "PPS_CUMULATIVE_SNAPSHOT_SPAN_V1";
+constexpr char kEstimatorMethod[] = "PPS_ACCEPTED_SPAN_FREQUENCY_V1";
 constexpr char kSelectedEstimatorVersion[] =
     "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1";
 constexpr char kSelectedEstimatorReference[] = "pps_gated_frequency";
@@ -79,9 +79,6 @@ double temperature_c = 0.0;
 bool selected_estimator_valid = false;
 bool selected_model_applicable = false;
 OtisMonotonicUsExtension timer_extension = {};
-uint64_t previous_boundary_extended_ticks = 0u;
-uint32_t previous_boundary_session = 0u;
-bool previous_boundary_available = false;
 uint64_t exact_settling_deadline_ticks = 0u;
 uint32_t exact_settling_capture_session = 0u;
 bool exact_settling_deadline_available = false;
@@ -207,7 +204,7 @@ const char *model_reason(const OtisRegulationStaticCodeState *code) {
   return "model_applicable";
 }
 
-void emit_estimate(bool selected, const OtisRegulationSpanEstimate &span,
+bool emit_estimate(bool selected, const OtisRegulationSpanEstimate &span,
                    const OtisRegulationStaticCodeState *code,
                    uint64_t timestamp_ticks) {
   const uint32_t seq = estimate_seq++;
@@ -231,7 +228,7 @@ void emit_estimate(bool selected, const OtisRegulationSpanEstimate &span,
     uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
     if (observed != UINT32_MAX)
       __atomic_store_n(&dropped_frames, observed + 1u, __ATOMIC_RELAXED);
-    return;
+    return false;
   }
   char *frame = formatter_scratch;
   constexpr size_t frame_capacity = sizeof(formatter_scratch);
@@ -239,9 +236,9 @@ void emit_estimate(bool selected, const OtisRegulationSpanEstimate &span,
       OtisTimingProgressPhase::FrequencyEstimateFormat, timestamp_ticks);
   int used = snprintf(
       frame, frame_capacity,
-      "EST,2,%lu,est:frequency_regulation:%s:%06lu,%llu,%s,%lu,live:CNT:%lu,%lu,%lu,"
+      "EST,3,%lu,est:frequency_regulation:%s:%06lu,%llu,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,live:APS:%lu:%lu:%lu:%lu,"
       "live:STS:pps_gate,live:DAC:%lu,firmware_config:%s,%s,%s,"
-      "valid,contiguous_snapshot_span,valid,0,true,valid,0,true,healthy,"
+      "valid,contiguous_accepted_reference_span,valid,0,true,valid,0,true,healthy,"
       "diagnostic_healthy,%s,%lu,unavailable,%s,%s,,unavailable,"
       "counter_aperture_uncertainty_unavailable;reference_uncertainty_unavailable;calibration_uncertainty_unavailable,"
       ",,,,,,,,not_combined_missing_components,unavailable:combined_uncertainty,false,,%s,%s\r\n",
@@ -249,13 +246,21 @@ void emit_estimate(bool selected, const OtisRegulationSpanEstimate &span,
       selected ? kSelectedEstimatorReference : "diagnostic60",
       static_cast<unsigned long>(seq),
       static_cast<unsigned long long>(timestamp_ticks), kTimeDomain,
-      static_cast<unsigned long>(span.last_sequence),
-      static_cast<unsigned long>(span.last_sequence),
+      static_cast<unsigned long>(span.capture_session),
+      static_cast<unsigned long>(span.acceptance_epoch),
+      static_cast<unsigned long>(selected ? span.selected_opening_accepted_boundary_ordinal : span.diagnostic_opening_accepted_boundary_ordinal),
+      static_cast<unsigned long>(span.closing_accepted_boundary_ordinal),
       static_cast<unsigned long>(first),
       static_cast<unsigned long>(span.last_sequence),
+      static_cast<unsigned long>(selected ? span.selected_first_reference_sequence : span.diagnostic_first_reference_sequence),
+      static_cast<unsigned long>(span.last_reference_sequence),
+      static_cast<unsigned long>(span.capture_session),
+      static_cast<unsigned long>(span.acceptance_epoch),
+      static_cast<unsigned long>(selected ? span.selected_opening_accepted_boundary_ordinal : span.diagnostic_opening_accepted_boundary_ordinal),
+      static_cast<unsigned long>(span.closing_accepted_boundary_ordinal),
       static_cast<unsigned long>(current_dac_epoch), OTIS_BUILD_IMAGE_ID,
       selected ? kSelectedEstimatorVersion
-               : "pps_gated_frequency_diagnostic_60s_overlap_v1",
+               : "accepted_reference_frequency_diagnostic_60s_overlap_v1",
       kSelectedEstimatorHash, frequency_text,
       static_cast<unsigned long>(samples), frequency_text,
       frequency_error_text,
@@ -263,8 +268,9 @@ void emit_estimate(bool selected, const OtisRegulationSpanEstimate &span,
       selected ? (applicable ? "preview_input"
                              : model_reason(code))
                : "diagnostic_non_authoritative");
+  bool published = false;
   if (used > 0 && static_cast<size_t>(used) < frame_capacity)
-    enqueue(frame, static_cast<size_t>(used));
+    published = enqueue(frame, static_cast<size_t>(used));
   else {
     uint32_t observed = __atomic_load_n(&dropped_frames, __ATOMIC_RELAXED);
     if (observed != UINT32_MAX)
@@ -272,6 +278,7 @@ void emit_estimate(bool selected, const OtisRegulationSpanEstimate &span,
   }
   otis_dual_core_note_timing_progress(
       OtisTimingProgressPhase::FrequencyEstimatePublish, timestamp_ticks);
+  return published;
 }
 
 void emit_control(const OtisFrequencyRegulationDecision &decision,
@@ -361,9 +368,6 @@ bool otis_frequency_regulation_live_begin(uint32_t startup_uptime_s) {
   selected_estimator_valid = false;
   selected_model_applicable = false;
   otis_monotonic_us_extension_init(&timer_extension);
-  previous_boundary_extended_ticks = 0u;
-  previous_boundary_session = 0u;
-  previous_boundary_available = false;
   exact_settling_deadline_ticks = 0u;
   exact_settling_capture_session = 0u;
   exact_settling_deadline_available = false;
@@ -372,7 +376,7 @@ bool otis_frequency_regulation_live_begin(uint32_t startup_uptime_s) {
 
 void otis_frequency_regulation_live_emit_headers(void) {
   otis_transport_write_cstr(
-      OTIS_CONTRACT_ESTIMATES_V2_HEADER "\r\n");
+      OTIS_CONTRACT_ESTIMATES_V3_HEADER "\r\n");
   otis_transport_write_cstr(
       OTIS_CONTRACT_CONTROL_PREVIEWS_V1_HEADER "\r\n");
   otis_transport_write_cstr(
@@ -436,18 +440,39 @@ bool otis_frequency_regulation_live_applied_epoch_exact(uint16_t applied_code,
          current_dac_epoch == dac_epoch;
 }
 
-void otis_frequency_regulation_live_on_boundary(
-    const OtisPpsCountBoundaryObservation *observation,
-    uint32_t interval_count, bool interval_valid, uint32_t uptime_s,
+void otis_frequency_regulation_live_on_reference_selection(
+    const OtisReferenceAcceptanceOutcome *selection,
+    uint64_t closing_extended_ticks, uint32_t uptime_s,
     uint64_t operational_decision_raw_ticks,
     const OtisRegulationStaticCodeState *static_code,
     OtisAdaptiveHybridRegulationLiveOutcome *active_outcome) {
   if (active_outcome != nullptr) *active_outcome = {};
-  if (!initialized || observation == nullptr) return;
-  uint64_t current_boundary_extended_ticks = observation->pps_timestamp_ticks;
-  const bool boundary_extended = otis_monotonic_us_extension_advance_boundary(
-      &timer_extension, observation->pps_timestamp_ticks,
-      observation->session, &current_boundary_extended_ticks);
+  if (!initialized || selection == nullptr || otis_dual_core_fail_static()) return;
+  const auto *observation = &selection->closing;
+  const uint64_t current_boundary_extended_ticks = closing_extended_ticks;
+  const bool boundary_extended = observation->capture_session != 0u &&
+      uint32_t(closing_extended_ticks) == observation->reference_timestamp_ticks;
+  if (boundary_extended && (!timer_extension.available ||
+      timer_extension.capture_session != observation->capture_session ||
+      closing_extended_ticks >= timer_extension.extended_us))
+    otis_monotonic_us_extension_seed(&timer_extension, closing_extended_ticks, observation->capture_session);
+  using Disposition = OtisReferenceAcceptanceDisposition;
+  if (selection->disposition == Disposition::EarlyExcluded ||
+      selection->disposition == Disposition::Seeded ||
+      selection->disposition == Disposition::Acquiring) return;
+  if (selection->disposition == Disposition::TrackingEstablished) {
+    OtisRegulationSpanEstimate unused = {};
+    otis_oscillator_snapshot_estimator_ingest(&estimator, selection, &unused);
+    selected_estimator_valid = false;
+    selected_model_applicable = false;
+    return;
+  }
+  bool interval_valid = boundary_extended && selection->has_span && selection->tracking &&
+      selection->disposition == Disposition::AcceptedSpan;
+  if (!interval_valid) {
+    otis_frequency_regulation_live_on_capture_fault("accepted_reference_discontinuity", uptime_s, static_code);
+    return;
+  }
   // Source EST/REF/SNP/CNT timestamps retain the captured D14 coordinate.
   // A control decision is a later operational event: the caller samples it
   // after refreshing metadata health, so an asynchronous lifecycle transition
@@ -456,7 +481,7 @@ void otis_frequency_regulation_live_on_boundary(
   if (boundary_extended &&
       operational_decision_raw_ticks < OTIS_RP2040_MONOTONIC_US32_MODULUS) {
     const uint64_t elapsed_since_capture = otis_monotonic_us32_interval(
-        observation->pps_timestamp_ticks, operational_decision_raw_ticks);
+        observation->reference_timestamp_ticks, operational_decision_raw_ticks);
     if (elapsed_since_capture <= OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS &&
         current_boundary_extended_ticks <= UINT64_MAX - elapsed_since_capture)
       active_decision_timestamp_ticks =
@@ -464,14 +489,11 @@ void otis_frequency_regulation_live_on_boundary(
   }
   const uint32_t active_decision_timestamp_s = static_cast<uint32_t>(
       active_decision_timestamp_ticks / kCaptureTicksPerSecond);
-  const bool interval_opening_exact =
-      boundary_extended && previous_boundary_available &&
-      previous_boundary_session == observation->session;
-  const uint64_t interval_opening_extended_ticks =
-      previous_boundary_extended_ticks;
-  previous_boundary_extended_ticks = current_boundary_extended_ticks;
-  previous_boundary_session = observation->session;
-  previous_boundary_available = true;
+  const bool interval_opening_exact = boundary_extended &&
+      closing_extended_ticks >= selection->interval_ticks &&
+      selection->opening.capture_session == observation->capture_session;
+  const uint64_t interval_opening_extended_ticks = interval_opening_exact
+      ? closing_extended_ticks - selection->interval_ticks : 0u;
   const uint32_t warmup_complete_s = startup_s + kStartupWarmupS;
   if (!warmup_boundary_seen && uptime_s >= warmup_complete_s) {
     warmup_boundary_seen = true;
@@ -485,9 +507,8 @@ void otis_frequency_regulation_live_on_boundary(
         static_code);
     OtisFrequencyRegulationDecision decision;
     otis_frequency_regulation_engine_evaluate(&controller, &input, &decision);
-    emit_control(decision, static_code, observation->pps_timestamp_ticks,
+    emit_control(decision, static_code, observation->reference_timestamp_ticks,
                  estimate_seq);
-    return;
   }
   // A boundary stamped exactly at settling_until_s closes the oscillator
   // interval that began one second earlier, so it still straddles the
@@ -497,7 +518,7 @@ void otis_frequency_regulation_live_on_boundary(
   if (exact_settling_deadline_available) {
     settling_interval_excluded =
         !interval_opening_exact ||
-        observation->session != exact_settling_capture_session ||
+        observation->capture_session != exact_settling_capture_session ||
         interval_opening_extended_ticks < exact_settling_deadline_ticks;
     if (!settling_interval_excluded)
       exact_settling_deadline_available = false;
@@ -510,7 +531,8 @@ void otis_frequency_regulation_live_on_boundary(
   }
   OtisRegulationSpanEstimate span;
   otis_oscillator_snapshot_estimator_ingest(
-      &estimator, observation->sequence, interval_count, interval_valid, &span);
+      &estimator, selection, &span);
+  interval_valid = span.source_continuous;
   if (!interval_valid) {
     selected_estimator_valid = false;
     selected_model_applicable = false;
@@ -518,15 +540,23 @@ void otis_frequency_regulation_live_on_boundary(
         uptime_s, 0.0, false, false, false, false, static_code);
     OtisFrequencyRegulationDecision decision;
     otis_frequency_regulation_engine_evaluate(&controller, &input, &decision);
-    emit_control(decision, static_code, observation->pps_timestamp_ticks,
+    emit_control(decision, static_code, observation->reference_timestamp_ticks,
                  estimate_seq);
     return;
   }
-  if (span.diagnostic_available)
-    emit_estimate(false, span, static_code, observation->pps_timestamp_ticks);
+  if (span.diagnostic_available &&
+      !emit_estimate(false, span, static_code, observation->reference_timestamp_ticks)) {
+    selected_estimator_valid = false;
+    selected_model_applicable = false;
+    return;
+  }
   if (span.selected_available) {
     const uint32_t selected_estimate_seq = estimate_seq;
-    emit_estimate(true, span, static_code, observation->pps_timestamp_ticks);
+    if (!emit_estimate(true, span, static_code, observation->reference_timestamp_ticks)) {
+      selected_estimator_valid = false;
+      selected_model_applicable = false;
+      return;
+    }
     const bool applicable = code_context_valid(static_code);
     OtisFrequencyRegulationInput input = controller_input(
         uptime_s, span.selected_frequency_hz - kNominalFrequencyHz, true,
@@ -534,7 +564,7 @@ void otis_frequency_regulation_live_on_boundary(
     input.model_applicable = applicable;
     input.accumulated_edge_error_counts =
         span.selected_accumulated_edge_error_counts;
-    input.capture_session = observation->session;
+    input.capture_session = observation->capture_session;
     input.dac_epoch_identity = current_dac_epoch;
     input.accumulated_edge_error_counts_available = true;
     OtisFrequencyRegulationDecision decision;
@@ -542,13 +572,11 @@ void otis_frequency_regulation_live_on_boundary(
     selected_estimator_valid = true;
     selected_model_applicable = applicable;
     const bool tight_evidence_queued = emit_tight_deadband(
-        decision, selected_estimate_seq, observation->pps_timestamp_ticks,
-        observation->session, current_dac_epoch,
+        decision, selected_estimate_seq, observation->reference_timestamp_ticks,
+        observation->capture_session, current_dac_epoch,
         span.selected_accumulated_edge_error_counts);
     OtisAdaptiveHybridRegulationLiveDecision active_decision = {
         control_seq,
-        span.selected_first_sequence,
-        span.last_sequence,
         active_decision_timestamp_s,
         decision.current_code,
         decision.limited_delta_codes,
@@ -564,7 +592,14 @@ void otis_frequency_regulation_live_on_boundary(
     OtisPhasePreviewActiveSnapshot phase_snapshot = {};
     const bool phase_snapshot_available =
         otis_phase_preview_live_get_active_snapshot(&phase_snapshot);
-    active_decision.capture_session = observation->session;
+    active_decision.capture_session = observation->capture_session;
+    active_decision.source_acceptance_epoch = span.acceptance_epoch;
+    active_decision.source_opening_accepted_boundary_ordinal = span.selected_opening_accepted_boundary_ordinal;
+    active_decision.source_closing_accepted_boundary_ordinal = span.closing_accepted_boundary_ordinal;
+    const bool phase_source_matches = phase_snapshot_available &&
+        phase_snapshot.capture_session == span.capture_session &&
+        phase_snapshot.acceptance_epoch == span.acceptance_epoch &&
+        phase_snapshot.accepted_boundary_ordinal == span.closing_accepted_boundary_ordinal;
     active_decision.accumulated_edge_error_counts =
         span.selected_accumulated_edge_error_counts;
     active_decision.tight_state =
@@ -579,13 +614,13 @@ void otis_frequency_regulation_live_on_boundary(
     active_decision.phase_dac_epoch = phase_snapshot.dac_epoch;
     active_decision.phase_applied_code = phase_snapshot.applied_code;
     active_decision.phase_continuous =
-        phase_snapshot_available && phase_snapshot.phase_continuous;
+        phase_source_matches && phase_snapshot.phase_continuous;
     active_decision.phase_current =
-        phase_snapshot_available && phase_snapshot.phase_current;
+        phase_source_matches && phase_snapshot.phase_current;
     active_decision.phase_step_detected =
         !phase_snapshot_available || phase_snapshot.phase_step_detected;
     active_decision.phase_recorder_published =
-        phase_snapshot_available && phase_snapshot.recorder_published;
+        phase_source_matches && phase_snapshot.recorder_published;
     OtisAdaptiveHybridRegulationLiveOutcome local_active_outcome;
     otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
         &active_decision, active_decision_timestamp_ticks,
@@ -594,7 +629,7 @@ void otis_frequency_regulation_live_on_boundary(
         !(active_outcome->request_created || active_outcome->faulted ||
           active_outcome->response_recorded))
       *active_outcome = local_active_outcome;
-    emit_control(decision, static_code, observation->pps_timestamp_ticks,
+    emit_control(decision, static_code, observation->reference_timestamp_ticks,
                  selected_estimate_seq);
   }
 }

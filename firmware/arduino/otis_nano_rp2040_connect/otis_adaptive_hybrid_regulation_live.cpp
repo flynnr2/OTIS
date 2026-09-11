@@ -17,6 +17,7 @@
 #include "otis_frequency_regulation_live.h"
 #include "otis_phase_preview_live.h"
 #include "otis_protocol.h"
+#include "otis_reference_acceptance_policy.generated.h"
 #include "otis_transport_serial.h"
 
 namespace {
@@ -86,7 +87,7 @@ bool gnss_metadata_hold_active = false;
 bool gnss_metadata_hold_transaction_pending = false;
 uint32_t gnss_metadata_hold_entry_sequence = 0u;
 uint32_t gnss_metadata_requalification_sequence = 0u;
-uint32_t gnss_metadata_qualification_frontier = 0u;
+uint32_t gnss_metadata_qualification_accepted_boundary_ordinal = 0u;
 uint32_t gnss_metadata_hold_session = 0u;
 uint16_t gnss_metadata_hold_applied_code = 0u;
 uint32_t gnss_metadata_hold_dac_epoch = 0u;
@@ -253,11 +254,10 @@ bool queue_adaptive_hybrid_maintenance_record(
   evidence_frame_scratch = {};
   if (!otis_adaptive_hybrid_build_maintenance_record(&input, &record)) return false;
   if (event == OtisAdaptiveHybridMaintenanceEvent::GnssMetadataRequalified &&
-      (record.requalification_d14_d8_observation_sequence == 0u ||
-       record.requalification_d14_d8_observation_sequence !=
-           engine_after.requalification_frontier))
+      (record.requalification_accepted_boundary_ordinal !=
+           engine_after.requalification_accepted_boundary_ordinal))
     return false;
-  const int used = otis_format_adaptive_hybrid_maintenance_v1(
+  const int used = otis_format_adaptive_hybrid_maintenance_v2(
       evidence_frame_scratch.data, sizeof(evidence_frame_scratch.data),
       &record);
   if (used <= 0 ||
@@ -332,8 +332,9 @@ OtisAdaptiveHybridMaintenanceHybridJoin adaptive_hybrid_current_hybrid_join(
       hybrid_record_sequence,
       decision.decision_sequence,
       observation.capture_session,
-      observation.source_first_sequence,
-      observation.source_last_sequence,
+      observation.source_acceptance_epoch,
+      observation.source_opening_accepted_boundary_ordinal,
+      observation.source_closing_accepted_boundary_ordinal,
       observation.phase_epoch,
       phase_observation_sequence,
       observation.phase_valid,
@@ -351,8 +352,11 @@ OtisAdaptiveHybridMaintenanceTransactionJoin adaptive_hybrid_current_transaction
   join.request_sequence = transaction.request.request_sequence;
   join.decision_sequence = decision.decision_sequence;
   join.capture_session = observation.capture_session;
-  join.source_first_sequence = observation.source_first_sequence;
-  join.source_last_sequence = observation.source_last_sequence;
+  join.source_acceptance_epoch = observation.source_acceptance_epoch;
+  join.source_opening_accepted_boundary_ordinal =
+      observation.source_opening_accepted_boundary_ordinal;
+  join.source_closing_accepted_boundary_ordinal =
+      observation.source_closing_accepted_boundary_ordinal;
   if (include_application) {
     join.application_sequence = transaction.applied.application_sequence;
     join.actual_applied_code = transaction.applied.applied_code;
@@ -557,8 +561,11 @@ OtisCrossCoreActuatorRequest cross_core_request(
   OtisCrossCoreActuatorRequest cross = {};
   cross.request_sequence = request.request_sequence;
   cross.decision_sequence = request.decision_sequence;
-  cross.source_first_sequence = request.source_first_sequence;
-  cross.source_last_sequence = request.source_last_sequence;
+  cross.source_acceptance_epoch = request.source_acceptance_epoch;
+  cross.source_opening_accepted_boundary_ordinal =
+      request.source_opening_accepted_boundary_ordinal;
+  cross.source_closing_accepted_boundary_ordinal =
+      request.source_closing_accepted_boundary_ordinal;
   cross.decision_reference_ticks =
       pending_adaptive_hybrid_decision_valid &&
               pending_adaptive_hybrid_decision.decision_sequence ==
@@ -631,7 +638,7 @@ bool queue_frame(const char *event, uint64_t event_timestamp_ticks,
       OtisTimingProgressPhase::AdaptiveHybridFormat, progress_ticks);
   const int used = snprintf(
       frame.data, sizeof(frame.data),
-      "ACT,2,%lu,%s,%llu,rp2040_monotonic_us64,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%ld,%u,%u,%u,%s,%u,%lu,%u,%u,%lu,%s,%s,%s,%u,%s,%u,%u,%s,%s,%s,%u,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\r\n",
+      "ACT,3,%lu,%s,%llu,rp2040_monotonic_us64,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%ld,%u,%u,%u,%s,%u,%lu,%u,%u,%lu,%s,%s,%s,%u,%s,%u,%u,%s,%s,%s,%u,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\r\n",
       static_cast<unsigned long>(next_record_sequence), event,
       static_cast<unsigned long long>(event_timestamp_ticks), kRunIdentity,
       kBuildIdentity, OTIS_BUILD_IMAGE_ID,
@@ -640,8 +647,11 @@ bool queue_frame(const char *event, uint64_t event_timestamp_ticks,
       static_cast<unsigned long>(transaction.request.nonce),
       static_cast<unsigned long>(transaction.request.request_sequence),
       static_cast<unsigned long>(transaction.request.decision_sequence),
-      static_cast<unsigned long>(transaction.request.source_first_sequence),
-      static_cast<unsigned long>(transaction.request.source_last_sequence),
+      static_cast<unsigned long>(transaction.request.source_acceptance_epoch),
+      static_cast<unsigned long>(
+          transaction.request.source_opening_accepted_boundary_ordinal),
+      static_cast<unsigned long>(
+          transaction.request.source_closing_accepted_boundary_ordinal),
       static_cast<unsigned long>(transaction.request.timestamp_s),
       transaction.request.current_applied_code,
       static_cast<long>(transaction.request.requested_delta_codes),
@@ -700,7 +710,7 @@ bool queue_manual_start_frame(uint16_t code, bool ok, uint32_t now_s,
   const uint32_t next_record_sequence = transaction_record_sequence + 1u;
   const int used = snprintf(
       frame.data, sizeof(frame.data),
-      "ACT,2,%lu,manual_start,%llu,rp2040_monotonic_us64,%s,%s,%s,%lu,0,0,0,0,0,0,%lu,%u,0,%u,0,0,0.000000000,%u,%lu,%u,0,%lu,%s,false,false,%u,false,%u,%u,0.000000000,0.000000000,0.000000000,0,%s,unavailable,%s,%s,%s,%s,%s,%s,false,evidence_clear\r\n",
+      "ACT,3,%lu,manual_start,%llu,rp2040_monotonic_us64,%s,%s,%s,%lu,0,0,0,0,0,0,0,%lu,%u,0,%u,0,0,0.000000000,%u,%lu,%u,0,%lu,%s,false,false,%u,false,%u,%u,0.000000000,0.000000000,0.000000000,0,%s,unavailable,%s,%s,%s,%s,%s,%s,false,evidence_clear\r\n",
       static_cast<unsigned long>(next_record_sequence),
       static_cast<unsigned long long>(event_timestamp_ticks), kRunIdentity,
       kBuildIdentity, OTIS_BUILD_IMAGE_ID,
@@ -766,7 +776,7 @@ bool queue_active_hybrid_decision(
   const bool carries_dependent_response =
       otis_dependent_response_identity_apply(&dependent_response_identity,
                                              &context);
-  const int used = otis_format_active_hybrid_decision_v2(
+  const int used = otis_format_active_hybrid_decision_v3(
       frame.data, sizeof(frame.data), &source, &decision, &context);
   if (used <= 0 || static_cast<size_t>(used) >= sizeof(frame.data)) {
     frame = {};
@@ -817,7 +827,7 @@ bool enter_gnss_metadata_hold(void) {
     gnss_metadata_hold_transaction_pending = false;
     gnss_metadata_hold_entry_sequence = latest_health.gnss_metadata_sequence;
     gnss_metadata_requalification_sequence = 0u;
-    gnss_metadata_qualification_frontier = 0u;
+    gnss_metadata_qualification_accepted_boundary_ordinal = 0u;
     gnss_metadata_hold_session = transaction.expected_binding.session_id;
     gnss_metadata_hold_applied_code = transaction.applied_code;
     gnss_metadata_hold_dac_epoch = transaction.dac_epoch;
@@ -966,7 +976,7 @@ bool maybe_complete_gnss_metadata_requalification(void) {
   if (transaction.state != OtisRegulationState::ReferenceHold) return false;
   if (!gnss_metadata_healthy()) {
     gnss_metadata_requalification_sequence = 0u;
-    gnss_metadata_qualification_frontier = 0u;
+    gnss_metadata_qualification_accepted_boundary_ordinal = 0u;
     return false;
   }
   if (!adaptive_hybrid_engine_ready || !adaptive_hybrid_engine.metadata_hold ||
@@ -975,7 +985,8 @@ bool maybe_complete_gnss_metadata_requalification(void) {
   if (adaptive_hybrid_engine.metadata_requalified) return false;
   if (latest_health.gnss_metadata_sequence <=
           gnss_metadata_hold_entry_sequence ||
-      latest_health.d14_d8_observation_sequence == 0u)
+      latest_health.acceptance_epoch == 0u ||
+      !latest_health.accepted_anchor_current)
     return false;
   // The ordinary service path deliberately re-evaluates reference state
   // between timestamped health publications.  A healthy polling pass has no
@@ -998,7 +1009,8 @@ bool maybe_complete_gnss_metadata_requalification(void) {
   OtisAdaptiveHybridEngine requalification_after = requalification_before;
   if (!otis_adaptive_hybrid_engine_requalify_metadata(
           &requalification_after,
-          latest_health.d14_d8_observation_sequence) ||
+          latest_health.acceptance_epoch,
+          latest_health.accepted_boundary_ordinal) ||
       !queue_adaptive_hybrid_single_async_transition(
           OtisAdaptiveHybridMaintenanceEvent::GnssMetadataRequalified,
           health_event_timestamp_ticks, requalification_before,
@@ -1010,40 +1022,8 @@ bool maybe_complete_gnss_metadata_requalification(void) {
   adaptive_hybrid_engine = requalification_after;
   gnss_metadata_requalification_sequence =
       latest_health.gnss_metadata_sequence;
-  gnss_metadata_qualification_frontier =
-      latest_health.d14_d8_observation_sequence;
-  return true;
-  if (gnss_metadata_requalification_sequence == 0u) {
-    if (latest_health.gnss_metadata_sequence <=
-        gnss_metadata_hold_entry_sequence)
-      return false;
-    gnss_metadata_requalification_sequence =
-        latest_health.gnss_metadata_sequence;
-    gnss_metadata_qualification_frontier =
-        latest_health.d14_d8_observation_sequence;
-    return false;
-  }
-  if (latest_health.d14_d8_observation_sequence <=
-      gnss_metadata_qualification_frontier)
-    return false;
-  if (latest_health.session_id != gnss_metadata_hold_session ||
-      !latest_health.applied_code_confirmed ||
-      latest_health.applied_code != gnss_metadata_hold_applied_code ||
-      transaction.applied_code != gnss_metadata_hold_applied_code ||
-      transaction.dac_epoch != gnss_metadata_hold_dac_epoch) {
-    otis_regulation_fault(
-        &transaction,
-        "gnss_metadata_requalification_session_code_or_epoch_contradiction");
-    return false;
-  }
-  if (!otis_regulation_reference_requalify(
-          &transaction, gnss_metadata_hold_session)) {
-    otis_regulation_fault(
-        &transaction, "gnss_metadata_requalification_transition_failed");
-    return false;
-  }
-  gnss_metadata_hold_active = false;
-  gnss_metadata_hold_transaction_pending = false;
+  gnss_metadata_qualification_accepted_boundary_ordinal =
+      latest_health.accepted_boundary_ordinal;
   return true;
 }
 
@@ -1153,7 +1133,7 @@ bool otis_adaptive_hybrid_regulation_live_begin(void) {
   gnss_metadata_hold_transaction_pending = false;
   gnss_metadata_hold_entry_sequence = 0u;
   gnss_metadata_requalification_sequence = 0u;
-  gnss_metadata_qualification_frontier = 0u;
+  gnss_metadata_qualification_accepted_boundary_ordinal = 0u;
   gnss_metadata_hold_session = 0u;
   gnss_metadata_hold_applied_code = 0u;
   gnss_metadata_hold_dac_epoch = 0u;
@@ -1198,11 +1178,11 @@ bool otis_adaptive_hybrid_regulation_live_begin(void) {
 
 void otis_adaptive_hybrid_regulation_live_emit_headers(void) {
   otis_transport_write_cstr(
-      OTIS_CONTRACT_ACTIVE_TRANSACTIONS_V2_HEADER "\r\n");
+      OTIS_CONTRACT_ACTIVE_TRANSACTIONS_V3_HEADER "\r\n");
   otis_transport_write_cstr(
-      OTIS_CONTRACT_ACTIVE_HYBRID_DECISIONS_V2_HEADER "\r\n");
+      OTIS_CONTRACT_ACTIVE_HYBRID_DECISIONS_V3_HEADER "\r\n");
   char maintenance_header[kFrameCapacity] = {};
-  if (otis_format_adaptive_hybrid_maintenance_v1_header(
+  if (otis_format_adaptive_hybrid_maintenance_v2_header(
           maintenance_header, sizeof(maintenance_header)) > 0)
     otis_transport_write_cstr(maintenance_header);
 }
@@ -1746,6 +1726,14 @@ static void adaptive_hybrid_active_live_on_decision_impl(
   const bool authority_valid =
       strcmp(OTIS_BUILD_IMAGE_ID, kExpectedImage) == 0 &&
       source.capture_session == transaction.expected_binding.session_id &&
+      source.source_acceptance_epoch != 0u &&
+      otis_exact_selected_accepted_span(
+          source.source_opening_accepted_boundary_ordinal,
+          source.source_closing_accepted_boundary_ordinal) &&
+      latest_health.acceptance_epoch == source.source_acceptance_epoch &&
+      latest_health.accepted_boundary_ordinal ==
+          source.source_closing_accepted_boundary_ordinal &&
+      latest_health.accepted_anchor_current &&
       source.measurement_valid && source.model_applicable &&
       health.raw_pps_valid && health.count_valid &&
       health.applied_code_confirmed &&
@@ -1756,8 +1744,11 @@ static void adaptive_hybrid_active_live_on_decision_impl(
   OtisAdaptiveHybridObservation observation = {};
   observation.timestamp_s = source.timestamp_s;
   observation.capture_session = source.capture_session;
-  observation.source_first_sequence = source.source_first_sequence;
-  observation.source_last_sequence = source.source_last_sequence;
+  observation.source_acceptance_epoch = source.source_acceptance_epoch;
+  observation.source_opening_accepted_boundary_ordinal =
+      source.source_opening_accepted_boundary_ordinal;
+  observation.source_closing_accepted_boundary_ordinal =
+      source.source_closing_accepted_boundary_ordinal;
   observation.dac_epoch = source.dac_epoch;
   observation.applied_code = source.current_applied_code;
   observation.accumulated_edge_error_counts =
@@ -1881,8 +1872,9 @@ static void adaptive_hybrid_active_live_on_decision_impl(
   const OtisAdaptiveHybridMaintenanceTransactionJoin *request_join_pointer = nullptr;
   const OtisRegulationDecision request_input = {
       projected_source.decision_sequence,
-      projected_source.source_first_sequence,
-      projected_source.source_last_sequence,
+      projected_source.source_acceptance_epoch,
+      projected_source.source_opening_accepted_boundary_ordinal,
+      projected_source.source_closing_accepted_boundary_ordinal,
       projected_source.timestamp_s,
       projected_source.current_applied_code,
       projected_source.requested_delta_codes,
@@ -2031,8 +2023,23 @@ static void adaptive_hybrid_active_live_on_decision_impl(
   const OtisAdaptiveHybridEngine response_before = adaptive_hybrid_engine;
   OtisAdaptiveHybridEngine response_after = response_before;
   OtisRegulationResponseResult response = {};
+  // Metadata may be held while an already applied transaction drains, but the
+  // response must still be a current, complete accepted-reference span from
+  // this capture session.  Otherwise a queued source from an earlier epoch
+  // could close a transaction after requalification.
+  const bool response_source_current =
+      source.capture_session == transaction.expected_binding.session_id &&
+      source.source_acceptance_epoch != 0u &&
+      otis_exact_selected_accepted_span(
+          source.source_opening_accepted_boundary_ordinal,
+          source.source_closing_accepted_boundary_ordinal) &&
+      latest_health.accepted_anchor_current &&
+      latest_health.acceptance_epoch == source.source_acceptance_epoch &&
+      latest_health.accepted_boundary_ordinal ==
+          source.source_closing_accepted_boundary_ordinal;
   const bool measurement_healthy =
       source.measurement_valid &&
+      response_source_current &&
       otis_regulation_response_measurement_valid(&health);
   const bool response_accepted = otis_regulation_record_response(
       &transaction, source.frequency_error_hz, measurement_healthy,
@@ -2186,11 +2193,21 @@ static void active_live_on_decision_impl(
       decision->phase_recorder_published &&
       decision->phase_dac_epoch == decision->dac_epoch &&
       decision->phase_applied_code == decision->current_applied_code;
+  const bool accepted_source_exact =
+      decision->source_acceptance_epoch != 0u &&
+      otis_exact_selected_accepted_span(
+          decision->source_opening_accepted_boundary_ordinal,
+          decision->source_closing_accepted_boundary_ordinal) &&
+      latest_health.accepted_anchor_current &&
+      latest_health.acceptance_epoch == decision->source_acceptance_epoch &&
+      latest_health.accepted_boundary_ordinal ==
+          decision->source_closing_accepted_boundary_ordinal;
   const OtisActiveHybridObservation hybrid_input = {
       decision->timestamp_s,
       decision->capture_session,
-      decision->source_first_sequence,
-      decision->source_last_sequence,
+      decision->source_acceptance_epoch,
+      decision->source_opening_accepted_boundary_ordinal,
+      decision->source_closing_accepted_boundary_ordinal,
       decision->dac_epoch,
       decision->current_applied_code,
       decision->frequency_error_hz,
@@ -2206,7 +2223,7 @@ static void active_live_on_decision_impl(
       decision->phase_step_detected,
       strcmp(OTIS_BUILD_IMAGE_ID, kExpectedImage) == 0 &&
           decision->capture_session ==
-              transaction.expected_binding.session_id,
+              transaction.expected_binding.session_id && accepted_source_exact,
       common_health_clean,
       downstream_phase_epoch_exact,
       hybrid_engine.transaction_outstanding,
@@ -2287,8 +2304,9 @@ static void active_live_on_decision_impl(
   if (transaction.state != OtisRegulationState::Armed) return;
   const OtisRegulationDecision request_input = {
       effective_decision->decision_sequence,
-      effective_decision->source_first_sequence,
-      effective_decision->source_last_sequence,
+      effective_decision->source_acceptance_epoch,
+      effective_decision->source_opening_accepted_boundary_ordinal,
+      effective_decision->source_closing_accepted_boundary_ordinal,
       effective_decision->timestamp_s,
       effective_decision->current_applied_code,
       effective_decision->requested_delta_codes,
@@ -2577,13 +2595,29 @@ void otis_adaptive_hybrid_regulation_live_visit_status(
           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   snprintf(metadata_value, sizeof(metadata_value), "%lu",
            static_cast<unsigned long>(
-               active.gnss_metadata_qualification_frontier));
-  visitor(context, "gnss_metadata_qualification_frontier", metadata_value,
+               active.gnss_metadata_qualification_accepted_boundary_ordinal));
+  visitor(context, "gnss_qualified_accepted_ordinal", metadata_value,
           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "reference_acceptance_policy_sha256",
+          active.reference_acceptance_policy_sha256, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_CONFIGURATION_ASSUMPTION);
+  visitor(context, "reference_acceptance_state",
+          active.reference_acceptance_state, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
+  char acceptance_value[24];
+  snprintf(acceptance_value, sizeof(acceptance_value), "%lu",
+           static_cast<unsigned long>(active.acceptance_epoch));
+  visitor(context, "acceptance_epoch", acceptance_value, OTIS_SEVERITY_INFO,
+          OTIS_FLAG_NONE);
   snprintf(metadata_value, sizeof(metadata_value), "%lu",
-           static_cast<unsigned long>(active.d14_d8_observation_sequence));
-  visitor(context, "d14_d8_observation_sequence", metadata_value,
+           static_cast<unsigned long>(active.accepted_boundary_ordinal));
+  visitor(context, "accepted_boundary_ordinal", metadata_value,
           OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  visitor(context, "accepted_anchor_current",
+          active.accepted_anchor_current ? "true" : "false",
+          active.accepted_anchor_current ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
+          active.accepted_anchor_current ? OTIS_FLAG_NONE
+                                         : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
   visitor(context, "hybrid_state", active.hybrid_state,
           active.fail_static ? OTIS_SEVERITY_ERROR : OTIS_SEVERITY_INFO,
           OTIS_FLAG_NONE);
@@ -2745,10 +2779,21 @@ void otis_adaptive_hybrid_regulation_live_get_status(OtisAdaptiveHybridRegulatio
       gnss_metadata_hold_entry_sequence;
   status->gnss_metadata_requalification_sequence =
       gnss_metadata_requalification_sequence;
-  status->gnss_metadata_qualification_frontier =
-      gnss_metadata_qualification_frontier;
-  status->d14_d8_observation_sequence =
-      have_health ? latest_health.d14_d8_observation_sequence : 0u;
+  status->gnss_metadata_qualification_accepted_boundary_ordinal =
+      gnss_metadata_qualification_accepted_boundary_ordinal;
+  status->reference_acceptance_policy_sha256 =
+      have_health && latest_health.reference_acceptance_policy_sha256 != nullptr
+          ? latest_health.reference_acceptance_policy_sha256
+          : OTIS_REFERENCE_ACCEPTANCE_POLICY_SHA256;
+  status->reference_acceptance_state =
+      have_health && latest_health.reference_acceptance_state != nullptr
+          ? latest_health.reference_acceptance_state
+          : "unavailable";
+  status->acceptance_epoch = have_health ? latest_health.acceptance_epoch : 0u;
+  status->accepted_boundary_ordinal =
+      have_health ? latest_health.accepted_boundary_ordinal : 0u;
+  status->accepted_anchor_current =
+      have_health && latest_health.accepted_anchor_current;
   const bool adaptive_hybrid_controller_inhibited =
       adaptive_hybrid_engine_ready && adaptive_hybrid_engine.fail_static_reason != nullptr &&
       (strcmp(adaptive_hybrid_engine.fail_static_reason,

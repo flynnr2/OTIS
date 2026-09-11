@@ -170,8 +170,9 @@ class AdaptiveHybridObservation:
     timestamp_s: int
     timestamp_ticks: int
     capture_session: int
-    source_first_sequence: int
-    source_last_sequence: int
+    source_acceptance_epoch: int
+    source_opening_accepted_boundary_ordinal: int
+    source_closing_accepted_boundary_ordinal: int
     dac_epoch: int
     applied_code: int
     accumulated_edge_error_counts: int
@@ -248,8 +249,8 @@ class AdaptiveHybridPhasePriorityController:
         self.debt = AdaptiveHybridDebt()
         self.persistence_sign = 0
         self.persistence_count = 0
-        self.persistence_identity: tuple[int, int, int, int, bool, str] | None = None
-        self.last_closing_frontier: int | None = None
+        self.persistence_identity: tuple[int, int, int, int, int, bool, str] | None = None
+        self.last_closing_accepted_boundary_ordinal: int | None = None
         self.request_pending = False
         self._pending_decision: AdaptiveHybridDecision | None = None
         self._pending_decision_timestamp_s: int | None = None
@@ -257,10 +258,11 @@ class AdaptiveHybridPhasePriorityController:
         self.response_pending = False
         self.metadata_hold = False
         self.metadata_requalified = False
-        self.requalification_frontier: int | None = None
+        self.requalification_acceptance_epoch: int | None = None
+        self.requalification_accepted_boundary_ordinal: int | None = None
         self.requalification_window_count = 0
-        self._requalification_last_closing_frontier: int | None = None
-        self._requalification_identity: tuple[int, int, int, int, bool, str] | None = None
+        self._requalification_last_closing_accepted_boundary_ordinal: int | None = None
+        self._requalification_identity: tuple[int, int, int, int, int, bool, str] | None = None
         self.fail_static_reason: str | None = None
         self.decision_sequence = 0
         self._current_timestamp_ticks = 0
@@ -290,7 +292,7 @@ class AdaptiveHybridPhasePriorityController:
         self.persistence_sign = 0
         self.persistence_count = 0
         self.persistence_identity = None
-        self.last_closing_frontier = None
+        self.last_closing_accepted_boundary_ordinal = None
 
     def _fail_static(self, reason: str) -> None:
         self.fail_static_reason = reason
@@ -583,9 +585,10 @@ class AdaptiveHybridPhasePriorityController:
     def enter_metadata_hold(self) -> None:
         self.metadata_hold = True
         self.metadata_requalified = False
-        self.requalification_frontier = None
+        self.requalification_acceptance_epoch = None
+        self.requalification_accepted_boundary_ordinal = None
         self.requalification_window_count = 0
-        self._requalification_last_closing_frontier = None
+        self._requalification_last_closing_accepted_boundary_ordinal = None
         self._requalification_identity = None
         self._reset(preserve_debt=True)
 
@@ -597,54 +600,72 @@ class AdaptiveHybridPhasePriorityController:
             raise HybridPolicyError(self.fail_static_reason)
         self._reset(preserve_debt=False)
 
-    def requalify_metadata(self, evidence_frontier: int) -> None:
+    def requalify_metadata(
+        self, *, acceptance_epoch: int, accepted_boundary_ordinal: int
+    ) -> None:
         if not self.metadata_hold:
             raise HybridPolicyError("metadata requalification without hold")
-        if evidence_frontier <= 0:
-            raise ValueError("metadata requalification frontier must be positive")
+        if acceptance_epoch <= 0:
+            raise ValueError("metadata requalification acceptance epoch must be positive")
+        if not 0 <= accepted_boundary_ordinal <= 0xFFFFFFFF:
+            raise ValueError("metadata requalification accepted ordinal must be uint32")
         # Fresh serial metadata is necessary but not sufficient to restore
         # actuation.  D14/D8 must provide two complete causally later windows
         # while the last confirmed code and debt remain frozen.
         self.metadata_requalified = True
-        self.requalification_frontier = evidence_frontier
+        self.requalification_acceptance_epoch = acceptance_epoch
+        self.requalification_accepted_boundary_ordinal = accepted_boundary_ordinal
         self.requalification_window_count = 0
-        self._requalification_last_closing_frontier = None
+        self._requalification_last_closing_accepted_boundary_ordinal = None
         self._requalification_identity = None
         self._reset(preserve_debt=True)
 
     def _advance_metadata_requalification(
         self,
         observation: AdaptiveHybridObservation,
-        identity: tuple[int, int, int, int, bool, str],
+        identity: tuple[int, int, int, int, int, bool, str],
     ) -> str | None:
         """Advance the independent two-window D14/D8 requalification gate."""
 
         if not self.metadata_hold or not self.metadata_requalified:
             return None
-        if self.requalification_frontier is None:
-            self._fail_static("metadata_requalification_frontier_missing")
+        if self.requalification_accepted_boundary_ordinal is None:
+            self._fail_static(
+                "metadata_requalification_accepted_boundary_ordinal_missing"
+            )
             return self.fail_static_reason
-        if observation.source_first_sequence < self.requalification_frontier:
-            return "metadata_requalification_frontier_hold"
-        previous = self._requalification_last_closing_frontier
-        if previous is not None and observation.source_first_sequence < previous:
-            return "metadata_requalification_overlap_hold"
+        if observation.source_acceptance_epoch != self.requalification_acceptance_epoch:
+            return "metadata_requalification_acceptance_epoch_hold"
+        opening_after_frontier = (
+            observation.source_opening_accepted_boundary_ordinal
+            - self.requalification_accepted_boundary_ordinal
+        ) & 0xFFFFFFFF
+        if opening_after_frontier > 0x7FFFFFFF:
+            return "metadata_requalification_accepted_boundary_ordinal_hold"
+        previous = self._requalification_last_closing_accepted_boundary_ordinal
+        if previous is not None:
+            advance = (
+                observation.source_opening_accepted_boundary_ordinal - previous
+            ) & 0xFFFFFFFF
+            if advance > 0x7FFFFFFF:
+                return "metadata_requalification_overlap_hold"
         contiguous = (
             previous is not None
-            and observation.source_first_sequence == previous
+            and observation.source_opening_accepted_boundary_ordinal == previous
             and self._requalification_identity == identity
         )
         self.requalification_window_count = (
             min(2, self.requalification_window_count + 1) if contiguous else 1
         )
-        self._requalification_last_closing_frontier = observation.source_last_sequence
+        self._requalification_last_closing_accepted_boundary_ordinal = observation.source_closing_accepted_boundary_ordinal
         self._requalification_identity = identity
         if self.requalification_window_count < 2:
             return "metadata_requalification_window_hold"
         self.metadata_hold = False
         self.metadata_requalified = False
-        self.requalification_frontier = None
-        self._requalification_last_closing_frontier = None
+        self.requalification_acceptance_epoch = None
+        self.requalification_accepted_boundary_ordinal = None
+        self._requalification_last_closing_accepted_boundary_ordinal = None
         self._requalification_identity = None
         return None
 
@@ -668,7 +689,11 @@ class AdaptiveHybridPhasePriorityController:
         ):
             self._fail_static("observation_timestamp_domain_mismatch")
             return self._decision(self.fail_static_reason)
-        if observation.source_last_sequence <= observation.source_first_sequence:
+        source_distance = (
+            observation.source_closing_accepted_boundary_ordinal
+            - observation.source_opening_accepted_boundary_ordinal
+        ) & 0xFFFFFFFF
+        if source_distance == 0 or source_distance > 0x7FFFFFFF:
             self._fail_static("invalid_selected_window_frontier")
             return self._decision(self.fail_static_reason)
         if self.request_pending:
@@ -686,17 +711,22 @@ class AdaptiveHybridPhasePriorityController:
                 or observation.dac_epoch != self.dac_epoch):
             self._fail_static("unknown_or_contradictory_application_or_DAC_epoch")
             return self._decision(self.fail_static_reason)
-        identity = (observation.capture_session, observation.applied_code,
+        identity = (observation.capture_session, observation.source_acceptance_epoch,
+                    observation.applied_code,
                     observation.dac_epoch, observation.phase_epoch,
                     observation.phase_valid, observation.frequency_estimator_id)
         if self.persistence_identity is not None and identity != self.persistence_identity:
             old = self.persistence_identity
-            if observation.capture_session != old[0] or observation.frequency_estimator_id != old[5]:
+            if (
+                observation.capture_session != old[0]
+                or observation.source_acceptance_epoch != old[1]
+                or observation.frequency_estimator_id != old[6]
+            ):
                 self._reset(preserve_debt=False)
-            elif observation.applied_code != old[1] or observation.dac_epoch != old[2]:
+            elif observation.applied_code != old[2] or observation.dac_epoch != old[3]:
                 self._fail_static("unknown_or_contradictory_application_or_DAC_epoch")
                 return self._decision(self.fail_static_reason)
-            elif observation.phase_epoch != old[3] or observation.phase_valid != old[4]:
+            elif observation.phase_epoch != old[4] or observation.phase_valid != old[5]:
                 self.debt = AdaptiveHybridDebt(self.debt.fll_picocodes, 0)
                 self._reset(preserve_debt=True)
         if not observation.authority_valid:
@@ -711,7 +741,8 @@ class AdaptiveHybridPhasePriorityController:
         if self.fail_static_reason:
             return self._decision(self.fail_static_reason)
         if metadata_requalification_hold in {
-            "metadata_requalification_frontier_hold",
+            "metadata_requalification_acceptance_epoch_hold",
+            "metadata_requalification_accepted_boundary_ordinal_hold",
             "metadata_requalification_overlap_hold",
         }:
             return self._decision(metadata_requalification_hold)
@@ -778,10 +809,14 @@ class AdaptiveHybridPhasePriorityController:
                 phase_term=phase_term,
                 **projection,
             )
-        if self.last_closing_frontier is not None:
-            if observation.source_first_sequence < self.last_closing_frontier:
+        if self.last_closing_accepted_boundary_ordinal is not None:
+            source_advance = (
+                observation.source_opening_accepted_boundary_ordinal
+                - self.last_closing_accepted_boundary_ordinal
+            ) & 0xFFFFFFFF
+            if source_advance > 0x7FFFFFFF:
                 return self._decision("source_overlap_hold", **projection)
-            if observation.source_first_sequence > self.last_closing_frontier:
+            if source_advance > 0:
                 centre, lower, upper = self._centre(observation)
                 sign = self._sign(lower, upper)
                 if not sign or (self.persistence_count and sign != self.persistence_sign):
@@ -789,7 +824,7 @@ class AdaptiveHybridPhasePriorityController:
                 self.persistence_count = 1
                 self.persistence_sign = sign
                 self.persistence_identity = identity
-                self.last_closing_frontier = observation.source_last_sequence
+                self.last_closing_accepted_boundary_ordinal = observation.source_closing_accepted_boundary_ordinal
                 return self._decision(
                     "source_gap_persistence_restart", **projection
                 )
@@ -804,7 +839,7 @@ class AdaptiveHybridPhasePriorityController:
         self.persistence_count = min(2, self.persistence_count + 1) if same else 1
         self.persistence_sign = sign
         self.persistence_identity = identity
-        self.last_closing_frontier = observation.source_last_sequence
+        self.last_closing_accepted_boundary_ordinal = observation.source_closing_accepted_boundary_ordinal
         cap = self._cap(centre, observation.applied_code)
         if metadata_requalification_hold:
             return self._decision(

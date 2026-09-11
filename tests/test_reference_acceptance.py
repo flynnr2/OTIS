@@ -19,14 +19,20 @@ POLICY_KEYS = (
 MODULUS = 1 << 32
 
 
-def test_candidate_remains_unwired_from_current_firmware():
-    candidate = FIRMWARE / "otis_reference_acceptance.h"
-    for path in FIRMWARE.rglob("*"):
-        if path == candidate or path.suffix not in {".h", ".hpp", ".cpp", ".ino"}:
-            continue
-        source = path.read_text(encoding="utf-8")
-        assert "otis_reference_acceptance.h" not in source, path
-        assert "OtisReferenceAcceptance" not in source, path
+def test_live_selection_is_shared_and_preserves_raw_production():
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text()
+    start = sketch.index("void emit_pps_count_boundary(")
+    end = sketch.index("\nvoid ", start)
+    boundary = sketch[start:end]
+    assert boundary.count("reference_acceptance.observe(") == 1
+    raw = boundary.index("otis_count_observation_on_pps_boundary(")
+    derived = boundary.index("otis_reference_acceptance_format_span(")
+    phase = boundary.index("otis_phase_preview_live_on_reference_selection(")
+    frequency = boundary.index("otis_frequency_regulation_live_on_reference_selection(")
+    assert raw < derived < phase < frequency
+    assert "&selection, closing_extended_ticks" in boundary
+    assert "otis_phase_preview_live_on_boundary(" not in sketch
+    assert "otis_frequency_regulation_live_on_boundary(" not in sketch
 
 
 @pytest.fixture(scope="module")

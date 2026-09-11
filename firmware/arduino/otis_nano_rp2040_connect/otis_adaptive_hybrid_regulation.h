@@ -3,7 +3,31 @@
 
 #include <stdint.h>
 
+#include "otis_config.h"
 #include "otis_adaptive_hybrid_wide.h"
+
+// Accepted boundary ordinals are a declared uint32 modular domain.  An active
+// decision only consumes an estimator's complete frozen 600-interval span.
+static inline bool otis_exact_selected_accepted_span(
+    uint64_t opening_accepted_boundary_ordinal,
+    uint64_t closing_accepted_boundary_ordinal) {
+  return opening_accepted_boundary_ordinal <= UINT32_MAX &&
+         closing_accepted_boundary_ordinal <= UINT32_MAX &&
+         static_cast<uint32_t>(closing_accepted_boundary_ordinal) -
+                 static_cast<uint32_t>(opening_accepted_boundary_ordinal) ==
+             OTIS_FREQUENCY_ESTIMATOR_SPAN_INTERVALS_CONFIG;
+}
+
+static inline bool otis_accepted_ordinal_at_or_after(
+    uint64_t candidate_accepted_boundary_ordinal,
+    uint64_t reference_accepted_boundary_ordinal) {
+  if (candidate_accepted_boundary_ordinal > UINT32_MAX ||
+      reference_accepted_boundary_ordinal > UINT32_MAX)
+    return false;
+  return static_cast<uint32_t>(candidate_accepted_boundary_ordinal) -
+             static_cast<uint32_t>(reference_accepted_boundary_ordinal) <
+         0x80000000u;
+}
 
 // Pure ADAPTIVE_HYBRID policy engine.  This file deliberately has no Arduino, device,
 // transport, command, DAC, I2C, serial, telemetry, or live-authority surface.
@@ -21,6 +45,7 @@ struct OtisAdaptiveHybridPolicy {
 
 struct OtisAdaptiveHybridIdentity {
   uint64_t capture_session;
+  uint64_t source_acceptance_epoch;
   int32_t applied_code;
   uint64_t dac_epoch;
   uint64_t phase_epoch;
@@ -31,8 +56,9 @@ struct OtisAdaptiveHybridIdentity {
 struct OtisAdaptiveHybridObservation {
   uint64_t timestamp_s;
   uint64_t capture_session;
-  uint64_t source_first_sequence;
-  uint64_t source_last_sequence;
+  uint64_t source_acceptance_epoch;
+  uint64_t source_opening_accepted_boundary_ordinal;
+  uint64_t source_closing_accepted_boundary_ordinal;
   uint64_t dac_epoch;
   int32_t applied_code;
   int64_t accumulated_edge_error_counts;
@@ -95,18 +121,19 @@ struct OtisAdaptiveHybridEngine {
   uint8_t persistence_count;
   bool persistence_identity_available;
   OtisAdaptiveHybridIdentity persistence_identity;
-  bool last_closing_frontier_available;
-  uint64_t last_closing_frontier;
+  bool last_closing_accepted_boundary_ordinal_available;
+  uint64_t last_closing_accepted_boundary_ordinal;
 
   bool request_pending;
   bool response_pending;
   bool metadata_hold;
   bool metadata_requalified;
-  bool requalification_frontier_available;
-  uint64_t requalification_frontier;
+  bool requalification_accepted_boundary_ordinal_available;
+  uint64_t requalification_accepted_boundary_ordinal;
+  uint64_t requalification_acceptance_epoch;
   uint8_t requalification_window_count;
-  bool requalification_last_closing_frontier_available;
-  uint64_t requalification_last_closing_frontier;
+  bool requalification_last_closing_accepted_boundary_ordinal_available;
+  uint64_t requalification_last_closing_accepted_boundary_ordinal;
   bool requalification_identity_available;
   OtisAdaptiveHybridIdentity requalification_identity;
   const char *fail_static_reason;
@@ -175,7 +202,8 @@ bool otis_adaptive_hybrid_engine_complete_response(OtisAdaptiveHybridEngine *eng
 bool otis_adaptive_hybrid_engine_enter_metadata_hold(OtisAdaptiveHybridEngine *engine);
 
 bool otis_adaptive_hybrid_engine_requalify_metadata(OtisAdaptiveHybridEngine *engine,
-                                          uint64_t evidence_frontier);
+                                          uint64_t acceptance_epoch,
+                                          uint64_t accepted_boundary_ordinal);
 
 bool otis_adaptive_hybrid_engine_new_policy_activation(OtisAdaptiveHybridEngine *engine);
 

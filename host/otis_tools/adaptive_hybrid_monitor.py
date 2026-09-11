@@ -26,9 +26,9 @@ from .adaptive_hybrid_contract import (
 )
 from .capture_device import _serial_owner_pids
 from .contracts import (
-    ACTIVE_HYBRID_DECISION_V2_FIELDS,
-    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
-    ACTIVE_TRANSACTION_V2_FIELDS,
+    ACTIVE_HYBRID_DECISION_V3_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
+    ACTIVE_TRANSACTION_V3_FIELDS,
 )
 
 
@@ -40,9 +40,9 @@ HOST_CONTRACT_RECOVERY = Path(
     "reports/adaptive_hybrid_host_contract_recovery_v1.json"
 )
 RAW_SERIAL = Path("raw/serial.log")
-ESTIMATES = Path("csv/estimates_v2.csv")
-ACTIVE = Path("csv/active_transactions_v2.csv")
-HYBRID = Path("csv/active_hybrid_decisions_v2.csv")
+ESTIMATES = Path("csv/estimates_v3.csv")
+ACTIVE = Path("csv/active_transactions_v3.csv")
+HYBRID = Path("csv/active_hybrid_decisions_v3.csv")
 CAPTURE_MAX_AGE_S = 15.0
 EVIDENCE_MAX_AGE_S = 15.0
 EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_monotonic_us64"
@@ -232,7 +232,7 @@ def _exact_record_progress(
             continue
         if (
             row["record_type"] != record_type
-            or row["schema_version"] != "2"
+            or row["schema_version"] != "3"
             or row["time_domain"] != EXACT_LIFECYCLE_TIME_DOMAIN
             or sequence <= previous_sequence
             or (previous_ticks is not None and ticks < previous_ticks)
@@ -255,10 +255,10 @@ def _exact_record_progress(
 
 def _exact_lifecycle_record_progress(run_dir: Path, *, now: float) -> dict[str, Any]:
     transaction_rows = _stable_contract_rows(
-        run_dir / ACTIVE, ACTIVE_TRANSACTION_V2_FIELDS
+        run_dir / ACTIVE, ACTIVE_TRANSACTION_V3_FIELDS
     )
     decision_rows = _stable_contract_rows(
-        run_dir / HYBRID, ACTIVE_HYBRID_DECISION_V2_FIELDS
+        run_dir / HYBRID, ACTIVE_HYBRID_DECISION_V3_FIELDS
     )
     transactions = _exact_record_progress(
         rows=transaction_rows,
@@ -296,10 +296,10 @@ def _maintenance_evidence_progress(
 
     contract = programme.maintenance_record_contract
     record_type = programme.maintenance_record_type
-    if contract != "active_hybrid_maintenance_v1" or record_type != "AHM":
+    if contract != "active_hybrid_maintenance_v2" or record_type != "AHM":
         raise ValueError("unsupported long-run maintenance evidence descriptor")
     path = run_dir / "csv" / f"{contract}.csv"
-    rows = _stable_contract_rows(path, ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
+    rows = _stable_contract_rows(path, ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS)
     mismatches: list[str] = []
     previous_sequence = 0
     latest: dict[str, str] | None = None
@@ -404,38 +404,27 @@ def _qualified_d14_aperture_progress(
     if supervisor is None:
         return result
 
-    accepted_origin = supervisor.get("qualified_d14_accepted_window_origin")
-    reference_origin = supervisor.get("qualified_d14_reference_sequence_origin")
+    acceptance_epoch = supervisor.get("qualified_acceptance_epoch_origin")
+    accepted_origin = supervisor.get("qualified_acceptance_ordinal_origin")
     accepted_apertures = supervisor.get("qualified_d14_accepted_apertures")
-    reference_current = supervisor.get(
-        "qualified_d14_reference_sequence_endpoint"
-    )
-    retained = (
-        accepted_origin,
-        reference_origin,
-        accepted_apertures,
-        reference_current,
-    )
+    accepted_current = supervisor.get("qualified_acceptance_ordinal_endpoint")
+    retained = (acceptance_epoch, accepted_origin, accepted_apertures, accepted_current)
     if all(value is None for value in retained):
         return result
-    for name, value in (
-        ("qualified accepted-window origin", accepted_origin),
-        ("qualified D14 reference origin", reference_origin),
-    ):
-        if type(value) is not int or not 0 <= value < UINT32_MODULUS:
-            raise ValueError(f"{name} is malformed")
+    if type(acceptance_epoch) is not int or acceptance_epoch <= 0:
+        raise ValueError("qualified acceptance epoch is malformed")
+    if type(accepted_origin) is not int or not 0 <= accepted_origin < UINT32_MODULUS:
+        raise ValueError("qualified accepted-boundary origin is malformed")
 
     result["reference_identity"]["origin"] = {
-        "accepted_window_count": accepted_origin,
-        "boundary_reference_sequence": reference_origin,
+        "acceptance_epoch": acceptance_epoch,
+        "accepted_boundary_ordinal": accepted_origin,
     }
     result["reference_identity"]["endpoint"] = {
-        "accepted_window_count": (accepted_origin + target) % UINT32_MODULUS,
-        "boundary_reference_sequence": (
-            reference_origin + target
-        ) % UINT32_MODULUS,
+        "acceptance_epoch": acceptance_epoch,
+        "accepted_boundary_ordinal": (accepted_origin + target) % UINT32_MODULUS,
     }
-    if accepted_apertures is None and reference_current is None:
+    if accepted_apertures is None and accepted_current is None:
         result["state"] = "qualified_origin_established_awaiting_progress"
         return result
     if (
@@ -443,22 +432,13 @@ def _qualified_d14_aperture_progress(
         or not 0 <= accepted_apertures <= UINT32_MAXIMUM_FORWARD_DELTA
     ):
         raise ValueError("qualified accepted-aperture progress is malformed")
-    if (
-        type(reference_current) is not int
-        or not 0 <= reference_current < UINT32_MODULUS
-    ):
-        raise ValueError("qualified current D14 reference is malformed")
-
-    expected_reference_current = (
-        reference_origin + accepted_apertures
-    ) % UINT32_MODULUS
-    if reference_current != expected_reference_current:
+    if type(accepted_current) is not int or not 0 <= accepted_current < UINT32_MODULUS:
+        raise ValueError("qualified current accepted boundary is malformed")
+    expected_current = (accepted_origin + accepted_apertures) % UINT32_MODULUS
+    if accepted_current != expected_current:
         raise ValueError(
-            "qualified current D14 reference differs from accepted-aperture progress"
+            "qualified current accepted boundary differs from accepted-span progress"
         )
-    accepted_current = (
-        accepted_origin + accepted_apertures
-    ) % UINT32_MODULUS
     completed_count = min(accepted_apertures, target) // (
         QUALIFIED_D14_MILESTONE_APERTURES
     )
@@ -508,8 +488,8 @@ def _qualified_d14_aperture_progress(
         }
     )
     result["reference_identity"]["current"] = {
-        "accepted_window_count": accepted_current,
-        "boundary_reference_sequence": reference_current,
+        "acceptance_epoch": acceptance_epoch,
+        "accepted_boundary_ordinal": accepted_current,
     }
     return result
 

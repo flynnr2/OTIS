@@ -10,18 +10,13 @@
 namespace {
 
 constexpr uint64_t kReferenceTicksPerSecond = 1000000ull;
-constexpr uint64_t kReferenceTimestampModulus =
-    kReferenceTicksPerSecond * (1ull << 32) / 1000000ull;
 constexpr uint16_t kMinimumCharacterizedCode = 0xA800u;
 constexpr uint16_t kMaximumCharacterizedCode = 0xAB00u;
 
 OtisSelectedPhaseFrequencyPreviewEngine engine = {};
 bool initialized = false;
 bool applied_code_bound = false;
-bool have_reference_timestamp = false;
 bool reset_pending = false;
-uint64_t previous_reference_timestamp = 0u;
-uint64_t unwrapped_reference_timestamp = 0u;
 // The timing owner is the sole writer after it consumes Core 0's confirmed
 // application acknowledgement.  The generation still makes the separately
 // atomic code and epoch one coherent boundary-time publication.
@@ -98,21 +93,6 @@ void copy_text(char (&destination)[Capacity], const char *source) {
   destination[length] = '\0';
 }
 
-uint64_t unwrap_reference_timestamp(uint64_t raw_ticks) {
-  if (!have_reference_timestamp) {
-    have_reference_timestamp = true;
-    previous_reference_timestamp = raw_ticks;
-    unwrapped_reference_timestamp = raw_ticks;
-    return unwrapped_reference_timestamp;
-  }
-  const uint64_t delta =
-      (raw_ticks + kReferenceTimestampModulus - previous_reference_timestamp) %
-      kReferenceTimestampModulus;
-  previous_reference_timestamp = raw_ticks;
-  unwrapped_reference_timestamp += delta;
-  return unwrapped_reference_timestamp;
-}
-
 }  // namespace
 
 bool otis_phase_preview_live_begin(void) {
@@ -122,10 +102,7 @@ bool otis_phase_preview_live_begin(void) {
   atomic_store_release(&initialized, false);
   atomic_store_release(&applied_code_bound, false);
   engine = {};
-  have_reference_timestamp = false;
   reset_pending = true;
-  previous_reference_timestamp = 0u;
-  unwrapped_reference_timestamp = 0u;
   initialize_applied_code(0u, 0u);
   atomic_store_release(&published_records, static_cast<uint32_t>(0));
   atomic_store_release(&last_phase_epoch, static_cast<uint32_t>(0));
@@ -171,46 +148,36 @@ bool otis_phase_preview_live_update_applied_code(
   return true;
 }
 
-void otis_phase_preview_live_on_boundary(
-    const OtisPpsCountBoundaryObservation *observation,
-    uint32_t snapshot_status, uint32_t counted_edges,
-    bool counted_edges_available, bool reference_qualified,
-    bool phase_step_detected) {
+void otis_phase_preview_live_on_reference_selection(
+    const OtisReferenceAcceptanceOutcome *selection,
+    uint64_t closing_extended_ticks, bool phase_step_detected) {
   if (!atomic_load_acquire(&initialized) ||
-      !atomic_load_acquire(&applied_code_bound) || observation == nullptr ||
-      otis_dual_core_fail_static())
-    return;
+      !atomic_load_acquire(&applied_code_bound) || selection == nullptr ||
+      otis_dual_core_fail_static()) return;
+  using Disposition = OtisReferenceAcceptanceDisposition;
+  if (selection->disposition == Disposition::EarlyExcluded ||
+      selection->disposition == Disposition::Seeded ||
+      selection->disposition == Disposition::Acquiring) return;
   uint16_t actual_applied_code = 0u;
   uint32_t dac_epoch = 0u;
   snapshot_applied_code(&actual_applied_code, &dac_epoch);
-  const uint64_t unwrapped_ticks =
-      unwrap_reference_timestamp(observation->pps_timestamp_ticks);
   const OtisSelectedPhaseFrequencyPreviewInput input = {
-      observation->session,
-      observation->sequence,
-      observation->cumulative_down_counter,
-      observation->reference_sequence,
-      observation->pps_timestamp_ticks,
-      unwrapped_ticks,
-      snapshot_status,
-      counted_edges,
-      dac_epoch,
-      counted_edges_available,
-      reference_qualified,
-      reset_pending,
-  };
+      selection, closing_extended_ticks, dac_epoch, reset_pending};
   reset_pending = false;
   otis_dual_core_note_timing_progress(OtisTimingProgressPhase::PhasePreview,
-                                      unwrapped_ticks);
+                                      closing_extended_ticks);
   OtisSelectedPhaseFrequencyPreviewOutput output = {};
   if (!otis_selected_phase_frequency_preview_process(&engine, &input, &output)) {
     otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
     return;
   }
+  if (!output.record_available) return;
   OtisPhasePreviewRecordMessage message = {};
   message.phase_epoch = output.phase_epoch;
   message.observation_sequence = output.observation_sequence;
   message.capture_session = output.capture_session;
+  message.acceptance_epoch = output.acceptance_epoch;
+  message.accepted_boundary_ordinal = output.accepted_boundary_ordinal;
   message.opening_snapshot_sequence = output.opening_snapshot_sequence;
   message.closing_snapshot_sequence = output.closing_snapshot_sequence;
   message.opening_reference_sequence = output.opening_reference_sequence;
@@ -245,6 +212,8 @@ void otis_phase_preview_live_on_boundary(
   active_snapshot.phase_current = output.phase_accepted;
   active_snapshot.phase_step_detected = phase_step_detected;
   active_snapshot.capture_session = output.capture_session;
+  active_snapshot.acceptance_epoch = output.acceptance_epoch;
+  active_snapshot.accepted_boundary_ordinal = output.accepted_boundary_ordinal;
   active_snapshot.phase_epoch = output.phase_epoch;
   active_snapshot.observation_sequence = output.observation_sequence;
   active_snapshot.relative_phase_cycles = output.relative_phase_cycles;
@@ -258,7 +227,6 @@ void otis_phase_preview_live_on_boundary(
 
 void otis_phase_preview_live_note_reset(void) {
   reset_pending = true;
-  have_reference_timestamp = false;
   active_snapshot = {};
 }
 

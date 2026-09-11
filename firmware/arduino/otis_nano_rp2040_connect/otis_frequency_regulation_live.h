@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "otis_pps_count_boundary.h"
+#include "otis_reference_acceptance.h"
 #include "otis_adaptive_hybrid_regulation_live.h"
 #include "otis_status_emit.h"
 
@@ -39,9 +40,9 @@ bool otis_frequency_regulation_live_applied_epoch_exact(uint16_t applied_code,
 // The caller supplies one native operational microsecond sample after its
 // control-health refresh. Raw observation/estimate coordinates remain those
 // in observation; active decision ticks/seconds derive from this later sample.
-void otis_frequency_regulation_live_on_boundary(
-    const OtisPpsCountBoundaryObservation *observation,
-    uint32_t interval_count, bool interval_valid, uint32_t uptime_s,
+void otis_frequency_regulation_live_on_reference_selection(
+    const OtisReferenceAcceptanceOutcome *selection,
+    uint64_t closing_extended_ticks, uint32_t uptime_s,
     uint64_t operational_decision_raw_ticks,
     const OtisRegulationStaticCodeState *static_code,
     OtisAdaptiveHybridRegulationLiveOutcome *active_outcome);

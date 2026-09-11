@@ -88,8 +88,9 @@ def _observation(
         "timestamp_s": timestamp_s,
         "timestamp_ticks": timestamp_s * 1_000_000,
         "capture_session": 1,
-        "source_first_sequence": opening,
-        "source_last_sequence": closing,
+        "source_acceptance_epoch": 1,
+        "source_opening_accepted_boundary_ordinal": opening,
+        "source_closing_accepted_boundary_ordinal": closing,
         "dac_epoch": controller.dac_epoch,
         "applied_code": controller.applied_code,
         "accumulated_edge_error_counts": counts,
@@ -109,8 +110,8 @@ def _decide_command(observation: AdaptiveHybridObservation) -> str:
             observation.timestamp_s,
             observation.timestamp_ticks,
             observation.capture_session,
-            observation.source_first_sequence,
-            observation.source_last_sequence,
+            observation.source_opening_accepted_boundary_ordinal,
+            observation.source_closing_accepted_boundary_ordinal,
             observation.dac_epoch,
             observation.applied_code,
             observation.accumulated_edge_error_counts,
@@ -384,7 +385,7 @@ def test_frontier_hold_requalification_and_tag_transitions_match_python(
     held_observation = _observation(controller, 2400, 1801, 2401)
     held = controller.decide(held_observation)
     commands.append(_decide_command(held_observation))
-    controller.requalify_metadata(3000)
+    controller.requalify_metadata(acceptance_epoch=1, accepted_boundary_ordinal=3000)
     commands.append("REQUAL 3000")
     too_early_observation = _observation(controller, 3000, 2999, 3599)
     too_early = controller.decide(too_early_observation)
@@ -414,7 +415,7 @@ def test_frontier_hold_requalification_and_tag_transitions_match_python(
     )
     replay.enter_metadata_hold()
     replay_expected.append(replay.decide(held_observation))
-    replay.requalify_metadata(3000)
+    replay.requalify_metadata(acceptance_epoch=1, accepted_boundary_ordinal=3000)
     replay_expected.append(replay.decide(too_early_observation))
     replay_expected.extend(
         [replay.decide(post_first_observation), replay.decide(post_second_observation)]
@@ -431,7 +432,7 @@ def test_frontier_hold_requalification_and_tag_transitions_match_python(
     assert rows[5]["debt_fll_picocodes"] == "10"
     assert rows[5]["debt_pll_picocodes"] == "20"
     assert held.reason == "metadata_hold"
-    assert too_early.reason == "metadata_requalification_frontier_hold"
+    assert too_early.reason == "metadata_requalification_accepted_boundary_ordinal_hold"
     assert post_first.reason == "metadata_requalification_window_hold"
     assert post_second.requested_delta_codes != 0
     assert rows[9]["metadata_hold"] == "1"
@@ -482,7 +483,7 @@ def test_metadata_requalification_overlap_gap_and_identity_restarts_match_python
     controller = _controller()
     commands = ["INIT 43085 1", "HOLD", "REQUAL 100"]
     controller.enter_metadata_hold()
-    controller.requalify_metadata(100)
+    controller.requalify_metadata(acceptance_epoch=1, accepted_boundary_ordinal=100)
     observations = [
         _observation(controller, 0, 100, 700),
         _observation(controller, 600, 699, 1299),
@@ -502,7 +503,7 @@ def test_metadata_requalification_overlap_gap_and_identity_restarts_match_python
         commands.append(_decide_command(observation))
 
     controller.enter_metadata_hold()
-    controller.requalify_metadata(2000)
+    controller.requalify_metadata(acceptance_epoch=1, accepted_boundary_ordinal=2000)
     commands.extend(["HOLD", "REQUAL 2000"])
     identity_observations = [
         _observation(

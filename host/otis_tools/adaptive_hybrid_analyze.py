@@ -35,6 +35,7 @@ from .adaptive_hybrid_replay import (
     _measurement_replay,
     _response_replay,
     replay_active_decision_measurement_sources,
+    replay_phase_accepted_sources,
 )
 from .adaptive_hybrid_transactions import CampaignSpec, _read_csv, validate_transaction_history
 from .contracts import CsvValidationContext, validate_csv
@@ -58,7 +59,7 @@ HOST_REVIEW_RESOLUTION = Path(
 )
 CAPTURE_STATE = Path("reports/capture_device_state.json")
 CAPTURE_CLOSURE = Path("reports/capture_segment_closure_v1.json")
-ACTIVE_TRANSACTIONS = Path("csv/active_transactions_v2.csv")
+ACTIVE_TRANSACTIONS = Path("csv/active_transactions_v3.csv")
 DAC_STEPS = Path("csv/dac_steps.csv")
 
 def _sha256_file(path: Path) -> str:
@@ -446,8 +447,8 @@ def require_exact_lifecycle_records(manifest: RunManifest) -> dict[str, Any]:
         "exact": True,
     }
     for label, contract in (
-        ("transactions", "active_transactions_v2"),
-        ("decisions", "active_hybrid_decisions_v2"),
+        ("transactions", "active_transactions_v3"),
+        ("decisions", "active_hybrid_decisions_v3"),
     ):
         path = _one_contract(manifest, contract)
         validation = validate_csv(
@@ -614,10 +615,10 @@ def replay_current_adaptive_hybrid_host_consumers(
         manifest, expected_policy_sha256=expected_active_policy_sha256
     )
     lifecycle = require_exact_lifecycle_records(manifest)
-    transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
-    decisions = _read_csv(_one_contract(manifest, "active_hybrid_decisions_v2"))
+    transactions = _read_csv(_one_contract(manifest, "active_transactions_v3"))
+    decisions = _read_csv(_one_contract(manifest, "active_hybrid_decisions_v3"))
     maintenance = _read_csv(
-        _one_contract(manifest, "active_hybrid_maintenance_v1")
+        _one_contract(manifest, "active_hybrid_maintenance_v2")
     )
     record_replay = replay_current_adaptive_hybrid_records(
         transactions=transactions,
@@ -813,7 +814,7 @@ def analyze(
     bench_attempt = manifest_value.get("bench_attempt", {})
     inhibited_zero_write = bench_attempt.get("purpose") == "inhibited_zero_write"
     if inhibited_zero_write:
-        transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
+        transactions = _read_csv(_one_contract(manifest, "active_transactions_v3"))
         dac_steps = _read_csv(_one_contract(manifest, "dac_steps_v1"))
         inhibited_authority_exact = (
             section["setup"].get("authorized") is False
@@ -875,14 +876,35 @@ def analyze(
         record_replay,
         authority_exact=inhibited_zero_write and inhibited_authority_exact,
     )
-    transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
+    transactions = _read_csv(_one_contract(manifest, "active_transactions_v3"))
     measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value)
     decision_measurement_sources = replay_active_decision_measurement_sources(
         manifest, measurement
     )
+    phase_sources = replay_phase_accepted_sources(manifest)
     measurement["active_decision_sources"] = decision_measurement_sources
+    measurement["phase_sources"] = phase_sources
     responses = shared_consumers["response_replay"]
     supervisor_state = _read_object(run_dir / SUPERVISOR_STATE)
+    qualification_coordinate_exact = False
+    try:
+        origin_epoch = supervisor_state["qualified_acceptance_epoch_origin"]
+        origin_ordinal = supervisor_state["qualified_acceptance_ordinal_origin"]
+        endpoint_ordinal = supervisor_state["qualified_acceptance_ordinal_endpoint"]
+        accepted_apertures = supervisor_state["qualified_d14_accepted_apertures"]
+        origin_session = supervisor_state["qualified_origin_session_id"]
+        qualification_coordinate_exact = (
+            type(origin_epoch) is int and origin_epoch > 0
+            and type(origin_session) is int and origin_session > 0
+            and all(type(value) is int and 0 <= value < 1 << 32 for value in
+                    (origin_ordinal, endpoint_ordinal))
+            and type(accepted_apertures) is int
+            and 0 <= accepted_apertures <= 0x7FFFFFFF
+            and (endpoint_ordinal - origin_ordinal) & 0xFFFFFFFF
+                == accepted_apertures
+        )
+    except (KeyError, TypeError):
+        accepted_apertures = None
     (
         effective_terminal,
         review_resolution_exact,
@@ -915,6 +937,7 @@ def analyze(
         "decision_measurement_sources_exact": (
             decision_measurement_sources.get("exact") is True
         ),
+        "phase_accepted_sources_exact": phase_sources.get("exact") is True,
         "response_replay_exact": shared_consumers["checks"][
             "response_replay_exact"
         ],
@@ -936,12 +959,26 @@ def analyze(
         bench_attempt=bench_attempt,
     )
     checks["supervisor_terminal_exact"] = terminal_exact
+    qualification_fields_present = any(
+        supervisor_state.get(key) is not None
+        for key in (
+            "qualified_acceptance_epoch_origin",
+            "qualified_acceptance_ordinal_origin",
+            "qualified_acceptance_ordinal_endpoint",
+            "qualified_d14_accepted_apertures",
+        )
+    )
+    checks["accepted_span_qualification_coordinate_exact"] = (
+        qualification_coordinate_exact
+        if qualification_fields_present
+        else terminal_result != "healthy_stop"
+    )
     scientific_outcome = classify_scientific_outcome(
         effective_terminal,
         programme,
         bench_attempt=bench_attempt,
-        qualified_d14_accepted_apertures=supervisor_state.get(
-            "qualified_d14_accepted_apertures"
+        qualified_d14_accepted_apertures=(
+            accepted_apertures if qualification_coordinate_exact else None
         ),
     )
     checks["scientific_outcome_determined"] = (

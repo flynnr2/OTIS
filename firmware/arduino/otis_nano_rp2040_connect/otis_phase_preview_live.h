@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "otis_pps_count_boundary.h"
+#include "otis_reference_acceptance.h"
 
 struct OtisPhasePreviewLiveStatus {
   bool initialized;
@@ -27,6 +27,8 @@ struct OtisPhasePreviewActiveSnapshot {
   bool phase_current;
   bool phase_step_detected;
   uint32_t capture_session;
+  uint32_t acceptance_epoch;
+  uint32_t accepted_boundary_ordinal;
   uint32_t phase_epoch;
   uint32_t observation_sequence;
   int64_t relative_phase_cycles;
@@ -44,11 +46,9 @@ bool otis_phase_preview_live_begin(void);
 // must not move backwards; a repeated epoch may only repeat the same code.
 bool otis_phase_preview_live_update_applied_code(
     uint16_t confirmed_applied_code, uint32_t dac_epoch);
-void otis_phase_preview_live_on_boundary(
-    const OtisPpsCountBoundaryObservation *observation,
-    uint32_t snapshot_status, uint32_t counted_edges,
-    bool counted_edges_available, bool reference_qualified,
-    bool phase_step_detected);
+void otis_phase_preview_live_on_reference_selection(
+    const OtisReferenceAcceptanceOutcome *selection,
+    uint64_t closing_extended_ticks, bool phase_step_detected);
 void otis_phase_preview_live_note_reset(void);
 void otis_phase_preview_live_get_status(OtisPhasePreviewLiveStatus *status);
 bool otis_phase_preview_live_get_active_snapshot(

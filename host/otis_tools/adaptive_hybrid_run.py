@@ -85,7 +85,7 @@ HOST_REVIEW_RESOLUTION = Path(
 )
 CAPTURE_STATE = Path("reports/capture_device_state.json")
 CAPTURE_CLOSURE = Path("reports/capture_segment_closure_v1.json")
-ACTIVE_TRANSACTIONS = Path("csv/active_transactions_v2.csv")
+ACTIVE_TRANSACTIONS = Path("csv/active_transactions_v3.csv")
 DAC_STEPS = Path("csv/dac_steps.csv")
 ABORT_DELIVERY_FAILURE = Path(
     "reports/adaptive_hybrid_hybrid_abort_delivery_failure_v1.json"
@@ -1754,21 +1754,20 @@ def _zero_write_review_terminal(
             if int(health[("pps_gate", key)]) != value:
                 raise ValueError(f"zero-write D14/D8 counter changed for {key}")
         session = int(health[("pps_gate", "snapshot_session")])
-        accepted = int(health[("pps_gate", "accepted_window_count")])
-        reference = int(health[("pps_gate", "boundary_reference_sequence")])
-        origin_accepted = int(supervisor_state["qualified_d14_accepted_window_origin"])
-        origin_reference = int(supervisor_state["qualified_d14_reference_sequence_origin"])
+        epoch = int(health[("pps_gate", "reference_acceptance_epoch")])
+        accepted = int(health[("pps_gate", "accepted_boundary_ordinal")])
+        origin_epoch = int(supervisor_state["qualified_acceptance_epoch_origin"])
+        origin_accepted = int(supervisor_state["qualified_acceptance_ordinal_origin"])
         progress = int(supervisor_state["qualified_d14_accepted_apertures"])
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("zero-write D14/D8 endpoint is incomplete") from exc
     if not (
         session == supervisor_state.get("initial_session_id")
+        and epoch == origin_epoch
         and (accepted - origin_accepted) & 0xFFFFFFFF == progress
-        and (reference - origin_reference) & 0xFFFFFFFF == progress
         and progress > 0
-        and health.get(("pps_gate", "state")) == "open"
-        and health.get(("pps_gate", "valid")) == "true"
-        and health.get(("pps_gate", "control_eligible")) == "true"
+        and health.get(("pps_gate", "reference_acceptance_state")) == "tracking"
+        and health.get(("pps_gate", "accepted_anchor_current")) == "true"
     ):
         raise ValueError("zero-write D14/D8 endpoint is not exact")
 

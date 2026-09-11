@@ -167,9 +167,9 @@ that anchor.
 An accepted span is a derived D8 count between two admitted raw D14/SNP
 endpoints. It retains the complete intervening raw source, including any
 excluded candidates. Its accepted-boundary ordinal and acceptance epoch must
-not be substituted for raw source ordinals or a phase epoch. These are the
-semantics of the prospective native acceptance candidate; the current live
-adjacent-aperture path is not implicitly redefined by this terminology.
+not be substituted for raw source ordinals or a phase epoch. The integrated candidate records these identities separately in APS and the
+versioned estimator, phase and active-control records. Raw adjacent CNT
+records retain their original meaning.
 
 ### Host written
 

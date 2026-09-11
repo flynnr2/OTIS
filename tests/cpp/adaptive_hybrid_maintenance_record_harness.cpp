@@ -37,8 +37,9 @@ OtisAdaptiveHybridObservation observation(uint64_t timestamp_s, uint64_t opening
   result.timestamp_s = timestamp_s;
   result.timestamp_ticks = timestamp_s * 1000000ull;
   result.capture_session = 7u;
-  result.source_first_sequence = opening;
-  result.source_last_sequence = closing;
+  result.source_acceptance_epoch = 3u;
+  result.source_opening_accepted_boundary_ordinal = opening;
+  result.source_closing_accepted_boundary_ordinal = closing;
   result.dac_epoch = engine.dac_epoch;
   result.applied_code = engine.applied_code;
   result.accumulated_edge_error_counts = -1;
@@ -61,10 +62,11 @@ OtisAdaptiveHybridMaintenanceHybridJoin hybrid_join(
       sequence,
       decision.decision_sequence,
       source.capture_session,
-      source.source_first_sequence,
-      source.source_last_sequence,
+      source.source_acceptance_epoch,
+      source.source_opening_accepted_boundary_ordinal,
+      source.source_closing_accepted_boundary_ordinal,
       source.phase_epoch,
-      source.source_last_sequence,
+      source.source_closing_accepted_boundary_ordinal,
       source.phase_valid,
   };
 }
@@ -79,8 +81,11 @@ OtisAdaptiveHybridMaintenanceTransactionJoin transaction_join(
   result.request_sequence = request_sequence;
   result.decision_sequence = decision.decision_sequence;
   result.capture_session = source.capture_session;
-  result.source_first_sequence = source.source_first_sequence;
-  result.source_last_sequence = source.source_last_sequence;
+  result.source_acceptance_epoch = source.source_acceptance_epoch;
+  result.source_opening_accepted_boundary_ordinal =
+      source.source_opening_accepted_boundary_ordinal;
+  result.source_closing_accepted_boundary_ordinal =
+      source.source_closing_accepted_boundary_ordinal;
   return result;
 }
 
@@ -113,7 +118,7 @@ bool build_and_emit(const OtisAdaptiveHybridMaintenanceBuildInput &input) {
   OtisAdaptiveHybridMaintenanceRecord record = {};
   char output[4096] = {};
   if (!otis_adaptive_hybrid_build_maintenance_record(&input, &record)) return false;
-  const int used = otis_format_adaptive_hybrid_maintenance_v1(
+  const int used = otis_format_adaptive_hybrid_maintenance_v2(
       output, sizeof(output), &record);
   if (used <= 0 || static_cast<size_t>(used) != strlen(output)) return false;
   fputs(output, stdout);
@@ -123,7 +128,7 @@ bool build_and_emit(const OtisAdaptiveHybridMaintenanceBuildInput &input) {
 bool emit_header() {
   char output[2048] = {};
   const int used =
-      otis_format_adaptive_hybrid_maintenance_v1_header(output, sizeof(output));
+      otis_format_adaptive_hybrid_maintenance_v2_header(output, sizeof(output));
   if (used <= 0 || static_cast<size_t>(used) != strlen(output)) return false;
   fputs(output, stdout);
   return true;
@@ -220,7 +225,7 @@ bool run_lifecycle() {
   if (!build_and_emit(metadata_hold)) return false;
 
   before = engine;
-  if (!otis_adaptive_hybrid_engine_requalify_metadata(&engine, 1501u)) return false;
+  if (!otis_adaptive_hybrid_engine_requalify_metadata(&engine, 3u, 1501u)) return false;
   OtisAdaptiveHybridMaintenanceBuildInput requalified = build_input(
       7u, OtisAdaptiveHybridMaintenanceEvent::GnssMetadataRequalified, &before,
       &engine, &request_observation, &request_decision, &request_hybrid,
@@ -402,10 +407,41 @@ bool run_selftest() {
           OtisAdaptiveHybridMaintenanceState::FailStatic ||
       failure_latch_record.maintenance_state_after !=
           OtisAdaptiveHybridMaintenanceState::FailStatic ||
-      otis_format_adaptive_hybrid_maintenance_v1(
+      otis_format_adaptive_hybrid_maintenance_v2(
           formatted, sizeof(formatted), &failure_decision_record) <= 0 ||
-      otis_format_adaptive_hybrid_maintenance_v1(
+      otis_format_adaptive_hybrid_maintenance_v2(
           formatted, sizeof(formatted), &failure_latch_record) <= 0)
+    return false;
+
+  // Accepted ordinals are uint32 modular coordinates: zero and a span that
+  // crosses wrap remain valid, while a requalified epoch cannot consume a
+  // selected window from a prior acceptance epoch.
+  OtisAdaptiveHybridEngine wrap_engine = {};
+  if (!otis_adaptive_hybrid_engine_init(&wrap_engine, &policy, 43085, 1u))
+    return false;
+  OtisAdaptiveHybridObservation wrapped_observation =
+      observation(1200u, uint64_t(UINT32_MAX) - 299u, 300u, wrap_engine);
+  OtisAdaptiveHybridDecision wrapped_decision = {};
+  if (!otis_adaptive_hybrid_engine_decide(
+          &wrap_engine, &wrapped_observation, &wrapped_decision) ||
+      wrap_engine.fail_static_reason != nullptr)
+    return false;
+
+  OtisAdaptiveHybridEngine epoch_engine = {};
+  if (!otis_adaptive_hybrid_engine_init(&epoch_engine, &policy, 43085, 1u) ||
+      !otis_adaptive_hybrid_engine_enter_metadata_hold(&epoch_engine) ||
+      !otis_adaptive_hybrid_engine_requalify_metadata(&epoch_engine, 2u, 0u))
+    return false;
+  OtisAdaptiveHybridObservation stale_epoch =
+      observation(1800u, 0u, 600u, epoch_engine);
+  stale_epoch.source_acceptance_epoch = 1u;
+  OtisAdaptiveHybridDecision stale_epoch_decision = {};
+  if (!otis_adaptive_hybrid_engine_decide(
+          &epoch_engine, &stale_epoch, &stale_epoch_decision) ||
+      strcmp(stale_epoch_decision.reason,
+             "metadata_requalification_acceptance_epoch_hold") != 0 ||
+      stale_epoch_decision.requested_delta_codes != 0 ||
+      !epoch_engine.metadata_hold)
     return false;
 
   return true;

@@ -65,6 +65,7 @@ bool rounded_unsigned_ratio(OtisAdaptiveHybridWide numerator,
 bool identity_equal(const OtisAdaptiveHybridIdentity &left,
                     const OtisAdaptiveHybridIdentity &right) {
   return left.capture_session == right.capture_session &&
+         left.source_acceptance_epoch == right.source_acceptance_epoch &&
          left.applied_code == right.applied_code &&
          left.dac_epoch == right.dac_epoch &&
          left.phase_epoch == right.phase_epoch &&
@@ -75,6 +76,7 @@ bool identity_equal(const OtisAdaptiveHybridIdentity &left,
 OtisAdaptiveHybridIdentity identity_of(const OtisAdaptiveHybridObservation &observation) {
   return {
       observation.capture_session,
+      observation.source_acceptance_epoch,
       observation.applied_code,
       observation.dac_epoch,
       observation.phase_epoch,
@@ -108,8 +110,8 @@ void reset_maintenance(OtisAdaptiveHybridEngine *engine, bool preserve_debt) {
   engine->persistence_count = 0;
   engine->persistence_identity_available = false;
   engine->persistence_identity = {};
-  engine->last_closing_frontier_available = false;
-  engine->last_closing_frontier = 0;
+  engine->last_closing_accepted_boundary_ordinal_available = false;
+  engine->last_closing_accepted_boundary_ordinal = 0;
 }
 
 void fail_static(OtisAdaptiveHybridEngine *engine, const char *reason) {
@@ -122,11 +124,12 @@ void fail_static(OtisAdaptiveHybridEngine *engine, const char *reason) {
 
 void clear_requalification_state(OtisAdaptiveHybridEngine *engine) {
   engine->metadata_requalified = false;
-  engine->requalification_frontier_available = false;
-  engine->requalification_frontier = 0;
+  engine->requalification_accepted_boundary_ordinal_available = false;
+  engine->requalification_accepted_boundary_ordinal = 0;
+  engine->requalification_acceptance_epoch = 0;
   engine->requalification_window_count = 0;
-  engine->requalification_last_closing_frontier_available = false;
-  engine->requalification_last_closing_frontier = 0;
+  engine->requalification_last_closing_accepted_boundary_ordinal_available = false;
+  engine->requalification_last_closing_accepted_boundary_ordinal = 0;
   engine->requalification_identity_available = false;
   engine->requalification_identity = {};
 }
@@ -135,39 +138,46 @@ const char *advance_metadata_requalification(
     OtisAdaptiveHybridEngine *engine, const OtisAdaptiveHybridObservation &observation,
     const OtisAdaptiveHybridIdentity &identity) {
   if (!engine->metadata_hold || !engine->metadata_requalified) return nullptr;
-  if (!engine->requalification_frontier_available) {
-    fail_static(engine, "metadata_requalification_frontier_missing");
+  if (!engine->requalification_accepted_boundary_ordinal_available) {
+    fail_static(engine, "metadata_requalification_accepted_boundary_ordinal_missing");
     return engine->fail_static_reason;
   }
-  if (observation.source_first_sequence < engine->requalification_frontier)
-    return "metadata_requalification_frontier_hold";
-  if (engine->requalification_last_closing_frontier_available &&
-      observation.source_first_sequence <
-          engine->requalification_last_closing_frontier)
+  if (observation.source_acceptance_epoch !=
+      engine->requalification_acceptance_epoch)
+    return "metadata_requalification_acceptance_epoch_hold";
+  if (!otis_accepted_ordinal_at_or_after(
+          observation.source_opening_accepted_boundary_ordinal,
+          engine->requalification_accepted_boundary_ordinal))
+    return "metadata_requalification_accepted_boundary_ordinal_hold";
+  if (engine->requalification_last_closing_accepted_boundary_ordinal_available &&
+      !otis_accepted_ordinal_at_or_after(
+          observation.source_opening_accepted_boundary_ordinal,
+          engine->requalification_last_closing_accepted_boundary_ordinal))
     return "metadata_requalification_overlap_hold";
   const bool contiguous =
-      engine->requalification_last_closing_frontier_available &&
-      observation.source_first_sequence ==
-          engine->requalification_last_closing_frontier &&
+      engine->requalification_last_closing_accepted_boundary_ordinal_available &&
+      observation.source_opening_accepted_boundary_ordinal ==
+          engine->requalification_last_closing_accepted_boundary_ordinal &&
       engine->requalification_identity_available &&
       identity_equal(identity, engine->requalification_identity);
   engine->requalification_window_count =
       contiguous && engine->requalification_window_count < 2
           ? static_cast<uint8_t>(engine->requalification_window_count + 1)
           : static_cast<uint8_t>(1);
-  engine->requalification_last_closing_frontier =
-      observation.source_last_sequence;
-  engine->requalification_last_closing_frontier_available = true;
+  engine->requalification_last_closing_accepted_boundary_ordinal =
+      observation.source_closing_accepted_boundary_ordinal;
+  engine->requalification_last_closing_accepted_boundary_ordinal_available = true;
   engine->requalification_identity = identity;
   engine->requalification_identity_available = true;
   if (engine->requalification_window_count < 2)
     return "metadata_requalification_window_hold";
   engine->metadata_hold = false;
   engine->metadata_requalified = false;
-  engine->requalification_frontier_available = false;
-  engine->requalification_frontier = 0;
-  engine->requalification_last_closing_frontier_available = false;
-  engine->requalification_last_closing_frontier = 0;
+  engine->requalification_accepted_boundary_ordinal_available = false;
+  engine->requalification_accepted_boundary_ordinal = 0;
+  engine->requalification_acceptance_epoch = 0;
+  engine->requalification_last_closing_accepted_boundary_ordinal_available = false;
+  engine->requalification_last_closing_accepted_boundary_ordinal = 0;
   engine->requalification_identity_available = false;
   engine->requalification_identity = {};
   return nullptr;
@@ -635,8 +645,9 @@ bool otis_adaptive_hybrid_engine_decide(OtisAdaptiveHybridEngine *engine,
     make_decision(*engine, engine->last_reason, decision);
     return true;
   }
-  if (observation->source_last_sequence <=
-      observation->source_first_sequence) {
+  if (!otis_exact_selected_accepted_span(
+          observation->source_opening_accepted_boundary_ordinal,
+          observation->source_closing_accepted_boundary_ordinal)) {
     fail_static(engine, "invalid_selected_window_frontier");
     make_decision(*engine, engine->last_reason, decision);
     return true;
@@ -678,6 +689,7 @@ bool otis_adaptive_hybrid_engine_decide(OtisAdaptiveHybridEngine *engine,
       !identity_equal(identity, engine->persistence_identity)) {
     const OtisAdaptiveHybridIdentity old = engine->persistence_identity;
     if (identity.capture_session != old.capture_session ||
+        identity.source_acceptance_epoch != old.source_acceptance_epoch ||
         identity.selected_estimator_identity !=
             old.selected_estimator_identity) {
       reset_maintenance(engine, false);
@@ -713,7 +725,9 @@ bool otis_adaptive_hybrid_engine_decide(OtisAdaptiveHybridEngine *engine,
   }
   if (metadata_requalification_hold != nullptr &&
       (strcmp(metadata_requalification_hold,
-              "metadata_requalification_frontier_hold") == 0 ||
+              "metadata_requalification_acceptance_epoch_hold") == 0 ||
+       strcmp(metadata_requalification_hold,
+              "metadata_requalification_accepted_boundary_ordinal_hold") == 0 ||
        strcmp(metadata_requalification_hold,
               "metadata_requalification_overlap_hold") == 0)) {
     engine->last_reason = metadata_requalification_hold;
@@ -811,16 +825,17 @@ bool otis_adaptive_hybrid_engine_decide(OtisAdaptiveHybridEngine *engine,
   }
   const int8_t sign = strict_sign(lower, upper);
 
-  if (engine->last_closing_frontier_available) {
-    if (observation->source_first_sequence <
-        engine->last_closing_frontier) {
+  if (engine->last_closing_accepted_boundary_ordinal_available) {
+    if (!otis_accepted_ordinal_at_or_after(
+            observation->source_opening_accepted_boundary_ordinal,
+            engine->last_closing_accepted_boundary_ordinal)) {
       engine->last_reason = "source_overlap_hold";
       make_decision(*engine, engine->last_reason, decision, 0, 0, 0, 0, 0,
                     false, projection);
       return true;
     }
-    if (observation->source_first_sequence >
-        engine->last_closing_frontier) {
+    if (observation->source_opening_accepted_boundary_ordinal !=
+        engine->last_closing_accepted_boundary_ordinal) {
       if (sign == 0 || (engine->persistence_count != 0 &&
                         sign != engine->persistence_sign))
         reset_maintenance(engine, false);
@@ -828,8 +843,8 @@ bool otis_adaptive_hybrid_engine_decide(OtisAdaptiveHybridEngine *engine,
       engine->persistence_sign = sign;
       engine->persistence_identity = identity;
       engine->persistence_identity_available = sign != 0;
-      engine->last_closing_frontier = observation->source_last_sequence;
-      engine->last_closing_frontier_available = sign != 0;
+      engine->last_closing_accepted_boundary_ordinal = observation->source_closing_accepted_boundary_ordinal;
+      engine->last_closing_accepted_boundary_ordinal_available = sign != 0;
       engine->last_reason = sign == 0 ? "zero_containing_interval"
                                       : "source_gap_persistence_restart";
       make_decision(*engine, engine->last_reason, decision, 0, 0, 0, 0, 0,
@@ -858,8 +873,8 @@ bool otis_adaptive_hybrid_engine_decide(OtisAdaptiveHybridEngine *engine,
   engine->persistence_sign = sign;
   engine->persistence_identity = identity;
   engine->persistence_identity_available = true;
-  engine->last_closing_frontier = observation->source_last_sequence;
-  engine->last_closing_frontier_available = true;
+  engine->last_closing_accepted_boundary_ordinal = observation->source_closing_accepted_boundary_ordinal;
+  engine->last_closing_accepted_boundary_ordinal_available = true;
   const int32_t cap =
       no_zero_cross_cap(*engine, combined_centre, observation->applied_code);
   if (metadata_requalification_hold != nullptr) {
@@ -1108,17 +1123,19 @@ bool otis_adaptive_hybrid_engine_enter_metadata_hold(OtisAdaptiveHybridEngine *e
 }
 
 bool otis_adaptive_hybrid_engine_requalify_metadata(OtisAdaptiveHybridEngine *engine,
-                                          uint64_t evidence_frontier) {
+                                          uint64_t acceptance_epoch,
+                                          uint64_t accepted_boundary_ordinal) {
   if (engine == nullptr || !engine->metadata_hold ||
       engine->request_pending || engine->response_pending ||
-      evidence_frontier == 0)
+      acceptance_epoch == 0u || accepted_boundary_ordinal > UINT32_MAX)
     return false;
   engine->metadata_requalified = true;
-  engine->requalification_frontier_available = true;
-  engine->requalification_frontier = evidence_frontier;
+  engine->requalification_accepted_boundary_ordinal_available = true;
+  engine->requalification_accepted_boundary_ordinal = accepted_boundary_ordinal;
+  engine->requalification_acceptance_epoch = acceptance_epoch;
   engine->requalification_window_count = 0;
-  engine->requalification_last_closing_frontier_available = false;
-  engine->requalification_last_closing_frontier = 0;
+  engine->requalification_last_closing_accepted_boundary_ordinal_available = false;
+  engine->requalification_last_closing_accepted_boundary_ordinal = 0;
   engine->requalification_identity_available = false;
   engine->requalification_identity = {};
   reset_maintenance(engine, true);

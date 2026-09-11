@@ -116,13 +116,15 @@ int main() {
       int metadata = 0;
       std::cin >> observation.timestamp_s >> observation.timestamp_ticks >>
           observation.capture_session >>
-          observation.source_first_sequence >> observation.source_last_sequence >>
+          observation.source_opening_accepted_boundary_ordinal >>
+          observation.source_closing_accepted_boundary_ordinal >>
           observation.dac_epoch >> observation.applied_code >>
           observation.accumulated_edge_error_counts >> tight >>
           observation.phase_epoch >> observation.relative_phase_cycles >>
           observation.selected_estimator_identity >> phase_valid >>
           authority_valid >> settled >> cadence >> metadata;
       observation.tight_inside = tight != 0;
+      observation.source_acceptance_epoch = 1u;
       observation.phase_valid = phase_valid != 0;
       observation.authority_valid = authority_valid != 0;
       observation.settled = settled != 0;
@@ -174,7 +176,7 @@ int main() {
       uint64_t frontier = 0;
       std::cin >> frontier;
       const bool ok =
-          otis_adaptive_hybrid_engine_requalify_metadata(&engine, frontier);
+          otis_adaptive_hybrid_engine_requalify_metadata(&engine, 1u, frontier);
       emit("REQUAL", ok, &engine, nullptr);
     } else if (command == "ACTIVATE") {
       const bool ok = otis_adaptive_hybrid_engine_new_policy_activation(&engine);

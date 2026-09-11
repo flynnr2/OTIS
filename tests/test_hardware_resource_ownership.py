@@ -165,7 +165,7 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
     count_call = emit_body[:emit_body.index("const OtisRegulationStaticCodeState")]
     assert "otis_monotonic_us32_now()" not in count_call
     assert "otis_monotonic_us32_now()" in emit_body[
-        emit_body.index("otis_frequency_regulation_live_on_boundary("):
+        emit_body.index("otis_frequency_regulation_live_on_reference_selection("):
     ]
 
     drain_start = sketch_source.index("void drain_pps_count_boundary_ring(")

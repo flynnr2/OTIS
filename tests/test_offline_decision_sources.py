@@ -13,8 +13,8 @@ def _manifest() -> SimpleNamespace:
         root=Path("/unused"),
         files=[
             {
-                "contract": "active_hybrid_decisions_v2",
-                "path": "active_hybrid_decisions_v2.csv",
+                "contract": "active_hybrid_decisions_v3",
+                "path": "active_hybrid_decisions_v3.csv",
             }
         ],
     )
@@ -25,8 +25,9 @@ def _source() -> dict[str, object]:
         "estimate_id": "est:frequency_regulation:pps_gated_frequency:000001",
         "estimator_sha256": "a" * 64,
         "source_capture_session": 7,
-        "source_reference_first_seq": 101,
-        "source_reference_last_seq": 701,
+        "source_acceptance_epoch": 2,
+        "source_opening_accepted_boundary_ordinal": 101,
+        "source_closing_accepted_boundary_ordinal": 701,
         "estimator_timestamp_ticks": 700_000_000,
         "time_domain": "rp2040_monotonic_us32",
         "frequency_error_hz": "0.001666666667",
@@ -39,8 +40,9 @@ def _decision(**changes: str) -> dict[str, str]:
     row = {
         "decision_sequence": "11",
         "capture_session": "7",
-        "source_first_sequence": "101",
-        "source_last_sequence": "701",
+        "source_acceptance_epoch": "2",
+        "source_opening_accepted_boundary_ordinal": "101",
+        "source_closing_accepted_boundary_ordinal": "701",
         "frequency_estimator_sha256": "a" * 64,
         "frequency_error_hz": "0.001666666667",
         "accumulated_edge_error_counts": "1",
@@ -75,7 +77,7 @@ def test_offline_decision_source_join_requires_exact_raw_selected_estimate(
     assert result["joins"] == [
         {
             "decision_sequence": "11",
-            "source_key": [7, 101, 701],
+            "source_key": [7, 2, 101, 701],
             "estimate_id": _source()["estimate_id"],
             "exact": True,
         }
@@ -85,9 +87,10 @@ def test_offline_decision_source_join_requires_exact_raw_selected_estimate(
 @pytest.mark.parametrize(
     "changes",
     [
-        {"source_last_sequence": "702"},
+        {"source_closing_accepted_boundary_ordinal": "702"},
         {"decision_timestamp_ticks": "760000001"},
         {"capture_session": "8"},
+        {"source_acceptance_epoch": "3"},
         {"frequency_estimator_sha256": "b" * 64},
         {"frequency_error_hz": "0.001666666668"},
         {"accumulated_edge_error_counts": "2"},

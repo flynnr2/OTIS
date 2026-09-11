@@ -14,14 +14,48 @@ from host.otis_tools.acquisition_frontier import (
     FRONTIER_STATE_PATH, read_acquisition_readiness, select_required_replay_rows,
 )
 from host.otis_tools.adaptive_hybrid_replay import _measurement_replay
+from host.otis_tools.authoritative_inputs import (
+    REFERENCE_ACCEPTANCE_POLICY_PATH,
+    authoritative_binding,
+    authoritative_document,
+    collect_authoritative_inputs,
+)
+from host.otis_tools.contracts import CONTRACT_FIELDS
 from test_raw_measurement_replay import raw_measurement_rows
 
 
 class RecordedStream:
     def __init__(self, root: Path, rows):
         self.root, self.rows = root, rows
-        for row in rows["estimates.csv"]:
-            row.update(record_type="EST", schema_version="2")
+        frozen = collect_authoritative_inputs()
+        policy = authoritative_document(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
+        binding = authoritative_binding(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
+        self.policy_sha = str(binding["sha256"])
+        self.first_sequence = int(rows["snapshots.csv"][0]["snapshot_sequence"])
+        old = rows["estimates.csv"][0]
+        estimate = {field: "" for field in CONTRACT_FIELDS["estimates_v3"]}
+        estimate.update(
+            record_type="EST", schema_version="3", estimate_seq="1",
+            estimate_id="selected-1", estimator_timestamp_ticks=old["estimator_timestamp_ticks"],
+            time_domain="rp2040_monotonic_us32", capture_session="1",
+            source_acceptance_epoch="1",
+            source_opening_accepted_boundary_ordinal="0",
+            source_closing_accepted_boundary_ordinal="600",
+            source_opening_snapshot_sequence=str(self.first_sequence),
+            source_closing_snapshot_sequence=rows["snapshots.csv"][-1]["snapshot_sequence"],
+            source_opening_reference_sequence=str(self.first_sequence),
+            source_closing_reference_sequence=rows["snapshots.csv"][-1]["reference_sequence"],
+            source_accepted_spans_ref="live:APS:1:1:0:600",
+            estimator_version=old["estimator_version"], config_hash=old["config_hash"],
+            observation_validity="valid", reference_validity="valid",
+            reference_continuity="true", count_validity="valid",
+            count_continuity="true", diagnostic_health="healthy",
+            frequency_estimate_hz=old["frequency_estimate_hz"],
+            frequency_error_hz=old["frequency_error_hz"], accepted_sample_count="600",
+            drift_enabled="false", preview_eligibility="true",
+        )
+        rows["estimates.csv"] = [estimate]
+        rows["spans.csv"] = []
         root.mkdir(exist_ok=True)
         (root / "raw").mkdir()
         self.raw = root / "raw/serial.log"
@@ -29,18 +63,28 @@ class RecordedStream:
         self.manifest = {
             "acquisition_frontier": FRONTIER_POLICY,
             "transaction_identities": {"estimator_sha256": "a" * 64},
+            "authoritative_inputs": frozen,
+            "reference_acceptance": {
+                "policy_id": policy["policy_id"], "policy_sha256": self.policy_sha,
+                "path": REFERENCE_ACCEPTANCE_POLICY_PATH,
+            },
             "files": [
                 {"contract": "raw_events_v1", "record_type": "REF", "path": "ref.csv"},
                 {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
                 {"contract": "pps_snapshots_v1", "path": "snapshots.csv"},
                 {"contract": "count_observations_v1", "path": "counts.csv"},
-                {"contract": "estimates_v2", "path": "estimates.csv"},
+                {"contract": "accepted_pps_spans_v1", "path": "spans.csv"},
+                {"contract": "estimates_v3", "path": "estimates.csv"},
             ],
         }
-        self.paths = {"REF": "ref.csv", "SNP": "snapshots.csv", "CNT": "counts.csv", "EST": "estimates.csv"}
+        self.paths = {"REF": "ref.csv", "SNP": "snapshots.csv", "CNT": "counts.csv", "APS": "spans.csv", "EST": "estimates.csv"}
         self.fields = {}
         for tag, filename in self.paths.items():
-            self.fields[tag] = list(rows[filename][0])
+            self.fields[tag] = (
+                list(CONTRACT_FIELDS["accepted_pps_spans_v1"])
+                if tag == "APS"
+                else list(rows[filename][0])
+            )
             with (root / filename).open("w", newline="") as handle:
                 csv.writer(handle, lineterminator="\n").writerow(self.fields[tag])
         (root / "evt.csv").write_text("record_type,channel_id\n")
@@ -74,6 +118,30 @@ class RecordedStream:
         self.emit(self.rows["snapshots.csv"][index])
         if index:
             self.emit(self.rows["counts.csv"][index - 1])
+            opening = self.rows["snapshots.csv"][index - 1]
+            closing = self.rows["snapshots.csv"][index]
+            count = self.rows["counts.csv"][index - 1]
+            span = {
+                field: "" for field in CONTRACT_FIELDS["accepted_pps_spans_v1"]
+            }
+            span.update(
+                record_type="APS", schema_version="1", capture_session="1",
+                acceptance_epoch="1", accepted_boundary_ordinal=str(index),
+                opening_snapshot_sequence=opening["snapshot_sequence"],
+                closing_snapshot_sequence=closing["snapshot_sequence"],
+                opening_reference_sequence=opening["reference_sequence"],
+                closing_reference_sequence=closing["reference_sequence"],
+                opening_reference_timestamp_ticks=opening["reference_timestamp_ticks"],
+                closing_reference_timestamp_ticks=closing["reference_timestamp_ticks"],
+                time_domain="rp2040_monotonic_us32",
+                source_count_first_sequence=count["count_seq"],
+                source_count_last_sequence=count["count_seq"],
+                source_count_record_count="1", counted_edges=count["counted_edges"],
+                excluded_candidate_count="0", nominal_interval_count="1",
+                acceptance_policy_sha256=self.policy_sha,
+            )
+            self.rows["spans.csv"].append(span)
+            self.emit(span)
 
     def readiness(self, identity=None, session=1):
         return read_acquisition_readiness(self.root, self.manifest,
@@ -88,17 +156,13 @@ def test_mid_session_prefix_retained_anchor_then_full_source_authority(tmp_path)
     stream = RecordedStream(tmp_path, rows)
     assert stream.readiness()["errors"] == []
     stream.boundary(0)
-    orphan = deepcopy(rows["counts.csv"][0])
-    orphan.update(count_seq="10", gate_open_ticks="9000000", gate_close_ticks="10000000")
-    stream.emit(orphan)
     assert not stream.readiness()["ready"]
     stream.boundary(1)
     assert stream.readiness()["ready"]
     assert not stream.readiness("selected-1")["ready"]
     artifact = (tmp_path / FRONTIER_PATH).read_bytes()
     stale = deepcopy(rows["estimates.csv"][0])
-    stale.update(estimate_id="prefix-est", source_reference_first_seq="0", source_reference_last_seq="600",
-        source_count_seq="600", estimator_timestamp_ticks="600000000")
+    stale.update(estimate_id="prefix-est", estimator_timestamp_ticks="600000000")
     for index in range(2, 591):
         stream.boundary(index)
     stream.emit(stale)
@@ -109,10 +173,9 @@ def test_mid_session_prefix_retained_anchor_then_full_source_authority(tmp_path)
     stream.emit(selected)
     assert stream.readiness("selected-1")["ready"], stream.tracker.errors
     assert (tmp_path / FRONTIER_PATH).read_bytes() == artifact
-    assert len(list(csv.DictReader((tmp_path / "counts.csv").open()))) == 601
+    assert len(list(csv.DictReader((tmp_path / "counts.csv").open()))) == 600
     exact, report, _ = stream.replay()
     assert exact, report
-    assert report["acquisition_frontier"]["unqualified_prefix_count_count"] == 1
     assert report["acquisition_frontier"]["unqualified_selected_estimate_ids"] == ["prefix-est"]
 
 

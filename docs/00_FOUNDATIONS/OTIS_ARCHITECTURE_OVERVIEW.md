@@ -92,3 +92,19 @@ or bypass control safety.
   holdover when reference evidence is temporarily unavailable; reserve latched
   fail-static state for integrity, ordering, capture-loss, or actuator failures
   that cannot be requalified in place.
+
+## Accepted-reference integration
+
+The current candidate selects D14 references after hardware snapshot
+association. Raw REF/SNP/CNT remain canonical; APS records separately identify
+accepted D8 spans, their acceptance epoch and their full raw source range.
+One selector output feeds both frequency and relative-phase measurement.
+Accepted-span identity then passes through EST, phase, active transactions,
+recorder readiness, host replay and qualified-duration accounting.
+
+Receiver metadata and delayed observation delivery can hold control without
+resetting continuous measurement history. Physical absence is not inferred
+from a CPU deadline. Same-clock64-bit projection of captured RP2040 low words
+bounds observation age; ambiguity withdraws the model's qualification while
+preserving raw evidence. Source gaps and acceptance-epoch changes require
+fresh support, and an uninterrupted campaign cannot sum different epochs.

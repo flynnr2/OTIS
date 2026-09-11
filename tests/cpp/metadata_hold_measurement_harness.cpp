@@ -4,6 +4,7 @@
 #include "otis_dual_core_receiver_gate.h"
 #include "otis_oscillator_snapshot_estimator.h"
 #include "otis_selected_phase_frequency_preview_engine.h"
+#include "reference_selection_fixture.h"
 
 namespace {
 
@@ -21,25 +22,6 @@ OtisReceiverQualificationMessage qualified_receiver(uint64_t published_ticks,
   receiver.gsa_checksum_requalified = true;
   receiver.gsa_3d = true;
   return receiver;
-}
-
-OtisSelectedPhaseFrequencyPreviewInput boundary(uint32_t sequence,
-                                                uint32_t counter,
-                                                bool raw_interval_valid) {
-  return {
-      7u,
-      sequence,
-      counter,
-      sequence,
-      static_cast<uint64_t>(sequence) * 1000000ull,
-      static_cast<uint64_t>(sequence) * 1000000ull,
-      0u,
-      kMeasuredD8Edges,
-      3u,
-      raw_interval_valid,
-      raw_interval_valid,
-      false,
-  };
 }
 
 }  // namespace
@@ -67,74 +49,87 @@ int main() {
   assert(otis_selected_phase_frequency_preview_init(&phase));
   otis_oscillator_snapshot_estimator_init(&oscillator);
 
-  uint32_t counter = 0xf0000000u;
+  ReferenceSelectionFixture trace;
+  trace.raw.snapshot_sequence = UINT32_MAX - 300u;
+  trace.raw.reference_sequence = UINT32_MAX - 100u;
+  trace.extended_ticks = (1ull << 32) - 8500000u;
+  trace.raw.reference_timestamp_ticks = uint32_t(trace.extended_ticks);
+  trace.acquire();
   OtisSelectedPhaseFrequencyPreviewOutput phase_output = {};
   OtisRegulationSpanEstimate oscillator_output = {};
-  bool selected_support_observed = false;
+  auto ingest = [&]() {
+    const OtisSelectedPhaseFrequencyPreviewInput input = {&trace.selection, trace.extended_ticks, 3u, false};
+    assert(otis_selected_phase_frequency_preview_process(&phase, &input, &phase_output));
+    otis_oscillator_snapshot_estimator_ingest(&oscillator, &trace.selection, &oscillator_output);
+  };
+  ingest();
+  const auto first_raw = trace.raw;
   bool receiver_control_qualified_during_hold = true;
-
-  for (uint32_t sequence = 1u; sequence <= 601u; ++sequence) {
-    const bool metadata_qualified = sequence <= 200u || sequence > 400u;
-    const bool raw_d14_d8_interval_valid = true;
-    if (sequence > 1u) counter -= kMeasuredD8Edges;
-
-    // This is the production receiver-control gate. During the metadata
-    // hold, each current boundary is independently ineligible for control.
-    const uint64_t boundary_ticks = static_cast<uint64_t>(sequence) * 1000000ull;
-    const OtisReceiverQualificationMessage boundary_receiver =
-        qualified_receiver(boundary_ticks, metadata_qualified ? 0u : 101u);
-    const bool receiver_control_qualified =
-        otis_dual_core_receiver_qualified_for_control_at(
-            &boundary_receiver, boundary_ticks, kMetadataLimitMs);
-    if (!metadata_qualified)
-      receiver_control_qualified_during_hold &= receiver_control_qualified;
-    const OtisSelectedPhaseFrequencyPreviewInput input =
-        boundary(sequence, counter, raw_d14_d8_interval_valid);
-    assert(otis_selected_phase_frequency_preview_process(&phase, &input,
-                                                          &phase_output));
-    if (sequence > 1u) {
-      otis_oscillator_snapshot_estimator_ingest(
-          &oscillator, sequence, kMeasuredD8Edges, raw_d14_d8_interval_valid,
-          &oscillator_output);
-      selected_support_observed |= oscillator_output.selected_available;
+  uint32_t raw_opening_snapshots[601] = {};
+  uint32_t raw_opening_references[601] = {};
+  for (uint32_t span = 1u; span <= 600u; ++span) {
+    const bool metadata_qualified = span <= 200u || span > 400u;
+    raw_opening_snapshots[span] = trace.raw.snapshot_sequence;
+    raw_opening_references[span] = trace.raw.reference_sequence;
+    if (span == 300u) {
+      trace.advance(246294u, 2462937u);
+      ingest();
+      assert(!phase_output.record_available);
+      assert(oscillator.selected_count == 299u);
+      trace.advance(753707u, 7537064u);
+    } else {
+      trace.advance(1000000u, kMeasuredD8Edges);
+    }
+    const OtisReceiverQualificationMessage current_receiver =
+        qualified_receiver(trace.raw.reference_timestamp_ticks, metadata_qualified ? 0u : 101u);
+    const bool receiver_control_qualified = otis_dual_core_receiver_qualified_for_control_at(
+        &current_receiver, trace.raw.reference_timestamp_ticks, kMetadataLimitMs);
+    if (!metadata_qualified) receiver_control_qualified_during_hold &= receiver_control_qualified;
+    ingest();
+    if (span >= 60u) {
+      assert(oscillator_output.diagnostic_first_sequence == raw_opening_snapshots[span - 59u]);
+      assert(oscillator_output.diagnostic_first_reference_sequence == raw_opening_references[span - 59u]);
     }
   }
-
   assert(!receiver_control_qualified_during_hold);
   assert(phase_output.phase_state == OtisReferenceRelativePhaseState::Qualified);
-  assert(phase_output.phase_epoch == 1u);
-  assert(phase_output.observation_sequence == 600u);
+  assert(phase_output.phase_epoch == 1u && phase_output.observation_sequence == 600u);
   assert(phase_output.relative_phase_cycles == 600);
-  assert(phase_output.frequency_available);
-  assert(phase_output.frequency_error_hz == 1.0);
-  assert(selected_support_observed);
+  assert(phase_output.frequency_available && phase_output.frequency_error_hz == 1.0);
   assert(oscillator_output.selected_available);
-  assert(oscillator_output.selected_first_sequence == 1u);
-  assert(oscillator_output.last_sequence == 601u);
-  assert(oscillator_output.selected_frequency_hz ==
-         static_cast<double>(kMeasuredD8Edges));
+  assert(oscillator_output.selected_first_sequence == first_raw.snapshot_sequence);
+  assert(oscillator_output.selected_first_reference_sequence == first_raw.reference_sequence);
+  assert(oscillator_output.last_sequence == trace.raw.snapshot_sequence);
+  assert(oscillator_output.last_reference_sequence == trace.raw.reference_sequence);
+  assert(oscillator_output.acceptance_epoch == 1u);
+  assert(oscillator_output.selected_opening_accepted_boundary_ordinal == 0u);
+  assert(oscillator_output.closing_accepted_boundary_ordinal == 600u);
+  assert(oscillator_output.selected_frequency_hz == double(kMeasuredD8Edges));
   assert(oscillator_output.selected_accumulated_edge_error_counts == 600);
-
-  // A real D14/D8 fault still invalidates both preview histories.
-  counter -= kMeasuredD8Edges;
-  OtisSelectedPhaseFrequencyPreviewInput raw_fault =
-      boundary(602u, counter, false);
-  assert(otis_selected_phase_frequency_preview_process(&phase, &raw_fault,
-                                                        &phase_output));
+  // The diagnostic opening also follows actual raw endpoints after the split.
+  assert(oscillator_output.diagnostic_first_sequence == trace.raw.snapshot_sequence - 60u);
+  assert(oscillator_output.diagnostic_first_reference_sequence == trace.raw.reference_sequence - 60u);
+  ++trace.raw.snapshot_sequence;
+  trace.advance();
+  ingest();
   assert(phase_output.phase_state == OtisReferenceRelativePhaseState::Invalid);
-  otis_oscillator_snapshot_estimator_ingest(&oscillator, 602u,
-                                            kMeasuredD8Edges, false,
-                                            &oscillator_output);
-  assert(!oscillator_output.selected_available);
-  assert(oscillator.selected_count == 0u);
-
-  counter -= kMeasuredD8Edges;
-  const OtisSelectedPhaseFrequencyPreviewInput after_fault =
-      boundary(603u, counter, true);
-  assert(otis_selected_phase_frequency_preview_process(&phase, &after_fault,
-                                                        &phase_output));
+  assert(!oscillator_output.selected_available && oscillator.selected_count == 0u);
+  trace.advance();
+  ingest();
+  for (uint32_t i = 0; i < OTIS_REFERENCE_ACCEPTANCE_POLICY.acquisition_intervals; ++i) {
+    trace.advance();
+    ingest();
+  }
   assert(phase_output.phase_state == OtisReferenceRelativePhaseState::EpochOpen);
-  assert(phase_output.phase_epoch == 2u);
-  assert(phase_output.observation_sequence == 0u);
+  assert(phase_output.phase_epoch == 2u && phase_output.observation_sequence == 0u);
+  assert(oscillator.selected_count == 0u);
+  trace.advance();
+  ingest();
+  assert(phase_output.observation_sequence == 1u && oscillator.selected_count == 1u);
+  trace.advance();
+  ++trace.selection.accepted_boundary_ordinal;
+  ingest();
+  assert(!oscillator_output.source_continuous && oscillator.selected_count == 0u);
+  assert(phase_output.phase_state == OtisReferenceRelativePhaseState::Invalid);
   return 0;
 }

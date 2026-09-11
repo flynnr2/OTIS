@@ -122,7 +122,7 @@ TOOL_ID = "adaptive_hybrid_supervisor_v1"
 PROGRAMME_ID = ADAPTIVE_HYBRID_PROGRAMME.programme_id
 PROFILE_ID = ADAPTIVE_HYBRID_PROGRAMME.profile_id
 RUNTIME_RUN_IDENTITY = ADAPTIVE_HYBRID_PROGRAMME.runtime_run_identity
-ACTIVE_HYBRID_CSV = Path("csv/active_hybrid_decisions_v2.csv")
+ACTIVE_HYBRID_CSV = Path("csv/active_hybrid_decisions_v3.csv")
 HOST_CONTRACT_RECOVERY_PATH = Path(
     "reports/adaptive_hybrid_host_contract_recovery_v1.json"
 )
@@ -496,14 +496,13 @@ def _truth(health: dict[tuple[str, str], str], key: str) -> bool:
 
 
 _AUTHORITATIVE_CAPTURE_COUNTERS = (
-    "rejected_window_count",
     "physical_aperture_incomplete_count",
     "association_loss_count",
+    "reference_acceptance_loss_count",
 )
 _ADAPTIVE_HYBRID_AUTHORITATIVE_CAPTURE_COUNTERS = _AUTHORITATIVE_CAPTURE_COUNTERS + (
     "boundary_ring_dropped_count",
     "missing_pps_count",
-    "pps_interval_anomaly_count",
     "count_saturated_count",
     "boundary_sequence_gap_count",
     "boundary_sequence_duplicate_count",
@@ -516,17 +515,9 @@ _ADAPTIVE_HYBRID_AUTHORITATIVE_CAPTURE_COUNTERS = _AUTHORITATIVE_CAPTURE_COUNTER
     "snapshot_dma_stopped_count",
     "physical_pps_missing_count",
 )
-_ADAPTIVE_HYBRID_RECOVERABLE_APERTURE_COUNTERS = frozenset(
-    {"rejected_window_count", "pps_interval_anomaly_count"}
-)
 _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH = {
-    "valid": "true",
-    "control_eligible": "true",
-    "reference_validity": "valid",
-    "count_validity": "valid",
-    "boundary_validity": "valid",
-    "aperture_validity": "valid",
-    "observation_pair_validity": "valid",
+    "reference_acceptance_state": "tracking",
+    "accepted_anchor_current": "true",
     "fifo_continuity": "continuous",
     "association_state": "clean",
 }
@@ -552,6 +543,22 @@ def _authoritative_capture_health_faults(
         observed = health.get(("pps_gate", key))
         if observed != expected:
             faults.append(f"{key}:{observed!r}!={expected!r}")
+    for key in (
+        "reference_acceptance_policy_sha256", "reference_acceptance_state",
+        "accepted_boundary_ordinal", "accepted_anchor_current",
+    ):
+        pps = health.get(("pps_gate", key))
+        active = health.get(("adaptive_hybrid", key))
+        if pps != active:
+            faults.append(f"accepted_status_mismatch:{key}:{pps!r}!={active!r}")
+    if health.get(("pps_gate", "reference_acceptance_epoch")) != health.get(
+        ("adaptive_hybrid", "acceptance_epoch")
+    ):
+        faults.append("accepted_status_mismatch:acceptance_epoch")
+    if health.get(("pps_gate", "snapshot_session")) != health.get(
+        ("adaptive_hybrid", "session_id")
+    ):
+        faults.append("accepted_status_mismatch:capture_session")
     return faults
 
 
@@ -635,6 +642,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 "ADAPTIVE_HYBRID acquisition frontier differs from the retained manifest"
             )
         self.acquisition_manifest = acquisition_manifest
+        reference_acceptance = acquisition_manifest.get("reference_acceptance")
+        if (
+            not isinstance(reference_acceptance, dict)
+            or set(reference_acceptance) != {"policy_id", "policy_sha256", "path"}
+        ):
+            raise ValueError("ADAPTIVE_HYBRID reference-acceptance binding is unavailable")
+        self.reference_acceptance_policy_sha256 = str(
+            reference_acceptance["policy_sha256"]
+        )
         self.envelope = envelope
         self.phase_estimator_sha256 = envelope.phase_estimator_sha256
         self.natural_policy = envelope.policy
@@ -677,14 +693,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.state.setdefault("qualified_frontier_raw_ticks", None)
         self.state.setdefault("qualified_frontier_extended_ticks", None)
         self.state.setdefault("qualified_endpoint_extended_timestamp_ticks", None)
-        self.state.setdefault("qualified_d14_accepted_window_origin", None)
-        self.state.setdefault("qualified_d14_reference_sequence_origin", None)
+        self.state.setdefault("qualified_acceptance_epoch_origin", None)
+        self.state.setdefault("qualified_acceptance_ordinal_origin", None)
         self.state.setdefault("qualified_d14_accepted_apertures", None)
-        self.state.setdefault("qualified_d14_reference_sequence_endpoint", None)
+        self.state.setdefault("qualified_acceptance_ordinal_endpoint", None)
         self.state.setdefault("qualified_authoritative_capture_baseline", None)
-        self.state.setdefault("qualified_d14_completed_apertures_before_segment", 0)
-        self.state.setdefault("qualified_d14_segment_accepted_window_origin", None)
-        self.state.setdefault("qualified_d14_segment_reference_sequence_origin", None)
         self.state.setdefault("authoritative_capture_interventions", [])
         self.state.setdefault("latest_hybrid_state", None)
         self.state.setdefault("first_phase_checkpoint_passed", False)
@@ -1123,7 +1136,14 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _identity_ready(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
-        return super()._identity_ready(health)
+        return (
+            super()._identity_ready(health)
+            and health.get(("pps_gate", "reference_acceptance_policy_sha256"))
+                == self.reference_acceptance_policy_sha256
+            and health.get(("adaptive_hybrid", "reference_acceptance_policy_sha256"))
+                == self.reference_acceptance_policy_sha256
+            and not _authoritative_capture_health_faults(health)
+        )
 
     def _fresh_active_snapshot_after(
         self, generation: int
@@ -1432,6 +1452,12 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             or record.get("estimator_version")
             != self.natural_policy.frequency_estimator_id
             or record.get("config_hash") != self.identities["estimator_sha256"]
+            or proof.get("source_acceptance_epoch")
+                != int(record.get("source_acceptance_epoch", "0"))
+            or proof.get("source_opening_accepted_boundary_ordinal")
+                != int(record.get("source_opening_accepted_boundary_ordinal", "0"))
+            or proof.get("source_closing_accepted_boundary_ordinal")
+                != int(record.get("source_closing_accepted_boundary_ordinal", "0"))
         ):
             self._enter_host_verification_hold(
                 ValueError(
@@ -1447,7 +1473,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self, health: dict[tuple[str, str], str]
     ) -> int | None:
         try:
-            capture_session = int(health[("adaptive_hybrid", "session_id")])
+            capture_session = int(health[("pps_gate", "snapshot_session")])
         except (KeyError, TypeError, ValueError):
             capture_session = 0
         if capture_session <= 0:
@@ -1468,7 +1494,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         validation = validate_csv(
             path,
             CsvValidationContext(
-                "active_hybrid_decisions_v2",
+                "active_hybrid_decisions_v3",
                 frozenset(),
                 frozenset({"rp2040_monotonic_us64"}),
             ),
@@ -2300,10 +2326,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             health[("adaptive_hybrid", "gnss_metadata_requalification_sequence")]
         )
         qualification_frontier = int(
-            health[("adaptive_hybrid", "gnss_metadata_qualification_frontier")]
+            health[("adaptive_hybrid", "gnss_qualified_accepted_ordinal")]
         )
         observation_sequence = int(
-            health[("adaptive_hybrid", "d14_d8_observation_sequence")]
+            health[("adaptive_hybrid", "accepted_boundary_ordinal")]
         )
         if (
             metadata_sequence <= retained["entry_sequence"]
@@ -2317,7 +2343,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "gnss_metadata_hold_requalified",
             metadata_sequence=metadata_sequence,
             qualification_frontier=qualification_frontier,
-            post_qualification_observation_sequence=observation_sequence,
+            post_qualification_accepted_boundary_ordinal=observation_sequence,
             applied_code=retained["applied_code"],
             dac_epoch=retained["dac_epoch"],
         )
@@ -2340,7 +2366,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             and row.get("diagnostic_health") == "healthy"
             and row.get("preview_eligibility") == "true"
             and row.get("source_dac_ref") == expected_dac_ref
-            and int(row.get("accepted_sample_count") or "0") >= SELECTED_INTERVAL_S
+            and int(row.get("accepted_sample_count") or "0") == SELECTED_INTERVAL_S
+            and row.get("source_accepted_spans_ref", "").startswith("live:APS:")
         ]
 
     def _fresh_authoritative_selected_estimate(
@@ -2352,425 +2379,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         return candidates[-1] if candidates else None
 
-    def _historical_pps_origin_health(
-        self, *, origin_ticks: int
-    ) -> dict[str, str]:
-        """Read the first complete PPS health publication after an origin.
-
-        Retained health rows are chronological, while their RP2040 32-bit
-        timestamps wrap.  Qualification attempt 3's first selected estimate
-        precedes the first wrap, so stop if that first rollover is observed
-        rather than accidentally selecting a much later same-coordinate row.
-        """
-
-        required = {
-            "snapshot_session",
-            "accepted_window_count",
-            "boundary_reference_sequence",
-            *_AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH,
-            *_authoritative_capture_counters(self.programme),
-        }
-        values: dict[str, str] = {}
-        started = False
-        previous_ticks: int | None = None
-        path = self.run_dir / "csv/health.csv"
-        with path.open(newline="", encoding="utf-8") as handle:
-            for row in csv.DictReader(handle):
-                ticks = int(row["timestamp_ticks"])
-                if (
-                    previous_ticks is not None
-                    and previous_ticks - ticks > 0x7FFFFFFF
-                ):
-                    if started:
-                        break
-                previous_ticks = ticks
-                if not started:
-                    if ticks < origin_ticks:
-                        continue
-                    started = True
-                if (
-                    row.get("component") == "pps_gate"
-                    and row.get("status_key") in required
-                ):
-                    values[row["status_key"]] = row["status_value"]
-                    if required <= values.keys():
-                        return values
-        missing = sorted(required - values.keys())
-        raise ValueError(
-            "retained qualified-origin PPS health is incomplete: "
-            + ", ".join(missing)
-        )
-
-    @staticmethod
-    def _rows_sha256(rows: list[dict[str, str]]) -> str:
-        encoded = json.dumps(
-            rows, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-        return sha256(encoded).hexdigest()
-
-    @staticmethod
-    def _decision_timestamp_consumes_estimate(
-        decision: dict[str, str], estimate: dict[str, str]
-    ) -> bool:
-        """Bind an operational decision to its preceding captured EST frontier."""
-        try:
-            return (
-                bounded_modular_lag_matches(
-                    "estimate_capture_precedes_operational_decision",
-                    source=int(estimate["estimator_timestamp_ticks"]),
-                    source_domain=estimate.get("time_domain", ""),
-                    target=int(decision["decision_timestamp_ticks"]),
-                    target_domain=decision.get("time_domain", ""),
-                )
-                and decision.get("source_first_sequence")
-                == estimate.get("source_reference_first_seq")
-                and decision.get("source_last_sequence")
-                == estimate.get("source_reference_last_seq")
-            )
-        except (KeyError, TypeError, ValueError):
-            return False
-
-    def recover_retained_host_contract_prefix(
-        self, *, reviewed_host_revision: str, apply: bool
-    ) -> dict[str, Any]:
-        """Rebind an intact attempt-3 prefix after the reviewed host defects.
-
-        This is deliberately narrower than a generic hold override.  It only
-        accepts a never-armed, never-corrected prefix for which every natural
-        hybrid decision was a zero-delta decision, then reconstructs the first
-        qualifying estimator/aperture origin from canonical firmware records.
-        It performs no device I/O and grants no immediate ARM transaction.
-        """
-
-        bench_attempt = self.envelope.bench_attempt
-        if (
-            bench_attempt is None
-            or bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL
-        ):
-            raise ValueError("host-contract recovery requires the contingent 72-hour attempt")
-        if not reviewed_host_revision or len(reviewed_host_revision) != 40:
-            raise ValueError("reviewed host revision must be an exact 40-character revision")
-        if self.state.get("terminal") is not None:
-            raise ValueError("terminal attempt cannot be rebound")
-        hold = self.state.get("host_verification_hold")
-        if not isinstance(hold, dict):
-            raise ValueError("host-contract recovery requires a retained review hold")
-        setup = self.state.get("setup_confirmation")
-        if not isinstance(setup, dict):
-            raise ValueError("host-contract recovery lacks exact setup confirmation")
-        setup_code = self.programme.setup_code
-        setup_epoch = int(setup.get("dac_epoch", -1))
-        setup_session = int(setup.get("session_id", -1))
-        if (
-            int(setup.get("applied_code", -1)) != setup_code
-            or setup_epoch != 1
-            or setup_session <= 0
-            or self.state.get("setup_confirmed_utc") is None
-            or self.state.get("arm_pending") is not False
-            or self.state.get("bench_attempt_arm_submission_count") != 0
-            or self.state.get("bench_attempt_arm_admissions") != []
-            or self.state.get("bench_attempt_last_arm_opportunity") is not None
-        ):
-            raise ValueError("retained setup or ARM state is not a recoverable zero-action prefix")
-
-        active_rows = _read_csv(self.run_dir / ACTIVE_CSV)
-        dac_rows = _read_csv(self.run_dir / DAC_CSV)
-        if (
-            len(active_rows) != 1
-            or active_rows[0].get("event") != "manual_start"
-            or int(active_rows[0].get("applied_code", -1)) != setup_code
-            or int(active_rows[0].get("dac_epoch", -1)) != setup_epoch
-            or int(active_rows[0].get("correction_count", -1)) != 0
-            or len(dac_rows) != 1
-            or dac_rows[0].get("event") != "manual_apply"
-            or int(dac_rows[0].get("dac_code_applied", -1)) != setup_code
-        ):
-            raise ValueError("retained ACT/DAC evidence contains post-setup actuation")
-
-        estimator_rows = _read_csv(self.run_dir / ESTIMATES_CSV)
-        selected = self._authoritative_selected_estimates(
-            estimator_rows, dac_epoch=setup_epoch
-        )
-        if not selected:
-            raise ValueError("retained prefix contains no qualifying selected estimate")
-        first = selected[0]
-        origin_ticks = int(first["estimator_timestamp_ticks"])
-        origin_reference = int(first["source_reference_last_seq"])
-        if (
-            first.get("time_domain") != "rp2040_monotonic_us32"
-            or int(first["source_count_seq"]) != origin_reference
-        ):
-            raise ValueError("retained selected-estimate origin is incoherent")
-        setup_ticks = int(setup.get("event_timestamp_ticks", -1))
-        origin_delay_ticks = origin_ticks - setup_ticks
-        deadline_ticks = int(self.programme.qualification_deadline_s or 0) * (
-            RP2040_MONOTONIC_US_PER_SECOND
-        )
-        if not 0 < origin_delay_ticks <= deadline_ticks:
-            raise ValueError("first retained selected estimate missed the qualification deadline")
-
-        controls = _read_csv(self.run_dir / CONTROL_CSV)
-        preview_controls = [
-            row for row in controls if row.get("preview_available") == "true"
-        ]
-        nonpreviews = [
-            row for row in controls if row.get("preview_available") != "true"
-        ]
-        hybrid_rows = _read_csv(self.run_dir / ACTIVE_HYBRID_CSV)
-        if (
-            len(nonpreviews) != 1
-            or nonpreviews[0].get("control_seq") != "0"
-            or nonpreviews[0].get("preview_eligibility") != "false"
-            or len(preview_controls) != len(selected)
-            or len(hybrid_rows) != len(selected)
-        ):
-            raise ValueError("retained estimator/control/decision prefix is not one-to-one")
-        for estimate, control, decision in zip(
-            selected, preview_controls, hybrid_rows, strict=True
-        ):
-            if (
-                control.get("est_input_ref") != estimate.get("estimate_id")
-                or control.get("preview_eligibility") != "true"
-                or control.get("preview_only") != "true"
-                or control.get("actuation_authorized") != "false"
-                or control.get("actionable") != "false"
-                or int(control.get("current_dac_code", -1)) != setup_code
-                or int(control.get("proposed_dac_code", -1)) != setup_code
-                or int(control.get("limited_delta_codes", 1)) != 0
-                or not self._decision_timestamp_consumes_estimate(
-                    decision, estimate
-                )
-                or int(decision.get("requested_delta_codes", 1)) != 0
-                or int(decision.get("requested_code", -1)) != setup_code
-                or int(decision.get("actual_applied_code", -1)) != setup_code
-                or int(decision.get("actual_dac_epoch", -1)) != setup_epoch
-                or decision.get("authority_state") != "DISARMED"
-                or int(decision.get("request_sequence", -1)) != 0
-                or int(decision.get("acceptance_sequence", -1)) != 0
-                or int(decision.get("application_sequence", -1)) != 0
-            ):
-                raise ValueError("retained prefix contains a nonzero or non-equivalent decision")
-
-        pps_origin_health = self._historical_pps_origin_health(
-            origin_ticks=origin_ticks
-        )
-        if (
-            int(pps_origin_health["snapshot_session"]) != setup_session
-            or int(pps_origin_health["accepted_window_count"]) != origin_reference
-            or int(pps_origin_health["boundary_reference_sequence"])
-            != origin_reference
-            or any(
-                pps_origin_health[key] != expected
-                for key, expected in _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items()
-            )
-        ):
-            raise ValueError("qualified-origin PPS health does not match the estimate frontier")
-        baseline = {
-            key: int(pps_origin_health[key])
-            for key in _authoritative_capture_counters(self.programme)
-        }
-
-        self._check_capture_transport_state()
-        current = self._current_health()
-        accepted_now = int(current[("pps_gate", "accepted_window_count")])
-        reference_now = int(current[("pps_gate", "boundary_reference_sequence")])
-        snapshots = [
-            row
-            for row in _read_csv(self.run_dir / "csv/pps_snapshots.csv")
-            if origin_reference
-            <= int(row.get("reference_sequence", -1))
-            <= reference_now
-        ]
-        if (
-            not snapshots
-            or int(snapshots[0]["reference_sequence"]) != origin_reference
-            or int(snapshots[0]["reference_timestamp_ticks"]) != origin_ticks
-        ):
-            raise ValueError("retained PPS snapshots do not bind the qualified origin")
-        latest_extended_ticks = origin_ticks
-        prior_ticks = origin_ticks
-        prior_reference = origin_reference
-        for snapshot in snapshots:
-            reference = int(snapshot["reference_sequence"])
-            ticks = int(snapshot["reference_timestamp_ticks"])
-            if (
-                int(snapshot.get("session", -1)) != setup_session
-                or int(snapshot.get("status", -1)) != 0
-                or reference != prior_reference + (0 if reference == origin_reference else 1)
-            ):
-                raise ValueError("retained PPS snapshot sequence is discontinuous")
-            if reference != origin_reference:
-                progress = forward_progress(
-                    prior_ticks,
-                    ticks,
-                    domain="rp2040_monotonic_us32",
-                    allow_equal=False,
-                )
-                if not progress.valid or progress.distance_ticks is None:
-                    raise ValueError("retained PPS timestamp sequence is discontinuous")
-                latest_extended_ticks += progress.distance_ticks
-            prior_ticks = ticks
-            prior_reference = reference
-
-        current_identity = {
-            "state": current.get(("adaptive_hybrid", "state")),
-            "fail_static": current.get(("adaptive_hybrid", "fail_static")),
-            "applied_code": int(
-                current.get(("adaptive_hybrid", "confirmed_applied_code"), "-1"), 0
-            ),
-            "dac_epoch": int(current.get(("adaptive_hybrid", "dac_epoch"), "-1")),
-            "correction_count": int(
-                current.get(("adaptive_hybrid", "correction_count"), "-1")
-            ),
-            "cumulative_movement_codes": int(
-                current.get(
-                    ("adaptive_hybrid", "cumulative_movement_codes"), "-1"
-                )
-            ),
-            "session_id": int(current.get(("pps_gate", "snapshot_session"), "-1")),
-        }
-        current_counters = {
-            key: int(current.get(("pps_gate", key), "-1"))
-            for key in _authoritative_capture_counters(self.programme)
-        }
-        if (
-            current_identity
-            != {
-                "state": "DISARMED",
-                "fail_static": "false",
-                "applied_code": setup_code,
-                "dac_epoch": setup_epoch,
-                "correction_count": 0,
-                "cumulative_movement_codes": 0,
-                "session_id": setup_session,
-            }
-            or current_counters != baseline
-            or _authoritative_capture_health_faults(current)
-        ):
-            raise ValueError("current firmware or D14/D8 state differs from the retained origin")
-        accepted_progress = (accepted_now - origin_reference) & 0xFFFFFFFF
-        reference_progress = (reference_now - origin_reference) & 0xFFFFFFFF
-        if (
-            accepted_progress > 0x7FFFFFFF
-            or reference_progress > 0x7FFFFFFF
-            or accepted_progress != reference_progress
-            or reference_now < prior_reference
-            or reference_now - prior_reference > 10
-        ):
-            raise ValueError("current accepted D14/D8 frontier is not continuous with replay")
-
-        setup_wall = _parse_utc_epoch(str(self.state["setup_confirmed_utc"]))
-        origin_wall = setup_wall + origin_delay_ticks / RP2040_MONOTONIC_US_PER_SECOND
-        origin_utc = (
-            datetime.fromtimestamp(origin_wall, timezone.utc)
-            .isoformat(timespec="microseconds")
-            .replace("+00:00", "Z")
-        )
-        source_sha256 = sha256(Path(__file__).read_bytes()).hexdigest()
-        recovery = {
-            "schema_version": 1,
-            "contract": "adaptive_hybrid_retained_host_contract_recovery_v1",
-            "reviewed_utc": _utc_now(),
-            "apply_requested": apply,
-            "reviewed_host_revision": reviewed_host_revision,
-            "reviewed_host_source_sha256": source_sha256,
-            "firmware_revision": self.manifest["firmware"]["source_revision"],
-            "firmware_build_identity": self.expected_build_identity,
-            "firmware_uf2_sha256": self.envelope.uf2_sha256,
-            "manifest_sha256": self.envelope.manifest_sha256,
-            "bundle_sha256": self.envelope.bundle_sha256,
-            "superseded_host_verification_hold": hold,
-            "criterion_disposition": (
-                "operator_authorized_retrospective_host_contract_repair; "
-                "canonical firmware and raw acquisition evidence unchanged"
-            ),
-            "qualified_origin": {
-                "estimate_id": first["estimate_id"],
-                "estimator_version": first["estimator_version"],
-                "estimator_timestamp_ticks": origin_ticks,
-                "time_domain": first["time_domain"],
-                "source_reference_first_seq": int(first["source_reference_first_seq"]),
-                "source_reference_last_seq": origin_reference,
-                "source_count_seq": int(first["source_count_seq"]),
-                "source_dac_ref": first["source_dac_ref"],
-                "capture_session": setup_session,
-                "projected_utc": origin_utc,
-                "projection_basis": "setup_confirmed_utc_plus_firmware_tick_delta",
-                "setup_to_origin_ticks": origin_delay_ticks,
-            },
-            "retained_zero_action_prefix": {
-                "selected_estimate_count": len(selected),
-                "control_preview_count": len(preview_controls),
-                "hybrid_decision_count": len(hybrid_rows),
-                "automatic_ACT_record_count": 0,
-                "automatic_DAC_application_count": 0,
-                "selected_estimates_sha256": self._rows_sha256(selected),
-                "control_previews_sha256": self._rows_sha256(controls),
-                "hybrid_decisions_sha256": self._rows_sha256(hybrid_rows),
-                "all_requested_delta_codes_zero": True,
-                "counterfactual_applied_code_unchanged": True,
-            },
-            "D14_D8_replay": {
-                "origin_accepted_window_count": origin_reference,
-                "origin_boundary_reference_sequence": origin_reference,
-                "current_accepted_window_count": accepted_now,
-                "current_boundary_reference_sequence": reference_now,
-                "accepted_apertures_at_review": accepted_progress,
-                "origin_authoritative_capture_baseline": baseline,
-                "latest_replayed_snapshot_reference_sequence": prior_reference,
-                "latest_replayed_snapshot_raw_ticks": prior_ticks,
-                "latest_replayed_snapshot_extended_ticks": latest_extended_ticks,
-            },
-            "current_firmware_identity": current_identity,
-            "void_unsent_host_authorization_sequences": [
-                int(self.state["authorization_sequence"])
-            ],
-            "new_setup_or_ARM_issued_by_recovery": False,
-        }
-        if not apply:
-            return recovery
-
-        report_path = self.run_dir / HOST_CONTRACT_RECOVERY_PATH
-        _atomic_json(report_path, recovery)
-        report_sha256 = sha256(report_path.read_bytes()).hexdigest()
-        self.state["qualification_started_utc"] = origin_utc
-        self.state["qualified_origin_estimate_id"] = first["estimate_id"]
-        self.state["qualified_origin_timestamp_ticks"] = origin_ticks
-        self.state["qualified_origin_session_id"] = setup_session
-        self.state["qualified_origin_extended_timestamp_ticks"] = origin_ticks
-        self.state["qualified_frontier_raw_ticks"] = prior_ticks
-        self.state["qualified_frontier_extended_ticks"] = latest_extended_ticks
-        self.state["qualified_d14_accepted_window_origin"] = origin_reference
-        self.state["qualified_d14_reference_sequence_origin"] = origin_reference
-        self.state["qualified_d14_completed_apertures_before_segment"] = 0
-        self.state["qualified_d14_segment_accepted_window_origin"] = origin_reference
-        self.state["qualified_d14_segment_reference_sequence_origin"] = origin_reference
-        self.state["qualified_d14_accepted_apertures"] = accepted_progress
-        self.state["qualified_d14_reference_sequence_endpoint"] = reference_now
-        self.state["qualified_authoritative_capture_baseline"] = baseline
-        self.state["host_contract_recovery"] = {
-            "path": str(HOST_CONTRACT_RECOVERY_PATH),
-            "sha256": report_sha256,
-            "reviewed_host_revision": reviewed_host_revision,
-            "reviewed_host_source_sha256": source_sha256,
-            "void_unsent_host_authorization_sequences": recovery[
-                "void_unsent_host_authorization_sequences"
-            ],
-        }
-        self.state["host_verification_hold"] = None
-        self.state["arm_pending"] = False
-        self.state["arm_sent_at_utc"] = None
-        self._save()
-        self._programme_event(
-            "retained_host_contract_prefix_recovered",
-            recovery_report=str(HOST_CONTRACT_RECOVERY_PATH),
-            recovery_report_sha256=report_sha256,
-            reviewed_host_revision=reviewed_host_revision,
-            estimate_id=first["estimate_id"],
-            accepted_D14_D8_apertures=accepted_progress,
-            new_setup_or_ARM_issued=False,
-        )
-        return {**recovery, "recovery_report_sha256": report_sha256}
 
     def _maybe_qualify(self, health: dict[tuple[str, str], str]) -> None:
         if self.state["qualification_started_utc"] is not None:
@@ -2870,18 +2478,21 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 authoritative_capture_baseline[key] = value
             if self.programme.qualified_d14_aperture_count is not None:
                 try:
+                    acceptance_epoch_origin = int(estimate["source_acceptance_epoch"])
                     accepted_origin = int(
-                        health[("pps_gate", "accepted_window_count")]
+                        estimate["source_closing_accepted_boundary_ordinal"]
                     )
-                    reference_origin = int(
-                        health[("pps_gate", "boundary_reference_sequence")]
+                    current_epoch = int(
+                        health[("pps_gate", "reference_acceptance_epoch")]
                     )
                 except (KeyError, TypeError, ValueError) as exc:
                     raise ValueError(
                         "ADAPTIVE_HYBRID qualified D14 aperture origin is unavailable"
                     ) from exc
-                if not (0 <= accepted_origin < 1 << 32) or not (
-                    0 <= reference_origin < 1 << 32
+                if (
+                    acceptance_epoch_origin <= 0
+                    or current_epoch != acceptance_epoch_origin
+                    or not (0 < accepted_origin < 1 << 32)
                 ):
                     raise ValueError("ADAPTIVE_HYBRID qualified D14 aperture origin is malformed")
         else:
@@ -2918,15 +2529,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 qualified_frontier_extended_ticks
             )
             if self.programme.qualified_d14_aperture_count is not None:
-                self.state["qualified_d14_accepted_window_origin"] = accepted_origin
-                self.state["qualified_d14_reference_sequence_origin"] = reference_origin
-                self.state["qualified_d14_completed_apertures_before_segment"] = 0
-                self.state["qualified_d14_segment_accepted_window_origin"] = (
-                    accepted_origin
-                )
-                self.state["qualified_d14_segment_reference_sequence_origin"] = (
-                    reference_origin
-                )
+                self.state["qualified_acceptance_epoch_origin"] = acceptance_epoch_origin
+                self.state["qualified_acceptance_ordinal_origin"] = accepted_origin
         self.state["qualified_authoritative_capture_baseline"] = (
             authoritative_capture_baseline
         )
@@ -2937,18 +2541,16 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             estimator_timestamp_ticks=origin_ticks,
             time_domain="rp2040_monotonic_us32",
             capture_session=session_id,
-            source_count_ref=estimate["source_count_ref"],
+            source_accepted_spans_ref=estimate["source_accepted_spans_ref"],
             source_dac_ref=estimate["source_dac_ref"],
             dac_epoch=dac_epoch,
             qualified_duration_s=self.programme.qualified_duration_s,
             qualified_d14_aperture_count=(
                 self.programme.qualified_d14_aperture_count
             ),
-            accepted_window_count_origin=self.state.get(
-                "qualified_d14_accepted_window_origin"
-            ),
-            boundary_reference_sequence_origin=self.state.get(
-                "qualified_d14_reference_sequence_origin"
+            acceptance_epoch_origin=self.state.get("qualified_acceptance_epoch_origin"),
+            accepted_boundary_ordinal_origin=self.state.get(
+                "qualified_acceptance_ordinal_origin"
             ),
             authoritative_capture_baseline=self.state.get(
                 "qualified_authoritative_capture_baseline"
@@ -2971,9 +2573,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return
         try:
             session_id = int(health[("pps_gate", "snapshot_session")])
-            accepted_origin = int(health[("pps_gate", "accepted_window_count")])
-            reference_origin = int(
-                health[("pps_gate", "boundary_reference_sequence")]
+            acceptance_epoch = int(
+                health[("pps_gate", "reference_acceptance_epoch")]
+            )
+            accepted_origin = int(
+                health[("pps_gate", "accepted_boundary_ordinal")]
             )
             baseline = {
                 key: int(health[("pps_gate", key)])
@@ -2983,8 +2587,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return
         if (
             session_id <= 0
-            or not 0 <= accepted_origin < 1 << 32
-            or not 0 <= reference_origin < 1 << 32
+            or acceptance_epoch <= 0
+            or not 0 < accepted_origin < 1 << 32
             or any(value < 0 for value in baseline.values())
         ):
             return
@@ -2993,18 +2597,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "bench_attempt:no_setup_accepted_D14_D8_aperture_origin"
         )
         self.state["qualified_origin_session_id"] = session_id
-        self.state["qualified_d14_accepted_window_origin"] = accepted_origin
-        self.state["qualified_d14_reference_sequence_origin"] = reference_origin
-        self.state["qualified_d14_completed_apertures_before_segment"] = 0
-        self.state["qualified_d14_segment_accepted_window_origin"] = accepted_origin
-        self.state["qualified_d14_segment_reference_sequence_origin"] = reference_origin
+        self.state["qualified_acceptance_epoch_origin"] = acceptance_epoch
+        self.state["qualified_acceptance_ordinal_origin"] = accepted_origin
         self.state["qualified_authoritative_capture_baseline"] = baseline
         self._save()
         self._programme_event(
             "zero_write_aperture_origin_established",
             capture_session=session_id,
-            accepted_window_count_origin=accepted_origin,
-            boundary_reference_sequence_origin=reference_origin,
+            acceptance_epoch_origin=acceptance_epoch,
+            accepted_boundary_ordinal_origin=accepted_origin,
             setup_application_count=0,
             DAC_value_write_count=0,
             progress_domain="accepted_D14_D8_apertures",
@@ -3096,171 +2697,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             pass
         return True
 
-    def _recover_adaptive_hybrid_aperture_extension(
-        self,
-        *,
-        health: dict[tuple[str, str], str],
-        origin_session: int,
-        current_session: int,
-        baseline: dict[str, Any],
-        observed_counters: dict[str, int | str | None],
-        changed_counters: dict[str, tuple[int, int]],
-        faults: list[str],
-    ) -> bool:
-        """Rebase a bounded ADAPTIVE_HYBRID rejected-aperture interval after recovery.
-
-        The lifetime counters remain immutable provenance.  Only the two
-        counters which describe rejected D14/D8 windows may advance, and only
-        after every instantaneous capture gate has returned clean in the same
-        session.  Qualified duration remains a sum of accepted apertures; the
-        rejected reference boundaries never enter that sum.
-        """
-
-        # Physical bench-attempt envelopes categorically prohibit extending or
-        # reopening an attempt.  Retain the discontinuity and enter the normal
-        # review hold; the two-transaction private PTY rehearsal continues to
-        # exercise the historical platform recovery seam without bench power.
-        if self.envelope.bench_attempt is not None:
-            return False
-
-        if (
-            self.programme.qualified_d14_aperture_count is None
-            or current_session != origin_session
-            or not changed_counters
-            or not set(changed_counters) <= _ADAPTIVE_HYBRID_RECOVERABLE_APERTURE_COUNTERS
-            or _authoritative_capture_health_faults(health)
-        ):
-            return False
-        expected_faults = {
-            f"{key}_changed:{before}->{after}"
-            for key, (before, after) in changed_counters.items()
-        }
-        if set(faults) != expected_faults or any(
-            after <= before for before, after in changed_counters.values()
-        ):
-            return False
-        if any(type(value) is not int for value in observed_counters.values()):
-            return False
-
-        try:
-            current_identity = {
-                "applied_code": int(
-                    health[("adaptive_hybrid", "confirmed_applied_code")], 0
-                ),
-                "dac_epoch": int(health[("adaptive_hybrid", "dac_epoch")]),
-                "correction_count": int(
-                    health[("adaptive_hybrid", "correction_count")]
-                ),
-                "cumulative_movement_codes": int(
-                    health[("adaptive_hybrid", "cumulative_movement_codes")]
-                ),
-            }
-        except (KeyError, TypeError, ValueError):
-            return False
-        if (
-            not _truth(health, "confirmed_applied_code_known")
-            or current_identity["applied_code"]
-            != self.state.get("terminal_static_code")
-        ):
-            return False
-
-        hold = self.state.get("host_verification_hold")
-        if isinstance(hold, dict):
-            reason_prefix = f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
-            if (
-                hold.get("source") != "authoritative_capture_observer"
-                or not str(hold.get("error", "")).startswith(reason_prefix)
-            ):
-                return False
-            if any(hold.get(key) != value for key, value in current_identity.items()):
-                return False
-
-        try:
-            accepted_now = int(health[("pps_gate", "accepted_window_count")])
-            reference_now = int(
-                health[("pps_gate", "boundary_reference_sequence")]
-            )
-            completed = self._qualified_d14_apertures(health)
-        except (KeyError, TypeError, ValueError):
-            return False
-        if completed is None:
-            return False
-
-        accepted_segment_origin = self.state.get(
-            "qualified_d14_segment_accepted_window_origin"
-        )
-        reference_segment_origin = self.state.get(
-            "qualified_d14_segment_reference_sequence_origin"
-        )
-        if type(accepted_segment_origin) is not int:
-            accepted_segment_origin = self.state.get(
-                "qualified_d14_accepted_window_origin"
-            )
-        if type(reference_segment_origin) is not int:
-            reference_segment_origin = self.state.get(
-                "qualified_d14_reference_sequence_origin"
-            )
-        if type(accepted_segment_origin) is not int or type(reference_segment_origin) is not int:
-            return False
-        accepted_in_segment = (accepted_now - accepted_segment_origin) & 0xFFFFFFFF
-        references_in_segment = (reference_now - reference_segment_origin) & 0xFFFFFFFF
-        excluded_reference_boundaries = references_in_segment - accepted_in_segment
-        rejected_window_delta = changed_counters.get(
-            "rejected_window_count", (0, 0)
-        )
-        if (
-            references_in_segment < accepted_in_segment
-            or excluded_reference_boundaries
-            != rejected_window_delta[1] - rejected_window_delta[0]
-        ):
-            return False
-
-        interventions = self.state.get("authoritative_capture_interventions")
-        if not isinstance(interventions, list):
-            return False
-        intervention = {
-            "intervention_sequence": len(interventions) + 1,
-            "recorded_utc": _utc_now(),
-            "reason": "recovered_rejected_aperture_interval",
-            "capture_session": current_session,
-            "baseline_before": dict(baseline),
-            "baseline_after": dict(observed_counters),
-            "counter_deltas": {
-                key: after - before
-                for key, (before, after) in sorted(changed_counters.items())
-            },
-            "segment_accepted_window_origin": accepted_segment_origin,
-            "segment_reference_sequence_origin": reference_segment_origin,
-            "accepted_window_count_at_recovery": accepted_now,
-            "boundary_reference_sequence_at_recovery": reference_now,
-            "accepted_apertures_in_segment": accepted_in_segment,
-            "excluded_reference_boundaries_in_segment": excluded_reference_boundaries,
-            "qualified_accepted_apertures_after_segment": completed,
-            "current_capture_gates_clean": True,
-            "new_control_authority": False,
-            "control_identity_at_recovery": current_identity,
-            "superseded_host_verification_hold": hold,
-        }
-        interventions.append(intervention)
-        self.state["qualified_authoritative_capture_baseline"] = dict(
-            observed_counters
-        )
-        self.state["qualified_d14_completed_apertures_before_segment"] = completed
-        self.state["qualified_d14_segment_accepted_window_origin"] = accepted_now
-        self.state["qualified_d14_segment_reference_sequence_origin"] = reference_now
-        self.state["authoritative_capture_terminal_detail"] = None
-        if isinstance(hold, dict):
-            self.state["host_verification_hold"] = None
-        self.state["arm_pending"] = False
-        self.state["arm_sent_at_utc"] = None
-        self._save()
-        try:
-            self._programme_event(
-                "authoritative_capture_corrected_extension_started", **intervention
-            )
-        except OSError:
-            pass
-        return True
 
     def _qualified_elapsed_ticks(
         self, health: dict[tuple[str, str], str]
@@ -3342,44 +2778,33 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         target = self.programme.qualified_d14_aperture_count
         if target is None:
             return None
-        accepted_origin = self.state.get(
-            "qualified_d14_segment_accepted_window_origin"
-        )
-        reference_origin = self.state.get(
-            "qualified_d14_segment_reference_sequence_origin"
-        )
-        if type(accepted_origin) is not int:
-            accepted_origin = self.state.get("qualified_d14_accepted_window_origin")
-        if type(reference_origin) is not int:
-            reference_origin = self.state.get(
-                "qualified_d14_reference_sequence_origin"
-            )
-        if type(accepted_origin) is not int or type(reference_origin) is not int:
+        origin_epoch = self.state.get("qualified_acceptance_epoch_origin")
+        origin_ordinal = self.state.get("qualified_acceptance_ordinal_origin")
+        origin_session = self.state.get("qualified_origin_session_id")
+        if not all(type(value) is int for value in (
+            origin_epoch, origin_ordinal, origin_session
+        )):
             return None
         try:
-            accepted_now = int(health[("pps_gate", "accepted_window_count")])
-            reference_now = int(
-                health[("pps_gate", "boundary_reference_sequence")]
-            )
+            current_session = int(health[("pps_gate", "snapshot_session")])
+            current_epoch = int(health[("pps_gate", "reference_acceptance_epoch")])
+            current_ordinal = int(health[("pps_gate", "accepted_boundary_ordinal")])
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError("ADAPTIVE_HYBRID qualified D14 aperture progress is unavailable") from exc
-        accepted_delta = (accepted_now - accepted_origin) & 0xFFFFFFFF
-        reference_delta = (reference_now - reference_origin) & 0xFFFFFFFF
-        if accepted_delta > 0x7FFFFFFF or reference_delta > 0x7FFFFFFF:
-            raise ValueError("ADAPTIVE_HYBRID qualified D14 aperture counter moved backward")
-        if accepted_delta > reference_delta:
             raise ValueError(
-                "ADAPTIVE_HYBRID accepted-window progress exceeds D14 reference progress"
+                "ADAPTIVE_HYBRID accepted-span progress is unavailable"
+            ) from exc
+        if current_session != origin_session or current_epoch != origin_epoch:
+            raise ValueError(
+                "ADAPTIVE_HYBRID acceptance session or epoch changed during qualification"
             )
-        completed_before = self.state.get(
-            "qualified_d14_completed_apertures_before_segment", 0
-        )
-        if type(completed_before) is not int or completed_before < 0:
-            raise ValueError("ADAPTIVE_HYBRID retained segmented aperture progress is malformed")
-        accepted_total = completed_before + accepted_delta
-        self.state["qualified_d14_accepted_apertures"] = accepted_total
-        self.state["qualified_d14_reference_sequence_endpoint"] = reference_now
-        return accepted_total
+        accepted_delta = (current_ordinal - origin_ordinal) & 0xFFFFFFFF
+        if accepted_delta > 0x7FFFFFFF:
+            raise ValueError(
+                "ADAPTIVE_HYBRID accepted boundary ordinal moved backward"
+            )
+        self.state["qualified_d14_accepted_apertures"] = accepted_delta
+        self.state["qualified_acceptance_ordinal_endpoint"] = current_ordinal
+        return accepted_delta
 
     def _close_bench_arm_admission_if_required(
         self, health: dict[tuple[str, str], str]
@@ -4354,17 +3779,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-build-identity", required=True)
     parser.add_argument("--duration-s", type=float)
     parser.add_argument("--console-events", action="store_true")
-    parser.add_argument(
-        "--recover-retained-host-contract-prefix",
-        action="store_true",
-        help="review and apply the bounded zero-action retained-prefix recovery",
-    )
-    parser.add_argument("--reviewed-host-revision")
-    parser.add_argument(
-        "--recovery-dry-run",
-        action="store_true",
-        help="validate and print the recovery without modifying retained state",
-    )
     args = parser.parse_args(argv)
 
     try:
@@ -4389,23 +3803,6 @@ def main(argv: list[str] | None = None) -> int:
             duration_s=args.duration_s,
             console_events=args.console_events,
         )
-        if args.recover_retained_host_contract_prefix:
-            if not args.reviewed_host_revision:
-                parser.error(
-                    "--recover-retained-host-contract-prefix requires "
-                    "--reviewed-host-revision"
-                )
-            recovery = supervisor.recover_retained_host_contract_prefix(
-                reviewed_host_revision=args.reviewed_host_revision,
-                apply=not args.recovery_dry_run,
-            )
-            print(json.dumps(recovery, indent=2, sort_keys=True), flush=True)
-            return 0
-        if args.recovery_dry_run or args.reviewed_host_revision:
-            parser.error(
-                "recovery-only options require "
-                "--recover-retained-host-contract-prefix"
-            )
         return supervisor.run()
     except (OSError, RuntimeError, SystemExit, TimeoutError, ValueError) as exc:
         if "supervisor" in locals():

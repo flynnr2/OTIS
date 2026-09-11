@@ -19,8 +19,9 @@ enum class OtisActiveHybridState : uint8_t {
 struct OtisActiveHybridObservation {
   uint32_t timestamp_s;
   uint32_t capture_session;
-  uint32_t source_first_sequence;
-  uint32_t source_last_sequence;
+  uint32_t source_acceptance_epoch;
+  uint32_t source_opening_accepted_boundary_ordinal;
+  uint32_t source_closing_accepted_boundary_ordinal;
   uint32_t dac_epoch;
   uint16_t applied_code;
   double frequency_error_hz;

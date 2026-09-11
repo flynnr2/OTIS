@@ -70,9 +70,9 @@ def test_inventory_matches_every_implemented_queue_and_ring() -> None:
     assert "response frontier 8" in evidence["maximum_consumer_absence"]
     assert "metadata-plus-response frontier 9" in evidence["maximum_consumer_absence"]
     telemetry = resources["telemetry"]
-    assert telemetry["capacity"] == 176
-    assert "max_boot_171" in telemetry["maximum_consumer_absence"]
-    assert "max_concurrent_176" in telemetry["maximum_consumer_absence"]
+    assert telemetry["capacity"] == 196
+    assert "max_boot_186" in telemetry["maximum_consumer_absence"]
+    assert "max_concurrent_195" in telemetry["maximum_consumer_absence"]
 
 
 def test_inventory_is_referenced_by_architecture_documents() -> None:

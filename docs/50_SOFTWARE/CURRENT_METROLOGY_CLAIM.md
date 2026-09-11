@@ -25,7 +25,7 @@ uncertainty, phase lock, or holdover.
 For a clean span containing `N` accepted nominal one-second PPS intervals:
 
 ```text
-total_counted_edges = sum(adjacent same-session PIO snapshot differences)
+total_counted_edges = sum(exact same-epoch accepted-span D8 counts)
 experimental_frequency_hz = total_counted_edges / (N * 1 nominal second)
 digital_count_increment_hz = 1 / N
 ```
@@ -61,11 +61,12 @@ accuracy, capture resolution, or calibrated delay. Positive edge error
 increases the reported relative phase. The epoch zero is arbitrary at the
 opening snapshot of a continuous session.
 
-Session changes, reset evidence, invalid or stale reference evidence,
+Session changes, acceptance-epoch changes, reset evidence, unbridgeable reference evidence,
 snapshot/reference association loss, sequence discontinuity, and ambiguous
 counter wrap end the epoch. No guessed offset bridges them. A healthy DAC epoch
 transition may remain inside the same raw phase epoch only while physical
-capture continuity is preserved; that does not make the DAC observation or a
+capture continuity is preserved. An excluded early candidate or delivery-only
+control hold preserves that history; this does not make the DAC observation or a
 derived controller authoritative.
 
 ## Evidence and limitations
@@ -118,3 +119,15 @@ close the physical limitations above.
 - `PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md`
 - `PPS_CAPTURE_LATENCY_JITTER_AUDIT_20260801.md`
 - `OTIS_REFERENCE_TERMINOLOGY.md`
+
+## Candidate reference-selection limitation
+
+The integrated acceptance candidate uses an inclusive ±1.25 ms local timing
+window after eight acquisition intervals. It retains the actual raw endpoints
+and each intervening fragment, and can therefore exclude a gross early edge
+without discarding a continuously measured nominal span. This admission rule
+cannot identify an impostor inside the same window. Its numerical and retained
+recording checks do not qualify the receiver electrically or establish a new
+physical 72-hour result. The original recorded attempts retain their original
+contracts and outcomes. See `data_contracts/reference_acceptance_v1.md` for the
+current policy and required integration gates.

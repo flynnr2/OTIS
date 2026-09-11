@@ -57,8 +57,11 @@ bool request_equal(const OtisRegulationActionableRequest &left,
          left.authorization_sequence == right.authorization_sequence &&
          left.nonce == right.nonce && left.session_id == right.session_id &&
          left.decision_sequence == right.decision_sequence &&
-         left.source_first_sequence == right.source_first_sequence &&
-         left.source_last_sequence == right.source_last_sequence &&
+         left.source_acceptance_epoch == right.source_acceptance_epoch &&
+         left.source_opening_accepted_boundary_ordinal ==
+             right.source_opening_accepted_boundary_ordinal &&
+         left.source_closing_accepted_boundary_ordinal ==
+             right.source_closing_accepted_boundary_ordinal &&
          left.timestamp_s == right.timestamp_s &&
          left.current_applied_code == right.current_applied_code &&
          left.requested_delta_codes == right.requested_delta_codes &&
@@ -364,8 +367,10 @@ bool otis_regulation_make_request(
     return false;
   }
   if (decision->decision_sequence <= transaction->last_decision_sequence ||
-      decision->source_first_sequence == 0u ||
-      decision->source_last_sequence < decision->source_first_sequence) {
+      decision->source_acceptance_epoch == 0u ||
+      !otis_exact_selected_accepted_span(
+          decision->source_opening_accepted_boundary_ordinal,
+          decision->source_closing_accepted_boundary_ordinal)) {
     otis_regulation_fault(transaction,
                            "duplicate_stale_or_invalid_decision_sources");
     return false;
@@ -446,8 +451,9 @@ bool otis_regulation_make_request(
       arm.nonce,
       transaction->expected_binding.session_id,
       decision->decision_sequence,
-      decision->source_first_sequence,
-      decision->source_last_sequence,
+      decision->source_acceptance_epoch,
+      decision->source_opening_accepted_boundary_ordinal,
+      decision->source_closing_accepted_boundary_ordinal,
       now_s,
       transaction->applied_code,
       delta,

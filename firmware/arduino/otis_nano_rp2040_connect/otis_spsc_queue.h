@@ -18,12 +18,14 @@ class OtisSpscQueue {
   static_assert(std::is_trivially_copyable<Message>::value,
                 "cross-core messages must be trivially copyable values");
 
-  OtisSpscQueue() : head_(0u), tail_(0u), high_water_(0u) {}
+  OtisSpscQueue() : head_(0u), tail_(0u), high_water_(0u),
+                    producer_slot_(0u), consumer_slot_(0u) {}
 
   void reset() {
     __atomic_store_n(&head_, 0u, __ATOMIC_RELAXED);
     __atomic_store_n(&tail_, 0u, __ATOMIC_RELAXED);
     __atomic_store_n(&high_water_, 0u, __ATOMIC_RELAXED);
+    producer_slot_ = consumer_slot_ = 0u;
   }
 
   bool try_push(const Message &message) {
@@ -32,7 +34,8 @@ class OtisSpscQueue {
     const uint32_t depth = tail - head;
     if (depth >= Capacity) return false;
 
-    slots_[tail % Capacity] = message;
+    slots_[producer_slot_] = message;
+    if (++producer_slot_ == Capacity) producer_slot_ = 0u;
     __atomic_store_n(&tail_, tail + 1u, __ATOMIC_RELEASE);
     update_high_water(depth + 1u);
     return true;
@@ -44,7 +47,8 @@ class OtisSpscQueue {
     const uint32_t tail = __atomic_load_n(&tail_, __ATOMIC_ACQUIRE);
     if (head == tail) return false;
 
-    *message = slots_[head % Capacity];
+    *message = slots_[consumer_slot_];
+    if (++consumer_slot_ == Capacity) consumer_slot_ = 0u;
     __atomic_store_n(&head_, head + 1u, __ATOMIC_RELEASE);
     return true;
   }
@@ -75,6 +79,12 @@ class OtisSpscQueue {
   alignas(4) uint32_t head_;
   alignas(4) uint32_t tail_;
   alignas(4) uint32_t high_water_;
+  // These positions have one owner each. Published counters wrap modulo2^32
+  // for depth arithmetic; that wrap is not a slot wrap when Capacity is not
+  // a power of two. Deriving a slot from counter % Capacity would then reuse
+  // occupied storage and lose unread evidence.
+  uint32_t producer_slot_;
+  uint32_t consumer_slot_;
 };
 
 #endif

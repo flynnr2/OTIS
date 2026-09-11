@@ -69,7 +69,7 @@ def assess(source: Path, output: Path) -> dict[str, object]:
         raise ValueError("retained adjacent raw pairs do not reconstruct: " + "; ".join(raw_report["errors"]))
     associations = _ordered_reference_association(snapshots, references)
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
-    if policy.get("control_authority") is not False or policy.get("implementation_stage") != "native_candidate":
+    if policy.get("control_authority") is not False or policy.get("implementation_stage") not in {"native_candidate", "integrated_measurement_candidate"}:
         raise ValueError("this tool is only for the unwired candidate policy")
     compiler = shutil.which("c++")
     if compiler is None:

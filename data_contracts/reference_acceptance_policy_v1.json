@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "policy_id": "otis_d14_accepted_reference_v1",
-  "implementation_stage": "native_candidate",
+  "implementation_stage": "integrated_measurement_candidate",
   "control_authority": false,
   "reference_pin": "D14",
   "count_pin": "D8",

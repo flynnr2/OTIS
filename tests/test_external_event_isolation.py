@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from test_raw_measurement_replay import raw_measurement_rows
+from test_raw_measurement_replay import raw_measurement_rows, measurement_manifest_value
 
 from host.otis_tools import adaptive_hybrid_replay as replay_module
 from host.otis_tools.adaptive_hybrid_analyze import (
@@ -88,8 +88,9 @@ def _controller_replay(event_rows: list[str], tmp_path: Path) -> list[dict]:
                         timestamp_s=timestamp_s,
                         timestamp_ticks=timestamp_s * 1_000_000,
                         capture_session=1,
-                        source_first_sequence=opening,
-                        source_last_sequence=closing,
+                        source_acceptance_epoch=1,
+                        source_opening_accepted_boundary_ordinal=opening,
+                        source_closing_accepted_boundary_ordinal=closing,
                         dac_epoch=controller.dac_epoch,
                         applied_code=controller.applied_code,
                         accumulated_edge_error_counts=-1,
@@ -128,7 +129,8 @@ def test_invalid_d10_is_diagnostic_only_in_actual_measurement_replay(
         {"contract": "pps_snapshots_v1", "path": "snapshots.csv"},
         {"contract": "raw_events_v1", "record_type": "REF", "path": "ref.csv"},
         {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
-        {"contract": "estimates_v2", "path": "estimates.csv"},
+        {"contract": "estimates_v3", "path": "estimates.csv"},
+        {"contract": "accepted_pps_spans_v1", "path": "spans.csv"},
     ]
     rows = raw_measurement_rows()
     rows["evt.csv"] = [{"record_type": "EVT", "channel_id": "99"}]
@@ -137,7 +139,7 @@ def test_invalid_d10_is_diagnostic_only_in_actual_measurement_replay(
     )
     exact, report, _ = replay_module._measurement_replay(
         SimpleNamespace(root=Path("/unused"), files=files),
-        {"transaction_identities": {"estimator_sha256": "a" * 64}},
+        measurement_manifest_value(),
     )
     assert exact is True
     assert report["D10"] == {
@@ -156,7 +158,7 @@ def test_invalid_d10_is_diagnostic_only_in_actual_measurement_replay(
     monkeypatch.setattr(replay_module, "_read_csv", unreadable_d10)
     exact, report, _ = replay_module._measurement_replay(
         SimpleNamespace(root=Path("/unused"), files=files),
-        {"transaction_identities": {"estimator_sha256": "a" * 64}},
+        measurement_manifest_value(),
     )
     assert exact is True
     assert report["D10"]["channel_exact"] is False
@@ -171,12 +173,13 @@ def test_measurement_replay_uses_firmware_binary64_projection_before_serializati
         {"contract": "pps_snapshots_v1", "path": "snapshots.csv"},
         {"contract": "raw_events_v1", "record_type": "REF", "path": "ref.csv"},
         {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
-        {"contract": "estimates_v2", "path": "estimates.csv"},
+        {"contract": "estimates_v3", "path": "estimates.csv"},
+        {"contract": "accepted_pps_spans_v1", "path": "spans.csv"},
     ]
     rows = raw_measurement_rows([9_999_999] + [10_000_000] * 599)
     monkeypatch.setattr(replay_module, "_read_csv", lambda path: rows[path.name])
     manifest = SimpleNamespace(root=Path("/unused"), files=files)
-    identity = {"transaction_identities": {"estimator_sha256": "a" * 64}}
+    identity = measurement_manifest_value()
 
     exact, report, _ = replay_module._measurement_replay(manifest, identity)
 

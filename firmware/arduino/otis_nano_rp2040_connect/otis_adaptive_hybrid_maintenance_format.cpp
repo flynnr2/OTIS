@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "otis_firmware_host_contract.generated.h"
+#include "otis_adaptive_hybrid_regulation.h"
 
 namespace {
 
@@ -14,7 +15,7 @@ constexpr uint32_t kMinimumCode = 0xA800u;
 constexpr uint32_t kMaximumCode = 0xAB00u;
 
 constexpr char kHeader[] =
-    OTIS_CONTRACT_ACTIVE_HYBRID_MAINTENANCE_V1_HEADER "\r\n";
+    OTIS_CONTRACT_ACTIVE_HYBRID_MAINTENANCE_V2_HEADER "\r\n";
 
 class BoundedWriter {
  public:
@@ -193,14 +194,19 @@ bool valid_code(uint32_t value) {
 
 bool nonzero_hybrid_join(const OtisAdaptiveHybridMaintenanceRecord &record) {
   return record.hybrid_record_sequence != 0u &&
-         record.decision_sequence != 0u && record.source_first_sequence != 0u &&
-         record.source_last_sequence != 0u;
+         record.decision_sequence != 0u &&
+         record.source_acceptance_epoch != 0u &&
+         otis_exact_selected_accepted_span(
+             record.source_opening_accepted_boundary_ordinal,
+             record.source_closing_accepted_boundary_ordinal);
 }
 
 bool zero_hybrid_join(const OtisAdaptiveHybridMaintenanceRecord &record) {
   return record.hybrid_record_sequence == 0u &&
-         record.decision_sequence == 0u && record.source_first_sequence == 0u &&
-         record.source_last_sequence == 0u;
+         record.decision_sequence == 0u &&
+         record.source_acceptance_epoch == 0u &&
+         record.source_opening_accepted_boundary_ordinal == 0u &&
+         record.source_closing_accepted_boundary_ordinal == 0u;
 }
 
 bool nonzero_transaction_join(const OtisAdaptiveHybridMaintenanceRecord &record) {
@@ -267,9 +273,10 @@ bool validate_record(const OtisAdaptiveHybridMaintenanceRecord &record) {
       !valid_code(record.actual_applied_code) ||
       !debt_tags_bounded(record))
     return false;
-  if (record.source_first_sequence != 0u &&
-      record.source_last_sequence != 0u &&
-      record.source_last_sequence <= record.source_first_sequence)
+  if (record.source_acceptance_epoch != 0u &&
+      !otis_exact_selected_accepted_span(
+          record.source_opening_accepted_boundary_ordinal,
+          record.source_closing_accepted_boundary_ordinal))
     return false;
   if (record.current_applied_code != 0u &&
       static_cast<int64_t>(record.requested_code) !=
@@ -282,7 +289,7 @@ bool validate_record(const OtisAdaptiveHybridMaintenanceRecord &record) {
       record.evidence_burst_record_ordinal > record.evidence_burst_record_count)
     return false;
   if (record.event != OtisAdaptiveHybridMaintenanceEvent::GnssMetadataRequalified &&
-      record.requalification_d14_d8_observation_sequence != 0u)
+      record.requalification_accepted_boundary_ordinal != 0u)
     return false;
 
   if (record.maintenance_state_after ==
@@ -400,8 +407,7 @@ bool validate_record(const OtisAdaptiveHybridMaintenanceRecord &record) {
              (zero_hybrid_join(record) || nonzero_hybrid_join(record)) &&
              debt_preserved(record) && record.metadata_hold_before &&
              record.metadata_hold_after &&
-             record.requalification_window_count_after == 0u &&
-             record.requalification_d14_d8_observation_sequence != 0u;
+             record.requalification_window_count_after == 0u;
 
     case OtisAdaptiveHybridMaintenanceEvent::FailStatic: {
       if (!debt_preserved(record) ||
@@ -441,14 +447,14 @@ bool append_i64(BoundedWriter *writer, int64_t value) {
 
 }  // namespace
 
-int otis_format_adaptive_hybrid_maintenance_v1_header(char *output,
+int otis_format_adaptive_hybrid_maintenance_v2_header(char *output,
                                              size_t output_size) {
   BoundedWriter writer(output, output_size);
   writer.append(kHeader);
   return writer.finish();
 }
 
-int otis_format_adaptive_hybrid_maintenance_v1(
+int otis_format_adaptive_hybrid_maintenance_v2(
     char *output, size_t output_size,
     const OtisAdaptiveHybridMaintenanceRecord *record) {
   if (output == nullptr || output_size == 0u || record == nullptr) return -1;
@@ -468,7 +474,7 @@ int otis_format_adaptive_hybrid_maintenance_v1(
   (append_bool(&writer, value) && append_separator(&writer))
 
   const bool ok =
-      OTIS_AHM_FIELD_TEXT("AHM") && OTIS_AHM_FIELD_U64(1u) &&
+      OTIS_AHM_FIELD_TEXT("AHM") && OTIS_AHM_FIELD_U64(2u) &&
       OTIS_AHM_FIELD_U64(record->maintenance_record_sequence) &&
       OTIS_AHM_FIELD_TEXT(event_name(record->event)) &&
       OTIS_AHM_FIELD_U64(record->event_timestamp_ticks) &&
@@ -479,8 +485,9 @@ int otis_format_adaptive_hybrid_maintenance_v1(
       OTIS_AHM_FIELD_TEXT(kPolicyId) &&
       OTIS_AHM_FIELD_TEXT(record->active_policy_sha256) &&
       OTIS_AHM_FIELD_U64(record->capture_session) &&
-      OTIS_AHM_FIELD_U64(record->source_first_sequence) &&
-      OTIS_AHM_FIELD_U64(record->source_last_sequence) &&
+      OTIS_AHM_FIELD_U64(record->source_acceptance_epoch) &&
+      OTIS_AHM_FIELD_U64(record->source_opening_accepted_boundary_ordinal) &&
+      OTIS_AHM_FIELD_U64(record->source_closing_accepted_boundary_ordinal) &&
       OTIS_AHM_FIELD_TEXT(record->frequency_estimator_sha256) &&
       OTIS_AHM_FIELD_U64(record->phase_epoch) &&
       OTIS_AHM_FIELD_U64(record->phase_observation_sequence) &&
@@ -521,7 +528,7 @@ int otis_format_adaptive_hybrid_maintenance_v1(
       OTIS_AHM_FIELD_U64(record->requalification_window_count_before) &&
       OTIS_AHM_FIELD_U64(record->requalification_window_count_after) &&
       OTIS_AHM_FIELD_U64(
-          record->requalification_d14_d8_observation_sequence) &&
+          record->requalification_accepted_boundary_ordinal) &&
       OTIS_AHM_FIELD_U64(record->evidence_burst_sequence) &&
       OTIS_AHM_FIELD_U64(record->evidence_burst_record_ordinal) &&
       OTIS_AHM_FIELD_U64(record->evidence_burst_record_count) &&

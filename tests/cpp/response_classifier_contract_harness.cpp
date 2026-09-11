@@ -63,16 +63,17 @@ int main() {
     const int32_t requested_code =
         static_cast<int32_t>(transaction.applied_code) + delta_codes;
     if (requested_code < 0 || requested_code > UINT16_MAX) return 3;
-    const OtisRegulationDecision decision = {
-        sequence,
-        sequence * 1000u,
-        sequence * 1000u + 600u,
-        now_s,
-        transaction.applied_code,
-        delta_codes,
-        static_cast<uint16_t>(requested_code),
-        pre_error_hz,
-    };
+    OtisRegulationDecision decision = {};
+    decision.decision_sequence = sequence;
+    decision.source_acceptance_epoch = sequence;
+    decision.source_opening_accepted_boundary_ordinal = sequence * 1000u;
+    decision.source_closing_accepted_boundary_ordinal =
+        sequence * 1000u + 600u;
+    decision.timestamp_s = now_s;
+    decision.current_applied_code = transaction.applied_code;
+    decision.requested_delta_codes = delta_codes;
+    decision.requested_code = static_cast<uint16_t>(requested_code);
+    decision.pre_error_hz = pre_error_hz;
     OtisRegulationActionableRequest request;
     if (!otis_regulation_make_request(&transaction, &decision, &eligibility,
                                       now_s, &request))

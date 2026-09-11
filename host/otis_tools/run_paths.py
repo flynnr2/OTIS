@@ -13,6 +13,7 @@ EXTERNAL_EVENTS_CSV = "external_events.csv"
 REFERENCE_EVENTS_CSV = "reference_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 PPS_SNAPSHOTS_CSV = "pps_snapshots.csv"
+ACCEPTED_PPS_SPANS_CSV = "accepted_pps_spans_v1.csv"
 # This is deliberately distinct from the D8 PIO/DMA snapshot evidence above.
 # It carries only the D6 observation of the forwarded D9 output and is never a
 # substitute for authoritative D14/D8 capture evidence.
@@ -21,13 +22,13 @@ ASSOCIATION_LOSS_DECISIONS_CSV = "association_loss_decisions_v1.csv"
 HEALTH_CSV = "health.csv"
 DAC_STEPS_CSV = "dac_steps.csv"
 ENVIRONMENT_CSV = "environment.csv"
-ESTIMATES_CSV = "estimates_v2.csv"
+ESTIMATES_CSV = "estimates_v3.csv"
 CONTROL_PREVIEWS_CSV = "control_previews_v1.csv"
-ACTIVE_TRANSACTIONS_CSV = "active_transactions_v2.csv"
-ACTIVE_HYBRID_DECISIONS_CSV = "active_hybrid_decisions_v2.csv"
-ACTIVE_HYBRID_MAINTENANCE_CSV = "active_hybrid_maintenance_v1.csv"
-RELATIVE_PHASE_OBSERVATIONS_CSV = "relative_phase_observations_v1.csv"
-PHASE_ESTIMATOR_OUTPUTS_CSV = "phase_estimator_outputs_v1.csv"
+ACTIVE_TRANSACTIONS_CSV = "active_transactions_v3.csv"
+ACTIVE_HYBRID_DECISIONS_CSV = "active_hybrid_decisions_v3.csv"
+ACTIVE_HYBRID_MAINTENANCE_CSV = "active_hybrid_maintenance_v2.csv"
+RELATIVE_PHASE_OBSERVATIONS_CSV = "relative_phase_observations_v2.csv"
+PHASE_ESTIMATOR_OUTPUTS_CSV = "phase_estimator_outputs_v2.csv"
 TIGHT_DEADBAND_DECISIONS_CSV = "tight_deadband_decisions_v1.csv"
 
 
@@ -70,6 +71,10 @@ class RunPaths:
     @property
     def pps_snapshots_csv(self) -> Path:
         return self.csv_dir / PPS_SNAPSHOTS_CSV
+
+    @property
+    def accepted_pps_spans_csv(self) -> Path:
+        return self.csv_dir / ACCEPTED_PPS_SPANS_CSV
 
     @property
     def forwarded_monitor_snapshots_csv(self) -> Path:
@@ -137,6 +142,7 @@ def default_csv_files() -> list[dict[str, str]]:
         },
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
         {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v1", "optional": True},
+        {"path": f"{CSV_DIR}/{ACCEPTED_PPS_SPANS_CSV}", "contract": "accepted_pps_spans_v1", "optional": True},
         {
             "path": f"{CSV_DIR}/{FORWARDED_MONITOR_SNAPSHOTS_CSV}",
             "contract": "forwarded_monitor_snapshots_v1",
@@ -152,7 +158,7 @@ def default_csv_files() -> list[dict[str, str]]:
         {"path": f"{CSV_DIR}/{ENVIRONMENT_CSV}", "contract": "environment_v1", "optional": True},
         {
             "path": f"{CSV_DIR}/{ESTIMATES_CSV}",
-            "contract": "estimates_v2",
+            "contract": "estimates_v3",
             "optional": True,
         },
         {
@@ -162,24 +168,24 @@ def default_csv_files() -> list[dict[str, str]]:
         },
         {
             "path": f"{CSV_DIR}/{ACTIVE_TRANSACTIONS_CSV}",
-            "contract": "active_transactions_v2",
+            "contract": "active_transactions_v3",
         },
         {
             "path": f"{CSV_DIR}/{ACTIVE_HYBRID_DECISIONS_CSV}",
-            "contract": "active_hybrid_decisions_v2",
+            "contract": "active_hybrid_decisions_v3",
         },
         {
             "path": f"{CSV_DIR}/{ACTIVE_HYBRID_MAINTENANCE_CSV}",
-            "contract": "active_hybrid_maintenance_v1",
+            "contract": "active_hybrid_maintenance_v2",
         },
         {
             "path": f"{CSV_DIR}/{RELATIVE_PHASE_OBSERVATIONS_CSV}",
-            "contract": "relative_phase_observations_v1",
+            "contract": "relative_phase_observations_v2",
             "optional": True,
         },
         {
             "path": f"{CSV_DIR}/{PHASE_ESTIMATOR_OUTPUTS_CSV}",
-            "contract": "phase_estimator_outputs_v1",
+            "contract": "phase_estimator_outputs_v2",
             "optional": True,
         },
         {

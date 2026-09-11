@@ -29,7 +29,7 @@ struct OtisActiveHybridDecisionRecordContext {
 // Format the exact wire representation consumed by the host CSV splitter.
 // Keeping this boundary independently executable prevents a declaration-only
 // schema check from passing when the firmware formatter omits a field.
-int otis_format_active_hybrid_decision_v2(
+int otis_format_active_hybrid_decision_v3(
     char *output, size_t output_size,
     const OtisAdaptiveHybridRegulationLiveDecision *source,
     const OtisActiveHybridDecision *decision,

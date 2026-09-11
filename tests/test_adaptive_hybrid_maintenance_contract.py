@@ -5,7 +5,7 @@ from pathlib import Path
 
 from host.otis_tools.capture_serial import CsvRecordSplitter, RECORD_CONTRACTS
 from host.otis_tools.contracts import (
-    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
     CsvValidationContext,
     validate_csv,
 )
@@ -16,11 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _row(sequence: int, event: str = "decision") -> dict[str, str]:
-    row = {field: "0" for field in ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS}
+    row = {field: "0" for field in ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS}
     row.update(
         {
             "record_type": "AHM",
-            "schema_version": "1",
+            "schema_version": "2",
             "maintenance_record_sequence": str(sequence),
             "event": event,
             "event_timestamp_ticks": str(1_000_000 * sequence),
@@ -31,8 +31,9 @@ def _row(sequence: int, event: str = "decision") -> dict[str, str]:
             "policy_id": "OTIS_ADAPTIVE_HYBRID_REGULATION_V1",
             "active_policy_sha256": SHA256,
             "capture_session": "7",
-            "source_first_sequence": "1200",
-            "source_last_sequence": "1800",
+            "source_acceptance_epoch": "1",
+            "source_opening_accepted_boundary_ordinal": "1200",
+            "source_closing_accepted_boundary_ordinal": "1800",
             "frequency_estimator_sha256": SHA256,
             "phase_epoch": "3",
             "phase_observation_sequence": "1800",
@@ -103,7 +104,7 @@ def _transaction_row(
 def _write(path: Path, rows: list[dict[str, str]]) -> None:
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
-            handle, fieldnames=ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS
+            handle, fieldnames=ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -111,7 +112,7 @@ def _write(path: Path, rows: list[dict[str, str]]) -> None:
 
 def _context() -> CsvValidationContext:
     return CsvValidationContext(
-        "active_hybrid_maintenance_v1",
+        "active_hybrid_maintenance_v2",
         frozenset(),
         frozenset({"rp2040_monotonic_us64"}),
     )
@@ -123,8 +124,9 @@ def test_complete_ahm_lifecycle_validates_and_preserves_exact_joins(
     activation = _row(1, "policy_activation")
     activation.update(
         {
-            "source_first_sequence": "0",
-            "source_last_sequence": "0",
+            "source_acceptance_epoch": "0",
+            "source_opening_accepted_boundary_ordinal": "0",
+            "source_closing_accepted_boundary_ordinal": "0",
             "hybrid_record_sequence": "0",
             "decision_sequence": "0",
             "maintenance_state_before": "POLICY_INACTIVE",
@@ -227,7 +229,7 @@ def test_complete_ahm_lifecycle_validates_and_preserves_exact_joins(
             "frontier_relation": "not_applicable",
             "metadata_hold_before": "true",
             "metadata_hold_after": "true",
-            "requalification_d14_d8_observation_sequence": "2400",
+            "requalification_accepted_boundary_ordinal": "2400",
             "evidence_burst_record_ordinal": "1",
             "evidence_burst_record_count": "1",
             "reason": "fresh_same_receiver_metadata",
@@ -274,7 +276,7 @@ def test_complete_ahm_lifecycle_validates_and_preserves_exact_joins(
         }
     )
 
-    path = tmp_path / "active_hybrid_maintenance_v1.csv"
+    path = tmp_path / "active_hybrid_maintenance_v2.csv"
     _write(
         path,
         [
@@ -303,13 +305,14 @@ def test_ahm_requalification_frontier_is_explicit_and_event_local(
     requalified = _row(1, "gnss_metadata_requalified")
     requalified.update(
         {
-            "source_first_sequence": "1200",
-            "source_last_sequence": "1800",
+            "source_acceptance_epoch": "1",
+            "source_opening_accepted_boundary_ordinal": "1200",
+            "source_closing_accepted_boundary_ordinal": "1800",
             "maintenance_state_before": "METADATA_HOLD",
             "maintenance_state_after": "METADATA_HOLD",
             "metadata_hold_before": "true",
             "metadata_hold_after": "true",
-            "requalification_d14_d8_observation_sequence": "2407",
+            "requalification_accepted_boundary_ordinal": "2407",
             "evidence_burst_record_ordinal": "1",
             "evidence_burst_record_count": "1",
         }
@@ -318,14 +321,14 @@ def test_ahm_requalification_frontier_is_explicit_and_event_local(
     _write(path, [requalified])
     assert validate_csv(path, _context()).errors == ()
 
-    requalified["requalification_d14_d8_observation_sequence"] = "0"
+    requalified["requalification_accepted_boundary_ordinal"] = "0"
     _write(path, [requalified])
     assert "non-zero D14/D8 observation frontier" in " ".join(
         validate_csv(path, _context()).errors
     )
 
     decision = _row(1)
-    decision["requalification_d14_d8_observation_sequence"] = "2407"
+    decision["requalification_accepted_boundary_ordinal"] = "2407"
     _write(path, [decision])
     assert "only gnss_metadata_requalified" in " ".join(
         validate_csv(path, _context()).errors
@@ -379,15 +382,15 @@ def test_ahm_rejects_application_without_exact_first_consumer(
 
 
 def test_capture_splitter_registers_exact_ahm_wire_contract(tmp_path: Path) -> None:
-    assert RECORD_CONTRACTS["AHM"] == "active_hybrid_maintenance_v1"
-    path = tmp_path / "active_hybrid_maintenance_v1.csv"
+    assert RECORD_CONTRACTS["AHM"] == "active_hybrid_maintenance_v2"
+    path = tmp_path / "active_hybrid_maintenance_v2.csv"
     row = _row(1)
-    with CsvRecordSplitter({"active_hybrid_maintenance_v1": path}) as splitter:
+    with CsvRecordSplitter({"active_hybrid_maintenance_v2": path}) as splitter:
         line = ",".join(
-            row[field] for field in ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS
+            row[field] for field in ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS
         )
-        assert splitter.process_line(line) == "active_hybrid_maintenance_v1"
+        assert splitter.process_line(line) == "active_hybrid_maintenance_v2"
 
     lines = path.read_text(encoding="utf-8").splitlines()
-    assert lines[0] == ",".join(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
-    assert lines[1].startswith("AHM,1,")
+    assert lines[0] == ",".join(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS)
+    assert lines[1].startswith("AHM,2,")

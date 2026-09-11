@@ -43,7 +43,7 @@ static void emit(const OtisReferenceAcceptanceOutcome &value) {
   const char *reasons[] = {"none", "acquisition_restart", "unknown_session", "session_changed",
       "capture_integrity", "raw_sequence", "raw_timestamp", "raw_count", "late_boundary", "missing_boundary",
       "incomplete_frontier", "stale_frontier", "contradictory_frontier", "exclusion_budget_exhausted",
-      "epoch_exhausted", "policy"};
+      "epoch_exhausted", "observation_age_ambiguous", "policy"};
   std::cout << "{\"disposition\":\"" << dispositions[unsigned(value.disposition)]
             << "\",\"reason\":\"" << reasons[unsigned(value.reason)]
             << "\",\"tracking\":" << (value.tracking ? "true" : "false")
