@@ -3,6 +3,10 @@
 Current HEAD has one fixed `adaptive_hybrid_regulation` image and no historical
 programme execution surface. The most important present limitations are:
 
+- the first PR #177 production-bundle PTY rehearsal on the older Mac failed
+  before supervisor readiness. Shared static configuration and process ownership
+  now pass a real-build production-bundle PTY rehearsal on the development Mac;
+  the older Mac's exact launch-context gate remains unverified;
 - the September consolidation repairs have native/host regressions but do not
   yet establish physical qualification of metadata-hold history preservation,
   pre-carrier queue ownership, or a changed reference-continuation policy;

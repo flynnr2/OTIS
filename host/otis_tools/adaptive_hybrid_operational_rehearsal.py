@@ -27,6 +27,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from typing import Any, Callable, Iterable
@@ -55,8 +56,11 @@ from .adaptive_hybrid_analyze import (
     replay_current_adaptive_hybrid_host_consumers,
 )
 from .adaptive_hybrid_monitor import (
-    _exact_lifecycle_record_progress,
-    _maintenance_evidence_progress,
+    run_monitor,
+)
+from .adaptive_hybrid_session import (
+    AdaptiveHybridSession, MONITOR_SAMPLES_PATH, MONITOR_STOP_PATH,
+    SESSION_PATH, SUPERVISOR_READY_PATH, MONITOR_STATE_PATH,
 )
 from .adaptive_hybrid_policy import (
     AdaptiveHybridDecision,
@@ -70,13 +74,13 @@ from .adaptive_hybrid_supervisor import (
     FORWARDED_OUTPUT_INTEGRATION_EXPECTED_HEALTH,
     _authoritative_capture_counters,
     create_validated_nonphysical_rehearsal_supervisor,
-    load_validated_nonphysical_rehearsal_spec,
+    prepare_validated_nonphysical_rehearsal_context,
+    runtime_spec,
 )
 from .authoritative_inputs import (
     ROOT_PROFILE,
     transaction_identities_from_bundle,
-    authoritative_binding,
-    authoritative_document,
+    ValidatedAuthoritativeInputs,
     validate_authoritative_inputs,
 )
 from .capture_device import (
@@ -105,6 +109,7 @@ from .evidence import (
 from .evidence_finalization import (
     advance_phase,
     begin_finalization,
+    record_failure,
     set_registration_intent,
 )
 from .evidence_index import package_identity, register_package, validate_index
@@ -137,7 +142,10 @@ SEAL_PATH = Path("reports/adaptive_hybrid_operational_rehearsal_seal_v1.json")
 PROCESS_EVIDENCE_PATH = Path(
     "reports/adaptive_hybrid_operational_process_evidence_v1.json"
 )
-MONITOR_SAMPLES_PATH = Path("reports/adaptive_hybrid_rehearsal_monitor_v1.jsonl")
+SUPERVISOR_STARTUP_PATH = Path(
+    "reports/adaptive_hybrid_supervisor_startup_v1.json"
+)
+SUPERVISOR_STARTUP_CONTRACT = "adaptive_hybrid_supervisor_startup_v1"
 TRANSITION_DIR = Path("segments/transition")
 TRANSITION_MANIFEST_PATH = TRANSITION_DIR / "run_manifest.json"
 TRANSITION_CLOSURE_PATH = TRANSITION_DIR / SEGMENT_CLOSURE
@@ -215,6 +223,76 @@ def _atomic_json(path: Path, value: dict[str, Any], *, exclusive: bool = False) 
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _replace_json(path: Path, value: dict[str, Any]) -> None:
+    """Atomically replace one mutable diagnostic record."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        json.dump(value, handle, indent=2, sort_keys=True, allow_nan=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = Path(handle.name)
+    try:
+        os.replace(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _record_supervisor_startup_phase(
+    *,
+    run_dir: Path,
+    manifest_path: Path,
+    phase: str,
+) -> None:
+    """Retain the last reached worker phase without granting readiness."""
+
+    path = run_dir / SUPERVISOR_STARTUP_PATH
+    manifest_binding = _binding(manifest_path)
+    now = _utc_now()
+    if path.exists():
+        value = _read_object(path, "rehearsal supervisor startup")
+        expected = {
+            "schema_version": 1,
+            "contract": SUPERVISOR_STARTUP_CONTRACT,
+            "pid": os.getpid(),
+            "run_directory": str(run_dir),
+            "manifest": manifest_binding,
+        }
+        if any(value.get(key) != item for key, item in expected.items()):
+            raise ValueError("rehearsal supervisor startup identity changed")
+        phases = value.get("phases")
+        if not isinstance(phases, list) or not phases:
+            raise ValueError("rehearsal supervisor startup phases are malformed")
+    else:
+        phases = []
+        value = {
+            "schema_version": 1,
+            "contract": SUPERVISOR_STARTUP_CONTRACT,
+            "pid": os.getpid(),
+            "run_directory": str(run_dir),
+            "manifest": manifest_binding,
+            "started_utc": now,
+            "phases": phases,
+        }
+    phases.append({"phase": phase, "observed_utc": now})
+    value["current_phase"] = phase
+    value["updated_utc"] = now
+    _replace_json(path, value)
 
 
 def _append_jsonl(path: Path, value: dict[str, Any]) -> None:
@@ -359,12 +437,12 @@ def _channels() -> list[dict[str, Any]]:
     ]
 
 
-def _reference_acceptance_binding(bundle: dict[str, Any]) -> dict[str, str]:
+def _reference_acceptance_binding(inputs: ValidatedAuthoritativeInputs) -> dict[str, str]:
     path = "data_contracts/reference_acceptance_policy_v1.json"
     return {
         "path": path,
-        "policy_id": authoritative_document(bundle["authoritative_inputs"], path)["policy_id"],
-        "policy_sha256": authoritative_binding(bundle["authoritative_inputs"], path)["sha256"],
+        "policy_id": inputs.document(path)["policy_id"],
+        "policy_sha256": inputs.binding(path)["sha256"],
     }
 
 
@@ -380,6 +458,7 @@ def create_rehearsal_run_manifest(
     """Create the one nonphysical manifest accepted by the private worker."""
 
     programme = ADAPTIVE_HYBRID_PROGRAMME
+    inputs = validate_authoritative_inputs(bundle["authoritative_inputs"])
     files = _rehearsal_files()
     value: dict[str, Any] = {
         "schema_version": 1,
@@ -405,7 +484,7 @@ def create_rehearsal_run_manifest(
         "authority_effective": False,
         "closed_loop_control": False,
         "acquisition_frontier": dict(FRONTIER_POLICY),
-        "reference_acceptance": _reference_acceptance_binding(bundle),
+        "reference_acceptance": _reference_acceptance_binding(inputs),
         "bundle": {
             **_binding(bundle_path),
             "bundle_sha256": bundle["bundle_sha256"],
@@ -421,7 +500,7 @@ def create_rehearsal_run_manifest(
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
         "policy": bundle["policy"],
-        "transaction_identities": transaction_identities_from_bundle(bundle),
+        "transaction_identities": transaction_identities_from_bundle(bundle, inputs=inputs),
         "host": {
             "version": TOOL_ID,
             "source_revision": str(bundle["firmware"]["source_revision"]),
@@ -476,6 +555,9 @@ def create_rehearsal_run_manifest(
             CAPTURE_STATE.as_posix(),
             "reports/adaptive_hybrid_supervisor_state.json",
             "reports/adaptive_hybrid_supervisor_events.jsonl",
+            SESSION_PATH.as_posix(),
+            SUPERVISOR_READY_PATH.as_posix(),
+            MONITOR_STATE_PATH.as_posix(),
             SEGMENT_CLOSURE.as_posix(),
             PROCESS_EVIDENCE_PATH.as_posix(),
             MONITOR_SAMPLES_PATH.as_posix(),
@@ -492,6 +574,9 @@ def create_rehearsal_run_manifest(
             CAPTURE_STATE.as_posix(),
             "reports/adaptive_hybrid_supervisor_state.json",
             "reports/adaptive_hybrid_supervisor_events.jsonl",
+            SESSION_PATH.as_posix(),
+            SUPERVISOR_READY_PATH.as_posix(),
+            MONITOR_STATE_PATH.as_posix(),
             SEGMENT_CLOSURE.as_posix(),
             PROCESS_EVIDENCE_PATH.as_posix(),
             MONITOR_SAMPLES_PATH.as_posix(),
@@ -516,8 +601,13 @@ def _validate_manifest_value(
     *,
     bundle: dict[str, Any],
     proposal: dict[str, Any],
+    inputs: ValidatedAuthoritativeInputs | None = None,
 ) -> dict[str, Any]:
     programme = programme_from_mapping(value)
+    if inputs is None:
+        inputs = validate_authoritative_inputs(bundle["authoritative_inputs"])
+    elif not isinstance(inputs, ValidatedAuthoritativeInputs) or not inputs.matches(bundle["authoritative_inputs"]):
+        raise ValueError("rehearsal input context differs from the bundle")
     unsigned = {key: item for key, item in value.items() if key != "manifest_sha256"}
     host = value.get("host")
     section = value.get(programme.manifest_section)
@@ -534,6 +624,9 @@ def _validate_manifest_value(
         CAPTURE_STATE.as_posix(),
         "reports/adaptive_hybrid_supervisor_state.json",
         "reports/adaptive_hybrid_supervisor_events.jsonl",
+        SESSION_PATH.as_posix(),
+        SUPERVISOR_READY_PATH.as_posix(),
+        MONITOR_STATE_PATH.as_posix(),
         SEGMENT_CLOSURE.as_posix(),
         PROCESS_EVIDENCE_PATH.as_posix(),
         MONITOR_SAMPLES_PATH.as_posix(),
@@ -647,7 +740,7 @@ def _validate_manifest_value(
         and value.get("authority_effective") is False
         and value.get("closed_loop_control") is False
         and value.get("acquisition_frontier") == FRONTIER_POLICY
-        and value.get("reference_acceptance") == _reference_acceptance_binding(bundle)
+        and value.get("reference_acceptance") == _reference_acceptance_binding(inputs)
         and value.get("board") == "deterministic_pty_no_physical_hardware"
         and value.get("capture_mode") == "real_capture_device_process_over_pty"
         and _is_pty(device)
@@ -662,7 +755,7 @@ def _validate_manifest_value(
         and value.get("authoritative_inputs") == bundle.get("authoritative_inputs")
         and value.get("policy") == bundle.get("policy")
         and value.get("transaction_identities")
-        == transaction_identities_from_bundle(bundle)
+        == transaction_identities_from_bundle(bundle, inputs=inputs)
         and value.get("bundle", {}).get("bundle_sha256") == bundle.get("bundle_sha256")
         and value.get("proposal", {}).get("proposal_sha256") == proposal.get("proposal_sha256")
         and proposal.get("exact_bundle", {}).get("bundle_sha256") == bundle.get("bundle_sha256")
@@ -685,13 +778,11 @@ def _validate_manifest_value(
         raise ValueError("rehearsal manifest bundle/proposal bytes differ")
     if not all(_binding_exact(item) for item in bundle["host_tools"].values()):
         raise ValueError("rehearsal manifest current host-tool closure differs")
-    validate_authoritative_inputs(value.get("authoritative_inputs"))
+    if not inputs.matches(value.get("authoritative_inputs")):
+        raise ValueError("rehearsal authoritative input bytes differ")
     domain_errors = validate_domain_declarations(value.get("domains"), require_complete=True)
     if domain_errors:
         raise ValueError("rehearsal manifest time domains differ: " + "; ".join(domain_errors))
-    # The live supervisor contract itself is reused below, but only after the
-    # private validator has established the exact no-authority PTY boundary.
-    load_validated_nonphysical_rehearsal_spec(value)
     return value
 
 
@@ -786,15 +877,14 @@ class _LifecycleBuilder:
     def __init__(self, bundle: dict[str, Any]) -> None:
         self.bundle = bundle
         self.programme = ADAPTIVE_HYBRID_PROGRAMME
-        self.policy_document = authoritative_document(
-            bundle["authoritative_inputs"], ROOT_PROFILE
-        )
-        root_binding = authoritative_binding(bundle["authoritative_inputs"], ROOT_PROFILE)
+        inputs = validate_authoritative_inputs(bundle["authoritative_inputs"])
+        self.policy_document = inputs.document(ROOT_PROFILE)
+        root_binding = inputs.binding(ROOT_PROFILE)
         self.policy = policy_from_mapping(
             self.policy_document, policy_sha256=str(root_binding["sha256"])
         )
         self.bindings = {
-            name: authoritative_binding(bundle["authoritative_inputs"], relative)
+            name: inputs.binding(relative)
             for name, relative in self.policy_document["bindings"].items()
         }
         self.controller = AdaptiveHybridPhasePriorityController(
@@ -1665,30 +1755,22 @@ class DeterministicPtyInstrument:
         self.master_fd = master_fd
         self.bundle = bundle
         self.programme = ADAPTIVE_HYBRID_PROGRAMME
+        self.inputs = inputs = validate_authoritative_inputs(bundle["authoritative_inputs"])
         self.fixture = build_lifecycle_fixture(bundle)
-        self.reference_acceptance_binding = _reference_acceptance_binding(bundle)
+        self.reference_acceptance_binding = _reference_acceptance_binding(inputs)
         self.identities = {
             "run_identity": self.programme.runtime_run_identity,
             "build_identity": str(bundle["firmware"]["build_identity"]),
             "image_identity": self.programme.profile_id,
-            "estimator_sha256": authoritative_binding(
-                bundle["authoritative_inputs"],
-                authoritative_document(
-                    bundle["authoritative_inputs"], ROOT_PROFILE
-                )["bindings"]["frequency_estimator"],
+            "estimator_sha256": inputs.binding(
+                inputs.document(ROOT_PROFILE)["bindings"]["frequency_estimator"],
             )["sha256"],
-            "model_sha256": authoritative_binding(
-                bundle["authoritative_inputs"],
-                authoritative_document(
-                    bundle["authoritative_inputs"], ROOT_PROFILE
-                )["bindings"]["plant_model"],
+            "model_sha256": inputs.binding(
+                inputs.document(ROOT_PROFILE)["bindings"]["plant_model"],
             )["sha256"],
             "active_policy_sha256": bundle["policy"]["policy_sha256"],
-            "response_policy_sha256": authoritative_binding(
-                bundle["authoritative_inputs"],
-                authoritative_document(
-                    bundle["authoritative_inputs"], ROOT_PROFILE
-                )["bindings"]["response_classification"],
+            "response_policy_sha256": inputs.binding(
+                inputs.document(ROOT_PROFILE)["bindings"]["response_classification"],
             )["sha256"],
             "numerical_policy_sha256": bundle["policy"]["policy_sha256"],
         }
@@ -2266,8 +2348,7 @@ class DeterministicPtyInstrument:
                     if 1200 < closing <= ordinal)
         if phase != int(decision["relative_phase_cycles"]):
             raise RuntimeError("rehearsal phase differs from retained cumulative D8 counts")
-        phase_hash = authoritative_binding(self.bundle["authoritative_inputs"],
-            authoritative_document(self.bundle["authoritative_inputs"], ROOT_PROFILE)["bindings"]["phase_estimator"])["sha256"]
+        phase_hash = self.inputs.binding(self.inputs.document(ROOT_PROFILE)["bindings"]["phase_estimator"])["sha256"]
         row = {
             "record_type": "RPH", "schema_version": "2", "phase_epoch": "1",
             "observation_sequence": str(phase_sequence), "capture_session": "1",
@@ -2546,13 +2627,9 @@ class DeterministicPtyInstrument:
             self.stop_event.set()
 
 
-def _supervisor_worker(manifest_path: Path, run_dir: Path) -> int:
-    """Run the live supervisor only behind the private PTY validator."""
+def _load_worker_manifest(manifest_path: Path) -> tuple[dict[str, Any], ValidatedAuthoritativeInputs]:
+    """Load the exact retained PTY inputs without current-build reproduction."""
 
-    manifest_path = manifest_path.resolve()
-    run_dir = run_dir.resolve()
-    if manifest_path != run_dir / "run_manifest.json":
-        raise ValueError("rehearsal supervisor manifest is outside its run")
     private = _read_object(manifest_path, "rehearsal run manifest")
     bundle_path = Path(str(private.get("bundle", {}).get("path", ""))).resolve()
     proposal_path = Path(str(private.get("proposal", {}).get("path", ""))).resolve()
@@ -2566,10 +2643,43 @@ def _supervisor_worker(manifest_path: Path, run_dir: Path) -> int:
         unsigned = {key: item for key, item in value.items() if key != field}
         if claimed != _canonical_sha256(unsigned):
             raise ValueError(f"rehearsal worker {label} semantic hash differs")
-    private = _validate_manifest_value(
-        manifest_path.resolve(), private, bundle=bundle, proposal=proposal
+    inputs = validate_authoritative_inputs(bundle.get("authoritative_inputs"))
+    return (_validate_manifest_value(
+        manifest_path.resolve(), private, bundle=bundle, proposal=proposal, inputs=inputs
+    ), inputs)
+
+
+def _supervisor_worker(manifest_path: Path, run_dir: Path) -> int:
+    """Run the live supervisor only behind the private PTY validator."""
+
+    manifest_path = manifest_path.resolve()
+    run_dir = run_dir.resolve()
+    if manifest_path != run_dir / "run_manifest.json":
+        raise ValueError("rehearsal supervisor manifest is outside its run")
+    _record_supervisor_startup_phase(
+        run_dir=run_dir,
+        manifest_path=manifest_path,
+        phase="worker_started",
     )
+    _record_supervisor_startup_phase(
+        run_dir=run_dir,
+        manifest_path=manifest_path,
+        phase="manifest_validation_started",
+    )
+    private, inputs = _load_worker_manifest(manifest_path)
+    _record_supervisor_startup_phase(
+        run_dir=run_dir,
+        manifest_path=manifest_path,
+        phase="manifest_validated",
+    )
+    _record_supervisor_startup_phase(
+        run_dir=run_dir,
+        manifest_path=manifest_path,
+        phase="supervisor_construction_started",
+    )
+    runtime_context = prepare_validated_nonphysical_rehearsal_context(private, authoritative_inputs=inputs)
     supervisor = create_validated_nonphysical_rehearsal_supervisor(
+        runtime_context=runtime_context,
         validated_manifest=private,
         manifest_path=manifest_path,
         run_dir=run_dir,
@@ -2582,80 +2692,24 @@ def _supervisor_worker(manifest_path: Path, run_dir: Path) -> int:
         duration_s=120.0,
         console_events=False,
     )
+    _record_supervisor_startup_phase(
+        run_dir=run_dir,
+        manifest_path=manifest_path,
+        phase="supervisor_constructed",
+    )
+    _record_supervisor_startup_phase(
+        run_dir=run_dir,
+        manifest_path=manifest_path,
+        phase="ready_to_run",
+    )
     return supervisor.run()
 
 
 def _monitor_worker(
     run_dir: Path, manifest_path: Path, stop_path: Path
 ) -> int:
-    """Retain bounded, read-only samples from the current monitor validators."""
-
-    run_dir = run_dir.resolve()
-    manifest_path = manifest_path.resolve()
-    if manifest_path != run_dir / "run_manifest.json":
-        raise ValueError("rehearsal monitor manifest is outside its run")
-    private = _read_object(manifest_path, "rehearsal monitor manifest")
-    if private.get("stage") != REHEARSAL_STAGE:
-        raise ValueError("rehearsal monitor requires the private PTY stage")
-    programme = programme_from_mapping(private)
-    expected_build_identity = str(private.get("firmware", {}).get("build_identity", ""))
-    if not expected_build_identity:
-        raise ValueError("rehearsal monitor build identity is unavailable")
-    while not stop_path.exists():
-        now = time.time()
-        try:
-            lifecycle = _exact_lifecycle_record_progress(run_dir, now=now)
-            maintenance = _maintenance_evidence_progress(
-                run_dir,
-                programme=programme,
-                expected_build_identity=expected_build_identity,
-                now=now,
-            )
-            supervisor_state = _read_object(
-                run_dir / "reports/adaptive_hybrid_supervisor_state.json",
-                "rehearsal supervisor state",
-            )
-            sample = {
-                "schema_version": 1,
-                "sampled_utc": _utc_now(),
-                "capture_state": (
-                    _read_object(
-                        run_dir / CAPTURE_STATE, "rehearsal capture state"
-                    )
-                    if (run_dir / CAPTURE_STATE).is_file()
-                    else None
-                ),
-                "supervisor": {
-                    "manual_start_sent": supervisor_state.get(
-                        "manual_start_sent"
-                    ),
-                    "setup_confirmed": bool(
-                        supervisor_state.get("setup_confirmed_utc")
-                    ),
-                    "acknowledged_record_sequences": supervisor_state.get(
-                        "acknowledged_record_sequences"
-                    ),
-                    "later_authority_released": supervisor_state.get(
-                        "later_authority_released"
-                    ),
-                    "gnss_metadata_hold_count": supervisor_state.get(
-                        "gnss_metadata_hold_count"
-                    ),
-                    "terminal": supervisor_state.get("terminal"),
-                },
-                "lifecycle": lifecycle,
-                "maintenance": maintenance,
-            }
-        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            sample = {
-                "schema_version": 1,
-                "sampled_utc": _utc_now(),
-                "pending": True,
-                "diagnostic": str(exc),
-            }
-        _append_jsonl(run_dir / MONITOR_SAMPLES_PATH, sample)
-        time.sleep(0.1)
-    return 0
+    private, _inputs = _load_worker_manifest(manifest_path.resolve())
+    return run_monitor(run_dir, private, stop_path=stop_path)
 
 
 def _transition_manifest(*, target: Path, device: str) -> Path:
@@ -2771,19 +2825,6 @@ def _process_command(module: str, *arguments: str) -> list[str]:
     return [sys.executable, "-m", module, *arguments]
 
 
-def _launch(command: list[str], log_path: Path) -> tuple[subprocess.Popen[str], Any]:
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = log_path.open("x", encoding="utf-8")
-    process = subprocess.Popen(
-        command,
-        cwd=ROOT,
-        stdout=handle,
-        stderr=handle,
-        text=True,
-        start_new_session=True,
-    )
-    return process, handle
-
 
 def _run_process_topology(
     *,
@@ -2797,18 +2838,18 @@ def _run_process_topology(
     capture: subprocess.Popen[str] | None = None
     supervisor: subprocess.Popen[str] | None = None
     monitor: subprocess.Popen[str] | None = None
-    handles: list[Any] = []
+    session = AdaptiveHybridSession(run_dir=run_dir, device=device, physical=False)
     emulator: DeterministicPtyInstrument | None = None
     emulator_thread: threading.Thread | None = None
     capture_continued = False
-    stop_monitor = run_dir / "control/monitor.stop"
+    stop_monitor = run_dir / MONITOR_STOP_PATH
     transition_dir = run_dir / TRANSITION_DIR
     try:
         # The caller created the manifest with this exact slave path.  The
         # parent retains the master solely for deterministic device records.
         if os.path.realpath(os.ttyname(slave_fd)) != device or not _is_pty(device):
             raise RuntimeError("rehearsal device is not this process's exact PTY slave")
-        capture, handle = _launch(
+        capture = session.launch_capture(
             _process_command(
                 "host.otis_tools.capture_device",
                 "--device",
@@ -2834,59 +2875,29 @@ def _run_process_topology(
             ),
             run_dir / "reports/capture_device.stdout.log",
         )
-        handles.append(handle)
         os.close(slave_fd)
         slave_fd = -1
+        # Do not write the synthetic boot stream until the child actually owns
+        # the slave. A launched PID alone leaves a PTY-open race (EIO on macOS).
+        session.wait_capture_ready(10.0)
         emulator = DeterministicPtyInstrument(master_fd, bundle)
         emulator_thread = emulator.start()
-        _wait_until(
-            lambda: (
-                capture.poll() is None
-                and _capture_state_ready(run_dir, capture.pid)
-                and (run_dir / "control/normal_commands.fifo").is_fifo()
-                and (run_dir / "control/emergency_abort.fifo").is_fifo()
-            ),
-            10.0,
-            "real capture process and command ingress",
-        )
-        if _serial_owner_pids(device) != {capture.pid}:
-            raise RuntimeError("capture process is not the sole PTY slave owner")
 
-        supervisor, handle = _launch(
-            _process_command(
+        supervisor, monitor = session.launch_support(
+            supervisor_command=_process_command(
                 "host.otis_tools.adaptive_hybrid_operational_rehearsal",
-                "_supervisor_worker",
-                "--manifest",
-                str(manifest_path),
-                "--run-dir",
-                str(run_dir),
+                "_supervisor_worker", "--manifest", str(manifest_path),
+                "--run-dir", str(run_dir),
             ),
-            run_dir / "reports/adaptive_hybrid_supervisor.stdout.log",
-        )
-        handles.append(handle)
-        monitor, handle = _launch(
-            _process_command(
+            monitor_command=_process_command(
                 "host.otis_tools.adaptive_hybrid_operational_rehearsal",
-                "_monitor_worker",
-                "--run-dir",
-                str(run_dir),
-                "--manifest",
-                str(manifest_path),
-                "--stop-path",
-                str(stop_monitor),
+                "_monitor_worker", "--run-dir", str(run_dir),
+                "--manifest", str(manifest_path), "--stop-path", str(stop_monitor),
             ),
-            run_dir / "reports/adaptive_hybrid_monitor.stdout.log",
+            supervisor_log=run_dir / "reports/adaptive_hybrid_supervisor.stdout.log",
+            monitor_log=run_dir / "reports/adaptive_hybrid_monitor.stdout.log",
         )
-        handles.append(handle)
-        _wait_until(
-            lambda: (
-                supervisor.poll() is None
-                and monitor.poll() is None
-                and (run_dir / "control/host_abort.fifo").is_fifo()
-            ),
-            10.0,
-            "supervisor, monitor, and independent abort ingress",
-        )
+        session.wait_support_ready(10.0)
 
         def lifecycle_complete() -> bool:
             if emulator is not None and emulator.error is not None:
@@ -2970,8 +2981,7 @@ def _run_process_topology(
             capture_pid=capture.pid,
             device=device,
         )
-        capture.send_signal(signal.SIGTERM)
-        capture_exit = capture.wait(timeout=10.0)
+        capture_exit = session.close_capture_after_authorized_terminal(timeout_s=10.0)
         if capture_exit != 0:
             raise RuntimeError(f"capture process exited {capture_exit}")
         transition_closure_path = transition_dir / SEGMENT_CLOSURE
@@ -2991,9 +3001,8 @@ def _run_process_topology(
             and rotation["transition_closure"].get("physical_serial_open") is False
         ):
             raise RuntimeError("transition segment did not close the same owner cleanly")
-        stop_monitor.parent.mkdir(parents=True, exist_ok=True)
-        stop_monitor.touch()
-        monitor_exit = monitor.wait(timeout=5.0)
+        closed_processes = session.close_after_capture_closed()
+        monitor_exit = closed_processes["monitor"]["exit"]
         if monitor_exit != 0:
             raise RuntimeError(f"monitor worker exited {monitor_exit}")
         emulator.stop()
@@ -3044,26 +3053,7 @@ def _run_process_topology(
             },
         }
     finally:
-        if capture is not None and capture.poll() is None:
-            if not capture_continued:
-                try:
-                    os.kill(capture.pid, signal.SIGCONT)
-                except ProcessLookupError:
-                    pass
-            capture.terminate()
-            try:
-                capture.wait(timeout=3.0)
-            except subprocess.TimeoutExpired:
-                capture.kill()
-                capture.wait(timeout=3.0)
-        for process in (supervisor, monitor):
-            if process is not None and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=3.0)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=3.0)
+        session.close_simulated()
         if emulator is not None:
             emulator.stop()
         if emulator_thread is not None:
@@ -3072,9 +3062,6 @@ def _run_process_topology(
             os.close(master_fd)
         if slave_fd >= 0:
             os.close(slave_fd)
-        for handle in handles:
-            handle.close()
-
 
 def analyze_and_seal_rehearsal(
     *,
@@ -3090,13 +3077,11 @@ def analyze_and_seal_rehearsal(
     manifest = RunManifest(
         run_dir, run_dir / "run_manifest.json", manifest_value
     )
-    spec, identities = load_validated_nonphysical_rehearsal_spec(manifest_value)
-    policy_document = authoritative_document(
-        bundle["authoritative_inputs"], ROOT_PROFILE
-    )
-    policy_binding = authoritative_binding(
-        bundle["authoritative_inputs"], ROOT_PROFILE
-    )
+    context = prepare_validated_nonphysical_rehearsal_context(manifest_value)
+    spec, identities = runtime_spec(context)
+    inputs = context.authoritative_inputs
+    policy_document = inputs.document(ROOT_PROFILE)
+    policy_binding = inputs.binding(ROOT_PROFILE)
     policy = policy_from_mapping(
         policy_document, policy_sha256=str(policy_binding["sha256"])
     )
@@ -3109,9 +3094,8 @@ def analyze_and_seal_rehearsal(
         policy=policy,
         policy_document=policy_document,
         estimator_sha256=identities["estimator_sha256"],
-        response_policy_document=authoritative_document(
-            bundle["authoritative_inputs"],
-            str(policy_document["bindings"]["response_classification"]),
+        response_policy_document=inputs.document(
+            str(policy_document["bindings"]["response_classification"])
         ),
         programme=ADAPTIVE_HYBRID_PROGRAMME,
     )
@@ -3622,7 +3606,9 @@ def analyze_and_seal_rehearsal(
         and [marker.get("event") for marker in transition_raw_markers]
         == ["capture_started", "capture_stopped"],
         "read_only_monitor_observed_lifecycle": any(
-            not row.get("pending", False) for row in monitor_rows
+            row.get("tool") == "adaptive_hybrid_hybrid_monitor_v1"
+            and row.get("progress", {}).get("active_transactions", {}).get("rows", 0) >= 5
+            for row in monitor_rows
         ),
         "supervisor_terminal_is_operator_abort": supervisor.get("terminal", {}).get(
             "reason"
@@ -3786,14 +3772,70 @@ def _run_validated(
         registration=initial_registration,
         required_seal=SEAL_PATH,
     )
-    process_evidence = _run_process_topology(
-        run_dir=run_dir,
-        manifest_path=manifest_path,
-        bundle=bundle,
-        device=device,
-        master_fd=master_fd,
-        slave_fd=slave_fd,
-    )
+    try:
+        process_evidence = _run_process_topology(
+            run_dir=run_dir,
+            manifest_path=manifest_path,
+            bundle=bundle,
+            device=device,
+            master_fd=master_fd,
+            slave_fd=slave_fd,
+        )
+    except Exception as process_error:
+        supplementary_failures: list[str] = []
+        journal_failure_recorded = False
+        try:
+            record_failure(
+                journal,
+                phase="process_topology",
+                error=process_error,
+            )
+            journal_failure_recorded = True
+        except Exception as journal_error:
+            supplementary_failures.append(
+                "process-topology failure journal write also failed: "
+                f"{type(journal_error).__name__}: {journal_error}"
+            )
+        try:
+            identity = package_identity(run_dir)
+            failure_reason = (
+                "adaptive-hybrid operational rehearsal process topology failed: "
+                f"{type(process_error).__name__}: {process_error}"
+            )
+            failure_metadata = _registration_metadata(
+                bundle,
+                classification="diagnostic",
+                reason=failure_reason,
+            )
+            register_package(
+                index_path=evidence_index_path,
+                package_path=run_dir,
+                expected_content_sha256=identity["content_sha256"],
+                **failure_metadata,
+            )
+        except Exception as registration_error:
+            supplementary_failures.append(
+                "process-topology diagnostic registration also failed: "
+                f"{type(registration_error).__name__}: {registration_error}"
+            )
+            if journal_failure_recorded:
+                try:
+                    record_failure(
+                        journal,
+                        phase="diagnostic_registration",
+                        error=registration_error,
+                    )
+                except Exception as secondary_journal_error:
+                    supplementary_failures.append(
+                        "diagnostic-registration journal write also failed: "
+                        f"{type(secondary_journal_error).__name__}: "
+                        f"{secondary_journal_error}"
+                    )
+        if supplementary_failures:
+            process_error.args = (
+                f"{process_error}; " + "; ".join(supplementary_failures),
+            )
+        raise
     _atomic_json(run_dir / PROCESS_EVIDENCE_PATH, process_evidence, exclusive=True)
     advance_phase(
         journal,

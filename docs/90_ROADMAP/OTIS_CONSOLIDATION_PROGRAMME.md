@@ -64,6 +64,7 @@ failure records even when publishing a later classification correction.
 | 4. Firmware and measurement integration | Repair metadata-driven history loss and queue ownership; verify every derived aperture against raw evidence. | Producer-to-first-consumer regressions, raw counter replay, and exact fixed-image build pass. |
 | 5. Operational host simplification | One source for campaign predicates, explicit state transitions, independent operator-abort servicing, integrated monitoring, bounded/deduplicated reporting. | Actual runner topology exercises two transactions, holds, command obstruction, abort delivery, owner-preserving closure, analysis, and registration. |
 | 5a. Explicit instrument ownership | Close the ownership audit against the intended standalone instrument; publish internal metadata without a host, remove the unreachable old controller, and discover state before extending host authority. | Focused dispatch/transaction/startup regressions, current release build and complete process rehearsal; future autonomous policy remains separate. |
+| 5b. Shared host superstructure | Immutable validated runtime configuration; one physical/PTY process lifecycle, monitor loop and readiness contract; safe diagnostic closure. | Integrated current release gate and end-to-end PTY rehearsal over the shared implementation, including failure paths. Must precede bench qualification. |
 | 6. Bench readiness | Freeze and rehearse the exact source, image, host tools, contract and launch configuration. | Full current release gate, then genuine I/O rehearsal on bench Mac including startup permission and failure behavior. |
 | 7. D14 investigation and qualification | One bounded discriminating receiver/line/capture-path investigation, then the authorized sustained campaign. | Record findings or explicit inconclusive result; qualification uses prospectively frozen policy and full retained evidence. |
 | 8. Instrument completion | Safely isolated D10 capture, metrology/analysis products and relevant output characterization. | Advance only after the acquisition/control foundation is dependable; optional features cannot veto D14/D8. |
@@ -375,6 +376,25 @@ passed. The [ownership verification record](../50_SOFTWARE/INSTRUMENT_OWNERSHIP.
 binds the exact image and states which restart and physical boundaries remain
 unexercised. All 131 firmware build inputs remain identical to the tested
 clean firmware commit; host changes do not pretend to be that embedded commit.
-No new physical acquisition or intervention occurred. Next is Stage 6: the
-exact merged bundle and real bench launch-context rehearsal, before Stage 7
+No new physical acquisition or intervention occurred. The initial next step was
+Stage 6, but the older Mac's first production-bundle PTY rehearsal failed at
+startup. The operator has now brought Stage 5b forward: complete the shared host
+superstructure before another bench gate. Passing the old readiness check is
+not a prerequisite for this simplification. Stage 6 then freezes and rehearses
+the successor bundle on the real bench launch context; Stage 7 remains physical
 qualification. Autonomous operation remains a separate coupled implementation.
+
+Stage 5b's finite shared-session gate is complete. The old runtime-envelope
+loaders and duplicate process launch/monitor loops are replaced; static input
+validation now produces an immutable context. All 656 current tests passed
+across the release and affected-boundary runs. A separate real-build,
+production-bundle PTY rehearsal passed all eight operational boundaries and
+registered its 55-file, 9,115,744-byte package. The
+[superstructure record](../60_EXPERIMENTS/STARTUP_VALIDATION_REPAIR_2026_09_11.md)
+binds those claims and the directly repaired PTY startup race.
+
+This machinery remains removable campaign tooling. The operator has explicitly
+required ruthless deletion of unnecessary scaffolding, no retired compatibility
+layers, and an eventual ordinary experience of power on and use D9 with an
+optional recording/inspection host. Stage 6 on the older Mac remains next for
+the current qualification; standalone operation remains separate product work.

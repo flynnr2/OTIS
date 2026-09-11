@@ -79,6 +79,17 @@ fixed firmware + policy + tools
 The bundle embeds and content-addresses every decision-bearing component,
 including the exact profile/schema bytes used by later supervision, replay,
 and analysis. Those consumers do not substitute files from the live checkout.
+`ValidatedAuthoritativeInputs` owns a detached, immutable snapshot after byte,
+closure, binding and instance validation at the raw-input boundary. Consumers
+read fresh document copies and exact bindings from that snapshot. The supervisor
+prepares one `AdaptiveHybridRuntimeContext` for its lifetime; spec derivation and
+construction consume it instead of recursively validating the same dictionaries.
+Supplying a context for different embedded bytes is an error. A bounded cache of
+successful schema-syntax checks avoids repeating schema self-validation across
+independent input boundaries; it caches neither mutable documents nor authority.
+Fresh census, retained source proofs and exact command acknowledgements remain
+independent dynamic checks and cannot be satisfied by static configuration.
+
 An accepted boundary ordinal is a wrapping 32-bit coordinate within a
 nonzero acceptance epoch. It is distinct from a raw capture sequence, phase
 epoch, and DAC epoch. A rejected early edge does not advance it or create a
@@ -102,6 +113,24 @@ neither the structural preflight nor an unverified rehearsal claim can
 authorize live entry. Producer acknowledgement is followed through the first
 dependent consumer rather than being treated as proof of downstream
 application by itself.
+
+`AdaptiveHybridSession` owns the concrete capture/supervisor/monitor lifecycle
+in both physical execution and the PTY rehearsal. Hardware preparation and
+simulated stimulus remain explicit adapters. Both paths launch the same monitor
+loop and require receipts bound to the launched PID, run, manifest bytes and
+monotonic launch boundary. Supervisor initialization includes its independent
+abort ingress; monitor initialization includes its first retained observation.
+These receipts prove service readiness only. The supervisor still discovers
+firmware state before admitting lease or control authority.
+
+Startup phase records explain progress and failure location. A topology error
+retains its primary diagnostic and attempts diagnostic registration after safe
+closure; it cannot invent successful acquisition or a seal. Shared cleanup
+refuses to stop a live capture owner. Bounded simulated cleanup independently
+requires a PTY and a nonphysical session. Physical host discrepancies preserve
+capture and enter the existing review-hold path; after the owner actually exits,
+diagnostic finalization remains reachable. Abort delivery must still precede
+any capture closure authorized by an aborting terminal.
 
 The sole authority-bearing physical purpose is
 `contingent_72_hour_hybrid_control`. Its 72-hour accepted-aperture endpoint and

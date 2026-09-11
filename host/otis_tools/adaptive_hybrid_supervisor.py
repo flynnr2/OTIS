@@ -44,10 +44,11 @@ from .adaptive_hybrid_contract import (
 from .adaptive_hybrid_policy import AdaptiveHybridPolicy, policy_from_mapping
 from .authoritative_inputs import (
     ROOT_PROFILE,
-    authoritative_binding,
-    authoritative_document,
+    ValidatedAuthoritativeInputs,
+    transaction_identities_from_bundle,
     validate_authoritative_inputs,
 )
+from .adaptive_hybrid_session import publish_supervisor_ready
 from .active_status_live_state import (
     LIVE_FRONTIER_COMPONENT,
     LIVE_FRONTIER_DOMAIN_KEY,
@@ -355,8 +356,10 @@ def _sha256_identity(value: object, label: str) -> str:
         ) from exc
     return value
 
-@dataclass(frozen=True)
-class RuntimeEnvelope:
+@dataclass(frozen=True, slots=True)
+class AdaptiveHybridRuntimeContext:
+    """One immutable, manifest-bound static configuration for a supervisor."""
+
     programme: AdaptiveHybridProgramme
     bench_attempt: BenchAttemptEnvelope | None
     manifest_sha256: str
@@ -365,28 +368,53 @@ class RuntimeEnvelope:
     build_identity: str
     uf2_sha256: str
     policy: AdaptiveHybridPolicy
-    policy_document: dict[str, Any]
     natural_policy_sha256: str
     frequency_estimator_sha256: str
     phase_estimator_sha256: str
     wall_origin_utc: str
+    authoritative_inputs: ValidatedAuthoritativeInputs
+    _manifest_json: str
+    _transaction_identities: tuple[tuple[str, str], ...]
+    private_nonphysical_rehearsal: bool
+
+    def manifest_document(self) -> dict[str, Any]:
+        return json.loads(self._manifest_json)
+
+    def policy_document(self) -> dict[str, Any]:
+        return self.authoritative_inputs.document(ROOT_PROFILE)
+
+    def transaction_identities(self) -> dict[str, str]:
+        return dict(self._transaction_identities)
+
+    def matches_manifest(self, manifest: object) -> bool:
+        try:
+            encoded = json.dumps(
+                manifest,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        except (TypeError, ValueError):
+            return False
+        return encoded == self._manifest_json
 
 
 def _profile_binding_sha256(
-    frozen_inputs: object, policy: dict[str, Any], name: str
+    inputs: ValidatedAuthoritativeInputs, policy: dict[str, Any], name: str
 ) -> str:
     binding = policy.get("bindings", {}).get(name)
     if not isinstance(binding, str):
         raise ValueError(f"adaptive-hybrid policy binding {name!r} is unavailable")
-    return str(authoritative_binding(frozen_inputs, binding)["sha256"])
+    return str(inputs.binding(binding)["sha256"])
 
 
-def _runtime_envelope(
+def _prepare_runtime_context(
     manifest: dict[str, Any],
     *,
     private_rehearsal_capability: object | None = None,
-) -> RuntimeEnvelope:
-    """Extract the one current manifest and policy envelope."""
+    authoritative_inputs: ValidatedAuthoritativeInputs | None = None,
+) -> AdaptiveHybridRuntimeContext:
+    """Validate and detach the one current static runtime configuration."""
 
     programme = programme_from_mapping(manifest)
     section = manifest.get(programme.manifest_section, {})
@@ -417,10 +445,16 @@ def _runtime_envelope(
         if not isinstance(raw_bench_attempt, dict):
             raise ValueError("adaptive-hybrid bench-attempt envelope is malformed")
         bench_attempt = validate_bench_attempt_envelope(raw_bench_attempt)
-    frozen_inputs = manifest.get("authoritative_inputs")
-    validate_authoritative_inputs(frozen_inputs)
-    policy = authoritative_document(frozen_inputs, ROOT_PROFILE)
-    root_binding = authoritative_binding(frozen_inputs, ROOT_PROFILE)
+    inputs = authoritative_inputs
+    if inputs is None:
+        inputs = validate_authoritative_inputs(manifest.get("authoritative_inputs"))
+    elif (
+        not isinstance(inputs, ValidatedAuthoritativeInputs)
+        or not inputs.matches(manifest.get("authoritative_inputs"))
+    ):
+        raise ValueError("validated input context differs from the runtime manifest")
+    policy = inputs.document(ROOT_PROFILE)
+    root_binding = inputs.binding(ROOT_PROFILE)
     selected = policy_from_mapping(
         policy, policy_sha256=str(root_binding["sha256"])
     )
@@ -439,7 +473,8 @@ def _runtime_envelope(
         or not isinstance(uf2, dict)
     ):
         raise ValueError("adaptive-hybrid manifest identity or policy differs")
-    return RuntimeEnvelope(
+    identities = transaction_identities_from_bundle(manifest, inputs=inputs)
+    return AdaptiveHybridRuntimeContext(
         programme=programme,
         bench_attempt=bench_attempt,
         manifest_sha256=_sha256_identity(manifest.get("manifest_sha256"), "manifest_sha256"),
@@ -448,45 +483,38 @@ def _runtime_envelope(
         build_identity=build_identity,
         uf2_sha256=_sha256_identity(uf2.get("sha256"), "firmware.uf2.sha256"),
         policy=selected,
-        policy_document=policy,
         natural_policy_sha256=selected.policy_sha256,
         frequency_estimator_sha256=_profile_binding_sha256(
-            frozen_inputs, policy, "frequency_estimator"
+            inputs, policy, "frequency_estimator"
         ),
         phase_estimator_sha256=_profile_binding_sha256(
-            frozen_inputs, policy, "phase_estimator"
+            inputs, policy, "phase_estimator"
         ),
         wall_origin_utc=str(manifest["started_at_utc"]),
+        authoritative_inputs=inputs,
+        _manifest_json=json.dumps(
+            manifest,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ),
+        _transaction_identities=tuple(sorted(identities.items())),
+        private_nonphysical_rehearsal=(bench_attempt is None),
     )
 
 
-def load_active_hybrid_spec(
+def prepare_runtime_context(
     manifest: dict[str, Any],
-    *,
-    private_rehearsal_capability: object | None = None,
-) -> tuple[CampaignSpec, dict[str, str]]:
-    """Load the exact runtime contract from a validated live manifest."""
+) -> AdaptiveHybridRuntimeContext:
+    """Prepare the physical supervisor's validated static configuration once."""
 
-    envelope = _runtime_envelope(
-        manifest,
-        private_rehearsal_capability=private_rehearsal_capability,
-    )
-    programme = envelope.programme
-    policy = envelope.policy_document
-    frozen_inputs = manifest["authoritative_inputs"]
-    identities = {
-        "estimator_sha256": _profile_binding_sha256(
-            frozen_inputs, policy, "frequency_estimator"
-        ),
-        "model_sha256": _profile_binding_sha256(
-            frozen_inputs, policy, "plant_model"
-        ),
-        "active_policy_sha256": envelope.policy_sha256,
-        "response_policy_sha256": _profile_binding_sha256(
-            frozen_inputs, policy, "response_classification"
-        ),
-        "numerical_policy_sha256": envelope.natural_policy_sha256,
-    }
+    return _prepare_runtime_context(manifest)
+
+
+def runtime_spec(
+    context: AdaptiveHybridRuntimeContext,
+) -> tuple[CampaignSpec, dict[str, str]]:
+    programme = context.programme
     return (
         CampaignSpec(
             campaign=programme.campaign_name,
@@ -495,8 +523,8 @@ def load_active_hybrid_spec(
             start_code=programme.setup_code,
             correction_limit=(
                 programme.authorized_maximum_physical_applications
-                if envelope.bench_attempt is None
-                else envelope.bench_attempt.limits.automatic_application_limit
+                if context.bench_attempt is None
+                else context.bench_attempt.limits.automatic_application_limit
             ),
             cumulative_limit=(
                 programme.authorized_maximum_cumulative_movement_codes
@@ -505,7 +533,7 @@ def load_active_hybrid_spec(
             maximum_code=programme.maximum_code,
             maximum_step=programme.maximum_step_codes,
         ),
-        identities,
+        context.transaction_identities(),
     )
 
 
@@ -586,9 +614,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def __init__(
         self,
         *,
-        manifest: dict[str, Any],
+        runtime_context: AdaptiveHybridRuntimeContext,
         manifest_path: Path,
-        private_rehearsal_capability: object | None = None,
         **kwargs: object,
     ) -> None:
         requested_run_dir = kwargs.get("run_dir")
@@ -599,20 +626,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         ).is_file()
         self._explicit_abort_submission = False
         self._startup_census_process_nonce = secrets.randbits(32) or 1
-        envelope = _runtime_envelope(
-            manifest,
-            private_rehearsal_capability=private_rehearsal_capability,
-        )
-        spec = kwargs.get("spec")
-        if not isinstance(spec, CampaignSpec):
-            raise ValueError("ADAPTIVE_HYBRID supervisor requires its manifest-derived spec")
-        if (
-            spec.run_identity != manifest.get("run_identity")
-            or kwargs.get("expected_build_identity") != envelope.build_identity
-        ):
-            raise ValueError("ADAPTIVE_HYBRID supervisor inputs differ from the live manifest")
-        self.programme = envelope.programme
-        limits = envelope.bench_attempt.limits if envelope.bench_attempt else None
+        if not isinstance(runtime_context, AdaptiveHybridRuntimeContext):
+            raise ValueError("ADAPTIVE_HYBRID supervisor requires a validated runtime context")
+        if any(name in kwargs for name in ("spec", "identities", "expected_build_identity")):
+            raise ValueError("ADAPTIVE_HYBRID static inputs must come from one runtime context")
+        spec, identities = runtime_spec(runtime_context)
+        self.programme = runtime_context.programme
+        limits = runtime_context.bench_attempt.limits if runtime_context.bench_attempt else None
         if limits is not None and (
             spec.correction_limit != limits.automatic_application_limit
             or spec.start_code != self.programme.setup_code
@@ -637,9 +657,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             ),
             qualified_timeout_s=(
                 self.programme.qualified_duration_s
-                if envelope.bench_attempt is None
+                if runtime_context.bench_attempt is None
                 else int(
-                    envelope.bench_attempt.as_dict()["timing"][
+                    runtime_context.bench_attempt.as_dict()["timing"][
                         "absolute_wall_limit_s"
                     ]
                 )
@@ -647,9 +667,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             observational_responses=(
                 self.programme.response_checkpoint_observational
             ),
+            spec=spec,
+            identities=identities,
+            expected_build_identity=runtime_context.build_identity,
             **kwargs,
         )
-        self.manifest = manifest
         self.manifest_path = manifest_path.resolve()
         try:
             acquisition_manifest = json.loads(
@@ -659,13 +681,18 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             raise ValueError(
                 "ADAPTIVE_HYBRID acquisition manifest is unreadable"
             ) from exc
+        retained_runtime_manifest = acquisition_manifest
         if (
-            not isinstance(acquisition_manifest, dict)
-            or acquisition_manifest.get("acquisition_frontier")
-            != manifest.get("acquisition_frontier")
+            isinstance(acquisition_manifest, dict)
+            and runtime_context.private_nonphysical_rehearsal
         ):
+            retained_runtime_manifest = {
+                **acquisition_manifest,
+                "stage": runtime_context.programme.live_stage,
+            }
+        if not runtime_context.matches_manifest(retained_runtime_manifest):
             raise ValueError(
-                "ADAPTIVE_HYBRID acquisition frontier differs from the retained manifest"
+                "ADAPTIVE_HYBRID acquisition manifest differs from the runtime context"
             )
         self.acquisition_manifest = acquisition_manifest
         reference_acceptance = acquisition_manifest.get("reference_acceptance")
@@ -677,31 +704,31 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.reference_acceptance_policy_sha256 = str(
             reference_acceptance["policy_sha256"]
         )
-        self.envelope = envelope
-        self.phase_estimator_sha256 = envelope.phase_estimator_sha256
-        self.natural_policy = envelope.policy
-        self.natural_policy_document = envelope.policy_document
-        self.natural_estimator_sha256 = envelope.frequency_estimator_sha256
-        self.expected_active_policy_sha256 = envelope.policy_sha256
+        self.runtime_context = runtime_context
+        self.phase_estimator_sha256 = runtime_context.phase_estimator_sha256
+        self.natural_policy = runtime_context.policy
+        self.natural_policy_document = runtime_context.policy_document()
+        self.natural_estimator_sha256 = runtime_context.frequency_estimator_sha256
+        self.expected_active_policy_sha256 = runtime_context.policy_sha256
         self.part = f"{self.programme.key}_active_hybrid_live"
         exact_state = {
             "programme_id": self.programme.programme_id,
             "manifest_path": str(self.manifest_path),
-            "manifest_sha256": envelope.manifest_sha256,
-            "bundle_sha256": envelope.bundle_sha256,
-            "policy_sha256": envelope.policy_sha256,
-            "build_identity": envelope.build_identity,
-            "uf2_sha256": envelope.uf2_sha256,
+            "manifest_sha256": runtime_context.manifest_sha256,
+            "bundle_sha256": runtime_context.bundle_sha256,
+            "policy_sha256": runtime_context.policy_sha256,
+            "build_identity": runtime_context.build_identity,
+            "uf2_sha256": runtime_context.uf2_sha256,
             "runtime_run_identity": self.spec.run_identity,
-            "wall_origin_utc": envelope.wall_origin_utc,
+            "wall_origin_utc": runtime_context.wall_origin_utc,
         }
-        if envelope.bench_attempt is not None:
+        if runtime_context.bench_attempt is not None:
             exact_state.update(
                 {
-                    "bench_attempt": envelope.bench_attempt.as_dict(),
-                    "bench_attempt_purpose": envelope.bench_attempt.purpose,
+                    "bench_attempt": runtime_context.bench_attempt.as_dict(),
+                    "bench_attempt_purpose": runtime_context.bench_attempt.purpose,
                     "bench_attempt_envelope_sha256": (
-                        envelope.bench_attempt.as_dict()["envelope_sha256"]
+                        runtime_context.bench_attempt.as_dict()["envelope_sha256"]
                     ),
                 }
             )
@@ -754,7 +781,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.state["startup_census_process_nonce"] = (
             self._startup_census_process_nonce
         )
-        if envelope.bench_attempt is not None:
+        if runtime_context.bench_attempt is not None:
             initial_closed = bool(limits.authority_initially_closed)
             initial_causal_state = {
                 "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
@@ -765,9 +792,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 "closure": (
                     {
                         "trigger": "initial_contract_state",
-                        "bench_attempt_purpose": envelope.bench_attempt.purpose,
+                        "bench_attempt_purpose": runtime_context.bench_attempt.purpose,
                         "bench_attempt_envelope_sha256": (
-                            envelope.bench_attempt.as_dict()["envelope_sha256"]
+                            runtime_context.bench_attempt.as_dict()["envelope_sha256"]
                         ),
                     }
                     if initial_closed
@@ -805,7 +832,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 )
             self._validate_bench_attempt_arm_admissions()
             if (
-                envelope.bench_attempt.purpose == INHIBITED_ZERO_WRITE
+                runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE
                 and (
                     self.state.get("manual_start_sent") is not False
                     or self.state.get("arm_pending") is not False
@@ -828,7 +855,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _validate_bench_attempt_arm_admissions(self) -> None:
         """Validate every durable host authorization decision on restart."""
 
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if bench_attempt is None:
             return
         admissions = self.state.get("bench_attempt_arm_admissions")
@@ -896,7 +923,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             raise ValueError("retained bench-attempt ARM admission order differs")
 
     def _validate_bench_attempt_causal_state(self, value: object) -> None:
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if bench_attempt is None:
             raise ValueError(
                 "private nonphysical rehearsal cannot retain a physical causal state"
@@ -1015,7 +1042,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
 
     def _bench_authority_closed(self) -> bool:
-        if self.envelope.bench_attempt is None:
+        if self.runtime_context.bench_attempt is None:
             return False
         causal_state = self.state.get("bench_attempt_causal_state")
         self._validate_bench_attempt_causal_state(causal_state)
@@ -1028,7 +1055,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     ) -> dict[str, object]:
         """Persist each physical application frontier before phase-3 ACK."""
 
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if bench_attempt is None:
             return {}
         if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
@@ -1675,7 +1702,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     ),
                     "pre_submit_evidence_phase": expected_phase,
                 }
-                if phase == 3 and self.envelope.bench_attempt is not None:
+                if phase == 3 and self.runtime_context.bench_attempt is not None:
                     preparation.update(
                         self._record_bench_application_before_acknowledgement(
                             row, health
@@ -1870,6 +1897,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             self.acquisition_manifest,
             source_estimate_id=source_estimate_id,
             expected_capture_session=expected_capture_session,
+            validated_inputs=self.runtime_context.authoritative_inputs,
         )
         errors = readiness.get("errors")
         if not isinstance(errors, list) or not all(
@@ -1997,7 +2025,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     and type(value.get("schema_version")) is int
                     and value["schema_version"] == 1
                     and value.get("report_type") == expected_report
-                    and value.get("bundle_sha256") == self.envelope.bundle_sha256
+                    and value.get("bundle_sha256") == self.runtime_context.bundle_sha256
                     and isinstance(value.get("error"), str)
                     and bool(value["error"])
                     and (
@@ -2022,7 +2050,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 self.state["host_verification_hold"]["orchestration_marker"] = str(relative)
                 self.state["host_verification_hold"]["orchestration_marker_sha256"] = marker_sha256
                 self.state["host_verification_hold"]["orchestration_run_directory"] = str(self.run_dir.resolve())
-                self.state["host_verification_hold"]["orchestration_bundle_sha256"] = self.envelope.bundle_sha256
+                self.state["host_verification_hold"]["orchestration_bundle_sha256"] = self.runtime_context.bundle_sha256
                 self._save()
             return True
         return False
@@ -2133,7 +2161,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         return True
 
     def _validate_bench_transaction_prefix(self) -> None:
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if bench_attempt is None:
             return
         rows = _read_csv(self.run_dir / ACTIVE_CSV)
@@ -2482,12 +2510,12 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     ) -> None:
         """Turn physical setup-observation discrepancies into review holds."""
 
-        if self.envelope.bench_attempt is None:
+        if self.runtime_context.bench_attempt is None:
             super()._check_setup_transaction_timeout(health, now_epoch)
             return
         if not self.state["manual_start_sent"]:
             return
-        if self.envelope.bench_attempt.purpose == INHIBITED_ZERO_WRITE:
+        if self.runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE:
             self._enter_host_verification_hold(
                 ValueError("zero-write attempt retained an impossible setup request"),
                 source="setup_transaction_observer",
@@ -2513,7 +2541,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _check_fail_static_health(
         self, health: dict[tuple[str, str], str]
     ) -> None:
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if bench_attempt is not None:
             self._validate_bench_attempt_causal_state(
                 self.state.get("bench_attempt_causal_state")
@@ -2897,7 +2925,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _maybe_qualify(self, health: dict[tuple[str, str], str]) -> None:
         if self.state["qualification_started_utc"] is not None:
             return
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if (
             bench_attempt is not None
             and bench_attempt.purpose == INHIBITED_ZERO_WRITE
@@ -3331,7 +3359,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     ) -> bool:
         """Close new ARM admission in the exact accepted-aperture domain."""
 
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if bench_attempt is None:
             return False
         if self._bench_authority_closed():
@@ -3423,7 +3451,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return
         if self.state.get("host_verification_hold") is not None:
             return
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if bench_attempt is not None and self._bench_authority_closed():
             return
         if (
@@ -3720,7 +3748,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     ) -> bool:
         """Require a static no-authority endpoint without inventing a DAC code."""
 
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if (
             bench_attempt is None
             or bench_attempt.purpose != INHIBITED_ZERO_WRITE
@@ -3846,7 +3874,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     ) -> bool:
         """Apply only the terminal horizons frozen in the bench envelope."""
 
-        bench_attempt = self.envelope.bench_attempt
+        bench_attempt = self.runtime_context.bench_attempt
         if bench_attempt is None:
             return False
         document = bench_attempt.as_dict()
@@ -4083,13 +4111,18 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         last_output_status_query = time.monotonic()
         with AbortFifo(self.abort_fifo) as abort:
             self._live_command_ack_required = True
+            publish_supervisor_ready(
+                self.run_dir,
+                self.manifest_path,
+                census_process_nonce=self._startup_census_process_nonce,
+            )
             self._programme_event(
                 "live_supervisor_started",
                 abort_fifo=str(self.abort_fifo),
-                manifest_sha256=self.envelope.manifest_sha256,
-                bundle_sha256=self.envelope.bundle_sha256,
-                policy_sha256=self.envelope.policy_sha256,
-                wall_origin_utc=self.envelope.wall_origin_utc,
+                manifest_sha256=self.runtime_context.manifest_sha256,
+                bundle_sha256=self.runtime_context.bundle_sha256,
+                policy_sha256=self.runtime_context.policy_sha256,
+                wall_origin_utc=self.runtime_context.wall_origin_utc,
             )
             self._command("CONFIG?")
             self._command("DUALCORE?")
@@ -4190,10 +4223,12 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 time.sleep(0.2)
 
 
-def load_validated_nonphysical_rehearsal_spec(
+def prepare_validated_nonphysical_rehearsal_context(
     validated_manifest: dict[str, Any],
-) -> tuple[CampaignSpec, dict[str, str]]:
-    """Load the live spec from an exactly validated zero-authority PTY manifest."""
+    *,
+    authoritative_inputs: ValidatedAuthoritativeInputs | None = None,
+) -> AdaptiveHybridRuntimeContext:
+    """Prepare one exact zero-authority PTY runtime configuration."""
 
     programme = programme_from_mapping(validated_manifest)
     if not _nonphysical_rehearsal_boundary_exact(
@@ -4204,16 +4239,18 @@ def load_validated_nonphysical_rehearsal_spec(
             "zero-authority boundary"
         )
     live_envelope = {**validated_manifest, "stage": programme.live_stage}
-    return load_active_hybrid_spec(
+    return _prepare_runtime_context(
         live_envelope,
         private_rehearsal_capability=(
             _VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY
         ),
+        authoritative_inputs=authoritative_inputs,
     )
 
 
 def create_validated_nonphysical_rehearsal_supervisor(
     *,
+    runtime_context: AdaptiveHybridRuntimeContext,
     validated_manifest: dict[str, Any],
     manifest_path: Path,
     run_dir: Path,
@@ -4227,33 +4264,38 @@ def create_validated_nonphysical_rehearsal_supervisor(
     """Construct the private PTY worker after its producer-only validator.
 
     The capability is injected here and has no physical CLI route.  The
-    runtime envelope independently rechecks the zero-authority markers so an
+    runtime context independently rechecks the zero-authority markers so an
     ordinary live manifest cannot be smuggled through this factory.
     """
 
+    if not isinstance(runtime_context, AdaptiveHybridRuntimeContext):
+        raise ValueError("PTY supervisor requires a validated runtime context")
     programme = programme_from_mapping(validated_manifest)
-    live_envelope = {**validated_manifest, "stage": programme.live_stage}
-    spec, identities = load_validated_nonphysical_rehearsal_spec(
-        validated_manifest
-    )
-    build_identity = _manifest_build_identity(live_envelope)
-    if expected_build_identity != build_identity:
+    if not _nonphysical_rehearsal_boundary_exact(
+        validated_manifest, expected_stage=_NONPHYSICAL_REHEARSAL_STAGE
+    ):
         raise ValueError(
-            "requested build identity differs from the validated PTY rehearsal manifest"
+            "validated PTY rehearsal manifest differs from its private "
+            "zero-authority boundary"
+        )
+    live_envelope = {**validated_manifest, "stage": programme.live_stage}
+    build_identity = _manifest_build_identity(live_envelope)
+    if (
+        not runtime_context.private_nonphysical_rehearsal
+        or not runtime_context.matches_manifest(live_envelope)
+        or expected_build_identity != build_identity
+        or runtime_context.build_identity != build_identity
+    ):
+        raise ValueError(
+            "runtime context differs from the validated PTY rehearsal manifest"
         )
     return AdaptiveHybridSupervisor(
-        manifest=live_envelope,
+        runtime_context=runtime_context,
         manifest_path=manifest_path,
-        private_rehearsal_capability=(
-            _VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY
-        ),
         run_dir=run_dir,
         command_fifo=command_fifo,
         emergency_command_fifo=emergency_command_fifo,
         abort_fifo=abort_fifo,
-        spec=spec,
-        identities=identities,
-        expected_build_identity=build_identity,
         duration_s=duration_s,
         console_events=console_events,
     )
@@ -4277,20 +4319,21 @@ def create_supervisor(
     # consumes only the immutable run-local closure so capture is never held
     # open while the same firmware is compiled again.
     manifest = validate_frozen_run_manifest(manifest_path)
-    spec, identities = load_active_hybrid_spec(manifest)
+    runtime_context = prepare_runtime_context(manifest)
     build_identity = _manifest_build_identity(manifest)
-    if expected_build_identity != build_identity:
+    if (
+        expected_build_identity != build_identity
+        or runtime_context.build_identity != build_identity
+        or not runtime_context.matches_manifest(manifest)
+    ):
         raise ValueError("requested build identity differs from the ADAPTIVE_HYBRID manifest")
     return AdaptiveHybridSupervisor(
-        manifest=manifest,
+        runtime_context=runtime_context,
         manifest_path=manifest_path,
         run_dir=run_dir,
         command_fifo=command_fifo,
         emergency_command_fifo=emergency_command_fifo,
         abort_fifo=abort_fifo,
-        spec=spec,
-        identities=identities,
-        expected_build_identity=build_identity,
         duration_s=duration_s,
         console_events=console_events,
     )

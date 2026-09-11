@@ -41,8 +41,6 @@ from .adaptive_hybrid_transactions import CampaignSpec, _read_csv, validate_tran
 from .contracts import CsvValidationContext, validate_csv
 from .authoritative_inputs import (
     ROOT_PROFILE,
-    authoritative_binding,
-    authoritative_document,
     validate_authoritative_inputs,
 )
 from .evidence import EVIDENCE_MANIFEST, validate_evidence_snapshot
@@ -801,10 +799,9 @@ def analyze(
         else None
     )
 
-    frozen_inputs = manifest_value.get("authoritative_inputs")
-    validate_authoritative_inputs(frozen_inputs)
-    policy_document = authoritative_document(frozen_inputs, ROOT_PROFILE)
-    policy_binding = authoritative_binding(frozen_inputs, ROOT_PROFILE)
+    frozen_inputs = validate_authoritative_inputs(manifest_value.get("authoritative_inputs"))
+    policy_document = frozen_inputs.document(ROOT_PROFILE)
+    policy_binding = frozen_inputs.binding(ROOT_PROFILE)
     policy = policy_from_mapping(
         policy_document, policy_sha256=str(policy_binding["sha256"])
     )
@@ -865,9 +862,7 @@ def analyze(
         policy_document=policy_document,
         expected_active_policy_sha256=policy.policy_sha256,
         estimator_sha256=str(manifest_value["transaction_identities"]["estimator_sha256"]),
-        response_policy_document=authoritative_document(
-            frozen_inputs,
-            str(policy_document["bindings"]["response_classification"]),
+        response_policy_document=frozen_inputs.document(str(policy_document["bindings"]["response_classification"]),
         ),
         programme=programme,
     )
@@ -877,7 +872,7 @@ def analyze(
         authority_exact=inhibited_zero_write and inhibited_authority_exact,
     )
     transactions = _read_csv(_one_contract(manifest, "active_transactions_v3"))
-    measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value)
+    measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value, validated_inputs=frozen_inputs)
     decision_measurement_sources = replay_active_decision_measurement_sources(
         manifest, measurement
     )

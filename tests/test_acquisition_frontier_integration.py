@@ -24,28 +24,27 @@ from host.otis_tools.acquisition_frontier import (
 )
 from host.otis_tools.authoritative_inputs import (
     REFERENCE_ACCEPTANCE_POLICY_PATH,
-    authoritative_binding,
-    authoritative_document,
+    validate_authoritative_inputs,
     collect_authoritative_inputs,
 )
 from host.otis_tools.contracts import CONTRACT_FIELDS
 from host.otis_tools.firmware_host_contract import RECORD_FIELD_WIRE_TYPES, WIRE_TYPES
 
-_FROZEN_INPUTS = collect_authoritative_inputs()
+_FROZEN_INPUTS = validate_authoritative_inputs(collect_authoritative_inputs())
 _ACCEPTANCE_POLICY_SHA = str(
-    authoritative_binding(_FROZEN_INPUTS, REFERENCE_ACCEPTANCE_POLICY_PATH)["sha256"]
+    _FROZEN_INPUTS.binding(REFERENCE_ACCEPTANCE_POLICY_PATH)["sha256"]
 )
 
 
 def _manifest() -> dict[str, object]:
     frozen = _FROZEN_INPUTS
-    policy = authoritative_document(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
-    binding = authoritative_binding(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
+    policy = frozen.document(REFERENCE_ACCEPTANCE_POLICY_PATH)
+    binding = frozen.binding(REFERENCE_ACCEPTANCE_POLICY_PATH)
     return {
         "schema_version": 1,
         "run_id": "frontier-pty",
         "acquisition_frontier": FRONTIER_POLICY,
-        "authoritative_inputs": frozen,
+        "authoritative_inputs": frozen.as_dict(),
         "reference_acceptance": {
             "policy_id": policy["policy_id"],
             "policy_sha256": binding["sha256"],
@@ -345,6 +344,7 @@ def test_malformed_initial_fragment_is_retained_but_holds_authority(
     supervisor = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
     supervisor.run_dir = run_dir
     supervisor.acquisition_manifest = manifest
+    supervisor.runtime_context = SimpleNamespace(authoritative_inputs=_FROZEN_INPUTS)
     holds: list[tuple[str, str]] = []
     supervisor._enter_host_verification_hold = lambda error, *, source: holds.append((str(error), source))
     assert supervisor._acquisition_authority_ready(expected_capture_session=1) is False
@@ -392,13 +392,21 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
     real_readiness = supervisor_module.read_acquisition_readiness
     readiness_calls: list[tuple[int | None, str | None]] = []
 
-    def observe_readiness(run_dir, manifest_value, *, source_estimate_id=None, expected_capture_session=None):
+    def observe_readiness(
+        run_dir,
+        manifest_value,
+        *,
+        source_estimate_id=None,
+        expected_capture_session=None,
+        validated_inputs=None,
+    ):
         readiness_calls.append((expected_capture_session, source_estimate_id))
         return real_readiness(
             run_dir,
             manifest_value,
             source_estimate_id=source_estimate_id,
             expected_capture_session=expected_capture_session,
+            validated_inputs=validated_inputs,
         )
 
     monkeypatch.setattr(supervisor_module, "read_acquisition_readiness", observe_readiness)
@@ -406,7 +414,9 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
     setup = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
     setup.run_dir = tmp_path
     setup.acquisition_manifest = manifest
-    setup.envelope = SimpleNamespace(bench_attempt=None)
+    setup.runtime_context = SimpleNamespace(
+        bench_attempt=None, authoritative_inputs=_FROZEN_INPUTS
+    )
     setup.programme = SimpleNamespace(
         controller_inhibit_acquisition_continues=False,
         setup_code=0xAA00,
@@ -443,7 +453,9 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
     arm = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
     arm.run_dir = tmp_path
     arm.acquisition_manifest = manifest
-    arm.envelope = SimpleNamespace(bench_attempt=None)
+    arm.runtime_context = SimpleNamespace(
+        bench_attempt=None, authoritative_inputs=_FROZEN_INPUTS
+    )
     arm.programme = SimpleNamespace(
         controller_inhibit_acquisition_continues=False,
         armable_hybrid_states={"HYBRID_TRACKING"},
@@ -581,6 +593,9 @@ def test_observer_failure_after_ready_preserves_capture_and_blocks_authority(
         supervisor = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
         supervisor.run_dir = run_dir
         supervisor.acquisition_manifest = manifest
+        supervisor.runtime_context = SimpleNamespace(
+            authoritative_inputs=_FROZEN_INPUTS
+        )
         holds: list[str] = []
         supervisor._enter_host_verification_hold = lambda error, *, source: holds.append(
             f"{source}: {error}"

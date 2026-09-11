@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from functools import lru_cache
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -50,6 +52,23 @@ def _canonical_sha256(value: object) -> str:
             value, sort_keys=True, separators=(",", ":"), allow_nan=False
         ).encode("utf-8")
     ).hexdigest()
+
+
+@lru_cache(maxsize=32)
+def _check_schema_bytes(canonical_schema: str) -> None:
+    """Reuse only schema syntax validation for identical immutable bytes.
+
+    Content and set hashes, closure, and profile-instance validation still run
+    at every authority boundary. A modified schema is a different cache key;
+    invalid schemas raise and are not cached. No mutable document is cached.
+    """
+    Draft202012Validator.check_schema(json.loads(canonical_schema))
+
+
+def _check_schema(schema: dict[str, Any]) -> None:
+    _check_schema_bytes(
+        json.dumps(schema, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    )
 
 
 def _safe_repository_path(repo_root: Path, relative: str, prefix: str) -> Path:
@@ -204,7 +223,7 @@ def _validate_entries(
     return entries, documents
 
 
-def validate_authoritative_inputs(value: object) -> dict[str, dict[str, Any]]:
+def _validate_input_set(value: object) -> dict[str, dict[str, Any]]:
     """Validate embedded bytes, transitive closure, schemas, and their set hash."""
 
     if not isinstance(value, dict):
@@ -265,7 +284,7 @@ def validate_authoritative_inputs(value: object) -> dict[str, dict[str, Any]]:
         if profile_path not in profile_documents or schema_path not in schema_documents:
             raise ValueError("frozen profile/schema binding is unavailable")
         schema = schema_documents[schema_path]
-        Draft202012Validator.check_schema(schema)
+        _check_schema(schema)
         errors = sorted(
             Draft202012Validator(schema).iter_errors(profile_documents[profile_path]),
             key=lambda error: list(error.absolute_path),
@@ -275,61 +294,98 @@ def validate_authoritative_inputs(value: object) -> dict[str, dict[str, Any]]:
                 f"frozen profile fails {schema_path}: {errors[0].message}"
             )
     for schema in schema_documents.values():
-        Draft202012Validator.check_schema(schema)
+        _check_schema(schema)
     return {**profile_documents, **schema_documents, **contract_documents}
 
 
-def authoritative_document(value: object, relative: str) -> dict[str, Any]:
-    documents = validate_authoritative_inputs(value)
-    try:
-        return documents[relative]
-    except KeyError as error:
-        raise ValueError(f"frozen authoritative input is unavailable: {relative}") from error
+@dataclass(frozen=True, slots=True)
+class _ValidatedEntry:
+    group: str
+    path: str
+    sha256: str
+    size_bytes: int
+    content: str
 
 
-def authoritative_binding(value: object, relative: str) -> dict[str, Any]:
-    validate_authoritative_inputs(value)
-    assert isinstance(value, dict)
-    for group in ("profiles", "schemas", "contracts"):
-        entries = value[group]
-        assert isinstance(entries, list)
-        for item in entries:
-            if isinstance(item, dict) and item.get("path") == relative:
-                return {
-                    "path": relative,
-                    "sha256": item["sha256"],
-                    "size_bytes": item["size_bytes"],
-                }
-    raise ValueError(f"frozen authoritative input is unavailable: {relative}")
+@dataclass(frozen=True, slots=True, init=False)
+class ValidatedAuthoritativeInputs:
+    """One validated immutable input snapshot, independent of caller mutation.
+
+    Construction is the raw-data boundary. Consumers read detached documents
+    and bindings from these exact bytes without repeating validation or
+    consulting the checkout. A new raw payload requires a new instance.
+    """
+
+    _encoded: str
+    _entries: tuple[_ValidatedEntry, ...]
+    set_sha256: str
+
+    def __init__(self, value: object) -> None:
+        if not isinstance(value, dict):
+            raise ValueError("frozen authoritative inputs are malformed")
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        snapshot = json.loads(encoded)
+        _validate_input_set(snapshot)
+        object.__setattr__(self, "_encoded", encoded)
+        object.__setattr__(self, "set_sha256", snapshot["set_sha256"])
+        object.__setattr__(self, "_entries", tuple(
+            _ValidatedEntry(group=group, **entry)
+            for group in ("profiles", "schemas", "contracts")
+            for entry in snapshot[group]
+        ))
+
+    def _entry(self, relative: str) -> _ValidatedEntry:
+        for entry in self._entries:
+            if entry.path == relative:
+                return entry
+        raise ValueError(f"frozen authoritative input is unavailable: {relative}")
+
+    def document(self, relative: str) -> dict[str, Any]:
+        return json.loads(self._entry(relative).content)
+
+    def binding(self, relative: str) -> dict[str, Any]:
+        entry = self._entry(relative)
+        return {"path": entry.path, "sha256": entry.sha256, "size_bytes": entry.size_bytes}
+
+    def as_dict(self) -> dict[str, Any]:
+        return json.loads(self._encoded)
+
+    def matches(self, value: object) -> bool:
+        try:
+            return self._encoded == json.dumps(
+                value, sort_keys=True, separators=(",", ":"), allow_nan=False
+            )
+        except (TypeError, ValueError):
+            return False
+
+    def summary(self) -> dict[str, Any]:
+        value = self.as_dict()
+        return {
+            "contract": value["contract"],
+            "root_profile": value["root_profile"],
+            **{group: [self.binding(entry.path) for entry in self._entries if entry.group == group]
+               for group in ("profiles", "schemas", "contracts")},
+            "profile_schema_bindings": value["profile_schema_bindings"],
+            "set_sha256": self.set_sha256,
+        }
 
 
-def authoritative_summary(value: object) -> dict[str, Any]:
-    validate_authoritative_inputs(value)
-    assert isinstance(value, dict)
-    return {
-        "contract": value["contract"],
-        "root_profile": value["root_profile"],
-        "profiles": [
-            {key: item[key] for key in ("path", "sha256", "size_bytes")}
-            for item in value["profiles"]
-        ],
-        "schemas": [
-            {key: item[key] for key in ("path", "sha256", "size_bytes")}
-            for item in value["schemas"]
-        ],
-        "contracts": [
-            {key: item[key] for key in ("path", "sha256", "size_bytes")}
-            for item in value["contracts"]
-        ],
-        "profile_schema_bindings": value["profile_schema_bindings"],
-        "set_sha256": value["set_sha256"],
-    }
+def validate_authoritative_inputs(value: object) -> ValidatedAuthoritativeInputs:
+    return ValidatedAuthoritativeInputs(value)
 
 
-def transaction_identities_from_bundle(bundle: dict[str, Any]) -> dict[str, str]:
-    frozen_inputs = bundle.get("authoritative_inputs")
-    validate_authoritative_inputs(frozen_inputs)
-    policy = authoritative_document(frozen_inputs, ROOT_PROFILE)
+def transaction_identities_from_bundle(
+    bundle: dict[str, Any], *, inputs: ValidatedAuthoritativeInputs | None = None,
+) -> dict[str, str]:
+    if inputs is None:
+        inputs = validate_authoritative_inputs(bundle.get("authoritative_inputs"))
+    elif not inputs.matches(bundle.get("authoritative_inputs")):
+        raise ValueError("transaction input context differs from bundle bytes")
+    policy = inputs.document(ROOT_PROFILE)
+    policy_sha256 = str(inputs.binding(ROOT_PROFILE)["sha256"])
+    bundle_policy = bundle.get("policy")
+    if not isinstance(bundle_policy, dict) or bundle_policy.get("policy_sha256") != policy_sha256:
+        raise ValueError("transaction policy identity differs from frozen root policy")
     bindings = policy.get("bindings", {})
     if not isinstance(bindings, dict):
         raise ValueError("adaptive-hybrid policy bindings are unavailable")
@@ -338,12 +394,12 @@ def transaction_identities_from_bundle(bundle: dict[str, Any]) -> dict[str, str]
         relative = bindings.get(name)
         if not isinstance(relative, str):
             raise ValueError(f"policy binding {name!r} is unavailable")
-        return str(authoritative_binding(frozen_inputs, relative)["sha256"])
+        return str(inputs.binding(relative)["sha256"])
 
     return {
         "estimator_sha256": digest("frequency_estimator"),
         "model_sha256": digest("plant_model"),
-        "active_policy_sha256": str(bundle["policy"]["policy_sha256"]),
+        "active_policy_sha256": policy_sha256,
         "response_policy_sha256": digest("response_classification"),
-        "numerical_policy_sha256": str(bundle["policy"]["policy_sha256"]),
+        "numerical_policy_sha256": policy_sha256,
     }

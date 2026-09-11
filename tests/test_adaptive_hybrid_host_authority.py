@@ -34,9 +34,8 @@ from host.otis_tools.adaptive_hybrid_bundle import (
 )
 from host.otis_tools.authoritative_inputs import (
     ROOT_PROFILE,
-    authoritative_binding,
-    authoritative_summary,
     collect_authoritative_inputs,
+    validate_authoritative_inputs,
 )
 from host.otis_tools.firmware_binary import (
     EXPECTED_GNSS_PACKET,
@@ -59,7 +58,7 @@ from host.otis_tools.adaptive_hybrid_health import (
     SETUP_AUTHORITY_PATH,
     AdaptiveHybridSupervisorBase,
 )
-from host.otis_tools.adaptive_hybrid_supervisor import load_active_hybrid_spec
+from host.otis_tools.adaptive_hybrid_supervisor import prepare_runtime_context
 from host.otis_tools.adaptive_hybrid_monitor import _diagnostic_review_hold
 from host.otis_tools.adaptive_hybrid_transactions import (
     AdaptiveHybridTransactionSupervisor,
@@ -881,12 +880,14 @@ def test_live_supervisor_consumes_frozen_manifest_without_reproduction(
     monkeypatch.setattr(
         activation_module, "validate_run_manifest", current_validator
     )
-    spec = object()
-    identities = object()
+    context = SimpleNamespace(
+        build_identity=build_identity,
+        matches_manifest=lambda value: value == manifest,
+    )
     monkeypatch.setattr(
         supervisor_module,
-        "load_active_hybrid_spec",
-        lambda _manifest: (spec, identities),
+        "prepare_runtime_context",
+        lambda _manifest: context,
     )
     monkeypatch.setattr(
         supervisor_module,
@@ -903,7 +904,7 @@ def test_live_supervisor_consumes_frozen_manifest_without_reproduction(
         expected_build_identity=build_identity,
     )
     assert frozen_calls == [manifest_path]
-    assert result["manifest"] == manifest
+    assert result["runtime_context"] is context
 
 
 def test_live_manifest_requires_matching_current_reproduction_capability(
@@ -1010,9 +1011,12 @@ def test_authoritative_input_collection_rejects_an_unreferenced_extra_profile(
         collect_authoritative_inputs(repo_root=tmp_path)
 
 
-def test_live_runtime_envelope_consumes_frozen_profiles_not_checkout_paths() -> None:
+def test_runtime_context_validates_once_and_detaches_static_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     frozen = collect_authoritative_inputs()
-    policy = authoritative_binding(frozen, ROOT_PROFILE)
+    inputs = validate_authoritative_inputs(frozen)
+    policy = inputs.binding(ROOT_PROFILE)
     manifest = {
         "programme_id": ADAPTIVE_HYBRID_PROGRAMME.programme_id,
         "image_identity": ADAPTIVE_HYBRID_PROGRAMME.profile_id,
@@ -1036,7 +1040,27 @@ def test_live_runtime_envelope_consumes_frozen_profiles_not_checkout_paths() -> 
         ).as_dict(),
         ADAPTIVE_HYBRID_PROGRAMME.manifest_section: {},
     }
-    spec, identities = load_active_hybrid_spec(manifest)
+    validation_calls: list[object] = []
+    original_validate = supervisor_module.validate_authoritative_inputs
+
+    def validate_once(value: object):
+        validation_calls.append(value)
+        return original_validate(value)
+
+    monkeypatch.setattr(
+        supervisor_module, "validate_authoritative_inputs", validate_once
+    )
+    context = prepare_runtime_context(manifest)
+    spec, identities = supervisor_module.runtime_spec(context)
+    detached_policy = context.policy_document()
+    detached_policy["policy_id"] = "mutated caller copy"
+    manifest["authoritative_inputs"]["profiles"][0]["content"] = "{}"
+
+    assert len(validation_calls) == 1
+    assert not context.matches_manifest(manifest)
+    assert context.policy_document()["policy_id"] == ADAPTIVE_HYBRID_PROGRAMME.policy_id
+    assert supervisor_module.runtime_spec(context) == (spec, identities)
+    assert len(validation_calls) == 1
     assert spec.profile == ADAPTIVE_HYBRID_PROGRAMME.profile_id
     assert identities["active_policy_sha256"] == policy["sha256"]
     assert identities["estimator_sha256"] == next(

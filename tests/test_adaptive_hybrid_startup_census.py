@@ -17,7 +17,7 @@ def _supervisor(tmp_path: Path) -> AdaptiveHybridSupervisor:
     supervisor = object.__new__(AdaptiveHybridSupervisor)
     supervisor.run_dir = tmp_path
     supervisor.programme = ADAPTIVE_HYBRID_PROGRAMME
-    supervisor.envelope = SimpleNamespace(bench_attempt=None)
+    supervisor.runtime_context = SimpleNamespace(bench_attempt=None)
     supervisor.spec = SimpleNamespace(
         campaign="adaptive_hybrid_regulation",
         run_identity="run",

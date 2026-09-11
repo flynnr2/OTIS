@@ -15,6 +15,7 @@ from hashlib import sha256
 import io
 import json
 import os
+import sys
 from pathlib import Path
 import time
 from typing import Any
@@ -25,6 +26,9 @@ from .adaptive_hybrid_contract import (
     programme_from_mapping,
 )
 from .capture_device import _serial_owner_pids
+from .adaptive_hybrid_session import (
+    MONITOR_SAMPLES_PATH, MONITOR_STOP_PATH, _binding, publish_monitor_state,
+)
 from .contracts import (
     ACTIVE_HYBRID_DECISION_V3_FIELDS,
     ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
@@ -508,6 +512,14 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
 
     run_dir = run_dir.resolve()
     manifest = validate_frozen_run_manifest(run_dir / "run_manifest.json")
+    return snapshot_validated(run_dir, manifest, now=now)
+
+
+def snapshot_validated(
+    run_dir: Path, manifest: dict[str, Any], *, now: float | None = None
+) -> dict[str, Any]:
+    """Evaluate changing evidence against this process's validated run context."""
+    run_dir = run_dir.resolve()
     programme = programme_from_mapping(manifest)
     now = time.time() if now is None else now
     capture = _read_object(run_dir / CAPTURE_STATE)
@@ -703,7 +715,7 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
         "run_dir": str(run_dir),
         "run_id": manifest["run_id"],
         "bundle_sha256": manifest["bundle"]["bundle_sha256"],
-        "activation_sha256": manifest["activation"]["activation_sha256"],
+        "activation_sha256": manifest.get("activation", {}).get("activation_sha256"),
         "terminal": terminal,
         "integrity_faults": integrity_faults,
         "diagnostic_review_hold": diagnostic_hold,
@@ -776,11 +788,52 @@ def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
     }
 
 
+def run_monitor(
+    run_dir: Path, manifest: dict[str, Any], *, stop_path: Path | None = None,
+) -> int:
+    """Same observation-only worker for physical and validated private PTY runs."""
+    run_dir = run_dir.resolve()
+    stop_path = stop_path or run_dir / MONITOR_STOP_PATH
+    if stop_path.resolve() != run_dir / MONITOR_STOP_PATH:
+        raise ValueError("monitor stop path differs from this session")
+    binding = _binding(run_dir, run_dir / "run_manifest.json")
+    count = 0
+    path = run_dir / MONITOR_SAMPLES_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as output:
+        while not stop_path.exists():
+            try:
+                sample = snapshot_validated(run_dir, manifest)
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                sample = {
+                    "schema_version": 1, "tool": TOOL_ID,
+                    "observed_utc": _utc_now(), "status": "review_required",
+                    "run_dir": str(run_dir), "diagnostic": str(exc),
+                    "control_authority": False,
+                }
+            output.write(json.dumps(sample, sort_keys=True, allow_nan=False) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+            count += 1
+            publish_monitor_state(run_dir, binding, sample_count=count,
+                                  status=sample["status"], diagnostic=sample.get("diagnostic"))
+            time.sleep(1.0)
+    return 0
+
+
+def monitor_command(run_dir: Path) -> list[str]:
+    return [sys.executable, "-m", "host.otis_tools.adaptive_hybrid_monitor", str(run_dir), "--watch"]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
+    parser.add_argument("--watch", action="store_true")
     args = parser.parse_args(argv)
     try:
+        if args.watch:
+            manifest = validate_frozen_run_manifest(args.run_dir / "run_manifest.json")
+            return run_monitor(args.run_dir, manifest)
         result = snapshot(args.run_dir)
     except (FileNotFoundError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))

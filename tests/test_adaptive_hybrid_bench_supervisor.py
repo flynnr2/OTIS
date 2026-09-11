@@ -49,7 +49,7 @@ def _causal_state(purpose: str) -> dict[str, object]:
 def _bare_supervisor(purpose: str, run_dir: Path) -> supervisor_module.AdaptiveHybridSupervisor:
     supervisor = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
     envelope = envelope_for_purpose(purpose)
-    supervisor.envelope = SimpleNamespace(bench_attempt=envelope)
+    supervisor.runtime_context = SimpleNamespace(bench_attempt=envelope)
     supervisor.programme = ADAPTIVE_HYBRID_PROGRAMME
     supervisor.run_dir = run_dir
     supervisor.state = {
@@ -451,7 +451,7 @@ def test_long_run_authority_closes_only_at_automatic_application_limit(
     tmp_path: Path,
 ) -> None:
     supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
-    limit = supervisor.envelope.bench_attempt.limits.automatic_application_limit
+    limit = supervisor.runtime_context.bench_attempt.limits.automatic_application_limit
     rows = []
     for sequence in range(1, limit + 1):
         rows.append(
@@ -632,7 +632,7 @@ def test_arm_admission_closes_at_exact_accepted_aperture_boundary(
     supervisor._save = lambda: None
     events: list[dict[str, object]] = []
     supervisor._programme_event = lambda _event, **fields: events.append(fields)
-    limits = supervisor.envelope.bench_attempt.limits
+    limits = supervisor.runtime_context.bench_attempt.limits
     deadline = limits.automatic_application_admission_deadline_apertures
 
     before = {
@@ -964,7 +964,7 @@ def test_qualified_apertures_allow_zero_wrap_but_never_add_epochs(tmp_path: Path
 
 def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> None:
     supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
-    limits = supervisor.envelope.bench_attempt.limits
+    limits = supervisor.runtime_context.bench_attempt.limits
     deadline = limits.automatic_application_admission_deadline_apertures
     supervisor.state.update(
         {
@@ -1029,7 +1029,7 @@ def test_physical_factory_exposes_no_private_rehearsal_capability() -> None:
         supervisor_module.create_supervisor
     ).parameters
     with pytest.raises(ValueError, match="lacks an exact bench-attempt envelope"):
-        supervisor_module._runtime_envelope(
+        supervisor_module.prepare_runtime_context(
             {"programme_id": ADAPTIVE_HYBRID_PROGRAMME.programme_id}
         )
 
@@ -1059,22 +1059,23 @@ def test_validated_nonphysical_spec_helper_accepts_only_exact_private_boundary(
     }
     observed: list[tuple[dict[str, object], object]] = []
 
-    def load(
-        manifest: dict[str, object], *, private_rehearsal_capability: object
-    ) -> tuple[str, str]:
+    context = object()
+
+    def prepare(
+        manifest: dict[str, object], *, private_rehearsal_capability: object,
+        authoritative_inputs: object | None = None,
+    ) -> object:
+        assert authoritative_inputs is None
         observed.append((manifest, private_rehearsal_capability))
-        return "spec", "identities"
+        return context
 
-    monkeypatch.setattr(supervisor_module, "load_active_hybrid_spec", load)
+    monkeypatch.setattr(supervisor_module, "_prepare_runtime_context", prepare)
 
-    assert supervisor_module.load_validated_nonphysical_rehearsal_spec(private) == (
-        "spec",
-        "identities",
-    )
+    assert supervisor_module.prepare_validated_nonphysical_rehearsal_context(private) is context
     assert observed[0][0]["stage"] == ADAPTIVE_HYBRID_PROGRAMME.live_stage
     assert observed[0][1] is not None
 
     near_miss = {**private, "physical_actions_performed": 1}
     with pytest.raises(ValueError, match="zero-authority boundary"):
-        supervisor_module.load_validated_nonphysical_rehearsal_spec(near_miss)
+        supervisor_module.prepare_validated_nonphysical_rehearsal_context(near_miss)
     assert len(observed) == 1

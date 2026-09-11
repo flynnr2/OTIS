@@ -42,7 +42,7 @@ initial condition, a controller takeover, or a fresh campaign.
 | USB framing and outbound queues | Core 0, sole queue consumer | Before attachment, bounded discard preserves internal service. Current transport faults retain the campaign's fail-static semantics. |
 | Host serial descriptor and recorded frontier | Capture process | Supervisor, monitor, and runner use retained evidence and command channels; they do not open competing serial descriptors. |
 | Campaign admission and acknowledgement | Host supervisor | Requires exact retained sources and frozen campaign authority. Host discrepancy is a review hold, not independent abort authority. |
-| Process lifecycle | Host runner | Starts and retains capture, supervisor, and monitor; waits for delivered abort before capture closure. |
+| Process lifecycle | Shared `AdaptiveHybridSession` | Physical and PTY adapters launch the same capture/support lifecycle and monitor loop; initialized-worker receipts precede service readiness. Delivered abort still precedes authorized capture closure. |
 | Acquisition evidence, analysis, seal, registration | Separate recorder and offline stages | An analyzer result cannot rewrite physical acquisition; sealing and registration retain distinct outcomes. |
 
 Core 0 and Core 1 actuator guards are not duplicate control owners. One binds
@@ -291,3 +291,49 @@ Physical qualification still requires the exact frozen firmware/host bundle,
 the real bench launch context, and its operational-path rehearsal. This tranche
 does not flash, reset, open a device, change a DAC code, or revise the sealed
 physical attempt.
+
+## Superstructure simplification brought forward
+
+The first bench-entry rehearsal at merged PR #177 failed before supervisor
+readiness. Reviewing that escape also found that the earlier ownership table
+overstated the physical runner: it launched capture and supervision, while only
+the rehearsal launched a separate monitor loop. The table above describes the
+successor shared implementation, not a capability established by PR #177.
+
+At the operator's direction, broader host simplification now precedes bench
+qualification. The finite scope is an immutable validated runtime configuration,
+one concrete process lifecycle and monitor loop, explicit initialized-worker
+readiness, and reachable diagnostic closure. Independent raw-source replay,
+fresh census and exact transaction guards remain. This is not an autonomous
+instrument implementation or a generalized campaign framework.
+
+The [superstructure work record](../60_EXPERIMENTS/STARTUP_VALIDATION_REPAIR_2026_09_11.md)
+records the escaped failure, implementation and verification boundary.
+
+## Instrument services versus disposable campaign machinery
+
+The intended normal experience is power on, acquire and discipline, then use
+D9; optionally attach a host to record or inspect. This is the product direction,
+not a claim that standalone startup is implemented today. Users must not need
+campaign manifests, qualification runners, sealing or engineering process
+knowledge to operate the finished instrument.
+
+The operator's intended live instrument must not inherit the qualification
+runner as a mandatory runtime. Durable instrument responsibilities are hardware
+capture, accepted-reference measurement, bounded firmware actuation, explicit
+state and protocol, and sufficient raw provenance. Host recording and offline
+reconstruction remain useful independent consumers; attaching them does not
+make them the timing owner.
+
+`AdaptiveHybridSession`, private PTY stimulus, frozen campaign activation,
+qualification deadlines and campaign-specific finalization are removable host
+campaign machinery. Sharing their current process implementation prevents
+rehearsal drift; it does not promote them into the instrument architecture.
+They add no firmware dependency. The runtime context belongs to today's
+supervised campaign, not to a compulsory future standalone service.
+
+Retain a regression where it protects a demonstrated invariant. Retire obsolete
+campaign adapters and fixtures when their decision is complete; preserve their
+source revision and evidence rather than current compatibility branches. Future
+standalone operation should consume the explicit instrument state/protocol,
+not reproduce this campaign's activation, manifest or process topology.

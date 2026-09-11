@@ -9,6 +9,8 @@ import pytest
 
 from host.otis_tools import adaptive_hybrid_bundle as bundle_module
 from host.otis_tools import adaptive_hybrid_operational_rehearsal as rehearsal_module
+from host.otis_tools import adaptive_hybrid_supervisor as supervisor_module
+from host.otis_tools import authoritative_inputs
 from host.otis_tools.adaptive_hybrid_bundle import create_bundle
 from host.otis_tools.adaptive_hybrid_operational_rehearsal import (
     REQUIRED_BOUNDARIES,
@@ -104,11 +106,63 @@ def test_rehearsal_startup_snapshot_does_not_invent_capture_lease(monkeypatch, t
     assert instrument._active_health()[("adaptive_hybrid", "capture_lease_live")] == "true"
 
 
+def test_cold_supervisor_worker_reaches_actual_factory_with_one_schema_check_per_content(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bundle_path, proposal_path = _frozen_inputs(monkeypatch, tmp_path)
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    run_dir = tmp_path / "cold-worker-run"
+    run_dir.mkdir()
+    manifest_path = rehearsal_module.create_rehearsal_run_manifest(
+        run_dir=run_dir,
+        bundle_path=bundle_path,
+        bundle=bundle,
+        proposal_path=proposal_path,
+        proposal=proposal,
+        device="/dev/ttys999",
+    )
+    authoritative_inputs._check_schema_bytes.cache_clear()
+    checked: list[str] = []
+    original = authoritative_inputs.Draft202012Validator.check_schema
+
+    def check(schema: object) -> None:
+        checked.append(json.dumps(schema, sort_keys=True))
+        original(schema)
+
+    monkeypatch.setattr(
+        authoritative_inputs.Draft202012Validator, "check_schema", check
+    )
+
+    def stop_at_run(supervisor: supervisor_module.AdaptiveHybridSupervisor) -> int:
+        startup = json.loads(
+            (run_dir / rehearsal_module.SUPERVISOR_STARTUP_PATH).read_text()
+        )
+        assert startup["current_phase"] == "ready_to_run"
+        assert supervisor.state_path.is_file()
+        return 23
+
+    monkeypatch.setattr(supervisor_module.AdaptiveHybridSupervisor, "run", stop_at_run)
+
+    assert rehearsal_module._supervisor_worker(manifest_path, run_dir) == 23
+    assert len(checked) == len(set(checked)) == len(
+        authoritative_inputs.CURRENT_SCHEMA_PATHS
+    )
+
+
 def test_full_process_operational_rehearsal_reaches_registered_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     bundle_path, proposal_path = _frozen_inputs(monkeypatch, tmp_path)
     run_dir = tmp_path / "rehearsal-run"
+    original_start = rehearsal_module.DeterministicPtyInstrument.start
+
+    def start_after_capture_owns_slave(instrument):
+        session = json.loads((run_dir / "reports/adaptive_hybrid_session_v1.json").read_text())
+        assert session["phase"] == "capture_ready"
+        return original_start(instrument)
+
+    monkeypatch.setattr(rehearsal_module.DeterministicPtyInstrument, "start", start_after_capture_owns_slave)
     report_path = run_operational_rehearsal(
         bundle_path=bundle_path,
         proposal_path=proposal_path,
@@ -190,7 +244,7 @@ def test_rehearsal_raw_accepted_sources_and_phase_are_coherent(
     import csv
     import io
     from host.otis_tools.accepted_span_replay import replay_accepted_spans
-    from host.otis_tools.authoritative_inputs import authoritative_document
+    from host.otis_tools.authoritative_inputs import validate_authoritative_inputs
     from host.otis_tools.contracts import CONTRACT_FIELDS
 
     bundle_path, _ = _frozen_inputs(monkeypatch, tmp_path)
@@ -229,11 +283,12 @@ def test_rehearsal_raw_accepted_sources_and_phase_are_coherent(
             expected_policy_sha256=instrument.reference_acceptance_binding["policy_sha256"],
         ))
         assert validation.ok, (contract, validation.errors)
-    policy = authoritative_document(bundle["authoritative_inputs"], "data_contracts/reference_acceptance_policy_v1.json")
+    inputs = validate_authoritative_inputs(bundle["authoritative_inputs"])
+    policy = inputs.document("data_contracts/reference_acceptance_policy_v1.json")
     exact, report, accepted = replay_accepted_spans(
         rows["SNP"], rows["REF"], rows["CNT"], rows["APS"],
         acceptance_policy=policy,
-        acceptance_policy_sha256=rehearsal_module._reference_acceptance_binding(bundle)["policy_sha256"],
+        acceptance_policy_sha256=rehearsal_module._reference_acceptance_binding(inputs)["policy_sha256"],
     )
     assert exact, report
     assert len(accepted) == 7803

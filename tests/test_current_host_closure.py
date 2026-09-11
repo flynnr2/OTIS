@@ -136,7 +136,9 @@ def test_current_host_closure_has_no_retired_programme_modules() -> None:
     # without a frontier/replay import cycle. The prior ceiling was 33.
     # Accepted-span reconstruction is one shared leaf used by live readiness
     # and offline verification; it does not introduce another operational path.
-    assert len(closure) <= 36, f"current host closure unexpectedly broad: {len(closure)}"
+    # The concrete session owner replaces separate physical/PTY process lifecycle
+    # code; both paths now depend on this one capture/support/closure boundary.
+    assert len(closure) <= 37, f"current host closure unexpectedly broad: {len(closure)}"
 
 
 def test_every_semantic_adaptive_hybrid_module_is_in_current_closure() -> None:
