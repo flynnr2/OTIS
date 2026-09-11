@@ -13,7 +13,7 @@ frequency are diagnostic only.
 | `session` | u32 | Capture session. A change forbids differencing across the boundary. |
 | `snapshot_sequence` | u32 | DMA producer ordinal within the session, modulo 2^32. |
 | `cumulative_down_counter` | u32 | Raw PIO X value captured with `IN X, 32`; not an interval. |
-| `reference_sequence` | u32 | Sequence of the associated physical `REF` rising edge. |
+| `reference_sequence` | u32 | Physical D14 capture producer ordinal (`OtisCapturedEdge.source_sequence`), modulo 2^32; distinct from the emitted `REF.event_seq`. |
 | `reference_timestamp_ticks` | u64 | Immutable timestamp of that `REF`, in the `rp2040_monotonic_us32` domain. |
 | `status` | u32 bitmask | Snapshot transport/capture status; zero is clean. |
 | `backend` | text | Capture implementation identity. The candidate is `pio_wait_cumulative_snapshot_dma_v1`. |
@@ -36,6 +36,14 @@ Snapshot and reference sequences must both be adjacent modulo 2^32.  Any
 status bit, gap, duplicate, ambiguous full counter wrap, association loss,
 FIFO/DMA/ring fault, or session transition fails closed.  Reacquisition needs
 two new clean snapshots; late records are never paired retroactively.
+
+`SNP.reference_sequence` and `REF.event_seq` are independent counters. The
+foreground emitter assigns `event_seq` across raw event records, including
+external events; equality or a fixed offset is not an association contract.
+Match the immutable D14 timestamp in its declared domain and preserve the
+ordered occurrence across rollover. A low 32-bit timestamp alone is not a
+globally unique identity. Ambiguous or missing associations fail replay locally;
+unrelated external-event activity must not become a D14/D8 validity veto.
 
 `reference_timestamp_ticks` inherits the canonical `rp2040_monotonic_us32` domain from
 this contract. Legal modular progression is automatic; a session transition

@@ -15,7 +15,9 @@ constexpr uint32_t OTIS_CRITICAL_QUEUE_DEPTH = 16u;
 // decision burst followed by a two-frame response burst.  Core
 // 1 produces each complete boundary synchronously, so the evidence queue must
 // absorb the exact largest producer frontier without relying on concurrent
-// Core 0 drainage.
+// Core 0 drainage. A freshly detected metadata hold adds one lifecycle frame
+// before a complete selected response. The next power-of-two ring capacity
+// preserves slot continuity when the uint32 producer/consumer indices wrap.
 constexpr uint32_t OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_PREFIX_COUNT =
     OTIS_EVIDENCE_SELECTED_PREFIX_COUNT;
 constexpr uint32_t OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_SUFFIX_COUNT =
@@ -42,8 +44,19 @@ constexpr uint32_t OTIS_ADAPTIVE_HYBRID_REQUEST_FAIL_EVIDENCE_FRONTIER =
     OTIS_ADAPTIVE_HYBRID_REQUEST_DECISION_EVIDENCE_COUNT +
     OTIS_ADAPTIVE_HYBRID_FAIL_TRANSITION_EVIDENCE_COUNT +
     OTIS_ADAPTIVE_HYBRID_SELECTED_EVIDENCE_SUFFIX_COUNT;
+constexpr uint32_t OTIS_ADAPTIVE_HYBRID_METADATA_RESPONSE_EVIDENCE_FRONTIER =
+    OTIS_EVIDENCE_METADATA_TRANSITION_COUNT +
+    OTIS_ADAPTIVE_HYBRID_RESPONSE_EVIDENCE_FRONTIER;
 constexpr uint32_t OTIS_EVIDENCE_QUEUE_DEPTH_VALUE =
     OTIS_EVIDENCE_QUEUE_DEPTH;
+static_assert((OTIS_EVIDENCE_QUEUE_DEPTH & (OTIS_EVIDENCE_QUEUE_DEPTH - 1u)) == 0u,
+              "uint32 evidence ring slot mapping requires a power-of-two capacity");
+static_assert(OTIS_ADAPTIVE_HYBRID_METADATA_RESPONSE_EVIDENCE_FRONTIER ==
+                  OTIS_EVIDENCE_METADATA_RESPONSE_FRONTIER,
+              "metadata transition plus complete response frontier must remain exact");
+static_assert(OTIS_EVIDENCE_QUEUE_DEPTH_VALUE >=
+                  OTIS_ADAPTIVE_HYBRID_METADATA_RESPONSE_EVIDENCE_FRONTIER,
+              "evidence queue must absorb metadata plus selected response without Core 0 drainage");
 static_assert(OTIS_ADAPTIVE_HYBRID_REQUEST_EVIDENCE_FRONTIER ==
                   OTIS_EVIDENCE_REQUEST_FRONTIER,
               "ADAPTIVE_HYBRID selected request frontier must remain exact");

@@ -22,6 +22,7 @@ from typing import Any
 from .adaptive_hybrid_activation import validate_frozen_run_manifest
 from .active_status_live_state import LIVE_STATE_PATH
 from .adaptive_hybrid_contract import (
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
     AdaptiveHybridProgramme,
     programme_from_mapping,
@@ -29,7 +30,12 @@ from .adaptive_hybrid_contract import (
 )
 from .adaptive_hybrid_evidence import replay_adaptive_hybrid_maintenance_history
 from .adaptive_hybrid_policy import AdaptiveHybridPolicy, policy_from_mapping
-from .adaptive_hybrid_replay import _capsules_exact, _measurement_replay, _response_replay
+from .adaptive_hybrid_replay import (
+    _capsules_exact,
+    _measurement_replay,
+    _response_replay,
+    replay_active_decision_measurement_sources,
+)
 from .adaptive_hybrid_transactions import CampaignSpec, _read_csv, validate_transaction_history
 from .contracts import CsvValidationContext, validate_csv
 from .authoritative_inputs import (
@@ -54,7 +60,6 @@ CAPTURE_STATE = Path("reports/capture_device_state.json")
 CAPTURE_CLOSURE = Path("reports/capture_segment_closure_v1.json")
 ACTIVE_TRANSACTIONS = Path("csv/active_transactions_v2.csv")
 DAC_STEPS = Path("csv/dac_steps.csv")
-
 
 def _sha256_file(path: Path) -> str:
     digest = sha256()
@@ -170,6 +175,56 @@ def _normalize_terminal(
         )
         return exact, primary if exact else None, result, reason
     return False, None, result if isinstance(result, str) else None, reason
+
+
+def classify_scientific_outcome(
+    terminal: object,
+    programme: AdaptiveHybridProgramme,
+    *,
+    bench_attempt: object,
+    qualified_d14_accepted_apertures: object,
+) -> str:
+    """Classify the scientific outcome from the frozen endpoint evidence.
+
+    A passing offline-integrity check is deliberately insufficient here.  The
+    finite campaign succeeds only at the exact accepted-D14/D8-aperture
+    endpoint declared by the programme and bench-attempt envelope.
+    """
+
+    exact, decision, result, _ = _normalize_terminal(
+        terminal,
+        programme,
+        bench_attempt=bench_attempt,
+    )
+    if not exact:
+        return "undetermined"
+    try:
+        validated_bench_attempt = validate_bench_attempt_envelope(bench_attempt)
+    except (TypeError, ValueError):
+        return "undetermined"
+    if result == "healthy_stop":
+        if validated_bench_attempt.purpose == INHIBITED_ZERO_WRITE:
+            return "diagnostic_complete"
+        if validated_bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+            return "undetermined"
+        if (
+            type(qualified_d14_accepted_apertures) is int
+            and qualified_d14_accepted_apertures
+            == programme.qualified_d14_aperture_count
+            and decision == programme.qualified_endpoint_reason
+        ):
+            return "qualified_complete"
+        return "undetermined"
+    if (
+        type(qualified_d14_accepted_apertures) is not int
+        or qualified_d14_accepted_apertures < 0
+    ):
+        return "undetermined"
+    if result == "aborted" or decision == "adaptive_hybrid_right_censored_incomplete":
+        return "interrupted_incomplete"
+    if result == "nonpass":
+        return "bounded_nonpass"
+    return "undetermined"
 
 
 def _validated_host_review_resolution(
@@ -822,6 +877,10 @@ def analyze(
     )
     transactions = _read_csv(_one_contract(manifest, "active_transactions_v2"))
     measurement_exact, measurement, _ = _measurement_replay(manifest, manifest_value)
+    decision_measurement_sources = replay_active_decision_measurement_sources(
+        manifest, measurement
+    )
+    measurement["active_decision_sources"] = decision_measurement_sources
     responses = shared_consumers["response_replay"]
     supervisor_state = _read_object(run_dir / SUPERVISOR_STATE)
     (
@@ -853,6 +912,9 @@ def analyze(
         ],
         "maintenance_replay_exact": maintenance_replay.get("exact") is True,
         "D14_D8_measurement_replay_exact": measurement_exact,
+        "decision_measurement_sources_exact": (
+            decision_measurement_sources.get("exact") is True
+        ),
         "response_replay_exact": shared_consumers["checks"][
             "response_replay_exact"
         ],
@@ -874,7 +936,21 @@ def analyze(
         bench_attempt=bench_attempt,
     )
     checks["supervisor_terminal_exact"] = terminal_exact
+    scientific_outcome = classify_scientific_outcome(
+        effective_terminal,
+        programme,
+        bench_attempt=bench_attempt,
+        qualified_d14_accepted_apertures=supervisor_state.get(
+            "qualified_d14_accepted_apertures"
+        ),
+    )
+    checks["scientific_outcome_determined"] = (
+        scientific_outcome != "undetermined"
+    )
     passed = all(checks.values())
+    evidence_integrity = "passed" if passed else "review_required"
+    if not passed:
+        scientific_outcome = "undetermined"
     source_hashes = _source_hashes(manifest)
     if source_hashes != before_hashes:
         raise RuntimeError("source evidence changed during offline analysis")
@@ -891,7 +967,9 @@ def analyze(
         "image_identity": spec.profile,
         "programme_id": programme.programme_id,
         "policy_id": policy.policy_id,
-        "status": "passed" if passed else "review_required",
+        "status": evidence_integrity,
+        "evidence_integrity": evidence_integrity,
+        "scientific_outcome": scientific_outcome,
         "primary_decision": (
             scientific_decision
             if passed and isinstance(scientific_decision, str)

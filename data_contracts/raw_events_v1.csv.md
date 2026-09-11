@@ -28,6 +28,14 @@ This is the primary timing-observation artifact for individual pulse edges. It i
 
 Reference captures should not be encoded as `EVT` plus a semantic flag. Use `REF` so host tooling, replay, and discipline analysis preserve the distinction between user events and reference observations.
 
+The current foreground producer assigns `event_seq` across both raw event
+families. A REF-only stream may therefore have increasing, non-adjacent event
+numbers when external events are interleaved. This counter is distinct from
+the physical D14 source ordinal retained as `SNP.reference_sequence`; neither
+equality nor a fixed offset between the two is guaranteed. D14 association
+must use its own immutable timestamps and source continuity without depending
+on D10 evidence being present or valid.
+
 The record describes what was captured, not what the event means in a particular experiment. Profiles and host-side analysis interpret channels, edges, and intervals as pendulum ticks, oscillator comparison pulses, radio timing events, or other application-specific meanings.
 
 ## H0 Reference Channels

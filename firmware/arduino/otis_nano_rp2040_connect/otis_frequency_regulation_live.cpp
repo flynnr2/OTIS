@@ -439,6 +439,7 @@ bool otis_frequency_regulation_live_applied_epoch_exact(uint16_t applied_code,
 void otis_frequency_regulation_live_on_boundary(
     const OtisPpsCountBoundaryObservation *observation,
     uint32_t interval_count, bool interval_valid, uint32_t uptime_s,
+    uint64_t operational_decision_raw_ticks,
     const OtisRegulationStaticCodeState *static_code,
     OtisAdaptiveHybridRegulationLiveOutcome *active_outcome) {
   if (active_outcome != nullptr) *active_outcome = {};
@@ -447,13 +448,20 @@ void otis_frequency_regulation_live_on_boundary(
   const bool boundary_extended = otis_monotonic_us_extension_advance_boundary(
       &timer_extension, observation->pps_timestamp_ticks,
       observation->session, &current_boundary_extended_ticks);
-  // The foreground service can run just after a whole-second boundary even
-  // when the captured D14 edge occurred just before it.  Derive both active
-  // decision timestamp fields from the same captured boundary; a separately
-  // sampled uptime_s would occasionally differ by one second and incorrectly
-  // trip the downstream exact-domain guard.
-  const uint64_t active_decision_timestamp_ticks =
-      boundary_extended ? current_boundary_extended_ticks : 0u;
+  // Source EST/REF/SNP/CNT timestamps retain the captured D14 coordinate.
+  // A control decision is a later operational event: the caller samples it
+  // after refreshing metadata health, so an asynchronous lifecycle transition
+  // can never be followed by a backdated decision from a delayed capture.
+  uint64_t active_decision_timestamp_ticks = 0u;
+  if (boundary_extended &&
+      operational_decision_raw_ticks < OTIS_RP2040_MONOTONIC_US32_MODULUS) {
+    const uint64_t elapsed_since_capture = otis_monotonic_us32_interval(
+        observation->pps_timestamp_ticks, operational_decision_raw_ticks);
+    if (elapsed_since_capture <= OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS &&
+        current_boundary_extended_ticks <= UINT64_MAX - elapsed_since_capture)
+      active_decision_timestamp_ticks =
+          current_boundary_extended_ticks + elapsed_since_capture;
+  }
   const uint32_t active_decision_timestamp_s = static_cast<uint32_t>(
       active_decision_timestamp_ticks / kCaptureTicksPerSecond);
   const bool interval_opening_exact =
@@ -616,7 +624,8 @@ void otis_frequency_regulation_live_get_authority_state(
 
 bool otis_frequency_regulation_live_extend_monotonic_us(
     uint64_t raw_ticks, uint64_t *extended_ticks) {
-  constexpr uint64_t kMaximumProjectionUs = 60ull * 1000000ull;
+  constexpr uint64_t kMaximumProjectionUs =
+      OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS;
   return otis_monotonic_us_extension_project_nearest(
       &timer_extension, raw_ticks, timer_extension.capture_session,
       kMaximumProjectionUs, extended_ticks);

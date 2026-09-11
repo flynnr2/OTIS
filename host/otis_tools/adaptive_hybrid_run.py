@@ -63,7 +63,12 @@ from .evidence_finalization import (
     recover_registration,
     set_registration_intent,
 )
-from .evidence_index import DEFAULT_INDEX, package_identity, register_package
+from .evidence_index import (
+    DEFAULT_INDEX,
+    campaign_attempt_classification,
+    package_identity,
+    register_package,
+)
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
 from .serial_commands import send_timestamped_command_to_fifo
 
@@ -840,16 +845,14 @@ def _retain_live_capture_for_host_review(
 def _registration(
     *,
     activation: dict[str, Any],
-    status: str,
+    evidence_integrity: str,
+    scientific_outcome: str,
     reason: str,
     analyzer_identity: str,
 ) -> dict[str, str]:
-    classification = (
-        "diagnostic"
-        if status == "review_required"
-        else COMPLETED_INDEX_CLASSIFICATION
-        if status in {"passed", "bounded_nonpass"}
-        else INTERRUPTED_INDEX_CLASSIFICATION
+    classification = campaign_attempt_classification(
+        evidence_integrity=evidence_integrity,
+        scientific_outcome=scientific_outcome,
     )
     return {
         "source_revision": str(activation["firmware"]["source_revision"]),
@@ -858,6 +861,8 @@ def _registration(
         "attempt_classification": classification,
         "result_or_failure_reason": reason,
         "analyzer_identity": analyzer_identity,
+        "evidence_integrity": evidence_integrity,
+        "scientific_outcome": scientific_outcome,
     }
 
 
@@ -873,7 +878,8 @@ def _register_unfinalized(
         package_path=run_dir,
         **_registration(
             activation=activation,
-            status="failed",
+            evidence_integrity="review_required",
+            scientific_outcome="undetermined",
             reason=f"ADAPTIVE_HYBRID retained unfinalized terminal: {error}",
             analyzer_identity=_sha256_file(Path(__file__)),
         ),
@@ -1084,6 +1090,8 @@ def _finalize_and_register(
         "analysis",
         {
             "status": seal["status"],
+            "evidence_integrity": seal["evidence_integrity"],
+            "scientific_outcome": seal["scientific_outcome"],
             "primary_decision": seal["primary_decision"],
             "tool_sha256": seal["tool_sha256"],
             "exact_lifecycle_records": exact_lifecycle_records,
@@ -1096,9 +1104,12 @@ def _finalize_and_register(
     )
     registration = _registration(
         activation=activation,
-        status=str(seal["status"]),
+        evidence_integrity=str(seal["evidence_integrity"]),
+        scientific_outcome=str(seal["scientific_outcome"]),
         reason=(
-            f"ADAPTIVE_HYBRID {seal['status']}: {seal['primary_decision']}"
+            f"ADAPTIVE_HYBRID evidence {seal['evidence_integrity']}; "
+            f"scientific {seal['scientific_outcome']}: "
+            f"{seal['primary_decision']}"
             + (
                 f"; orchestration={orchestration_error}"
                 if orchestration_error is not None
@@ -1115,6 +1126,8 @@ def _finalize_and_register(
     indexed = recover_registration(finalization_journal)
     return {
         "status": seal["status"],
+        "evidence_integrity": seal["evidence_integrity"],
+        "scientific_outcome": seal["scientific_outcome"],
         "primary_decision": seal["primary_decision"],
         "run_dir": str(run_dir),
         "seal": str(seal_path),
@@ -1229,7 +1242,8 @@ def run_adaptive_hybrid_qualification(
             required_seal=programme.physical_seal_path,
             registration=_registration(
                 activation=activation,
-                status="failed",
+                evidence_integrity="review_required",
+                scientific_outcome="undetermined",
                 reason="pending ADAPTIVE_HYBRID physical finalization",
                 analyzer_identity=_sha256_file(Path(__file__)),
             ),
@@ -1979,6 +1993,8 @@ def recover_adaptive_hybrid_finalization(
             "analysis",
             {
                 "status": seal["status"],
+                "evidence_integrity": seal["evidence_integrity"],
+                "scientific_outcome": seal["scientific_outcome"],
                 "primary_decision": seal["primary_decision"],
                 "tool_sha256": seal["tool_sha256"],
                 "exact_lifecycle_records": exact_lifecycle_records,
@@ -2000,8 +2016,13 @@ def recover_adaptive_hybrid_finalization(
         raise RuntimeError("offline recovery changed frozen acquisition evidence")
     registration = _registration(
         activation=activation,
-        status=str(seal["status"]),
-        reason=f"ADAPTIVE_HYBRID offline finalization recovery: {seal['primary_decision']}",
+        evidence_integrity=str(seal["evidence_integrity"]),
+        scientific_outcome=str(seal["scientific_outcome"]),
+        reason=(
+            f"ADAPTIVE_HYBRID offline finalization recovery; evidence "
+            f"{seal['evidence_integrity']}; scientific "
+            f"{seal['scientific_outcome']}: {seal['primary_decision']}"
+        ),
         analyzer_identity=str(seal["tool_sha256"]),
     )
     set_registration_intent(
@@ -2012,6 +2033,8 @@ def recover_adaptive_hybrid_finalization(
     indexed = recover_registration(journal_path)
     return {
         "status": seal["status"],
+        "evidence_integrity": seal["evidence_integrity"],
+        "scientific_outcome": seal["scientific_outcome"],
         "primary_decision": seal["primary_decision"],
         "run_dir": str(run_dir),
         "seal": str(seal_path),

@@ -33,6 +33,20 @@ derived interval, estimate, phase value, and regulation decision. Counter
 domain, width, rollover, sequence, and capture-session identity travel with the
 records needed to reconstruct them.
 
+Offline selected-frequency replay first associates raw D14 REF records with
+the declared cumulative-snapshot backend, then reconstructs each same-session
+CNT as `(previous_X - current_X) mod 2^32`. Endpoints, sequence/order and
+observable exclusion flags must agree before a count may support an estimate.
+A plausible CNT or matching EST cannot override inconsistent raw snapshots.
+The current emitted oscillator source domain is `h1_oscillator_10mhz`; current
+manifest generators declare that exact domain, with no retired alias.
+
+This raw-pair check proves retained arithmetic and association, not physical
+capture completeness. Unassociated terminal references remain visible, and
+missing or ambiguous pairs cannot enter selected estimates. The simulated
+operational rehearsal exercises a real raw anchor/pair fixture but does not
+claim to exercise a physical 600-aperture estimator producer.
+
 ## Core ownership
 
 | Core | Responsibility |

@@ -21,7 +21,7 @@ The contract declares:
 - the atomic ACTIVE status vocabulary, envelope and value encodings;
 - evidence, status, boot and concurrent-telemetry frontiers; and
 - decision-bearing relations that cannot be validated from one field alone,
-  including exact-tick projection, wrapped timestamp suffixes, causal identity
+  including exact-tick projection, bounded source-to-decision lag, causal identity
   and stateful response classification.
 
 The individual `*.csv.md` files remain the human-readable definitions of field

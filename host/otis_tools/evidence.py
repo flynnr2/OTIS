@@ -490,7 +490,7 @@ def _validate_operational_rehearsal_manifest(
         == [
             canonical_domain_declaration("rp2040_monotonic_us32"),
             canonical_domain_declaration("rp2040_monotonic_us64"),
-            canonical_domain_declaration("h1_adaptive_hybrid_ocxo_10mhz"),
+            canonical_domain_declaration("h1_oscillator_10mhz"),
         ]
         and value.get("channels") == _operational_rehearsal_channels()
         and value.get("files") == files

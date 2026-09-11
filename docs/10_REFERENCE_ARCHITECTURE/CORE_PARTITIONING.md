@@ -63,6 +63,13 @@ the service queue and Core 1 is the sole producer of the other five. Core 0
 drains Core 1 boot telemetry directly to the wire exactly once; it never
 republishes a consumed record.
 
+Core 0 is also the sole consumer of all Core 1 output queues before first
+carrier attachment, across attachment changes, and after a transport fault.
+Before attachment it discards bounded outbound batches while Core 1 continues
+servicing the timing fabric. The producer must never pop its own outbound
+queue in response to an independently sampled carrier state: that can race
+Core 0 and violate the SPSC read-cursor invariant.
+
 Automatic actuator transactions use a request sequence, decision reference,
 requested code, explicitly named wrapping monotonic-seconds deadline, one-time
 authorization sequence and nonce. Both core guards compare that same domain

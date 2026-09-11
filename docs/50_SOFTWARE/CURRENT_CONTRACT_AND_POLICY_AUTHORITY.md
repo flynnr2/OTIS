@@ -45,6 +45,29 @@ zero/default data and has no automatic abort or teardown authority. Detailed
 operation and generation instructions are in
 `data_contracts/otis_firmware_host_contract_v1.md`.
 
+The September consolidation distinguishes capture coordinates from lifecycle
+decision coordinates. REF/SNP/CNT/EST retain their original D14/D8 source
+coordinates. Active decision ticks record the actual decision-production
+instant after the current metadata-health update, extended into the same
+session's `rp2040_monotonic_us64` domain. Display seconds are projected from
+that one exact operational sample. The decision must consume its exact source
+sequence span and follow the captured estimate by at most 60,000,000 local
+microseconds. A future, ambiguous or over-age source enters diagnostic hold;
+source timing is never replaced by host or CPU service timing.
+
+This is a prospective contract change. It prevents an asynchronous metadata
+transition followed by a queued estimate decision from producing backward
+lifecycle timestamps. Existing packages retain the earlier contract digest
+and must not be reinterpreted as if they used the new decision coordinate.
+Cadence comparisons continue in exact extended ticks; physical settling and
+measurement aperture construction retain their captured source coordinates.
+
+The metadata transition plus complete selected response is a nine-frame
+composite evidence frontier. The output queue has sixteen slots so this entire
+frontier fits without concurrent Core 0 drainage, while preserving power-of-two
+indexing across the native queue cursor rollover. The fixed memory budget must
+still pass; increasing capacity is not permission to relax resource limits.
+
 ## Measurement authority
 
 D14 is the sole PPS/reference authority. D8 is the sole oscillator-count input

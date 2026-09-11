@@ -1110,7 +1110,7 @@ def create_run_manifest(
         "transaction_identities": _transaction_identities(bundle),
         "host": _host_contract(serial_device, bundle, bench_attempt),
         programme.manifest_section: section,
-        "domains": [canonical_domain_declaration(name) for name in ("rp2040_monotonic_us32", "rp2040_monotonic_us64", "h1_adaptive_hybrid_ocxo_10mhz")],
+        "domains": [canonical_domain_declaration(name) for name in ("rp2040_monotonic_us32", "rp2040_monotonic_us64", "h1_oscillator_10mhz")],
         "channels": _channels(),
         "contracts": _contract_versions(files),
         "files": files,
@@ -1233,7 +1233,7 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
             for name in (
                 "rp2040_monotonic_us32",
                 "rp2040_monotonic_us64",
-                "h1_adaptive_hybrid_ocxo_10mhz",
+                "h1_oscillator_10mhz",
             )
         ],
         "channels": _channels(),

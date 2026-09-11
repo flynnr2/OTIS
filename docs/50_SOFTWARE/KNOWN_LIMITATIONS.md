@@ -3,6 +3,14 @@
 Current HEAD has one fixed `adaptive_hybrid_regulation` image and no historical
 programme execution surface. The most important present limitations are:
 
+- the September consolidation repairs have native/host regressions but do not
+  yet establish physical qualification of metadata-hold history preservation,
+  pre-carrier queue ownership, or a changed reference-continuation policy;
+- raw snapshot/count replay now checks retained arithmetic and associations;
+  it does not prove capture completeness or the analog cause of the reported
+  D14 disturbances. The actual operational host fixture still lacks a full
+  physical 600-aperture estimator producer;
+
 - D10/channel 0 is reserved for external-event evidence, and the host contract
   preserves ingest, storage, replay, and zero-authority isolation, but firmware
   does not yet implement a capture backend that is safely isolated from D14;

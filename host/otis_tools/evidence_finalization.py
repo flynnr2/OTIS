@@ -219,6 +219,8 @@ def recover_registration(journal_path: Path) -> dict[str, Any]:
         result_or_failure_reason=metadata["result_or_failure_reason"],
         analyzer_identity=metadata["analyzer_identity"],
         expected_content_sha256=value["expected_content_sha256"],
+        evidence_integrity=metadata.get("evidence_integrity"),
+        scientific_outcome=metadata.get("scientific_outcome"),
     )
     advance_phase(
         journal_path,

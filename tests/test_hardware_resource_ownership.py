@@ -160,7 +160,13 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
     )
     emit_body = sketch_source[emit_start:emit_end]
     assert "otis_count_observation_on_pps_boundary(" in emit_body
-    assert "otis_monotonic_us32_now()" not in emit_body
+    # Physical count construction consumes retained capture coordinates. The
+    # later control decision separately records its actual production instant.
+    count_call = emit_body[:emit_body.index("const OtisRegulationStaticCodeState")]
+    assert "otis_monotonic_us32_now()" not in count_call
+    assert "otis_monotonic_us32_now()" in emit_body[
+        emit_body.index("otis_frequency_regulation_live_on_boundary("):
+    ]
 
     drain_start = sketch_source.index("void drain_pps_count_boundary_ring(")
     drain_end = sketch_source.index("void emit_build_provenance_status(", drain_start)
