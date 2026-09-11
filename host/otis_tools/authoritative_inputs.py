@@ -305,3 +305,26 @@ def authoritative_summary(value: object) -> dict[str, Any]:
         "profile_schema_bindings": value["profile_schema_bindings"],
         "set_sha256": value["set_sha256"],
     }
+
+
+def transaction_identities_from_bundle(bundle: dict[str, Any]) -> dict[str, str]:
+    frozen_inputs = bundle.get("authoritative_inputs")
+    validate_authoritative_inputs(frozen_inputs)
+    policy = authoritative_document(frozen_inputs, ROOT_PROFILE)
+    bindings = policy.get("bindings", {})
+    if not isinstance(bindings, dict):
+        raise ValueError("adaptive-hybrid policy bindings are unavailable")
+
+    def digest(name: str) -> str:
+        relative = bindings.get(name)
+        if not isinstance(relative, str):
+            raise ValueError(f"policy binding {name!r} is unavailable")
+        return str(authoritative_binding(frozen_inputs, relative)["sha256"])
+
+    return {
+        "estimator_sha256": digest("frequency_estimator"),
+        "model_sha256": digest("plant_model"),
+        "active_policy_sha256": str(bundle["policy"]["policy_sha256"]),
+        "response_policy_sha256": digest("response_classification"),
+        "numerical_policy_sha256": str(bundle["policy"]["policy_sha256"]),
+    }

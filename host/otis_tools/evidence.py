@@ -10,6 +10,7 @@ import os
 import re
 from typing import Any, Iterable
 
+from .acquisition_frontier import FRONTIER_PATH, FRONTIER_POLICY, FRONTIER_STATE_PATH
 from .adaptive_hybrid_bundle import validate_frozen_bundle
 from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
@@ -17,7 +18,10 @@ from .adaptive_hybrid_contract import (
     programme_from_mapping,
 )
 from .adaptive_hybrid_proposal import validate_frozen_proposal
-from .authoritative_inputs import validate_authoritative_inputs
+from .authoritative_inputs import (
+    transaction_identities_from_bundle,
+    validate_authoritative_inputs,
+)
 from .run_loader import (
     CAPTURE_IN_PROGRESS_FLAG,
     COMPLETE_MARKER,
@@ -341,6 +345,8 @@ def _operational_rehearsal_artifacts() -> list[str]:
         "reports/capture_segment_closure_v1.json",
         OPERATIONAL_REHEARSAL_PROCESS_EVIDENCE_PATH.as_posix(),
         OPERATIONAL_REHEARSAL_MONITOR_SAMPLES_PATH.as_posix(),
+        FRONTIER_PATH,
+        FRONTIER_STATE_PATH,
         OPERATIONAL_REHEARSAL_TRANSITION_MANIFEST_PATH.as_posix(),
         OPERATIONAL_REHEARSAL_TRANSITION_CLOSURE_PATH.as_posix(),
         OPERATIONAL_REHEARSAL_TRANSITION_CAPTURE_STATE_PATH.as_posix(),
@@ -440,6 +446,7 @@ def _validate_operational_rehearsal_manifest(
         "bundle", "proposal", "activation", "firmware", "authoritative_inputs",
         "policy", "host", programme.manifest_section, "domains", "channels",
         "contracts", "files", "expected_artifacts", "evidence_artifacts",
+        "acquisition_frontier", "transaction_identities",
         "manifest_sha256",
     }
     unsigned = {key: item for key, item in value.items() if key != "manifest_sha256"}
@@ -475,6 +482,8 @@ def _validate_operational_rehearsal_manifest(
         and value.get("closed_loop_control") is False
         and value.get("board") == "deterministic_pty_no_physical_hardware"
         and value.get("capture_mode") == "real_capture_device_process_over_pty"
+        and value.get("acquisition_frontier") == FRONTIER_POLICY
+        and value.get("transaction_identities") == transaction_identities_from_bundle(bundle)
         and _canonical_pty_path(host.get("serial_device"))
         and host == expected_host
         and bundle_binding == expected_bundle_binding

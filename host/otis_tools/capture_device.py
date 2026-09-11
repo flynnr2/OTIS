@@ -19,6 +19,7 @@ import threading
 from typing import Callable
 
 from .capture_serial import CsvRecordSplitter, _split_targets_from_manifest
+from .acquisition_frontier import AcquisitionFrontierTracker, FRONTIER_POLICY
 from .active_status_live_state import (
     ActiveStatusLiveReducer,
     LIVE_STATE_PATH,
@@ -404,6 +405,15 @@ class CaptureSegmentSink:
             self.active_status_live_publisher = ActiveStatusLivePublisher(
                 self.run_dir
             )
+            manifest_path = find_manifest_path(self.run_dir)
+            if manifest_path is None:
+                raise FileNotFoundError("capture segment has no manifest")
+            manifest_value = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.acquisition_frontier_tracker = (
+                AcquisitionFrontierTracker(self.run_dir, manifest_value)
+                if manifest_value.get("acquisition_frontier") == FRONTIER_POLICY
+                else None
+            )
             self.closed = False
         except BaseException:
             self._stack.close()
@@ -549,6 +559,7 @@ class CaptureDeviceRunner:
         self.normal_command_buffered_bytes_discarded = 0
         self.emergency_aborts_sent = 0
         self.emergency_abort_latched = False
+        self.acquisition_frontier_observer_error: str | None = None
         self.capture_active = False
         self.serial_open = False
         self.framer = LineFramer(config.max_line_bytes)
@@ -625,6 +636,7 @@ class CaptureDeviceRunner:
         splitter: CsvRecordSplitter,
         raw_writer: RawEvidenceWriter,
         active_status_live_publisher: "ActiveStatusLivePublisher | None" = None,
+        acquisition_frontier_tracker: "AcquisitionFrontierTracker | None" = None,
     ) -> None:
         self.lines_seen += 1
         try:
@@ -633,6 +645,17 @@ class CaptureDeviceRunner:
             self.malformed_utf8 += 1
             _log_event(logging.WARNING, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
             _write_marker(raw_writer, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
+            if (
+                acquisition_frontier_tracker is not None
+                and self.acquisition_frontier_observer_error is None
+            ):
+                try:
+                    acquisition_frontier_tracker.note_discrepancy(
+                        f"malformed UTF-8 device record: {exc}",
+                        line_number=self.lines_seen,
+                    )
+                except Exception as observer_error:
+                    self._acquisition_frontier_observer_failed(observer_error)
             return
         parser_errors_before = self.parser_errors
         contract = splitter.process_line(text)
@@ -649,6 +672,17 @@ class CaptureDeviceRunner:
                 parsed_fields=parsed_fields,
                 parser_errors=self.parser_errors,
             )
+            if (
+                acquisition_frontier_tracker is not None
+                and self.acquisition_frontier_observer_error is None
+            ):
+                try:
+                    acquisition_frontier_tracker.note_discrepancy(
+                        "firmware host contract parser rejected a device record",
+                        line_number=self.lines_seen,
+                    )
+                except Exception as observer_error:
+                    self._acquisition_frontier_observer_failed(observer_error)
         elif splitter.last_disposition in {
             "late_attach_boot_fragment",
             "raw_only_diagnostic",
@@ -663,6 +697,48 @@ class CaptureDeviceRunner:
         if contract is not None:
             self.lines_parsed += 1
             if (
+                acquisition_frontier_tracker is not None
+                and self.acquisition_frontier_observer_error is None
+                and splitter.last_record_type in {"REF", "SNP", "CNT", "EST"}
+            ):
+                fields = CONTRACT_FIELDS[contract]
+                record = dict(zip(
+                    fields,
+                    next(csv.reader([text.strip()])),
+                    strict=True,
+                ))
+                try:
+                    target_handle = splitter.handle_by_record_type.get(
+                        splitter.last_record_type
+                    )
+                    if target_handle is None:
+                        target_handle = splitter.handle_by_contract[contract]
+                    encoded_row = (text.strip() + "\n").encode("utf-8")
+                    csv_byte_offset = target_handle.tell() - len(encoded_row)
+                    prior_frontier_sha256 = (
+                        acquisition_frontier_tracker.frontier.get("frontier_sha256")
+                        if acquisition_frontier_tracker.frontier is not None
+                        else None
+                    )
+                    acquisition_frontier_tracker.observe(
+                        record,
+                        line_number=self.lines_seen,
+                        csv_byte_offset=csv_byte_offset,
+                    )
+                    established = acquisition_frontier_tracker.frontier
+                    if prior_frontier_sha256 is None and established is not None:
+                        acquisition_frontier_tracker.note_marker_search_offset(
+                            raw_writer.handle.tell()
+                        )
+                        _write_marker(
+                            raw_writer,
+                            "acquisition_frontier_established",
+                            frontier_sha256=established["frontier_sha256"],
+                            capture_line_ordinal=self.lines_seen,
+                        )
+                except Exception as observer_error:
+                    self._acquisition_frontier_observer_failed(observer_error)
+            if (
                 contract == "health_v1"
                 and active_status_live_publisher is not None
             ):
@@ -676,12 +752,26 @@ class CaptureDeviceRunner:
         _log_event(logging.WARNING, "parser_error", message=message, parser_errors=self.parser_errors)
         self._emit_status()
 
+    def _acquisition_frontier_observer_failed(self, error: Exception) -> None:
+        """Latch a diagnostic authority hold without stopping serial capture."""
+
+        if self.acquisition_frontier_observer_error is not None:
+            return
+        self.acquisition_frontier_observer_error = (
+            f"{type(error).__name__}: {error}"
+        )
+        self._parser_error(
+            "acquisition frontier observer failed: "
+            + self.acquisition_frontier_observer_error
+        )
+
     def _process_bytes(
         self,
         data: bytes,
         splitter: CsvRecordSplitter,
         raw_writer: RawEvidenceWriter,
         active_status_live_publisher: "ActiveStatusLivePublisher | None" = None,
+        acquisition_frontier_tracker: "AcquisitionFrontierTracker | None" = None,
         before_line_processing: Callable[[], None] | None = None,
     ) -> None:
         raw_writer.write_device(data)
@@ -690,6 +780,14 @@ class CaptureDeviceRunner:
         for event in events:
             _log_event(logging.WARNING, event)
             _write_marker(raw_writer, event)
+            if (
+                acquisition_frontier_tracker is not None
+                and self.acquisition_frontier_observer_error is None
+            ):
+                try:
+                    acquisition_frontier_tracker.note_discrepancy(event)
+                except Exception as observer_error:
+                    self._acquisition_frontier_observer_failed(observer_error)
         # A full serial read can contain many telemetry rows.  Service command
         # ingress after the bytes are durably ordered in raw evidence but
         # before CSV/status consumers process the batch, so consumer latency
@@ -702,6 +800,7 @@ class CaptureDeviceRunner:
                 splitter,
                 raw_writer,
                 active_status_live_publisher,
+                acquisition_frontier_tracker,
             )
 
     def _send_command(
@@ -888,6 +987,9 @@ class CaptureDeviceRunner:
                 "lines_parsed": self.lines_parsed,
                 "malformed_utf8": self.malformed_utf8,
                 "parser_errors": self.parser_errors,
+                "acquisition_frontier_observer_error": (
+                    self.acquisition_frontier_observer_error
+                ),
                 "reconnect_count": self.reconnect_count,
                 "serial_exclusive_requested": self.serial_factory is None,
                 "intentional_detach_count": self.intentional_detach_count,
@@ -1282,6 +1384,7 @@ class CaptureDeviceRunner:
                                     splitter,
                                     raw_writer,
                                     sink.active_status_live_publisher,
+                                    sink.acquisition_frontier_tracker,
                                     before_line_processing=lambda: self._poll_command_ingress(
                                         emergency_fifo,
                                         command_fifo,

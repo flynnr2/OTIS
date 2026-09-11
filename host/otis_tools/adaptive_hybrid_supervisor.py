@@ -21,6 +21,7 @@ import time
 from typing import Any
 
 from .abort_transport import AbortFifo
+from .acquisition_frontier import read_acquisition_readiness
 from .adaptive_hybrid_evidence import (
     IndependentReplayMismatch,
     ResponseCheckpointRejected,
@@ -66,6 +67,7 @@ from .adaptive_hybrid_transactions import (
     _utc_now,
 )
 from .contracts import CsvValidationContext, validate_csv
+from .capture_device import CAPTURE_STATE
 from .firmware_bindings import current_forwarded_clock_contract
 from .firmware_host_contract import bounded_modular_lag_matches
 from .prewrite_readiness_contract import (
@@ -616,6 +618,23 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         self.manifest = manifest
         self.manifest_path = manifest_path.resolve()
+        try:
+            acquisition_manifest = json.loads(
+                self.manifest_path.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "ADAPTIVE_HYBRID acquisition manifest is unreadable"
+            ) from exc
+        if (
+            not isinstance(acquisition_manifest, dict)
+            or acquisition_manifest.get("acquisition_frontier")
+            != manifest.get("acquisition_frontier")
+        ):
+            raise ValueError(
+                "ADAPTIVE_HYBRID acquisition frontier differs from the retained manifest"
+            )
+        self.acquisition_manifest = acquisition_manifest
         self.envelope = envelope
         self.phase_estimator_sha256 = envelope.phase_estimator_sha256
         self.natural_policy = envelope.policy
@@ -1337,6 +1356,110 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             planned_live_stimulus_code=readiness.planned_live_stimulus_code,
             physical_dac_confirmation=readiness.physical_dac_confirmation,
         )
+
+    def _acquisition_authority_ready(
+        self,
+        *,
+        expected_capture_session: int,
+        source_estimate_id: str | None = None,
+    ) -> bool:
+        """Require retained live source evidence before issuing authority."""
+
+        try:
+            capture_state = json.loads(
+                (self.run_dir / CAPTURE_STATE).read_text(encoding="utf-8")
+            )
+        except FileNotFoundError:
+            return False
+        except (OSError, json.JSONDecodeError) as error:
+            self._enter_host_verification_hold(
+                ValueError(f"capture observer state is unreadable: {error}"),
+                source="acquisition_frontier",
+            )
+            return False
+        if (
+            not isinstance(capture_state, dict)
+            or "acquisition_frontier_observer_error" not in capture_state
+        ):
+            self._enter_host_verification_hold(
+                ValueError(
+                    "capture observer state lacks its current acquisition-"
+                    "frontier health field"
+                ),
+                source="acquisition_frontier",
+            )
+            return False
+        observer_error = capture_state.get(
+            "acquisition_frontier_observer_error"
+        )
+        if observer_error is not None:
+            if not isinstance(observer_error, str) or not observer_error:
+                observer_error = "capture observer failure field is malformed"
+            self._enter_host_verification_hold(
+                ValueError(observer_error),
+                source="acquisition_frontier",
+            )
+            return False
+        readiness = read_acquisition_readiness(
+            self.run_dir,
+            self.acquisition_manifest,
+            source_estimate_id=source_estimate_id,
+            expected_capture_session=expected_capture_session,
+        )
+        errors = readiness.get("errors")
+        if not isinstance(errors, list) or not all(
+            isinstance(error, str) and error for error in errors
+        ):
+            errors = ["acquisition readiness result is malformed"]
+        if errors:
+            self._enter_host_verification_hold(
+                ValueError("; ".join(errors)),
+                source="acquisition_frontier",
+            )
+            return False
+        if readiness.get("ready") is not True:
+            return False
+        if readiness.get("capture_session") != expected_capture_session:
+            return False
+        if source_estimate_id is None:
+            return True
+        proof = readiness.get("source_proof")
+        record = proof.get("record") if isinstance(proof, dict) else None
+        if (
+            not isinstance(record, dict)
+            or proof.get("capture_session") != expected_capture_session
+            or record.get("estimate_id") != source_estimate_id
+            or record.get("estimator_version")
+            != self.natural_policy.frequency_estimator_id
+            or record.get("config_hash") != self.identities["estimator_sha256"]
+        ):
+            self._enter_host_verification_hold(
+                ValueError(
+                    "selected EST readiness proof differs from the current "
+                    "capture session or frozen estimator identity"
+                ),
+                source="acquisition_frontier",
+            )
+            return False
+        return True
+
+    def _capture_session_for_authority(
+        self, health: dict[tuple[str, str], str]
+    ) -> int | None:
+        try:
+            capture_session = int(health[("adaptive_hybrid", "session_id")])
+        except (KeyError, TypeError, ValueError):
+            capture_session = 0
+        if capture_session <= 0:
+            self._enter_host_verification_hold(
+                ValueError(
+                    "current D14/D8 capture session is unavailable for "
+                    "acquisition-frontier authority"
+                ),
+                source="acquisition_frontier",
+            )
+            return None
+        return capture_session
 
     def _validate_hybrid_decisions(self) -> None:
         path = self.run_dir / ACTIVE_HYBRID_CSV
@@ -3397,6 +3520,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         ):
             if not self._prewrite_readiness(health).ready:
                 return
+            capture_session = self._capture_session_for_authority(health)
+            if capture_session is None or not self._acquisition_authority_ready(
+                expected_capture_session=capture_session
+            ):
+                return
             command, request = self._setup_command(health)
             self._retain_setup_authority(health, request)
             self._command(command)
@@ -3529,6 +3657,23 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             and health.get(("adaptive_hybrid", "evidence_phase")) == "evidence_clear"
             and not _truth(health, "evidence_pending")
             and progress >= ARM_PROGRESS_THRESHOLD
+        ):
+            return
+        source_estimate_id = (
+            preview.get("est_input_ref") if preview is not None else None
+        )
+        if not source_estimate_id:
+            self._enter_host_verification_hold(
+                ValueError("ARM opportunity lacks its selected EST identity"),
+                source="acquisition_frontier",
+            )
+            return
+        capture_session = self._capture_session_for_authority(health)
+        if capture_session is None:
+            return
+        if not self._acquisition_authority_ready(
+            expected_capture_session=capture_session,
+            source_estimate_id=source_estimate_id
         ):
             return
         uptime = int(health[("adaptive_hybrid", "uptime_s")])

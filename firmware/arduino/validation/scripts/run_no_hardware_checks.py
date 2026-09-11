@@ -47,6 +47,8 @@ CAMPAIGN_TESTS = FAST_TESTS + (
     "tests/test_campaign_outcome_integrity.py",
     "tests/test_evidence_transfer.py",
     "tests/test_raw_measurement_replay.py",
+    "tests/test_acquisition_frontier.py",
+    "tests/test_acquisition_frontier_integration.py",
     "tests/test_decision_capture_binding.py",
     "tests/test_offline_decision_sources.py",
     "tests/test_adaptive_hybrid_entrypoints.py",

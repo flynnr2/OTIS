@@ -145,6 +145,17 @@ VCOCXO), and D10 is the external event input to be measured against that
 D14-disciplined D8 timebase. Local RP2040 timestamps may order or transport
 those records, but cannot substitute for the D8-derived hardware capture.
 
+### Retained acquisition frontier
+
+The opening D14/SNP boundary of the first uniquely reconstructable interval
+retained by a recorder under a policy frozen before acquisition. This is a
+statement about recorded evidence coverage, not the beginning of physical
+capture, a new clock epoch, a timing correction, or permission to reset the
+instrument. Earlier received rows remain explicit unqualified evidence. The
+recorded frontier cannot advance to exclude later faults. An estimator source
+is complete only when every interval on which it depends is retained after
+that frontier and independently verified.
+
 ### Host written
 
 A host-operation observation that the sole serial carrier completed writing a

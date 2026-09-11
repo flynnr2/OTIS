@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .acquisition_frontier import FRONTIER_PATH, FRONTIER_POLICY, FRONTIER_STATE_PATH
 from .adaptive_hybrid_bundle import (
     FRESH_SERIAL_AUTO_DETECT,
     validate_bundle,
@@ -33,9 +34,7 @@ from .adaptive_hybrid_proposal import (
     validate_frozen_proposal,
 )
 from .authoritative_inputs import (
-    ROOT_PROFILE,
-    authoritative_binding,
-    authoritative_document,
+    transaction_identities_from_bundle,
     validate_authoritative_inputs,
 )
 from .run_paths import adaptive_hybrid_csv_files
@@ -801,28 +800,6 @@ def _require_current_reproduction_capability(
         )
 
 
-def _transaction_identities(bundle: dict[str, Any]) -> dict[str, str]:
-    frozen_inputs = bundle.get("authoritative_inputs")
-    validate_authoritative_inputs(frozen_inputs)
-    policy = authoritative_document(frozen_inputs, ROOT_PROFILE)
-    bindings = policy.get("bindings", {})
-    if not isinstance(bindings, dict):
-        raise ValueError("adaptive-hybrid policy bindings are unavailable")
-
-    def digest(name: str) -> str:
-        relative = bindings.get(name)
-        if not isinstance(relative, str):
-            raise ValueError(f"policy binding {name!r} is unavailable")
-        return str(authoritative_binding(frozen_inputs, relative)["sha256"])
-
-    return {
-        "estimator_sha256": digest("frequency_estimator"),
-        "model_sha256": digest("plant_model"),
-        "active_policy_sha256": str(bundle["policy"]["policy_sha256"]),
-        "response_policy_sha256": digest("response_classification"),
-        "numerical_policy_sha256": str(bundle["policy"]["policy_sha256"]),
-    }
-
 
 def _required_files() -> list[dict[str, Any]]:
     required = {
@@ -1012,6 +989,8 @@ def _expected_artifacts(
     return [
         *[item["path"] for item in files if not item.get("optional")],
         "raw/serial.log",
+        FRONTIER_PATH,
+        FRONTIER_STATE_PATH,
         "reports/capture_device_state.json",
         "reports/adaptive_hybrid_supervisor_state.json",
         "reports/adaptive_hybrid_supervisor_events.jsonl",
@@ -1026,6 +1005,8 @@ def _expected_artifacts(
 
 def _evidence_artifacts(programme: AdaptiveHybridProgramme) -> list[str]:
     return [
+        FRONTIER_PATH,
+        FRONTIER_STATE_PATH,
         "reports/capture_device_state.json",
         "reports/adaptive_hybrid_supervisor_state.json",
         "reports/adaptive_hybrid_supervisor_events.jsonl",
@@ -1101,13 +1082,14 @@ def create_run_manifest(
         "actionable": actuation_authorized,
         "actuation_authorized": actuation_authorized,
         "qualification_evidence": True,
+        "acquisition_frontier": dict(FRONTIER_POLICY),
         "bundle": {**_binding(bundle_path), "bundle_sha256": bundle["bundle_sha256"]},
         "proposal": {**_binding(proposal_path), "proposal_sha256": proposal["proposal_sha256"]},
         "activation": {**_binding(activation_path), "activation_sha256": activation["activation_sha256"]},
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
         "policy": bundle["policy"],
-        "transaction_identities": _transaction_identities(bundle),
+        "transaction_identities": transaction_identities_from_bundle(bundle),
         "host": _host_contract(serial_device, bundle, bench_attempt),
         programme.manifest_section: section,
         "domains": [canonical_domain_declaration(name) for name in ("rp2040_monotonic_us32", "rp2040_monotonic_us64", "h1_oscillator_10mhz")],
@@ -1208,6 +1190,7 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         "actionable": actuation_authorized,
         "actuation_authorized": actuation_authorized,
         "qualification_evidence": True,
+        "acquisition_frontier": dict(FRONTIER_POLICY),
         "bundle": {
             **_binding(bundle_path),
             "bundle_sha256": bundle["bundle_sha256"],
@@ -1223,7 +1206,7 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
         "policy": bundle["policy"],
-        "transaction_identities": _transaction_identities(bundle),
+        "transaction_identities": transaction_identities_from_bundle(bundle),
         "host": _host_contract(str(serial_device), bundle, bench_attempt),
         programme.manifest_section: _run_section(
             programme, activation["authority"], bench_attempt

@@ -232,6 +232,49 @@ export ARDUINO_DIRECTORIES_USER="$PWD/build/arduino-consolidation/x86/user"
   --output-dir "$PWD/build/arduino-consolidation/firmware"
 ```
 
+PR #173 was merged as `4314e6edbd972d22be29708452f880223631e361`,
+and the synchronized clean checkout passed the pinned fixed-image build.
+Static RAM is 147,572 bytes, with 114,572 bytes available at runtime and
+9,714 bytes of headroom against the declared resource limits. The resulting
+UF2 SHA-256 is
+`939a97aafac2ccc8a2d5e2271c6a0f243d778404030ac5c59bfbf48d9a46d21c`.
+This closes the previously outstanding compilation/resource gate for that
+revision; no image was flashed and no physical qualification is claimed.
+
+The next host integration addresses attachment to an already running producer.
+A prospectively frozen acquisition-frontier contract retains every raw byte
+and canonical row, records the first complete reconstructable opening pair
+live, and identifies earlier incomplete observations explicitly. Manual SETUP
+requires that recorded pair. Feedback authority additionally requires the
+selected estimate's complete 600-interval source in the current capture
+session. An estimate that leads raw queue drainage waits for its source;
+contradictory evidence or an observer failure holds new authority while the
+capture owner continues recording and servicing operator abort.
+
+The historical package does not acquire this new acceptance policy. Its first
+unproved aperture and incomplete scientific outcome remain unchanged. The
+current tranche changes host tooling, tests and documentation; the exact
+firmware build above remains evidence for its recorded firmware revision.
+Bench entry still requires a frozen integrated bundle and an actual I/O
+rehearsal on the older MacBook.
+
+The integrated acquisition-frontier candidate passed all 552 current
+host/native tests in 131.46 seconds. Its actual process/FIFO rehearsal retains
+4,800 apertures and exercises two transactions, source admission, independent
+abort delivery, analysis, sealing and registration. Separate real-recorder
+regressions cover attachment boundaries and a verifier exception after
+readiness: recording continues, the error remains latched, and the supervisor
+refuses new authority despite an older ready proof.
+
+Live recording and offline analysis now share a lower-level raw reconstruction
+module; the dependency graph remains acyclic. Activation, rehearsal and
+registration derive transaction identities from the same frozen-input helper.
+The complete current offline supersession tool identity also includes these
+new dependencies. These results establish the host integration, not the real
+firmware/USB boundary or physical PPS rejection policy. The next design stage
+is accepted-reference selection and causal requalification; its new criteria
+must be frozen before a new physical qualification.
+
 Keep this execution record current at integration boundaries, recording checks
 actually run and explicit remaining dependencies. Do not mark a stage complete
 because code exists or a fixture passes.
