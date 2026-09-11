@@ -66,12 +66,43 @@ time.sleep(20)
         for role, receipt in retained["readiness"].items():
             assert receipt["pid"] == owner.processes[role].pid
             assert receipt["observed_monotonic_ns"] >= owner.launched_ns[role]
+        with pytest.raises(RuntimeError, match="session monitor requires review"):
+            owner.wait_for_terminal(1)
         with pytest.raises(RuntimeError, match="live capture"):
             owner.close_after_capture_closed()
         assert capture.poll() is None
     finally:
         owner.close_simulated()
     assert all(process.poll() is not None for process in owner.processes.values())
+
+
+def test_expected_pre_setup_monitor_state_does_not_mask_supervisor_terminal(tmp_path):
+    run_dir = _run_dir(tmp_path)
+    owner = module.AdaptiveHybridSession(
+        run_dir=run_dir, device="/dev/ttyACM0", physical=True
+    )
+
+    class Process:
+        pid = os.getpid()
+
+        def poll(self):
+            return None
+
+    for role in ("capture", "supervisor", "monitor"):
+        owner.processes[role] = Process()
+        owner.launched_ns[role] = time.monotonic_ns()
+    module.publish_monitor_state(
+        run_dir,
+        module._binding(run_dir, run_dir / "run_manifest.json"),
+        sample_count=1,
+        status="awaiting_expected_evidence",
+    )
+    terminal = {"result": "healthy_stop", "reason": "fixture"}
+    (run_dir / "reports/adaptive_hybrid_supervisor_state.json").write_text(
+        json.dumps({"terminal": terminal})
+    )
+
+    assert owner.wait_for_terminal(1) == terminal
 
 
 @pytest.mark.parametrize("mutation", ["pid", "manifest", "before_launch", "future", "authority"])
@@ -206,3 +237,13 @@ def test_physical_runner_retains_partial_support_launch_then_registers_closure_d
     journal = json.loads(journal_path_for(run_dir).read_text())
     assert journal["primary_failure"]["error"] == "injected monitor launch failure"
     assert journal["secondary_failures"][-1]["error"] == "injected closure publication failure"
+
+
+def test_live_but_stalled_monitor_cannot_satisfy_session_observation(tmp_path, monkeypatch):
+    owner = module.AdaptiveHybridSession(
+        run_dir=_run_dir(tmp_path), device="/dev/unused", physical=True)
+    receipt = {"observed_monotonic_ns": 1, "sample_count": 1, "status": "running"}
+    monkeypatch.setattr(owner, "_receipt", lambda *_: receipt)
+    monkeypatch.setattr(module.time, "monotonic_ns", lambda: 15_000_000_002)
+    with pytest.raises(RuntimeError, match="stopped publishing"):
+        owner.check_monitor()

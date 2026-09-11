@@ -16,10 +16,8 @@ import csv
 import json
 import os
 import tempfile
-import time
 
 from .contracts import CsvValidationContext, validate_csv
-from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 
 ACTIVE_CSV = Path("csv/active_transactions_v3.csv")
 HEALTH_CSV = Path("csv/health.csv")
@@ -717,57 +715,3 @@ class AdaptiveHybridTransactionSupervisor:
        self.state["lease_sequence"] += 1
        self._command(f"ACTIVE LEASE {self.state['lease_sequence']}")
        self._save()
-
-   def _maybe_start_or_arm(self, health: dict[tuple[str, str], str]) -> None:
-       del health
-       if self.allow_manual_start or self.allow_arm:
-           raise ValueError(
-               "live authority requires the current retained ACTIVE SETUP/ARM implementation"
-           )
-
-   def run(self) -> int:
-       from .abort_transport import AbortFifo
-
-       capture_flag = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
-       if not capture_flag.exists():
-           raise RuntimeError("capture is not marked in progress")
-       started = time.monotonic()
-       last_lease = 0.0
-       last_query = 0.0
-       with AbortFifo(self.abort_fifo) as abort:
-           self._event(
-               "supervisor_started",
-               campaign=self.spec.campaign,
-               abort_fifo=str(self.abort_fifo),
-           )
-           self._command("CONFIG?")
-           self._command("DAC?")
-           while True:
-               now = time.monotonic()
-               if abort.poll():
-                   self._abort("independent_host_abort_fifo")
-                   return 3
-               if not capture_flag.exists():
-                   self._abort("capture_owner_lost")
-                   return 4
-               if self.duration_s is not None and now - started > self.duration_s:
-                   self._abort("supervisor_duration_expired")
-                   return 5
-               if now - last_lease >= LEASE_PERIOD_S:
-                   self._renew_lease()
-                   last_lease = now
-               if now - last_query >= QUERY_PERIOD_S:
-                   self._command("ACTIVE?")
-                   last_query = now
-               self._process_transactions()
-               if self.state["terminal"] is not None:
-                   self._event("campaign_terminal", **self.state["terminal"])
-                   return (
-                       0
-                       if self.state["terminal"]["result"]
-                       in {"healthy_stop", "held"}
-                       else 2
-                   )
-               health = _latest_health(self.run_dir / HEALTH_CSV)
-               self._maybe_start_or_arm(health)
-               time.sleep(0.2)

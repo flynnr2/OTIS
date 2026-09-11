@@ -19,6 +19,7 @@ import time
 from typing import Mapping
 
 from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
+from .adaptive_hybrid_contract import ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S
 from .adaptive_hybrid_transactions import (
     ACTIVE_CSV,
     QUERY_PERIOD_S,
@@ -55,7 +56,6 @@ SETUP_RESULT_GRACE_S = QUERY_PERIOD_S
 # Snapshot completion is a bounded diagnostic wait, not a control-authority or
 # USB pending-frame deadline. Waiting carries no actuator authority, while an
 # atomic complete snapshot and every health gate remain mandatory before setup.
-ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S = PREWRITE_CONTRACT_STARTUP_GRACE_S
 ACTIVE_SNAPSHOT_COMPLETION_POLL_S = 0.02
 ACTIVE_STATUS_COMPLETE_MAX_AGE_S = QUERY_PERIOD_S + 2.0
 
@@ -199,42 +199,43 @@ class AdaptiveHybridSupervisorBase(ControlSupervisorBase):
     def _current_health(
         self, *, required_query_nonce: int | None = None
     ) -> dict[tuple[str, str], str]:
-        if required_query_nonce is None:
-            required_query_nonce = int(self.state["host_attach_query_nonce"])
-        while True:
-            selection = read_live_health_state(
-                self.run_dir / LIVE_STATE_PATH,
-                required_query_nonce=required_query_nonce,
-            )
-            if selection.state in {"absent", "unmatched"}:
-                return {}
-            if selection.state == "invalid":
-                raise ValueError(
-                    "active live-health handoff is invalid: " + selection.diagnostic
+        with self._causal_observation(ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S):
+            if required_query_nonce is None:
+                required_query_nonce = int(self.state["host_attach_query_nonce"])
+            while True:
+                selection = read_live_health_state(
+                    self.run_dir / LIVE_STATE_PATH,
+                    required_query_nonce=required_query_nonce,
                 )
-            if selection.observed_monotonic_ns is None:
-                raise ValueError("active live-health handoff has no host clock")
-            age_s = (
-                time.monotonic_ns() - selection.observed_monotonic_ns
-            ) / 1_000_000_000
-            if age_s < -0.001:
-                raise ValueError("active live-health handoff is from the future")
-            if selection.state == "complete":
-                if age_s > ACTIVE_STATUS_COMPLETE_MAX_AGE_S:
+                if selection.state in {"absent", "unmatched"}:
+                    return {}
+                if selection.state == "invalid":
                     raise ValueError(
-                        "active live-health handoff is stale: "
-                        f"age_s={age_s:.6f} limit_s="
-                        f"{ACTIVE_STATUS_COMPLETE_MAX_AGE_S:.6f}"
+                        "active live-health handoff is invalid: " + selection.diagnostic
                     )
-                return selection.health
-            remaining_s = ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S - age_s
-            if remaining_s <= 0:
-                raise ValueError(
-                    "active live-health snapshot did not complete within "
-                    f"{ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S:.3f} s: "
-                    f"generation={selection.generation}"
-                )
-            time.sleep(min(ACTIVE_SNAPSHOT_COMPLETION_POLL_S, remaining_s))
+                if selection.observed_monotonic_ns is None:
+                    raise ValueError("active live-health handoff has no host clock")
+                age_s = (
+                    time.monotonic_ns() - selection.observed_monotonic_ns
+                ) / 1_000_000_000
+                if age_s < -0.001:
+                    raise ValueError("active live-health handoff is from the future")
+                if selection.state == "complete":
+                    if age_s > ACTIVE_STATUS_COMPLETE_MAX_AGE_S:
+                        raise ValueError(
+                            "active live-health handoff is stale: "
+                            f"age_s={age_s:.6f} limit_s="
+                            f"{ACTIVE_STATUS_COMPLETE_MAX_AGE_S:.6f}"
+                        )
+                    return selection.health
+                remaining_s = ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S - age_s
+                if remaining_s <= 0:
+                    raise ValueError(
+                        "active live-health snapshot did not complete within "
+                        f"{ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S:.3f} s: "
+                        f"generation={selection.generation}"
+                    )
+                self._wait_slice(min(ACTIVE_SNAPSHOT_COMPLETION_POLL_S, remaining_s), allow_lease=True)
 
     def _setup_command(
         self, health: dict[tuple[str, str], str]

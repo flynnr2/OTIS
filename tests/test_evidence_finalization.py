@@ -190,3 +190,40 @@ def test_recovery_cannot_promote_an_unvalidated_package_to_completed_campaign(
     ):
         recover_registration(journal)
     assert not index.exists()
+
+
+def test_retry_after_index_write_before_journal_ack_is_idempotent(tmp_path, monkeypatch):
+    from host.otis_tools import evidence_finalization as finalization
+
+    run = tmp_path / "run"
+    (run / "reports").mkdir(parents=True)
+    for relative in ("COMPLETE", "evidence_manifest.json", "reports/seal.json"):
+        (run / relative).write_text("{}\n")
+    index = tmp_path / "external/index.json"
+    journal = begin_finalization(
+        run_dir=run, index_path=index, registration=_registration(),
+        required_seal=Path("reports/seal.json"),
+    )
+    for phase in PHASES[:-1]:
+        advance_phase(journal, phase, {})
+    identity = package_identity(run)["content_sha256"]
+    set_registration_intent(journal, registration=_registration(), expected_content_sha256=identity)
+    original_advance = finalization.advance_phase
+    def interrupted(path, phase, details=None):
+        if phase == "registration":
+            assert set(load_index(index)["packages"]) == {identity}
+            raise OSError("journal acknowledgement interrupted after index write")
+        return original_advance(path, phase, details)
+    monkeypatch.setattr(finalization, "advance_phase", interrupted)
+    with pytest.raises(OSError, match="after index write"):
+        recover_registration(journal)
+    assert json.loads(journal.read_text())["phases"]["registration"] is None
+    assert json.loads(journal.read_text())["expected_content_sha256"] == identity
+    monkeypatch.setattr(finalization, "advance_phase", original_advance)
+    assert recover_registration(journal)["content_sha256"] == identity
+    assert recover_registration(journal)["content_sha256"] == identity
+    assert set(load_index(index)["packages"]) == {identity}
+    assert package_identity(run)["content_sha256"] == identity
+    assert json.loads(journal.read_text())["phases"]["registration"]["details"] == {
+        "content_sha256": identity,
+    }

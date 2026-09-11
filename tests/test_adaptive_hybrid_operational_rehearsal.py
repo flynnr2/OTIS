@@ -150,12 +150,24 @@ def test_cold_supervisor_worker_reaches_actual_factory_with_one_schema_check_per
     )
 
 
+@pytest.mark.parametrize("command_effect_delay_s", [0.0, 4.0], ids=["normal", "delayed-command-effects"])
 def test_full_process_operational_rehearsal_reaches_registered_boundary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command_effect_delay_s: float,
 ) -> None:
     bundle_path, proposal_path = _frozen_inputs(monkeypatch, tmp_path)
     run_dir = tmp_path / "rehearsal-run"
     original_start = rehearsal_module.DeterministicPtyInstrument.start
+    original_handle = rehearsal_module.DeterministicPtyInstrument._handle_command
+
+    def delayed_effect(instrument, command):
+        # Delay device-side effect after the real capture owner wrote the
+        # command. Each causal exchange remains bounded; total runtime grows.
+        if command.startswith("ACTIVE EVIDENCE "):
+            if instrument.stop_event.wait(command_effect_delay_s):
+                return
+        original_handle(instrument, command)
+
+    monkeypatch.setattr(rehearsal_module.DeterministicPtyInstrument, "_handle_command", delayed_effect)
 
     def start_after_capture_owns_slave(instrument):
         session = json.loads((run_dir / "reports/adaptive_hybrid_session_v1.json").read_text())
@@ -217,6 +229,14 @@ def test_full_process_operational_rehearsal_reaches_registered_boundary(
     assert validation["primary_decision"] == (
         "adaptive_hybrid_operational_rehearsal_passed"
     )
+
+    from host.otis_tools.evidence_finalization import journal_path_for, recover_registration
+    from host.otis_tools.evidence_index import package_identity
+    before_recovery = package_identity(run_dir)
+    for _ in range(2):
+        recovered = recover_registration(journal_path_for(run_dir))
+        assert recovered["content_sha256"] == before_recovery["content_sha256"]
+        assert package_identity(run_dir) == before_recovery
 
     process_path = run_dir / (
         "reports/adaptive_hybrid_operational_process_evidence_v1.json"

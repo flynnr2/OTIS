@@ -12,7 +12,6 @@ import argparse
 import csv
 from datetime import datetime, timezone
 from hashlib import sha256
-import io
 import json
 import os
 import sys
@@ -33,6 +32,7 @@ from .contracts import (
     ACTIVE_HYBRID_DECISION_V3_FIELDS,
     ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
     ACTIVE_TRANSACTION_V3_FIELDS,
+    ESTIMATE_V3_FIELDS,
 )
 
 
@@ -55,6 +55,8 @@ QUALIFIED_D14_ENDPOINT_CONTRACT = "qualified_D14_D8_aperture_count_v2"
 QUALIFIED_D14_MILESTONE_APERTURES = 21_600
 UINT32_MODULUS = 1 << 32
 UINT32_MAXIMUM_FORWARD_DELTA = (1 << 31) - 1
+TAIL_OBSERVATION_MAX_BYTES = 16 * 1024
+HEADER_MAX_BYTES = 8 * 1024
 
 
 def _diagnostic_review_hold(
@@ -181,107 +183,111 @@ def _utc_epoch(value: object) -> float | None:
         return None
 
 
-def _row_summary(path: Path, fields: tuple[str, ...]) -> dict[str, Any]:
-    if not path.is_file():
-        return {"rows": 0, "latest": None}
-    rows = 0
-    latest: dict[str, str] | None = None
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        for row in csv.DictReader(handle):
-            rows += 1
-            latest = {field: row.get(field, "") for field in fields}
-    return {"rows": rows, "latest": latest}
-
-
-def _stable_contract_rows(path: Path, fields: list[str]) -> list[dict[str, str]]:
-    """Read only newline-complete rows while capture may still be appending."""
-
-    if not path.is_file():
-        raise ValueError(f"required retained CSV is missing: {path}")
-    payload = path.read_bytes()
-    newline = payload.rfind(b"\n")
-    if newline < 0:
-        raise ValueError(f"required retained CSV header is unavailable: {path}")
-    try:
-        text = payload[: newline + 1].decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError(f"retained CSV is not UTF-8: {path}") from exc
-    reader = csv.DictReader(io.StringIO(text, newline=""))
-    if reader.fieldnames != fields:
-        raise ValueError(f"retained CSV header differs: {path}")
-    rows = list(reader)
-    if any(None in row or any(value is None for value in row.values()) for row in rows):
-        raise ValueError(f"retained CSV row width differs: {path}")
-    return rows
-
-
-def _exact_record_progress(
+def _bounded_contract_tail(
+    path: Path,
+    fields: tuple[str, ...] | list[str],
     *,
-    rows: list[dict[str, str]],
-    sequence_field: str,
-    timestamp_field: str,
-    record_type: str,
-    age_s: float | None,
+    now: float,
+    expected: dict[str, str] | None = None,
+    summary_fields: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    mismatches: list[str] = []
-    previous_sequence = 0
-    previous_ticks: int | None = None
-    latest: dict[str, str] | None = None
-    for row_number, row in enumerate(rows, start=1):
-        try:
-            sequence = int(row[sequence_field])
-            ticks = int(row[timestamp_field])
-        except (KeyError, TypeError, ValueError):
-            mismatches.append(f"{record_type} row {row_number} counter is malformed")
-            continue
-        if (
-            row["record_type"] != record_type
-            or row["schema_version"] != "3"
-            or row["time_domain"] != EXACT_LIFECYCLE_TIME_DOMAIN
-            or sequence <= previous_sequence
-            or (previous_ticks is not None and ticks < previous_ticks)
-        ):
-            mismatches.append(f"{record_type} row {row_number} identity differs")
-        previous_sequence = sequence
-        previous_ticks = ticks
-        latest = {
-            sequence_field: row[sequence_field],
-            timestamp_field: row[timestamp_field],
-            "time_domain": row["time_domain"],
-        }
-    return {
-        "rows": len(rows),
-        "age_s": age_s,
-        "mismatches": mismatches,
-        "latest": latest,
+    """Observe one newline-complete CSV row without treating history as replayed."""
+
+    expected_fields = tuple(fields)
+    result: dict[str, Any] = {
+        "rows": None,
+        "latest": None,
+        "age_s": _age_s(path, now=now),
+        "observed_tail_only": True,
+        "bytes_observed": 0,
+        "mismatches": [],
     }
+    if not path.is_file():
+        result["unavailable"] = True
+        result["mismatches"].append(f"retained CSV is missing: {path}")
+        return result
+    try:
+        with path.open("rb") as handle:
+            header = handle.readline(HEADER_MAX_BYTES + 1)
+            if len(header) > HEADER_MAX_BYTES or not header.endswith(b"\n"):
+                result["unavailable"] = True
+                result["mismatches"].append("retained CSV header is unavailable")
+                return result
+            size = handle.seek(0, os.SEEK_END)
+            tail_size = min(size, TAIL_OBSERVATION_MAX_BYTES)
+            handle.seek(size - tail_size)
+            tail = handle.read(tail_size)
+    except OSError as exc:
+        result["unavailable"] = True
+        result["mismatches"].append(f"retained CSV cannot be read: {exc}")
+        return result
+    result["bytes_observed"] = len(header) + len(tail)
+    try:
+        parsed_header = next(csv.reader([header.decode("utf-8").rstrip("\r\n")], strict=True))
+    except (UnicodeDecodeError, csv.Error, StopIteration) as exc:
+        result["unavailable"] = True
+        result["mismatches"].append(f"retained CSV header is malformed: {exc}")
+        return result
+    if tuple(parsed_header) != expected_fields:
+        result["unavailable"] = True
+        result["mismatches"].append("retained CSV header differs")
+        return result
+    completed = tail[:-1] if tail.endswith(b"\n") else tail[: tail.rfind(b"\n")]
+    if size == len(header) or completed == header.rstrip(b"\r\n"):
+        return result
+    if not completed:
+        return result
+    row_start = completed.rfind(b"\n") + 1
+    if size > tail_size and row_start == 0:
+        result["unavailable"] = True
+        result["mismatches"].append("latest complete CSV row exceeds bounded observation")
+        return result
+    try:
+        values = next(csv.reader([completed[row_start:].decode("utf-8").rstrip("\r")], strict=True))
+    except (UnicodeDecodeError, csv.Error, StopIteration) as exc:
+        result["unavailable"] = True
+        result["mismatches"].append(f"latest complete CSV row is malformed: {exc}")
+        return result
+    if len(values) != len(expected_fields):
+        result["unavailable"] = True
+        result["mismatches"].append("latest complete CSV row width differs")
+        return result
+    row = dict(zip(expected_fields, values, strict=True))
+    if expected is not None:
+        for field, value in expected.items():
+            if row.get(field) != value:
+                result["mismatches"].append(
+                    f"latest row {field} differs: {row.get(field)!r} != {value!r}"
+                )
+    result["latest"] = {
+        field: row.get(field, "") for field in (summary_fields or expected_fields)
+    }
+    result["observed_frontier_valid"] = not result["mismatches"]
+    return result
 
 
 def _exact_lifecycle_record_progress(run_dir: Path, *, now: float) -> dict[str, Any]:
-    transaction_rows = _stable_contract_rows(
-        run_dir / ACTIVE, ACTIVE_TRANSACTION_V3_FIELDS
+    transactions = _bounded_contract_tail(
+        run_dir / ACTIVE,
+        ACTIVE_TRANSACTION_V3_FIELDS,
+        now=now,
+        expected={"record_type": "ACT", "schema_version": "3",
+                  "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN},
+        summary_fields=("transaction_record_sequence", "event_timestamp_ticks", "time_domain"),
     )
-    decision_rows = _stable_contract_rows(
-        run_dir / HYBRID, ACTIVE_HYBRID_DECISION_V3_FIELDS
-    )
-    transactions = _exact_record_progress(
-        rows=transaction_rows,
-        sequence_field="transaction_record_sequence",
-        timestamp_field="event_timestamp_ticks",
-        record_type="ACT",
-        age_s=_age_s(run_dir / ACTIVE, now=now),
-    )
-    decisions = _exact_record_progress(
-        rows=decision_rows,
-        sequence_field="hybrid_record_sequence",
-        timestamp_field="decision_timestamp_ticks",
-        record_type="AHY",
-        age_s=_age_s(run_dir / HYBRID, now=now),
+    decisions = _bounded_contract_tail(
+        run_dir / HYBRID,
+        ACTIVE_HYBRID_DECISION_V3_FIELDS,
+        now=now,
+        expected={"record_type": "AHY", "schema_version": "3",
+                  "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN},
+        summary_fields=("hybrid_record_sequence", "decision_timestamp_ticks", "time_domain"),
     )
     mismatches = [*transactions["mismatches"], *decisions["mismatches"]]
     return {
         "required": True,
         "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
+        "observation_scope": "latest newline-complete row per retained CSV; prior history is unobserved",
         "ACT": transactions,
         "AHY": decisions,
         "exact_at_observed_frontier": not mismatches,
@@ -296,61 +302,30 @@ def _maintenance_evidence_progress(
     expected_build_identity: str,
     now: float,
 ) -> dict[str, Any]:
-    """Read the descriptor-declared ADAPTIVE_HYBRID maintenance evidence without I/O."""
-
     contract = programme.maintenance_record_contract
     record_type = programme.maintenance_record_type
     if contract != "active_hybrid_maintenance_v2" or record_type != "AHM":
         raise ValueError("unsupported long-run maintenance evidence descriptor")
-    path = run_dir / "csv" / f"{contract}.csv"
-    rows = _stable_contract_rows(path, ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS)
-    mismatches: list[str] = []
-    previous_sequence = 0
-    latest: dict[str, str] | None = None
-    expected = {
-        "record_type": record_type,
-        "run_identity": programme.runtime_run_identity,
-        "build_identity": expected_build_identity,
-        "image_identity": programme.profile_id,
-        "policy_id": programme.policy_id,
-        "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
-    }
-    for row_number, row in enumerate(rows, start=1):
-        try:
-            sequence = int(row["maintenance_record_sequence"])
-        except (TypeError, ValueError):
-            mismatches.append(f"AHM row {row_number} sequence is malformed")
-            continue
-        if sequence <= previous_sequence:
-            mismatches.append(f"AHM row {row_number} sequence is not increasing")
-        previous_sequence = sequence
-        for field, value in expected.items():
-            if row.get(field) != value:
-                mismatches.append(
-                    f"AHM row {row_number} {field} differs: "
-                    f"{row.get(field)!r} != {value!r}"
-                )
-        latest = {
-            field: row.get(field, "")
-            for field in (
-                "maintenance_record_sequence",
-                "event",
-                "maintenance_state_after",
-                "request_pending_after",
-                "response_pending_after",
-                "metadata_hold_after",
-                "reason",
-            )
-        }
-    return {
-        "required": True,
-        "contract": contract,
-        "record_type": record_type,
-        "rows": len(rows),
-        "age_s": _age_s(path, now=now),
-        "latest": latest,
-        "mismatches": mismatches,
-    }
+    result = _bounded_contract_tail(
+        run_dir / "csv" / f"{contract}.csv",
+        ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
+        now=now,
+        expected={
+            "record_type": record_type,
+            "schema_version": "2",
+            "run_identity": programme.runtime_run_identity,
+            "build_identity": expected_build_identity,
+            "image_identity": programme.profile_id,
+            "policy_id": programme.policy_id,
+            "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
+        },
+        summary_fields=("maintenance_record_sequence", "event", "maintenance_state_after",
+                        "request_pending_after", "response_pending_after",
+                        "metadata_hold_after", "reason"),
+    )
+    return {"required": True, "contract": contract, "record_type": record_type,
+            "observation_scope": "latest newline-complete row only; prior history is unobserved",
+            **result}
 
 
 def _qualified_d14_aperture_progress(
@@ -498,6 +473,31 @@ def _qualified_d14_aperture_progress(
     return result
 
 
+def _valid_header_without_rows(observation: object) -> bool:
+    """A capture-created contract file can be empty before SETUP."""
+
+    return (
+        isinstance(observation, dict)
+        and observation.get("latest") is None
+        and observation.get("unavailable") is not True
+        and observation.get("mismatches") == []
+    )
+
+
+def _awaiting_expected_evidence(
+    *,
+    exact_lifecycle: object,
+    maintenance: object,
+) -> bool:
+    return (
+        isinstance(exact_lifecycle, dict)
+        and isinstance(maintenance, dict)
+        and _valid_header_without_rows(exact_lifecycle.get("ACT"))
+        and _valid_header_without_rows(exact_lifecycle.get("AHY"))
+        and _valid_header_without_rows(maintenance)
+    )
+
+
 def _pid_alive(value: object) -> bool:
     try:
         pid = int(value)
@@ -600,12 +600,6 @@ def snapshot_validated(
         elif exact_lifecycle["mismatches"]:
             integrity_faults.append("exact_lifecycle_record_identity_mismatch")
     if programme.persistent_maintenance_policy:
-        expected_pre_setup_header_only = bool(
-            isinstance(supervisor, dict)
-            and supervisor.get("manual_start_sent") is False
-            and supervisor.get("setup_confirmed_utc") is None
-            and supervisor.get("latest_hybrid_state") in {None, "SETUP_PENDING"}
-        )
         try:
             maintenance = _maintenance_evidence_progress(
                 run_dir,
@@ -619,13 +613,9 @@ def snapshot_validated(
                 "unavailable": True,
                 "mismatches": [str(exc)],
             }
-        maintenance["expected_pre_setup_header_only"] = (
-            expected_pre_setup_header_only
-        )
-        if maintenance.get("unavailable") is True or (
-            not maintenance.get("rows")
-            and not expected_pre_setup_header_only
-        ):
+        # A valid header records absence of observations, not a missed device
+        # transition. The monitor must not infer emission order from host flags.
+        if maintenance.get("unavailable") is True:
             integrity_faults.append("maintenance_evidence_unavailable")
         elif maintenance["mismatches"]:
             integrity_faults.append("maintenance_evidence_identity_mismatch")
@@ -663,18 +653,22 @@ def snapshot_validated(
         ):
             integrity_faults.append("prewrite_qualification_deadline_expired")
 
-    estimates = _row_summary(
+    estimates = _bounded_contract_tail(
         run_dir / ESTIMATES,
-        (
+        ESTIMATE_V3_FIELDS,
+        now=now,
+        summary_fields=(
             "estimate_id",
             "estimator_timestamp_ticks",
             "source_dac_ref",
             "frequency_error_hz",
         ),
     )
-    transactions = _row_summary(
+    transactions = _bounded_contract_tail(
         run_dir / ACTIVE,
-        (
+        ACTIVE_TRANSACTION_V3_FIELDS,
+        now=now,
+        summary_fields=(
             "transaction_record_sequence",
             "event",
             "request_sequence",
@@ -682,9 +676,11 @@ def snapshot_validated(
             "response_class",
         ),
     )
-    hybrid = _row_summary(
+    hybrid = _bounded_contract_tail(
         run_dir / HYBRID,
-        (
+        ACTIVE_HYBRID_DECISION_V3_FIELDS,
+        now=now,
+        summary_fields=(
             "hybrid_record_sequence",
             "decision_sequence",
             "dac_epoch",
@@ -700,11 +696,17 @@ def snapshot_validated(
         ),
         orchestration_hold=orchestration_hold,
     )
+    awaiting_expected_evidence = _awaiting_expected_evidence(
+        exact_lifecycle=exact_lifecycle,
+        maintenance=maintenance,
+    )
     status = (
         "review_required"
         if diagnostic_hold is not None
         else "terminal"
         if terminal_reached
+        else "awaiting_expected_evidence"
+        if awaiting_expected_evidence
         else "running"
     )
     return {
@@ -719,6 +721,7 @@ def snapshot_validated(
         "terminal": terminal,
         "integrity_faults": integrity_faults,
         "diagnostic_review_hold": diagnostic_hold,
+        "diagnostic": None if diagnostic_hold is None else "; ".join(diagnostic_hold["sources"]),
         "resolved_review_hold": resolved_orchestration_hold,
         "monitoring": {
             "maximum_poll_interval_s": 10,
@@ -784,6 +787,7 @@ def snapshot_validated(
             "qualified_d14_apertures": qualified_apertures,
             "exact_lifecycle_records": exact_lifecycle,
             "maintenance_evidence": maintenance,
+            "awaiting_expected_evidence": awaiting_expected_evidence,
         },
     }
 

@@ -398,3 +398,22 @@ required ruthless deletion of unnecessary scaffolding, no retired compatibility
 layers, and an eventual ordinary experience of power on and use D9 with an
 optional recording/inspection host. Stage 6 on the older Mac remains next for
 the current qualification; standalone operation remains separate product work.
+
+The subsequent PR #178 production-bundle rehearsal on the older Mac passed
+build and startup but was cut off while its second transaction was progressing.
+The retained archive is verified and the [whole-host repair record](../60_EXPERIMENTS/CAUSAL_WAIT_REPAIR_2026_09_11.md)
+records the exact evidence. The operator expanded Stage 5b to remove duplicate
+state/lifetime owners, repeated monitoring replays, and separate finalization
+paths before returning to hardware. All software simulation now runs on the
+development Mac; the older Mac is reserved for actual hardware access and its
+short, platform-specific entry check. A software rehearsal must not be used as
+physical qualification, nor repeatedly delegated to the bench to discover an
+ordinary host integration defect.
+
+The successor Stage 5b host sweep passes 715 release tests and both complete
+normal/delayed process rehearsals. It removes managed child lifetime timers,
+unsupported retained-session takeover, full-history monitor polling, raw-log
+rescanning during abort, duplicate partial inventory and private rehearsal
+registration. The exact commit/image/bundle verification is recorded with its
+publication. Stage 6 should now exercise the physical rig rather than repeat
+software simulations on the older Mac.

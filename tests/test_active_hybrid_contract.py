@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 
 from host.otis_tools.capture_serial import CsvRecordSplitter
-from host.otis_tools.adaptive_hybrid_monitor import _exact_record_progress
+from host.otis_tools.adaptive_hybrid_monitor import _bounded_contract_tail
 from host.otis_tools.contracts import (
     ACTIVE_HYBRID_DECISION_V3_FIELDS,
     CsvValidationContext,
@@ -234,7 +234,7 @@ def test_active_hybrid_contract_rejects_missing_coarse_unknown_and_backward_timi
     )
 
 
-def test_monitor_reads_exact_ahy_timing_directly() -> None:
+def test_monitor_observes_only_the_latest_complete_ahy_row(tmp_path: Path) -> None:
     first = _row()
     second = _row()
     second["hybrid_record_sequence"] = "2"
@@ -242,28 +242,38 @@ def test_monitor_reads_exact_ahy_timing_directly() -> None:
     second["decision_timestamp_ticks"] = str(
         int(first["decision_timestamp_ticks"]) + 1
     )
-    progress = _exact_record_progress(
-        rows=[first, second],
-        sequence_field="hybrid_record_sequence",
-        timestamp_field="decision_timestamp_ticks",
-        record_type="AHY",
-        age_s=0.0,
+    path = tmp_path / "active_hybrid_decisions_v3.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=ACTIVE_HYBRID_DECISION_V3_FIELDS)
+        writer.writeheader()
+        writer.writerows([first, second])
+    progress = _bounded_contract_tail(
+        path,
+        ACTIVE_HYBRID_DECISION_V3_FIELDS,
+        now=0.0,
+        expected={
+            "record_type": "AHY",
+            "schema_version": "3",
+            "time_domain": "rp2040_monotonic_us64",
+        },
+        summary_fields=("hybrid_record_sequence", "decision_timestamp_ticks", "time_domain"),
     )
     assert progress["mismatches"] == []
+    assert progress["rows"] is None
+    assert progress["observed_tail_only"] is True
     assert progress["latest"] == {
         "hybrid_record_sequence": "2",
         "decision_timestamp_ticks": second["decision_timestamp_ticks"],
         "time_domain": "rp2040_monotonic_us64",
     }
 
-    second["decision_timestamp_ticks"] = str(
-        int(first["decision_timestamp_ticks"]) - 1
+    second["time_domain"] = "controller_seconds"
+    _write(path, second)
+    progress = _bounded_contract_tail(
+        path, ACTIVE_HYBRID_DECISION_V3_FIELDS, now=0.0,
+        expected={"record_type": "AHY", "schema_version": "3",
+                  "time_domain": "rp2040_monotonic_us64"},
     )
-    progress = _exact_record_progress(
-        rows=[first, second],
-        sequence_field="hybrid_record_sequence",
-        timestamp_field="decision_timestamp_ticks",
-        record_type="AHY",
-        age_s=0.0,
-    )
-    assert progress["mismatches"] == ["AHY row 2 identity differs"]
+    assert progress["mismatches"] == [
+        "latest row time_domain differs: 'controller_seconds' != 'rp2040_monotonic_us64'"
+    ]

@@ -37,7 +37,7 @@ from .adaptive_hybrid_activation import (
     validate_frozen_run_manifest,
 )
 from .adaptive_hybrid_health import SETUP_AUTHORITY_PATH
-from .active_status_contract import complete_active_status_snapshots
+from .active_status_contract import complete_active_status_snapshots, ACTIVE_STATUS_WIRE_KEYS, SNAPSHOT_BEGIN_KEY
 from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
 from .adaptive_hybrid_contract import (
     AdaptiveHybridProgramme,
@@ -56,6 +56,7 @@ from .contracts import HEALTH_FIELDS
 from .evidence import (
     EVIDENCE_MANIFEST,
     create_evidence_snapshot,
+    create_partial_evidence_snapshot,
     validate_evidence_snapshot,
 )
 from .evidence_finalization import (
@@ -445,8 +446,6 @@ def _capture_command(
     *,
     device: str,
     run_dir: Path,
-    bench_attempt: BenchAttemptEnvelope,
-    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -465,8 +464,6 @@ def _capture_command(
         str(EXPECTED_BAUD),
         "--run-dir",
         str(run_dir),
-        "--duration-s",
-        str(int(bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]) + 180),
         "--status-interval",
         "5",
         "--command-fifo",
@@ -485,8 +482,6 @@ def _supervisor_command(
     *,
     run_dir: Path,
     build_identity: str,
-    bench_attempt: BenchAttemptEnvelope,
-    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
 ) -> list[str]:
     return [
         sys.executable,
@@ -504,8 +499,6 @@ def _supervisor_command(
         str(run_dir / HOST_ABORT_FIFO),
         "--expected-build-identity",
         build_identity,
-        "--duration-s",
-        str(int(bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]) + 120),
     ]
 
 
@@ -590,57 +583,97 @@ def _record_abort_delivery_failure(
     return path
 
 
-def _retained_abort_consumption_health(run_dir: Path) -> dict[tuple[str, str], str] | None:
-    """Return a complete post-abort firmware snapshot from canonical records.
+class _AbortConsumptionObserver:
+    """Read forward from capture's abort frontier; never replay the run to stop it."""
 
-    The live reducer deliberately latches ``invalid`` when an ordinary
-    supervisor snapshot overlaps a prior incomplete generation.  That remains
-    a control-plane fault, but it must not erase a later complete, retained
-    ABORTED/fail-static snapshot when deciding whether the independent abort
-    reached firmware before the sole capture owner may close.
-    """
-    raw_path = run_dir / "raw/serial.log"
-    if not raw_path.is_file():
-        return None
-    abort_sent = False
-    rows: list[dict[str, str]] = []
-    with raw_path.open("r", encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            if line.startswith(HOST_MARKER_PREFIX):
-                try:
-                    marker = json.loads(line[len(HOST_MARKER_PREFIX) :])
-                except json.JSONDecodeError:
-                    continue
+    READ_BYTES = 65536
+
+    def __init__(self, run_dir: Path) -> None:
+        self.run_dir = run_dir.resolve()
+        self.offset: int | None = None
+        self.frontier: dict[str, Any] | None = None
+        self.highest_started_generation = 0
+        self.partial = b""
+        self.marker_seen = False
+        self.rows: list[dict[str, str]] = []
+
+    def observe(self, capture: dict[str, Any]) -> dict[tuple[str, str], str] | None:
+        frontier = capture.get("emergency_abort_raw_frontier")
+        if frontier is None:
+            return None
+        if (not isinstance(frontier, dict)
+            or frontier.get("run_directory") != str(self.run_dir)
+            or type(frontier.get("search_offset_bytes")) is not int
+            or frontier["search_offset_bytes"] < 0
+            or any(type(frontier.get(key)) is not int or frontier[key] < 0
+                   for key in ("device", "inode"))):
+            raise ValueError("capture abort raw frontier is malformed or belongs to another run")
+        if self.frontier is None:
+            self.frontier = dict(frontier)
+            self.offset = frontier["search_offset_bytes"]
+        elif frontier != self.frontier:
+            raise ValueError("capture abort raw frontier changed")
+        with (self.run_dir / "raw/serial.log").open("rb") as handle:
+            metadata = os.fstat(handle.fileno())
+            identity = (metadata.st_dev, metadata.st_ino)
+            if identity != (frontier["device"], frontier["inode"]):
+                raise ValueError("abort observation raw file differs from capture's open file")
+            if self.offset > metadata.st_size:
+                raise ValueError("abort observation raw file was truncated")
+            handle.seek(self.offset)
+            payload = handle.read(self.READ_BYTES)
+            self.offset += len(payload)
+        lines = (self.partial + payload).split(b"\n")
+        self.partial = lines.pop()
+        if len(self.partial) > self.READ_BYTES:
+            raise ValueError("abort observation raw line exceeds capture bound")
+        for line in lines:
+            if len(line) > self.READ_BYTES:
+                raise ValueError("abort observation raw line exceeds capture bound")
+            text = line.decode("utf-8", errors="strict")
+            if text.startswith(HOST_MARKER_PREFIX):
+                marker = json.loads(text[len(HOST_MARKER_PREFIX):])
+                if not isinstance(marker, dict):
+                    raise ValueError("post-abort host marker is not an object")
                 if marker.get("event") == "emergency_abort_sent":
-                    # Reset at the independently retained transmission marker:
-                    # only a causally later firmware snapshot can prove that
-                    # this abort reached and was consumed by the device.
-                    abort_sent = True
-                    rows = []
+                    if self.marker_seen:
+                        raise ValueError("capture recorded more than one abort-send marker")
+                    self.marker_seen = True
+                    self.rows.clear()
                 continue
-            if not abort_sent or not line.startswith("STS,"):
+            if not self.marker_seen or not text.startswith("STS,"):
                 continue
-            try:
-                values = next(csv.reader([line.rstrip("\r\n")]))
-            except csv.Error:
-                continue
+            values = next(csv.reader([text]))
             if len(values) != len(HEALTH_FIELDS):
+                raise ValueError("post-abort status row width differs")
+            row = dict(zip(HEALTH_FIELDS, values, strict=True))
+            if row["component"] != "adaptive_hybrid":
                 continue
-            rows.append(dict(zip(HEALTH_FIELDS, values, strict=True)))
-    snapshots, newest_started_generation = complete_active_status_snapshots(rows)
-    if not snapshots:
-        return None
-    latest = snapshots[-1]
-    if int(latest["snapshot_generation_complete"]) != newest_started_generation:
-        return None
-    return {("adaptive_hybrid", key): value for key, value in latest.items()}
+            if row["status_key"] == SNAPSHOT_BEGIN_KEY:
+                self.highest_started_generation = max(
+                    self.highest_started_generation, int(row["status_value"])
+                )
+                self.rows.clear()
+            self.rows.append(row)
+            if len(self.rows) > len(ACTIVE_STATUS_WIRE_KEYS):
+                raise ValueError("post-abort snapshot exceeds its declared row bound")
+        snapshots, newest_started_generation = complete_active_status_snapshots(self.rows)
+        if not snapshots or int(snapshots[-1]["snapshot_generation_complete"]) != max(
+            newest_started_generation, self.highest_started_generation
+        ):
+            return None
+        return {("adaptive_hybrid", key): value for key, value in snapshots[-1].items()}
 
 
 def _wait_for_terminal_abort_delivery(
-    run_dir: Path, terminal: dict[str, Any]
+    run_dir: Path, terminal: dict[str, Any], *, deadline_ns: int | None = None
 ) -> None:
     if terminal.get("result") != "aborted":
         return
+
+    if deadline_ns is None:
+        deadline_ns = time.monotonic_ns() + int(ABORT_DELIVERY_TIMEOUT_S * 1_000_000_000)
+    observer = _AbortConsumptionObserver(run_dir)
 
     def delivered() -> bool:
         state = _read_json(run_dir / "reports/capture_device_state.json")
@@ -651,15 +684,9 @@ def _wait_for_terminal_abort_delivery(
             and int(state.get("emergency_aborts_sent", 0)) == 1
         ):
             return False
-        live = read_live_health_state(run_dir / LIVE_STATE_PATH)
-        # Prefer the atomic live state.  On its explicitly-invalid branch,
-        # use only a complete retained firmware abort snapshot—not a partial
-        # health prefix and never a fresh query/nonce request.
-        health = (
-            live.health
-            if live.state == "complete"
-            else _retained_abort_consumption_health(run_dir)
-        )
+        # One post-send raw path proves causality even if the ordinary live
+        # reducer is invalid. A pre-send complete snapshot cannot satisfy it.
+        health = observer.observe(state)
         if health is None:
             return False
         if not (
@@ -683,11 +710,13 @@ def _wait_for_terminal_abort_delivery(
         return static_code is None
 
     try:
-        _wait_until(
-            delivered,
-            ABORT_DELIVERY_TIMEOUT_S,
-            "priority abort delivery before sole-owner capture close",
-        )
+        while time.monotonic_ns() < deadline_ns:
+            if delivered() and time.monotonic_ns() < deadline_ns:
+                return
+            remaining_ns = deadline_ns - time.monotonic_ns()
+            if remaining_ns > 0:
+                time.sleep(min(0.1, remaining_ns / 1_000_000_000))
+        raise TimeoutError("priority abort consumption was not confirmed before its shared deadline")
     except (OSError, TimeoutError, TypeError, ValueError) as exc:
         _record_abort_delivery_failure(
             run_dir,
@@ -942,91 +971,7 @@ def _write_complete(
 
 
 def _create_partial_evidence_snapshot(run_dir: Path) -> Path:
-    """Freeze every available declared artifact after a partial terminal.
-
-    The generic snapshot creator correctly rejects missing required artifacts.
-    A stopped physical attempt still needs an immutable, explicitly partial
-    inventory so offline analysis can report those absences without losing the
-    evidence that did arrive.
-    """
-
-    manifest = load_manifest(run_dir)
-    sources: dict[str, dict[str, str]] = {
-        manifest.path.relative_to(run_dir).as_posix(): {"role": "run_manifest"}
-    }
-    raw_dir = run_dir / "raw"
-    if raw_dir.is_dir():
-        for path in sorted(raw_dir.rglob("*")):
-            if path.is_file():
-                sources[path.relative_to(run_dir).as_posix()] = {
-                    "role": "raw_evidence"
-                }
-    for entry in manifest.files:
-        relative = entry.get("path")
-        if not isinstance(relative, str):
-            continue
-        path = PurePosixPath(relative)
-        if path.is_absolute() or ".." in path.parts or path.as_posix() != relative:
-            raise ValueError(f"unsafe partial evidence path: {relative!r}")
-        metadata = {"role": "declared_artifact"}
-        contract = entry.get("contract")
-        if isinstance(contract, str) and contract:
-            metadata["contract"] = contract
-        if (run_dir / relative).is_file():
-            sources[relative] = metadata
-    evidence_artifacts = manifest.data.get("evidence_artifacts", [])
-    if not isinstance(evidence_artifacts, list):
-        raise ValueError("ADAPTIVE_HYBRID evidence_artifacts must be a list")
-    for relative in evidence_artifacts:
-        if not isinstance(relative, str):
-            raise ValueError("ADAPTIVE_HYBRID evidence artifact path must be a string")
-        path = PurePosixPath(relative)
-        if path.is_absolute() or ".." in path.parts or path.as_posix() != relative:
-            raise ValueError(f"unsafe partial evidence path: {relative!r}")
-        if (run_dir / relative).is_file():
-            sources[relative] = {"role": "declared_artifact"}
-
-    artifacts: list[dict[str, Any]] = []
-    for relative, metadata in sorted(sources.items()):
-        path = run_dir / relative
-        try:
-            path.resolve(strict=True).relative_to(run_dir)
-        except ValueError as exc:
-            raise ValueError(
-                f"partial evidence artifact escapes through a symlink: {relative}"
-            ) from exc
-        current = run_dir
-        if any(
-            (current := current / part).is_symlink()
-            for part in PurePosixPath(relative).parts
-        ):
-            raise ValueError(f"partial evidence artifact is a symlink: {relative}")
-        artifacts.append(
-            {
-                "path": relative,
-                **metadata,
-                "size_bytes": path.stat().st_size,
-                "sha256": _sha256_file(path),
-            }
-        )
-    snapshot: dict[str, Any] = {
-        "schema_version": 1,
-        "run_id": manifest.run_id,
-        "run_state": "partial",
-        "digest_algorithm": "sha256",
-        "artifacts": artifacts,
-    }
-    snapshot["snapshot_digest"] = sha256(
-        json.dumps(
-            snapshot,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
-    destination = run_dir / EVIDENCE_MANIFEST
-    _atomic_new_json(destination, snapshot)
-    return destination
+    return create_partial_evidence_snapshot(run_dir)
 
 
 def _snapshotted_artifact_identities(
@@ -1339,8 +1284,6 @@ def run_adaptive_hybrid_qualification(
             _capture_command(
                 device=device,
                 run_dir=run_dir,
-                bench_attempt=bench_attempt,
-                programme=programme,
             ),
             run_dir / CAPTURE_LOG,
         )
@@ -1357,8 +1300,6 @@ def run_adaptive_hybrid_qualification(
             supervisor_command=_supervisor_command(
                 run_dir=run_dir,
                 build_identity=str(bundle["firmware"]["build_identity"]),
-                bench_attempt=bench_attempt,
-                programme=programme,
             ),
             monitor_command=monitor_command(run_dir),
             supervisor_log=run_dir / SUPERVISOR_LOG,

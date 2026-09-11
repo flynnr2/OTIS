@@ -48,6 +48,8 @@ from .acquisition_frontier import (
 )
 from .adaptive_hybrid_bundle import validate_bundle
 from .adaptive_hybrid_contract import (
+    operational_rehearsal_timing,
+    OPERATIONAL_REHEARSAL_CHECKS,
     ADAPTIVE_HYBRID_PROGRAMME,
     operational_rehearsal_authorization_contract,
     programme_from_mapping,
@@ -55,6 +57,7 @@ from .adaptive_hybrid_contract import (
 from .adaptive_hybrid_analyze import (
     replay_current_adaptive_hybrid_host_consumers,
 )
+from .adaptive_hybrid_run import _wait_for_terminal_abort_delivery
 from .adaptive_hybrid_monitor import (
     run_monitor,
 )
@@ -110,6 +113,7 @@ from .evidence_finalization import (
     advance_phase,
     begin_finalization,
     record_failure,
+    recover_registration,
     set_registration_intent,
 )
 from .evidence_index import package_identity, register_package, validate_index
@@ -509,6 +513,7 @@ def create_rehearsal_run_manifest(
             "sole_serial_owner": True,
             "serial_owner_count": 1,
             "tool_bindings": bundle["host_tools"],
+            "rehearsal_timing": operational_rehearsal_timing(),
             "fifos": {
                 "normal_command": "control/normal_commands.fifo",
                 "emergency_abort": "control/emergency_abort.fifo",
@@ -646,6 +651,7 @@ def _validate_manifest_value(
         "sole_serial_owner": True,
         "serial_owner_count": 1,
         "tool_bindings": bundle["host_tools"],
+            "rehearsal_timing": operational_rehearsal_timing(),
         "fifos": expected_fifos,
     }
     expected_section = {
@@ -2689,7 +2695,7 @@ def _supervisor_worker(manifest_path: Path, run_dir: Path) -> int:
         ),
         abort_fifo=run_dir / private["host"]["fifos"]["host_abort"],
         expected_build_identity=str(private["firmware"]["build_identity"]),
-        duration_s=120.0,
+        duration_s=None,
         console_events=False,
     )
     _record_supervisor_startup_phase(
@@ -2798,7 +2804,7 @@ def _rotate_to_transition(
         run_dir / "carrier" / SEGMENT_RESPONSE_DIR / f"{request_id}.json"
     )
     _wait_until(
-        lambda: response_path.is_file(), 10.0, "same-owner segment response"
+        lambda: response_path.is_file(), operational_rehearsal_timing()["rotation_s"], "same-owner segment response"
     )
     response = _read_object(response_path, "same-owner segment response")
     if response.get("status") != "completed":
@@ -2825,6 +2831,97 @@ def _process_command(module: str, *arguments: str) -> list[str]:
     return [sys.executable, "-m", module, *arguments]
 
 
+def _remaining_host_seconds(deadline_ns: int, description: str) -> float:
+    remaining_ns = deadline_ns - time.monotonic_ns()
+    if remaining_ns <= 0:
+        raise TimeoutError(f"{description} exhausted its shared host deadline")
+    return remaining_ns / 1_000_000_000
+
+
+def _rehearsal_progress_facts(state: dict[str, Any]) -> frozenset[str]:
+    """Count each exact fixture transition once, never observer activity."""
+    acknowledged = state.get("acknowledged_record_sequences", [])
+    if (not isinstance(acknowledged, list)
+        or any(type(item) is not int for item in acknowledged)
+        or len(acknowledged) > 8
+        or acknowledged != list(range(2, 2 + len(acknowledged)))):
+        raise ValueError("rehearsal acknowledgement frontier is not the exact fixture prefix")
+    facts = {f"acknowledged_record_{item}" for item in acknowledged}
+    census = state.get("startup_census")
+    if isinstance(census, dict) and census.get("authority_admitted") is True:
+        facts.add("startup_census")
+    if state.get("setup_confirmed_utc") and state.get("setup_confirmation"):
+        facts.add("setup_confirmed")
+    if state.get("gnss_metadata_hold_count") == 1 and state.get("gnss_metadata_hold") is None:
+        facts.add("metadata_requalified")
+    return frozenset(facts)
+
+
+@dataclass
+class _RehearsalProgressDeadline:
+    """One advancing deadline for a finite set of one-shot fixture facts."""
+    started_ns: int
+    last_progress_ns: int
+    timing: dict[str, Any]
+    facts: frozenset[str] = frozenset()
+
+    def observe(self, facts: frozenset[str], now_ns: int) -> bool:
+        if not self.facts.issubset(facts):
+            raise ValueError("rehearsal causal frontier moved backward")
+        if len(facts) > self.timing["maximum_progress_facts"]:
+            raise ValueError("rehearsal causal frontier exceeded its frozen fixture")
+        if now_ns < self.last_progress_ns:
+            raise ValueError("rehearsal host monotonic clock moved backward")
+        if now_ns - self.last_progress_ns >= self.timing["causal_progress_s"] * 1_000_000_000:
+            raise TimeoutError("rehearsal stalled without exact causal progress: " + ",".join(sorted(self.facts)))
+        changed = facts != self.facts
+        if changed:
+            self.facts, self.last_progress_ns = facts, now_ns
+        return changed
+
+
+def _wait_for_rehearsal_transactions(
+    session: AdaptiveHybridSession, emulator: DeterministicPtyInstrument,
+    timing: dict[str, Any],
+) -> None:
+    started_ns = time.monotonic_ns()
+    progress = _RehearsalProgressDeadline(started_ns, started_ns, timing)
+    while True:
+        session._require_alive(("capture", "supervisor", "monitor"))
+        session.check_monitor()
+        if emulator.error is not None:
+            raise RuntimeError(str(emulator.error))
+        state = _read_object(session.run_dir / "reports/adaptive_hybrid_supervisor_state.json", "supervisor state")
+        if state.get("host_verification_hold") is not None:
+            raise RuntimeError("rehearsal supervisor requires review: " + json.dumps(state["host_verification_hold"], sort_keys=True))
+        if state.get("terminal") is not None:
+            raise RuntimeError("rehearsal supervisor reached a terminal before the transaction sequence completed")
+        facts = _rehearsal_progress_facts(state)
+        complete = (
+            emulator.ready_for_obstruction.is_set()
+            and state.get("acknowledged_record_sequences") == list(range(2, 10))
+            and state.get("inflight_evidence_acknowledgement") is None
+            and state.get("response_count") == 2
+            and state.get("later_authority_released") is True
+            and "metadata_requalified" in facts
+        )
+        if complete:
+            facts |= {"complete"}
+        observed_ns = time.monotonic_ns()
+        if progress.observe(facts, observed_ns) or "causal_progress" not in session.state:
+            session.state["causal_progress"] = {
+                "clock_domain": timing["clock_domain"],
+                "started_monotonic_ns": started_ns,
+                "last_progress_monotonic_ns": progress.last_progress_ns,
+                "elapsed_host_monotonic_ns": observed_ns - started_ns,
+                "facts": sorted(facts),
+            }
+            session._save()
+        if complete:
+            return
+        time.sleep(0.05)
+
+
 
 def _run_process_topology(
     *,
@@ -2839,6 +2936,9 @@ def _run_process_topology(
     supervisor: subprocess.Popen[str] | None = None
     monitor: subprocess.Popen[str] | None = None
     session = AdaptiveHybridSession(run_dir=run_dir, device=device, physical=False)
+    timing = operational_rehearsal_timing()
+    session.state["rehearsal_timing"] = timing
+    session._save()
     emulator: DeterministicPtyInstrument | None = None
     emulator_thread: threading.Thread | None = None
     capture_continued = False
@@ -2856,8 +2956,6 @@ def _run_process_topology(
                 device,
                 "--run-dir",
                 str(run_dir),
-                "--duration-s",
-                "120",
                 "--status-interval",
                 "1",
                 "--command-fifo",
@@ -2879,7 +2977,7 @@ def _run_process_topology(
         slave_fd = -1
         # Do not write the synthetic boot stream until the child actually owns
         # the slave. A launched PID alone leaves a PTY-open race (EIO on macOS).
-        session.wait_capture_ready(10.0)
+        session.wait_capture_ready(timing["capture_start_s"])
         emulator = DeterministicPtyInstrument(master_fd, bundle)
         emulator_thread = emulator.start()
 
@@ -2897,29 +2995,9 @@ def _run_process_topology(
             supervisor_log=run_dir / "reports/adaptive_hybrid_supervisor.stdout.log",
             monitor_log=run_dir / "reports/adaptive_hybrid_monitor.stdout.log",
         )
-        session.wait_support_ready(10.0)
+        session.wait_support_ready(timing["support_start_s"])
 
-        def lifecycle_complete() -> bool:
-            if emulator is not None and emulator.error is not None:
-                raise RuntimeError(str(emulator.error))
-            state = _read_object(
-                run_dir / "reports/adaptive_hybrid_supervisor_state.json",
-                "supervisor state",
-            )
-            return bool(
-                emulator is not None
-                and emulator.ready_for_obstruction.is_set()
-                and state.get("acknowledged_record_sequences")
-                == list(range(2, 10))
-                and state.get("inflight_evidence_acknowledgement") is None
-                and state.get("response_count") == 2
-                and state.get("later_authority_released") is True
-                and state.get("gnss_metadata_hold_count") == 1
-                and state.get("gnss_metadata_hold") is None
-                and state.get("host_verification_hold") is None
-            )
-
-        _wait_until(lifecycle_complete, 90.0, "two exact progressive transactions")
+        _wait_for_rehearsal_transactions(session, emulator, timing)
         stale_line = (
             f"OTISQ1 {time.monotonic_ns() - 3_000_000_000} ACTIVE?\n"
         ).encode("ascii")
@@ -2938,18 +3016,19 @@ def _run_process_topology(
                 )
             )
             == 1,
-            5.0,
+            timing["stale_command_s"],
             "stale normal command rejection",
         )
         os.kill(capture.pid, signal.SIGSTOP)
         obstruction = _fill_fifo_to_obstruction(
             run_dir / "control/normal_commands.fifo"
         )
-        abort_started = time.monotonic()
+        abort_started_ns = time.monotonic_ns()
+        abort_deadline_ns = abort_started_ns + timing["abort_delivery_s"] * 1_000_000_000
         send_abort(run_dir / "control/host_abort.fifo")
         _wait_until(
             lambda: supervisor.poll() is not None,
-            8.0,
+            _remaining_host_seconds(abort_deadline_ns, "priority abort delivery"),
             "supervisor priority abort submission",
         )
         supervisor_exit = supervisor.wait(timeout=1.0)
@@ -2957,22 +3036,17 @@ def _run_process_topology(
             raise RuntimeError(f"supervisor abort exit was {supervisor_exit}, expected 3")
         os.kill(capture.pid, signal.SIGCONT)
         capture_continued = True
-        _wait_until(
-            lambda: (
-                emulator is not None
-                and emulator.abort_observed.is_set()
-                and int(
-                    _read_object(run_dir / CAPTURE_STATE, "capture state").get(
-                        "emergency_aborts_sent", 0
-                    )
-                )
-                == 1
-            ),
-            8.0,
-            "priority abort transmission and deterministic consumption",
-        )
-        abort_elapsed = time.monotonic() - abort_started
-        if abort_elapsed > 8.0:
+        terminal = _read_object(
+            run_dir / "reports/adaptive_hybrid_supervisor_state.json", "supervisor state"
+        ).get("terminal")
+        if not isinstance(terminal, dict) or terminal.get("result") != "aborted":
+            raise RuntimeError("explicit rehearsal abort lacks its supervisor terminal")
+        _wait_for_terminal_abort_delivery(run_dir, terminal, deadline_ns=abort_deadline_ns)
+        if not emulator.abort_observed.is_set():
+            raise RuntimeError("post-abort evidence preceded simulated command consumption")
+        abort_elapsed_ns = time.monotonic_ns() - abort_started_ns
+        abort_elapsed = abort_elapsed_ns / 1_000_000_000
+        if abort_elapsed_ns > timing["abort_delivery_s"] * 1_000_000_000:
             raise RuntimeError("priority abort delivery exceeded its bounded deadline")
 
         rotation = _rotate_to_transition(
@@ -2981,7 +3055,7 @@ def _run_process_topology(
             capture_pid=capture.pid,
             device=device,
         )
-        capture_exit = session.close_capture_after_authorized_terminal(timeout_s=10.0)
+        capture_exit = session.close_capture_after_authorized_terminal(timeout_s=timing["capture_close_s"])
         if capture_exit != 0:
             raise RuntimeError(f"capture process exited {capture_exit}")
         transition_closure_path = transition_dir / SEGMENT_CLOSURE
@@ -3017,6 +3091,8 @@ def _run_process_topology(
             "schema_version": 1,
             "tool": TOOL_ID,
             "nonphysical": True,
+            "timing": timing,
+            "causal_progress": session.state["causal_progress"],
             "physical_actions_performed": 0,
             "processes": {
                 "capture": {"pid": capture.pid, "exit": capture_exit},
@@ -3484,7 +3560,29 @@ def analyze_and_seal_rehearsal(
         for marker in raw_markers
         if marker.get("event") == "host_command_rejected"
     ]
+    session_state = _read_object(run_dir / SESSION_PATH, "rehearsal session")
+    timing = operational_rehearsal_timing()
+    progress = process_evidence.get("causal_progress", {})
+    expected_facts = {"startup_census", "setup_confirmed", "metadata_requalified", "complete"}
+    expected_facts.update(f"acknowledged_record_{record}" for record in range(2, 10))
+    progress_coordinates = [progress.get(name) for name in (
+        "started_monotonic_ns", "last_progress_monotonic_ns", "elapsed_host_monotonic_ns"
+    )]
+    progress_exact = (
+        all(type(value) is int and value >= 0 for value in progress_coordinates)
+        and progress_coordinates[1] - progress_coordinates[0] == progress_coordinates[2]
+        and progress_coordinates[2] < timing["transaction_sequence_s"] * 1_000_000_000
+        and progress.get("clock_domain") == timing["clock_domain"]
+        and progress.get("facts") == sorted(expected_facts)
+        and progress == session_state.get("causal_progress")
+    )
     checks = {
+        "coordinator_timing_and_exact_progress_bound": (
+            process_evidence.get("timing") == timing
+            == manifest_value["host"].get("rehearsal_timing")
+            == session_state.get("rehearsal_timing")
+            and progress_exact
+        ),
         "private_nonphysical_manifest_exact": manifest_value.get("stage")
         == REHEARSAL_STAGE,
         "process_command_transcript_matches_raw": commands == raw_commands,
@@ -3607,7 +3705,10 @@ def analyze_and_seal_rehearsal(
         == ["capture_started", "capture_stopped"],
         "read_only_monitor_observed_lifecycle": any(
             row.get("tool") == "adaptive_hybrid_hybrid_monitor_v1"
-            and row.get("progress", {}).get("active_transactions", {}).get("rows", 0) >= 5
+            and row.get("progress", {}).get("active_transactions", {}).get("observed_tail_only") is True
+            and (row.get("progress", {}).get("active_transactions", {}).get("latest") or {}).get(
+                "transaction_record_sequence"
+            ) in {"5", "9"}
             for row in monitor_rows
         ),
         "supervisor_terminal_is_operator_abort": supervisor.get("terminal", {}).get(
@@ -3625,6 +3726,8 @@ def analyze_and_seal_rehearsal(
         )
         == 8,
     }
+    if frozenset(checks) != OPERATIONAL_REHEARSAL_CHECKS:
+        raise ValueError("rehearsal producer check inventory differs from the frozen contract")
     if not all(checks.values()):
         failed = sorted(name for name, value in checks.items() if not value)
         raise ValueError("operational rehearsal analysis failed: " + ", ".join(failed))
@@ -3888,12 +3991,6 @@ def _run_validated(
         classification="successful_rehearsal",
         reason="adaptive-hybrid operational rehearsal passed",
     )
-    registration = register_package(
-        index_path=evidence_index_path,
-        package_path=run_dir,
-        expected_content_sha256=identity["content_sha256"],
-        **success_metadata,
-    )
     registration_metadata = success_metadata
     successful_registration = True
     success_error: str | None = None
@@ -3902,14 +3999,7 @@ def _run_validated(
         registration=registration_metadata,
         expected_content_sha256=identity["content_sha256"],
     )
-    advance_phase(
-        journal,
-        "registration",
-        {
-            "content_sha256": registration["content_sha256"],
-            "attempt_classification": registration["attempt_classification"],
-        },
-    )
+    registration = recover_registration(journal)
     seal_checks = seal["checks"]
     boundary_results = {
         "continuous_capture_and_exact_frozen_identity_consumption": bool(
@@ -3929,7 +4019,8 @@ def _run_validated(
             and seal_checks["first_dependent_checkpoint_before_second_arm"]
         ),
         "timeout_periodic_and_repeated_transaction_boundaries": bool(
-            seal_checks["periodic_lease_and_snapshot_boundaries"]
+            seal_checks["coordinator_timing_and_exact_progress_bound"]
+            and seal_checks["periodic_lease_and_snapshot_boundaries"]
             and seal_checks["stale_command_timeout_rejected"]
             and seal_checks["two_arm_envelopes_bound_to_supervisor_events"]
             and seal_checks["two_transactions_replayed"]

@@ -189,9 +189,30 @@ class AdaptiveHybridSession:
             time.sleep(0.02)
         raise TimeoutError("session support readiness deadline expired (initialized supervisor and first monitor sample)")
 
+    def check_monitor(self) -> None:
+        """Surface fresh observer findings without assigning it terminal authority."""
+        monitor = self._receipt("monitor", MONITOR_STATE_PATH)
+        if monitor is None:
+            raise RuntimeError("session monitor receipt disappeared after readiness")
+        if (time.monotonic_ns() - monitor["observed_monotonic_ns"] > 15_000_000_000
+            or type(monitor.get("sample_count")) is not int or monitor["sample_count"] < 1):
+            raise RuntimeError("session monitor stopped publishing fresh observations")
+        monitor_status = monitor.get("status")
+        if monitor_status == "review_required":
+            detail = monitor.get("diagnostic")
+            suffix = "" if not detail else f": {detail}"
+            raise RuntimeError(f"session monitor requires review{suffix}")
+        if monitor_status not in {
+            "running", "awaiting_expected_evidence", "terminal"
+        }:
+            raise ValueError(
+                f"session monitor status is not recognized: {monitor_status!r}"
+            )
+
     def wait_for_terminal(self, timeout_s: float) -> dict[str, Any]:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
+            self.check_monitor()
             path = self.run_dir / "reports/adaptive_hybrid_supervisor_state.json"
             try:
                 state = json.loads(path.read_text(encoding="utf-8"))

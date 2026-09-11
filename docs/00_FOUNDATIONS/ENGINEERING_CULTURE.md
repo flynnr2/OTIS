@@ -53,6 +53,12 @@ correctness, preserve necessary evidence, or make an experiment easier to run.
 Remove or replace it otherwise. Qualification manifests, private simulators,
 runners and sealing belong outside the ordinary instrument runtime. Their
 necessary checks should run automatically, not become operator bookkeeping.
+One operation should have one owner and one deadline consumed by its nested
+waits. Progress must mean an exact causal transition, not a busy observer.
+Urgent abort and established ownership service must not disappear inside a
+blocking diagnostic wait. Independent firmware safety expiry protects a
+different boundary and must not be confused with those host deadlines.
+
 Retired campaigns survive in their source revisions and retained evidence, not
 in permanent compatibility layers. Sunk engineering effort is not a reason to
 keep an approach. Fix demonstrated architectural duplication before another

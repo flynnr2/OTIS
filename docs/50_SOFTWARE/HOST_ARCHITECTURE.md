@@ -4,6 +4,36 @@ OTIS host services preserve and analyze timing evidence; hardware capture is
 timing truth. Host scheduling, logging, networking, and storage must never
 define or modify a timestamp.
 
+## Explainable responsibilities
+
+The host has five jobs. Capture owns the serial connection and preserves raw
+instrument output. Supervision discovers state and manages the explicitly
+authorized experiment. Monitoring reports current progress and problems.
+Analysis validates and interprets retained evidence. Packaging binds what ran
+to what its evidence supports. Configuration binds those jobs once per process;
+a small session owner launches them and manages authorized closure.
+
+Monitoring does not replay entire growing CSV histories at every observation.
+It reads bounded complete tails and labels their scope, leaving total row
+counts unknown. Full validation belongs to the supervisor's decision-bearing
+checks and the offline analyzer. A monitor finding requests review through the
+runner and existing supervisor hold; it cannot abort, close capture or declare
+a scientific failure. Stale monitor receipts are also review findings.
+
+`reports/capture_device_state.json` publishes `emergency_abort_raw_frontier`
+when capture sends an emergency abort. The object binds `run_directory`,
+`search_offset_bytes`, `device` and `inode` to capture's open raw file. It is
+host-local observation provenance, not a firmware timing coordinate. A forward-only bounded observer finds the retained
+send marker and a subsequent complete firmware snapshot. A producer receipt
+alone does not prove the deferred raw marker or firmware consumption. Neither
+the verifier nor ordinary monitoring rescans multi-day history to stop a run.
+
+Complete and partial evidence snapshots use one inventory. Partial snapshots
+remain explicitly partial and retain diagnostic/carrier/provenance evidence;
+missing or malformed required evidence cannot produce a successful seal.
+Rehearsal and physical finalization persist registration intent before using
+the same idempotent registration operation.
+
 ## Current boundary
 
 The current ownership ledger and standalone design boundary are recorded in
@@ -131,6 +161,29 @@ requires a PTY and a nonphysical session. Physical host discrepancies preserve
 capture and enter the existing review-hold path; after the owner actually exits,
 diagnostic finalization remains reachable. Abort delivery must still precede
 any capture closure authorized by an aborting terminal.
+
+A causal acknowledgement phase owns one process-bound host-monotonic deadline
+from preparation through write acknowledgement and confirming snapshot.
+Nested observations, retries and periodic service consume that same bound;
+newer generations do not refresh it. Bounded waits service explicit operator
+abort. Lease renewal is allowed only for established ownership and never while
+a normal command's exact capture-write acknowledgement is unresolved.
+
+A retained pending acknowledgement from a different supervisor process remains
+observational and requires review. Its old monotonic deadline cannot be reused
+or silently refreshed. The current host does not adopt that transaction on
+restart. This removes an unsafe recovery assumption rather than adding another
+recovery protocol.
+
+The private rehearsal has one coordinator-owned progress deadline for a finite
+set of exact transitions. Managed capture and supervisor processes have no independent lifetime
+expiry in either physical execution or rehearsal. The supervisor owns the
+scientific endpoint; the session watchdog can request review without closing
+healthy capture. Heartbeats and repeated snapshots are not progress. Abort submission
+and delivery share one remaining budget. The frozen manifest, session record,
+process evidence and seal bind this timing declaration and completed frontier.
+These are host verification semantics; they do not redefine firmware safety
+expiry or scientific duration. See the [causal-wait repair record](../60_EXPERIMENTS/CAUSAL_WAIT_REPAIR_2026_09_11.md).
 
 The sole authority-bearing physical purpose is
 `contingent_72_hour_hybrid_control`. Its 72-hour accepted-aperture endpoint and
