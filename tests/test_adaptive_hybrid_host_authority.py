@@ -188,7 +188,8 @@ def test_monitor_and_registration_classify_host_findings_as_review_only() -> Non
             },
             "image_identity": "adaptive_hybrid_regulation",
         },
-        status="review_required",
+        evidence_integrity="review_required",
+        scientific_outcome="undetermined",
         reason="offline analyzer disagreement pending operator review",
         analyzer_identity="b" * 64,
     )
@@ -202,7 +203,8 @@ def test_monitor_and_registration_classify_host_findings_as_review_only() -> Non
             },
             "image_identity": "adaptive_hybrid_regulation",
         },
-        status="passed",
+        evidence_integrity="passed",
+        scientific_outcome="bounded_nonpass",
         reason=(
             "ADAPTIVE_HYBRID passed: "
             "adaptive_hybrid_authority_not_sustained"

@@ -9,6 +9,7 @@
 #include "../../firmware/arduino/otis_nano_rp2040_connect/otis_frequency_regulation_live.cpp"
 
 OtisEvidenceFrameMessage captured_control = {};
+OtisEvidenceFrameMessage captured_selected_estimate = {};
 OtisAdaptiveHybridRegulationLiveDecision captured_active_decision = {};
 uint64_t captured_active_decision_ticks = 0u;
 uint32_t captured_active_decision_count = 0u;
@@ -16,6 +17,8 @@ uint32_t captured_active_decision_count = 0u;
 bool otis_dual_core_publish_evidence(const OtisEvidenceFrameMessage *message) {
   if (message == nullptr) return false;
   captured_control = *message;
+  if (strncmp(message->data, "EST,2,", 6u) == 0)
+    captured_selected_estimate = *message;
   return true;
 }
 
@@ -132,10 +135,11 @@ int main() {
   assert(mismatch_decision.state == OtisFrequencyRegulationState::Fault);
   assert(strcmp(mismatch_decision.reason, "requested_applied_mismatch") == 0);
 
-  // Regression for the attempt-3 firmware fault: the selected D14 boundary
-  // occurred 122 us before the next whole second, while foreground uptime had
-  // already advanced.  The active decision must project seconds from the same
-  // extended capture timestamp supplied to its exact-domain consumer.
+  // A captured D14 boundary can precede both a metadata lifecycle transition
+  // and foreground decision production. The active lifecycle timestamp must
+  // follow that transition while the source EST keeps the captured ticks.
+  // Whole seconds must still come from the identical operational tick sample,
+  // never an independently sampled uptime or the older capture coordinate.
   assert(otis_frequency_regulation_live_begin(0u));
   current_dac_epoch = 5u;
   current_applied_code = 0xA844u;
@@ -167,13 +171,23 @@ int main() {
   const OtisRegulationStaticCodeState exact_code = {
       true, true, true, 0xA844u};
   OtisAdaptiveHybridRegulationLiveOutcome active_outcome = {};
+  constexpr uint64_t kMetadataTransitionTicks = kFaultBoundaryTicks + 500000u;
+  constexpr uint64_t kOperationalDecisionTicks = kFaultBoundaryTicks + 750000u;
   otis_frequency_regulation_live_on_boundary(
       &fault_boundary, 10000000u, true,
-      // Deliberately one second later than the captured boundary projection.
-      58842u, &exact_code, &active_outcome);
+      // Deliberately a different whole second from the operational sample.
+      58843u, kOperationalDecisionTicks % OTIS_RP2040_MONOTONIC_US32_MODULUS,
+      &exact_code, &active_outcome);
   assert(captured_active_decision_count == 1u);
-  assert(captured_active_decision_ticks == kFaultBoundaryTicks);
-  assert(captured_active_decision.timestamp_s == 58841u);
+  assert(captured_active_decision_ticks == kOperationalDecisionTicks);
+  assert(captured_active_decision_ticks > kMetadataTransitionTicks);
+  assert(captured_active_decision.timestamp_s == 58842u);
+  assert(captured_active_decision.source_first_sequence == 58240u);
+  assert(captured_active_decision.source_last_sequence == 58840u);
+  char captured_tick_field[40] = "";
+  snprintf(captured_tick_field, sizeof(captured_tick_field), ",%llu,rp2040_monotonic_us32,",
+           static_cast<unsigned long long>(fault_boundary.pps_timestamp_ticks));
+  assert(strstr(captured_selected_estimate.data, captured_tick_field) != nullptr);
   assert(captured_active_decision.timestamp_s ==
          captured_active_decision_ticks / 1000000ull);
   return 0;

@@ -68,19 +68,22 @@ obstruction/abort/handoff/analysis/sealing rehearsal, an exact frozen bundle,
 and explicit operator authority. A successful build or structural preflight
 alone is not a claim that the programme is ready for bench entry.
 
-The current cross-disciplinary execution sequence is the
-[`OTIS Canonical Instrument Completion Work Programme`](docs/90_ROADMAP/OTIS_CANONICAL_WORK_PROGRAMME.md).
-It incorporates the fixed-image reset, successor board and power work, isolated
-D10 and component-benchmarking inputs, exhaustive firmware/host contract
-parity, measurement-aperture characterization, GNSS timing corrections and
-modes, serial products, shared-engine accelerated exercise,
-disciplined-output qualification and the final integrated instrument gate.
+The current execution sequence is the
+[`OTIS consolidation programme`](docs/90_ROADMAP/OTIS_CONSOLIDATION_PROGRAMME.md):
+evidence and outcome integrity, shared experimental records, reference
+acceptance, firmware/host simplification, exact-path rehearsal and sustained
+qualification on the existing hardware. The older canonical work programme is
+an exploratory catalogue; hardware ports and successor-board work are outside
+the agreed scope.
 
 ## Evidence policy
 
 `runs/` is intentionally ignored local scientific evidence. Never force-add it
 or weaken `.gitignore`. Preserve raw packages unchanged; promote only reviewed
 conclusions, contracts, models, schemas, and small purpose-built fixtures.
+For delivery between machines, use
+[`closed evidence transfer`](docs/50_SOFTWARE/EVIDENCE_TRANSFER.md). Cloud storage
+carries sealed archives; acquisition and analysis use independent local copies.
 
 ## Verification
 

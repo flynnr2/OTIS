@@ -67,7 +67,7 @@ from .adaptive_hybrid_transactions import (
 )
 from .contracts import CsvValidationContext, validate_csv
 from .firmware_bindings import current_forwarded_clock_contract
-from .firmware_host_contract import wrapped_suffix_matches
+from .firmware_host_contract import bounded_modular_lag_matches
 from .prewrite_readiness_contract import (
     GNSS_OPERATIONAL_PREWRITE_EXACT,
     RAW_PPS_QUALIFICATION_DEADLINE_S,
@@ -2289,11 +2289,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _decision_timestamp_consumes_estimate(
         decision: dict[str, str], estimate: dict[str, str]
     ) -> bool:
-        """Match a 64-bit decision coordinate to its 32-bit EST producer."""
+        """Bind an operational decision to its preceding captured EST frontier."""
         try:
             return (
-                wrapped_suffix_matches(
-                    "estimate_tick_is_wrapped_suffix_of_decision_tick",
+                bounded_modular_lag_matches(
+                    "estimate_capture_precedes_operational_decision",
                     source=int(estimate["estimator_timestamp_ticks"]),
                     source_domain=estimate.get("time_domain", ""),
                     target=int(decision["decision_timestamp_ticks"]),

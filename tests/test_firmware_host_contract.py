@@ -223,7 +223,7 @@ def test_contract_authority_is_current_complete_and_deterministically_generated(
     } == {name: set(fields) for name, fields in RECORD_FIELDS.items()}
     assert set(RELATIONS) == {
         "active_decision_whole_seconds_from_exact_ticks",
-        "estimate_tick_is_wrapped_suffix_of_decision_tick",
+        "estimate_capture_precedes_operational_decision",
         "active_status_generation_is_atomic",
         "metadata_absence_is_deferred_not_contradictory",
         "lifetime_counters_are_not_current_health",

@@ -29,7 +29,7 @@ EXPECTED_CONTRACT_ID = "OTIS_FIRMWARE_HOST_CONTRACT_V1"
 RELATION_KINDS = frozenset(
     {
         "integer_projection",
-        "wrapped_suffix",
+        "bounded_modular_lag",
         "monotonic_sequence",
         "absence_semantics",
         "lifetime_counter",
@@ -466,12 +466,20 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
         + evidence.get("fail_transition", 0)
         + evidence.get("selected_suffix", 0)
     )
+    metadata_transition = evidence.get("metadata_transition")
+    queue_depth = evidence.get("queue_depth")
+    if type(metadata_transition) is not int or metadata_transition != 1:
+        raise FirmwareHostContractError("metadata transition frontier must be one frame")
+    if type(queue_depth) is not int or queue_depth < 1 or queue_depth & (queue_depth - 1):
+        raise FirmwareHostContractError("evidence queue depth must be a power of two")
+    expected_metadata_response = metadata_transition + expected_response
     if (
         evidence.get("request_frontier") != expected_request
         or evidence.get("response_frontier") != expected_response
         or evidence.get("request_fail_frontier") != expected_fail
-        or evidence.get("queue_depth", 0)
-        < max(expected_request, expected_response, expected_fail)
+        or evidence.get("metadata_response_frontier") != expected_metadata_response
+        or queue_depth
+        < max(expected_request, expected_response, expected_fail, expected_metadata_response)
     ):
         raise FirmwareHostContractError(
             "adaptive-hybrid evidence frontier arithmetic is inconsistent"
@@ -507,6 +515,19 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
         raise FirmwareHostContractError(
             f"unknown relation kinds: {unknown_relation_kinds}"
         )
+    for relation in relations:
+        if relation["kind"] == "bounded_modular_lag":
+            modulus = relation.get("modulus")
+            maximum = relation.get("maximum_lag_ticks")
+            if (
+                type(modulus) is not int or modulus != 1 << 32
+                or type(maximum) is not int or not 0 <= maximum < modulus // 2
+                or relation.get("source_domain") != "rp2040_monotonic_us32"
+                or relation.get("target_domain") != "rp2040_monotonic_us64"
+            ):
+                raise FirmwareHostContractError(
+                    "bounded modular lag must declare an unambiguous native-to-extended domain"
+                )
     return root
 
 
@@ -806,7 +827,7 @@ def integer_projection_matches(
     )
 
 
-def wrapped_suffix_matches(
+def bounded_modular_lag_matches(
     relation_id: str,
     *,
     source: int,
@@ -815,17 +836,19 @@ def wrapped_suffix_matches(
     target_domain: str,
 ) -> bool:
     relation = RELATIONS[relation_id]
-    if relation.get("kind") != "wrapped_suffix":
+    if relation.get("kind") != "bounded_modular_lag":
         raise FirmwareHostContractError(
-            f"{relation_id} is not a wrapped_suffix relation"
+            f"{relation_id} is not a bounded_modular_lag relation"
         )
     modulus = int(relation["modulus"])
+    lag = (target % modulus - source) % modulus
     return (
         source_domain == relation.get("source_domain")
         and target_domain == relation.get("target_domain")
         and 0 <= source < modulus
-        and target >= 0
-        and target % modulus == source
+        and 0 <= target < 1 << 64
+        and lag <= int(relation["maximum_lag_ticks"])
+        and target >= lag
     )
 
 
@@ -883,8 +906,11 @@ def render_cpp_header() -> str:
             f"#define OTIS_EVIDENCE_FAIL_TRANSITION_COUNT {evidence['fail_transition']}u",
             f"#define OTIS_EVIDENCE_REQUEST_FRONTIER {evidence['request_frontier']}u",
             f"#define OTIS_EVIDENCE_RESPONSE_FRONTIER {evidence['response_frontier']}u",
+            f"#define OTIS_EVIDENCE_METADATA_TRANSITION_COUNT {evidence['metadata_transition']}u",
+            f"#define OTIS_EVIDENCE_METADATA_RESPONSE_FRONTIER {evidence['metadata_response_frontier']}u",
             f"#define OTIS_EVIDENCE_REQUEST_FAIL_FRONTIER {evidence['request_fail_frontier']}u",
             f"#define OTIS_EVIDENCE_QUEUE_DEPTH {evidence['queue_depth']}u",
+            f"#define OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS {RELATIONS['estimate_capture_precedes_operational_decision']['maximum_lag_ticks']}ull",
             f"#define OTIS_TELEMETRY_NONACTIVE_TIMING_HEALTH_COUNT {telemetry['nonactive_timing_health']}u",
             f"#define OTIS_TELEMETRY_MAXIMUM_CONCURRENT_COUNT {telemetry['maximum_concurrent']}u",
             f"#define OTIS_TELEMETRY_MAXIMUM_BOOT_COUNT {telemetry['maximum_boot']}u",

@@ -1206,7 +1206,7 @@
   "frontiers": {
     "adaptive_hybrid_evidence": {
       "fail_transition": 1,
-      "queue_depth": 8,
+      "queue_depth": 16,
       "request_decision": 3,
       "request_fail_frontier": 8,
       "request_frontier": 7,
@@ -1214,7 +1214,9 @@
       "response_decision": 2,
       "response_frontier": 8,
       "selected_prefix": 3,
-      "selected_suffix": 1
+      "selected_suffix": 1,
+      "metadata_transition": 1,
+      "metadata_response_frontier": 9
     },
     "adaptive_hybrid_status": {
       "burst_count": 48,
@@ -1943,8 +1945,8 @@
       "target": "active_hybrid_decisions_v2.decision_timestamp_s"
     },
     {
-      "id": "estimate_tick_is_wrapped_suffix_of_decision_tick",
-      "kind": "wrapped_suffix",
+      "id": "estimate_capture_precedes_operational_decision",
+      "kind": "bounded_modular_lag",
       "modulus": 4294967296,
       "on_violation": "diagnostic_hold",
       "required_identity": [
@@ -1960,7 +1962,8 @@
       "source": "estimates_v2.estimator_timestamp_ticks",
       "source_domain": "rp2040_monotonic_us32",
       "target": "active_hybrid_decisions_v2.decision_timestamp_ticks",
-      "target_domain": "rp2040_monotonic_us64"
+      "target_domain": "rp2040_monotonic_us64",
+      "maximum_lag_ticks": 60000000
     },
     {
       "id": "active_status_generation_is_atomic",

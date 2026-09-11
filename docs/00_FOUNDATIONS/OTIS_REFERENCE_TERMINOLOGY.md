@@ -157,6 +157,17 @@ The newest complete coherent snapshot generation, provided that no newer
 generation has begun incompletely or faulted. For attachment-sensitive
 authority it must also carry the exact solicited post-attachment nonce.
 
+### Active decision production time
+
+The current active decision's `decision_timestamp_ticks` identifies the actual
+Core 1 decision-production instant, extended within its capture session into
+`rp2040_monotonic_us64`. It orders lifecycle transitions and governs operational
+cadence. It is distinct from the D14 boundary at which the source estimate
+closed. The estimate keeps its captured coordinate and exact source sequences;
+a declared bounded source-before-decision relation joins the two. The
+`decision_timestamp_s` field is a display projection of that same exact tick,
+never an independently sampled clock or a replacement for exact comparisons.
+
 ### Transport obstruction horizon
 
 The declared maximum total interval for which a formatted output frame may
@@ -436,6 +447,12 @@ receiver that supplies D14. It is not holdover and does not make GNSS serial
 data a timing reference. Healthy D14/D8 measurement, estimation, phase
 accumulation, response observation, and canonical telemetry continue while the
 last confirmed DAC code is retained.
+
+Measurement validity passed to phase and frequency consumers therefore refers
+to D14/D8 evidence alone. Receiver metadata eligibility is a separate control
+qualification. Metadata age at publication plus residence after publication
+defines the receiver message's full causal age; each component does not grant
+a separate freshness interval.
 
 ### Phase-degraded FLL
 

@@ -52,9 +52,22 @@ SUCCESS_CLASSIFICATIONS = frozenset(
         "completed_campaign",
     }
 )
+EVIDENCE_INTEGRITY_VALUES = frozenset({"passed", "review_required"})
+SCIENTIFIC_OUTCOME_VALUES = frozenset(
+    {
+        "qualified_complete",
+        "bounded_nonpass",
+        "interrupted_incomplete",
+        "diagnostic_complete",
+        "undetermined",
+    }
+)
 CURRENT_SEAL_TYPE = "adaptive_hybrid_physical_seal_v1"
 CURRENT_ANALYZER_ID = "adaptive_hybrid_analyze_v1"
 CURRENT_SEAL_PATH = Path("reports/adaptive_hybrid_physical_seal_v1.json")
+CURRENT_SUPERVISOR_STATE_PATH = Path(
+    "reports/adaptive_hybrid_supervisor_state.json"
+)
 HOST_REVIEW_RESOLUTION_PATH = Path(
     "reports/adaptive_hybrid_hybrid_host_review_resolution_v1.json"
 )
@@ -108,6 +121,8 @@ CURRENT_SEAL_FIELDS = frozenset(
         "programme_id",
         "policy_id",
         "status",
+        "evidence_integrity",
+        "scientific_outcome",
         "primary_decision",
         "terminal_result",
         "terminal_reason",
@@ -136,14 +151,67 @@ CURRENT_PHYSICAL_SEAL_CHECKS = frozenset(
         "transactions_exact",
         "maintenance_replay_exact",
         "D14_D8_measurement_replay_exact",
+        "decision_measurement_sources_exact",
         "response_replay_exact",
         "transaction_capsules_exact",
         "D10_optional_event_isolated",
         "inhibited_zero_write_authority_exact",
         "host_review_resolution_exact",
         "supervisor_terminal_exact",
+        "scientific_outcome_determined",
     }
 )
+
+
+def campaign_attempt_classification(
+    *, evidence_integrity: str, scientific_outcome: str
+) -> str:
+    """Map an explicit integrity/outcome pair to campaign index stewardship."""
+
+    if (
+        not isinstance(evidence_integrity, str)
+        or evidence_integrity not in EVIDENCE_INTEGRITY_VALUES
+    ):
+        raise ValueError("unknown campaign evidence integrity")
+    if (
+        not isinstance(scientific_outcome, str)
+        or scientific_outcome not in SCIENTIFIC_OUTCOME_VALUES
+    ):
+        raise ValueError("unknown campaign scientific outcome")
+    if evidence_integrity == "review_required":
+        if scientific_outcome != "undetermined":
+            raise ValueError(
+                "review-required evidence cannot assert a scientific outcome"
+            )
+        return "diagnostic"
+    if scientific_outcome in {"qualified_complete", "bounded_nonpass"}:
+        return "completed_campaign"
+    if scientific_outcome == "interrupted_incomplete":
+        return "interrupted_campaign"
+    if scientific_outcome == "diagnostic_complete":
+        return "diagnostic"
+    raise ValueError("passed evidence must have a determined scientific outcome")
+
+
+def _campaign_metadata_matches_classification(
+    *,
+    attempt_classification: object,
+    evidence_integrity: str,
+    scientific_outcome: str,
+) -> bool:
+    if attempt_classification == "successful_qualification":
+        return (
+            evidence_integrity == "passed"
+            and scientific_outcome == "qualified_complete"
+        )
+    try:
+        expected = campaign_attempt_classification(
+            evidence_integrity=evidence_integrity,
+            scientific_outcome=scientific_outcome,
+        )
+    except ValueError:
+        return False
+    return attempt_classification == expected
 
 
 def _resolved_completion_terminal(
@@ -968,7 +1036,7 @@ def _validated_analysis_supersession_artifact(
     }
 
 
-def _validated_success_package(
+def _validated_current_campaign_package(
     location: Path,
     *,
     source_revision: str,
@@ -978,7 +1046,7 @@ def _validated_success_package(
     result_or_failure_reason: str,
     analyzer_identity: str,
 ) -> dict[str, str]:
-    """Validate the complete current package behind a successful classification."""
+    """Validate one current package that claims passing evidence integrity."""
 
     if not location.is_dir():
         raise ValueError(
@@ -998,6 +1066,7 @@ def _validated_success_package(
         "run manifest": location / "run_manifest.json",
         "evidence snapshot": location / "evidence_manifest.json",
         "analyzer seal": location / CURRENT_SEAL_PATH,
+        "supervisor state": location / CURRENT_SUPERVISOR_STATE_PATH,
     }
     missing = [label for label, path in required.items() if not path.is_file()]
     if missing:
@@ -1058,6 +1127,9 @@ def _validated_success_package(
         or not LOWER_HEX_64.fullmatch(claimed_seal_sha256)
         or claimed_seal_sha256 != _canonical_sha256(unsigned_seal)
         or seal.get("status") != "passed"
+        or seal.get("evidence_integrity") != "passed"
+        or not isinstance(seal.get("scientific_outcome"), str)
+        or seal.get("scientific_outcome") not in SCIENTIFIC_OUTCOME_VALUES
         or not isinstance(checks, dict)
         or not checks
         or not all(value is True for value in checks.values())
@@ -1086,6 +1158,37 @@ def _validated_success_package(
         original_analyzer_sha256=analyzer_binding.get("sha256"),
         analyzer_identity=analyzer_identity,
     )
+    from .adaptive_hybrid_analyze import classify_scientific_outcome
+
+    supervisor_state = _read_object(required["supervisor state"], "supervisor state")
+    derived_scientific_outcome = classify_scientific_outcome(
+        terminal,
+        programme,
+        bench_attempt=manifest_value.get("bench_attempt"),
+        qualified_d14_accepted_apertures=supervisor_state.get(
+            "qualified_d14_accepted_apertures"
+        ),
+    )
+    if (
+        derived_scientific_outcome == "undetermined"
+        or seal.get("scientific_outcome") != derived_scientific_outcome
+    ):
+        raise ValueError(
+            "successful evidence registration scientific outcome differs from "
+            "the frozen endpoint evidence"
+        )
+    campaign_classification = campaign_attempt_classification(
+        evidence_integrity=str(seal["evidence_integrity"]),
+        scientific_outcome=derived_scientific_outcome,
+    )
+    if attempt_classification in {
+        "completed_campaign",
+        "interrupted_campaign",
+        "diagnostic",
+    } and campaign_classification != attempt_classification:
+        raise ValueError(
+            "campaign registration classification differs from the scientific outcome"
+        )
     expected = {
         "run_id": manifest.run_id,
         "run_identity": manifest_value.get("run_identity"),
@@ -1124,8 +1227,7 @@ def _validated_success_package(
     if (
         attempt_classification == "successful_qualification"
         and (
-            seal.get("terminal_result") != "healthy_stop"
-            or seal.get("primary_decision") != programme.qualified_endpoint_reason
+            derived_scientific_outcome != "qualified_complete"
         )
     ):
         raise ValueError(
@@ -1148,6 +1250,8 @@ def _validated_success_package(
         "seal_path": CURRENT_SEAL_PATH.as_posix(),
         "seal_sha256": claimed_seal_sha256,
         "seal_status": str(seal["status"]),
+        "evidence_integrity": str(seal["evidence_integrity"]),
+        "scientific_outcome": str(seal["scientific_outcome"]),
         "primary_decision": str(seal["primary_decision"]),
     }
 
@@ -1258,6 +1362,8 @@ def register_package(
     result_or_failure_reason: str,
     analyzer_identity: str,
     expected_content_sha256: str | None = None,
+    evidence_integrity: str | None = None,
+    scientific_outcome: str | None = None,
 ) -> dict[str, Any]:
     required = {
         "source_revision": source_revision,
@@ -1269,11 +1375,27 @@ def register_package(
     missing = sorted(name for name, value in required.items() if not value.strip())
     if missing:
         raise ValueError(f"empty required evidence metadata: {', '.join(missing)}")
-    if attempt_classification not in ATTEMPT_CLASSIFICATIONS:
+    if (
+        not isinstance(attempt_classification, str)
+        or attempt_classification not in ATTEMPT_CLASSIFICATIONS
+    ):
         raise ValueError(
             "attempt_classification must be one of: "
             + ", ".join(sorted(ATTEMPT_CLASSIFICATIONS))
         )
+    if (evidence_integrity is None) != (scientific_outcome is None):
+        raise ValueError(
+            "campaign evidence integrity and scientific outcome must be supplied together"
+        )
+    if evidence_integrity is not None and scientific_outcome is not None:
+        if not _campaign_metadata_matches_classification(
+            attempt_classification=attempt_classification,
+            evidence_integrity=evidence_integrity,
+            scientific_outcome=scientific_outcome,
+        ):
+            raise ValueError(
+                "attempt classification contradicts campaign integrity and outcome"
+            )
     if expected_content_sha256 is not None and not LOWER_HEX_64.fullmatch(
         expected_content_sha256
     ):
@@ -1288,8 +1410,8 @@ def register_package(
     ):
         raise ValueError("evidence package differs from expected content identity")
     package_validation = None
-    if attempt_classification in SUCCESS_CLASSIFICATIONS:
-        package_validation = _validated_success_package(
+    if attempt_classification in SUCCESS_CLASSIFICATIONS or evidence_integrity == "passed":
+        package_validation = _validated_current_campaign_package(
             location,
             source_revision=source_revision,
             build_identity=build_identity,
@@ -1300,6 +1422,18 @@ def register_package(
         )
         if package_identity(location) != identity:
             raise ValueError("evidence package changed during success validation")
+        if "scientific_outcome" in package_validation:
+            validated_integrity = str(package_validation["evidence_integrity"])
+            validated_outcome = str(package_validation["scientific_outcome"])
+            if evidence_integrity is not None and (
+                evidence_integrity != validated_integrity
+                or scientific_outcome != validated_outcome
+            ):
+                raise ValueError(
+                    "registration integrity or outcome differs from validated package"
+                )
+            evidence_integrity = validated_integrity
+            scientific_outcome = validated_outcome
     immutable_metadata: dict[str, Any] = {
         "source_revision": source_revision,
         "build_identity": build_identity,
@@ -1310,6 +1444,9 @@ def register_package(
     }
     if package_validation is not None:
         immutable_metadata["package_validation"] = package_validation
+    if evidence_integrity is not None and scientific_outcome is not None:
+        immutable_metadata["evidence_integrity"] = evidence_integrity
+        immutable_metadata["scientific_outcome"] = scientific_outcome
     with _index_lock(index_path, exclusive=True) as locked_path:
         index = _load_index_unlocked(locked_path)
         existing = index["packages"].get(content_sha256)
@@ -1451,13 +1588,33 @@ def _standard_index_record_exact(
     }
     if "package_validation" in record:
         fields.add("package_validation")
+    has_campaign_outcome = (
+        "evidence_integrity" in record or "scientific_outcome" in record
+    )
+    if has_campaign_outcome:
+        fields.update({"evidence_integrity", "scientific_outcome"})
     return (
         set(record) == fields
         and record.get("content_sha256") == content_sha256
         and record.get("file_count") == identity.get("file_count")
         and record.get("total_bytes") == identity.get("total_bytes")
         and record.get("file_manifest") == identity.get("files")
+        and isinstance(record.get("attempt_classification"), str)
         and record.get("attempt_classification") in ATTEMPT_CLASSIFICATIONS
+        and (
+            not has_campaign_outcome
+            or (
+                isinstance(record.get("evidence_integrity"), str)
+                and record.get("evidence_integrity") in EVIDENCE_INTEGRITY_VALUES
+                and isinstance(record.get("scientific_outcome"), str)
+                and record.get("scientific_outcome") in SCIENTIFIC_OUTCOME_VALUES
+                and _campaign_metadata_matches_classification(
+                    attempt_classification=record.get("attempt_classification"),
+                    evidence_integrity=str(record["evidence_integrity"]),
+                    scientific_outcome=str(record["scientific_outcome"]),
+                )
+            )
+        )
         and record.get("lifecycle_status") in {"active", "mothballed"}
         and _explicit_utc(record.get("registered_utc"))
     )
@@ -1572,6 +1729,11 @@ def _registration_supersession_exact(
     }
     if "package_validation" in record:
         fields.add("package_validation")
+    has_campaign_outcome = (
+        "evidence_integrity" in record or "scientific_outcome" in record
+    )
+    if has_campaign_outcome:
+        fields.update({"evidence_integrity", "scientific_outcome"})
     disposition = record.get("registration_supersession")
     predecessor_identity = _recorded_package_identity(record)
     if (
@@ -1581,7 +1743,20 @@ def _registration_supersession_exact(
         or record.get("lifecycle_status") != "superseded_registration"
         or record.get("mothball") is not None
         or not _explicit_utc(record.get("registered_utc"))
+        or not isinstance(record.get("attempt_classification"), str)
         or record.get("attempt_classification") not in ATTEMPT_CLASSIFICATIONS
+        or has_campaign_outcome
+        and (
+            not isinstance(record.get("evidence_integrity"), str)
+            or record.get("evidence_integrity") not in EVIDENCE_INTEGRITY_VALUES
+            or not isinstance(record.get("scientific_outcome"), str)
+            or record.get("scientific_outcome") not in SCIENTIFIC_OUTCOME_VALUES
+            or not _campaign_metadata_matches_classification(
+                attempt_classification=record.get("attempt_classification"),
+                evidence_integrity=str(record.get("evidence_integrity")),
+                scientific_outcome=str(record.get("scientific_outcome")),
+            )
+        )
         or any(
             not isinstance(record.get(field), str) or not record[field].strip()
             for field in (
@@ -2019,6 +2194,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     register.add_argument("--result-or-failure-reason", required=True)
     register.add_argument("--analyzer-identity", required=True)
+    register.add_argument(
+        "--evidence-integrity", choices=sorted(EVIDENCE_INTEGRITY_VALUES)
+    )
+    register.add_argument(
+        "--scientific-outcome", choices=sorted(SCIENTIFIC_OUTCOME_VALUES)
+    )
 
     commands.add_parser("validate")
     commands.add_parser("list")
@@ -2054,6 +2235,8 @@ def main(argv: list[str] | None = None) -> int:
             attempt_classification=args.attempt_classification,
             result_or_failure_reason=args.result_or_failure_reason,
             analyzer_identity=args.analyzer_identity,
+            evidence_integrity=args.evidence_integrity,
+            scientific_outcome=args.scientific_outcome,
         )
     elif args.command == "validate":
         result = validate_index(args.index)

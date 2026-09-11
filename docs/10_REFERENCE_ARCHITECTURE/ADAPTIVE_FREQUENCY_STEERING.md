@@ -211,6 +211,28 @@ unknown application result, contradictory DAC epoch, or missing acknowledgement
 remains an actuator-provenance fault. That fault is not caused or excused by the
 metadata glitch.
 
+The current Core 1 boundary adapter passes raw D14/D8 interval validity to
+both phase and selected frequency consumers. Receiver qualification is a
+separate live-health gate, refreshed after phase publication and before the
+selected frequency boundary can issue its first dependent active decision.
+Thus a fresh metadata dequalification cannot be missed for one decision merely
+because the periodic health service has not run yet. The existing causal
+requalification policy still controls resumption.
+
+The active lifecycle decision records its production instant after that health
+update, while the consumed estimate retains its earlier captured timestamp.
+Both fields are joined by exact source identity and a declared bounded lag.
+This avoids backdating a decision before a metadata transition that was
+already committed. The metadata transition and selected response together
+reserve a nine-frame evidence frontier; qualification must not depend on the
+other core draining a slot midway through it.
+
+The receiver message's metadata age at publication and its subsequent age on
+Core 1 are additive. Compare their sum against the configured age limit in
+local microseconds; two individually acceptable ages are not two separate
+freshness leases. The published metadata age retains its millisecond
+resolution, and publication residence uses the native wrapping local counter.
+
 Loss or contradiction of authoritative D14 timing is separately a reference
 condition, not a GNSS serial-metadata glitch. A persistent receiver identity or
 configuration contradiction may keep control held and require operator review,

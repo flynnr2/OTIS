@@ -443,7 +443,7 @@ def create_rehearsal_run_manifest(
         "domains": [
             canonical_domain_declaration("rp2040_monotonic_us32"),
             canonical_domain_declaration("rp2040_monotonic_us64"),
-            canonical_domain_declaration("h1_adaptive_hybrid_ocxo_10mhz"),
+            canonical_domain_declaration("h1_oscillator_10mhz"),
         ],
         "channels": _channels(),
         "contracts": {
@@ -655,7 +655,7 @@ def _validate_manifest_value(
         == [
             canonical_domain_declaration("rp2040_monotonic_us32"),
             canonical_domain_declaration("rp2040_monotonic_us64"),
-            canonical_domain_declaration("h1_adaptive_hybrid_ocxo_10mhz"),
+            canonical_domain_declaration("h1_oscillator_10mhz"),
         ]
         and value.get("channels") == _channels()
         and value.get("files") == _rehearsal_files()
@@ -1987,64 +1987,40 @@ class DeterministicPtyInstrument:
         )
 
     def _emit_initial_observations(self) -> None:
+        # Exercise one real-contract raw aperture. The first SNP/REF is an
+        # anchor; only the adjacent successor produces CNT. This fixture does
+        # not claim the 600-interval physical selected-estimator qualification.
         self._emit_rows(
             CONTRACT_FIELDS["raw_events_v1"],
-            [
-                {
-                    "record_type": "EVT",
-                    "schema_version": "1",
-                    "event_seq": "1",
-                    "channel_id": "0",
-                    "edge": "R",
-                    "timestamp_ticks": "1000000",
-                    "capture_domain": "rp2040_monotonic_us64",
-                    "flags": "0",
-                },
-                {
-                    "record_type": "REF",
-                    "schema_version": "1",
-                    "event_seq": "1",
-                    "channel_id": "1",
-                    "edge": "R",
-                    "timestamp_ticks": "1000000",
-                    "capture_domain": "rp2040_monotonic_us64",
-                    "flags": "0",
-                },
-            ],
-        )
-        self._emit_rows(
-            CONTRACT_FIELDS["count_observations_v1"],
-            [
-                {
-                    "record_type": "CNT",
-                    "schema_version": "1",
-                    "count_seq": "1",
-                    "channel_id": "2",
-                    "gate_open_ticks": "0",
-                    "gate_close_ticks": "1000000",
-                    "gate_domain": "rp2040_monotonic_us64",
-                    "counted_edges": "10000000",
-                    "source_edge": "R",
-                    "source_domain": "h1_adaptive_hybrid_ocxo_10mhz",
-                    "flags": "0",
-                }
-            ],
+            [{
+                "record_type": "EVT", "schema_version": "1", "event_seq": "1000",
+                "channel_id": "0", "edge": "R", "timestamp_ticks": "0",
+                "capture_domain": "rp2040_monotonic_us32", "flags": "0",
+            }] + [{
+                "record_type": "REF", "schema_version": "1", "event_seq": str(1001 + sequence),
+                "channel_id": "1", "edge": "R", "timestamp_ticks": str(sequence * 1_000_000),
+                "capture_domain": "rp2040_monotonic_us32", "flags": "16",
+            } for sequence in range(2)],
         )
         self._emit_rows(
             CONTRACT_FIELDS["pps_snapshots_v1"],
-            [
-                {
-                    "record_type": "SNP",
-                    "schema_version": "1",
-                    "session": "1",
-                    "snapshot_sequence": "1",
-                    "cumulative_down_counter": "4294967295",
-                    "reference_sequence": "1",
-                    "reference_timestamp_ticks": "1000000",
-                    "status": "0",
-                    "backend": "pio_wait_cumulative_snapshot_dma_v1",
-                }
-            ],
+            [{
+                "record_type": "SNP", "schema_version": "1", "session": "1",
+                "snapshot_sequence": str(sequence),
+                "cumulative_down_counter": str(0xFFFFFFFF - sequence * 10_000_000),
+                "reference_sequence": str(sequence),
+                "reference_timestamp_ticks": str(sequence * 1_000_000),
+                "status": "0", "backend": "pio_wait_cumulative_snapshot_dma_v1",
+            } for sequence in range(2)],
+        )
+        self._emit_rows(
+            CONTRACT_FIELDS["count_observations_v1"],
+            [{
+                "record_type": "CNT", "schema_version": "1", "count_seq": "1",
+                "channel_id": "2", "gate_open_ticks": "0", "gate_close_ticks": "1000000",
+                "gate_domain": "rp2040_monotonic_us32", "counted_edges": "10000000",
+                "source_edge": "R", "source_domain": "h1_oscillator_10mhz", "flags": "16",
+            }],
         )
 
     def _emit_transaction(self, transaction: TransactionFixture) -> None:

@@ -1395,6 +1395,8 @@ void note_pre_carrier_discard(void) {
 }
 
 void discard_dual_core_outputs_before_first_carrier(void) {
+  // Core 0 owns every outbound SPSC consumer before and after attachment.
+  // Core 1 continues producing; changing USB state never transfers ownership.
   OtisObservationMessage observation;
   for (uint8_t budget = 24u;
        budget-- > 0u && otis_dual_core_take_observation(&observation);)
@@ -1542,7 +1544,7 @@ OtisRegulationStaticCodeState regulation_static_code_state(void) {
   return dual_core_static_code;
 }
 
-void service_adaptive_hybrid_regulation_health(void) {
+void update_adaptive_hybrid_regulation_health(void) {
   const uint32_t now_ms = millis();
   OtisPpsSnapshotBackendStats snapshot;
   otis_pps_snapshot_backend_get_stats(&snapshot);
@@ -1591,7 +1593,11 @@ void service_adaptive_hybrid_regulation_health(void) {
   };
   otis_adaptive_hybrid_regulation_live_update_health_at_ticks(
       &health, now_ms / 1000u, otis_monotonic_us32_now());
-  otis_adaptive_hybrid_regulation_live_service(now_ms / 1000u);
+}
+
+void service_adaptive_hybrid_regulation_health(void) {
+  update_adaptive_hybrid_regulation_health();
+  otis_adaptive_hybrid_regulation_live_service(millis() / 1000u);
 }
 
 const char *edge_string(char edge) {
@@ -1638,18 +1644,18 @@ void emit_pps_count_boundary(
   OtisAdaptiveHybridRegulationLiveOutcome active_outcome;
   const bool raw_d14_d8_interval_valid =
       window_completed && runtime_state.tcxo.last_observation_valid;
-  const bool receiver_metadata_qualified =
-      dual_core_receiver_qualified_for_control();
-  const bool preview_reference_valid = otis_regulation_reference_valid(
-      raw_d14_d8_interval_valid, receiver_metadata_qualified);
   // Publish the canonical phase record before the selected frequency decision
   // can observe its same-core snapshot.
   otis_phase_preview_live_on_boundary(
       &observation, snapshot_status,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
       window_completed,
-      preview_reference_valid,
+      raw_d14_d8_interval_valid,
       false);
+  // Metadata holds new correction authority, not D14/D8 measurement history.
+  // Refresh the independently qualified control health before this boundary
+  // can produce a selected estimate and its first dependent active decision.
+  update_adaptive_hybrid_regulation_health();
   otis_frequency_regulation_live_on_boundary(
       &observation,
       static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
@@ -1657,8 +1663,9 @@ void emit_pps_count_boundary(
       // OTIS_FLAG_TIMESTAMP_RECONSTRUCTED as provenance on a valid CNT row.
       // Use the backend's completed validity assessment instead of requiring
       // a numerically zero flag word.
-      preview_reference_valid,
-      millis() / 1000u, &regulation_code, &active_outcome);
+      raw_d14_d8_interval_valid,
+      millis() / 1000u, otis_monotonic_us32_now(),
+      &regulation_code, &active_outcome);
   if (active_outcome.application_attempted) {
     otis_emit_dac_step(
         runtime_state.sequences.dac_seq++, millis(),
@@ -3580,9 +3587,6 @@ void loop1() {
   if (trace_timing_loop)
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::LoopIdle,
                                         otis_monotonic_us32_now());
-  if (!otis_transport_ready()) {
-    discard_dual_core_outputs_before_first_carrier();
-  }
 }
 
 void loop() {
@@ -3612,6 +3616,9 @@ void loop() {
       discard_dual_core_outputs_after_transport_fault();
     } else {
       abandon_dual_core_serial_frames_on_carrier_loss();
+      // Continue bounded internal drainage on the sole consumer core even
+      // before USB attaches. Core 1 must never pop its own outbound queues.
+      discard_dual_core_outputs_before_first_carrier();
     }
     service_serial_commands(false);
     return;

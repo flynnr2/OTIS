@@ -10,6 +10,10 @@ import pytest
 from host.otis_tools import adaptive_hybrid_activation
 from host.otis_tools import evidence as evidence_module
 from host.otis_tools import evidence_index as evidence_index_module
+from host.otis_tools.adaptive_hybrid_contract import (
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    envelope_for_purpose,
+)
 from host.otis_tools.evidence import EvidenceError, create_evidence_snapshot
 from host.otis_tools.evidence_index import (
     CURRENT_SEAL_PATH,
@@ -832,6 +836,9 @@ def test_successful_qualification_derives_validation_from_completed_package(
         "run_identity": "adaptive_hybrid_regulation:1",
         "image_identity": "adaptive_hybrid_regulation",
         "adaptive_hybrid": {"profile_id": "adaptive_hybrid_regulation"},
+        "bench_attempt": envelope_for_purpose(
+            CONTINGENT_72_HOUR_HYBRID_CONTROL
+        ).as_dict(),
         "firmware": {
             "source_revision": source_revision,
             "build_identity": build_identity,
@@ -850,6 +857,9 @@ def test_successful_qualification_derives_validation_from_completed_package(
         "terminal": {
             "result": "healthy_stop",
             "reason": primary_decision,
+            "preliminary_decision": "pending_offline_scientific_analysis",
+            "primary_decision": None,
+            "last_confirmed_code": 0xA84D,
         },
         "orchestration_error": None,
     }
@@ -858,6 +868,10 @@ def test_successful_qualification_derives_validation_from_completed_package(
     response = run / "carrier/responses/response_0001.json"
     _write_json(report, {"decision": "retained"})
     _write_json(response, {"acknowledgement": "retained"})
+    _write_json(
+        run / "reports/adaptive_hybrid_supervisor_state.json",
+        {"qualified_d14_accepted_apertures": 259_200},
+    )
     snapshot_path = create_evidence_snapshot(run)
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
     retained = {item["path"]: item["role"] for item in snapshot["artifacts"]}
@@ -877,6 +891,8 @@ def test_successful_qualification_derives_validation_from_completed_package(
         "programme_id": manifest["programme_id"],
         "policy_id": manifest["policy"]["policy_id"],
         "status": "passed",
+        "evidence_integrity": "passed",
+        "scientific_outcome": "qualified_complete",
         "primary_decision": primary_decision,
         "terminal_result": "healthy_stop",
         "terminal_reason": primary_decision,
@@ -945,6 +961,8 @@ def test_successful_qualification_derives_validation_from_completed_package(
         "seal_path": CURRENT_SEAL_PATH.as_posix(),
         "seal_sha256": seal["seal_sha256"],
         "seal_status": "passed",
+        "evidence_integrity": "passed",
+        "scientific_outcome": "qualified_complete",
         "primary_decision": primary_decision,
     }
 

@@ -14,18 +14,13 @@ static inline bool otis_dual_core_receiver_qualified_for_control_at(
       receiver->published_ticks, now_ticks);
   const uint64_t maximum_age_ticks =
       static_cast<uint64_t>(maximum_metadata_age_ms) * 1000ull;
+  // The message carries the metadata age at publication. Queue residence and
+  // time since publication are additional age, not a second independent lease.
+  const uint64_t metadata_age_ticks =
+      static_cast<uint64_t>(receiver->metadata_age_ms) * 1000ull;
   return receiver->control_eligible && receiver->identity_stable &&
          receiver->gsa_checksum_requalified && receiver->gsa_3d &&
-         receiver->metadata_age_ms <= maximum_metadata_age_ms &&
-         local_age_ticks <= maximum_age_ticks;
-}
-
-// D14/D8 establish the measurement interval; fresh same-receiver metadata
-// qualifies that interval for regulation. Metadata loss holds control while
-// preserving the canonical D14/D8 observations.
-static inline bool otis_regulation_reference_valid(
-    bool raw_d14_d8_interval_valid, bool receiver_metadata_qualified) {
-  return raw_d14_d8_interval_valid && receiver_metadata_qualified;
+         metadata_age_ticks + local_age_ticks <= maximum_age_ticks;
 }
 
 #endif

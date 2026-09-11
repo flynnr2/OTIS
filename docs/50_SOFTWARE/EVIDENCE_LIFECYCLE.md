@@ -44,6 +44,32 @@ Failure or interruption is evidence, not absence. The result field records the
 concrete result or failure reason rather than implying that an unsealed attempt
 passed.
 
+Current physical seals and their registrations separately record
+`evidence_integrity` (`passed` or `review_required`) and `scientific_outcome`:
+
+| Scientific outcome | Meaning | Campaign registration |
+| --- | --- | --- |
+| `qualified_complete` | Exact healthy endpoint and all 259,200 frozen accepted apertures | `completed_campaign` or explicitly `successful_qualification` |
+| `bounded_nonpass` | A defined finite scientific rejection | `completed_campaign` |
+| `interrupted_incomplete` | Operator abort or right-censored incomplete attempt | `interrupted_campaign` |
+| `diagnostic_complete` | Completed inhibited zero-write diagnostic | `diagnostic` |
+| `undetermined` | Missing or contradictory evidence requires review | `diagnostic` |
+
+`completed_campaign` describes a concluded scientific decision; only
+`qualified_complete` is a qualification pass. The seal's `status` is the
+integrity result, never shorthand for the scientific outcome. An exact,
+well-preserved early operator abort can have passing integrity and remain
+scientifically incomplete. Registration validates every claimed passing
+integrity seal, including interrupted and diagnostic outcomes. Unsealed raw
+inventory can still be retained without asserting passing integrity.
+
+The analyzer derives the outcome from the frozen bench envelope, terminal
+identity and exact integer accepted-aperture count. Registration independently
+checks that derivation against the retained supervisor evidence; a success
+label or a recent timestamp is insufficient. Direct registration and journal
+recovery use the same rules. Old seals and index records are not rewritten or
+silently upgraded by this change.
+
 The success-bearing classifications `successful_rehearsal`,
 `successful_qualification`, and `completed_campaign` are fail-closed. Direct
 registration and crash recovery require the exact current run manifest, a
@@ -55,7 +81,8 @@ so `successful_rehearsal` cannot currently be registered.
 
 Failed, interrupted, diagnostic, and historical classifications remain the
 explicit raw-inventory path. They preserve content and supplied provenance but
-do not claim that current package validation or analysis passed.
+do not by themselves claim that current package validation or analysis passed.
+Any explicit passing-integrity claim also requires the seal-validation gate.
 
 ## Mothball gate
 

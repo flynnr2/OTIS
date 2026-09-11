@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from test_raw_measurement_replay import raw_measurement_rows
+
 from host.otis_tools import adaptive_hybrid_replay as replay_module
 from host.otis_tools.adaptive_hybrid_analyze import (
     _authoritative_csvs_exact,
@@ -128,32 +130,8 @@ def test_invalid_d10_is_diagnostic_only_in_actual_measurement_replay(
         {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
         {"contract": "estimates_v2", "path": "estimates.csv"},
     ]
-    rows = {
-        "counts.csv": [
-            {"count_seq": str(sequence), "counted_edges": "10000000"}
-            for sequence in range(1, 601)
-        ],
-        "snapshots.csv": [{"snapshot_seq": "1"}],
-        "ref.csv": [{"record_type": "REF", "channel_id": "1"}],
-        "evt.csv": [{"record_type": "EVT", "channel_id": "99"}],
-        "estimates.csv": [
-            {
-                "estimate_seq": "1",
-                "estimate_id": "selected-1",
-                "estimator_version": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
-                "source_reference_first_seq": "0",
-                "source_reference_last_seq": "600",
-                "source_count_seq": "600",
-                "accepted_sample_count": "600",
-                "config_hash": "a" * 64,
-                "observation_validity": "valid",
-                "reference_validity": "valid",
-                "count_validity": "valid",
-                "frequency_estimate_hz": "10000000.000000000000",
-                "frequency_error_hz": "0.000000000000",
-            }
-        ],
-    }
+    rows = raw_measurement_rows()
+    rows["evt.csv"] = [{"record_type": "EVT", "channel_id": "99"}]
     monkeypatch.setattr(
         replay_module, "_read_csv", lambda path: rows[path.name]
     )
@@ -195,35 +173,7 @@ def test_measurement_replay_uses_firmware_binary64_projection_before_serializati
         {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
         {"contract": "estimates_v2", "path": "estimates.csv"},
     ]
-    rows = {
-        "counts.csv": [
-            {
-                "count_seq": str(sequence),
-                "counted_edges": "9999999" if sequence == 1 else "10000000",
-            }
-            for sequence in range(1, 601)
-        ],
-        "snapshots.csv": [{"snapshot_seq": "1"}],
-        "ref.csv": [{"record_type": "REF", "channel_id": "1"}],
-        "evt.csv": [],
-        "estimates.csv": [
-            {
-                "estimate_seq": "1",
-                "estimate_id": "selected-1",
-                "estimator_version": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
-                "source_reference_first_seq": "0",
-                "source_reference_last_seq": "600",
-                "source_count_seq": "600",
-                "accepted_sample_count": "600",
-                "config_hash": "a" * 64,
-                "observation_validity": "valid",
-                "reference_validity": "valid",
-                "count_validity": "valid",
-                "frequency_estimate_hz": "9999999.998333333060",
-                "frequency_error_hz": "-0.001666666940",
-            }
-        ],
-    }
+    rows = raw_measurement_rows([9_999_999] + [10_000_000] * 599)
     monkeypatch.setattr(replay_module, "_read_csv", lambda path: rows[path.name])
     manifest = SimpleNamespace(root=Path("/unused"), files=files)
     identity = {"transaction_identities": {"estimator_sha256": "a" * 64}}
@@ -236,14 +186,14 @@ def test_measurement_replay_uses_firmware_binary64_projection_before_serializati
     )
     assert report["comparisons"][0]["pass"] is True
 
-    rows["counts.csv"][0]["counted_edges"] = "10000001"
+    rows = raw_measurement_rows([10_000_001] + [10_000_000] * 599)
     rows["estimates.csv"][0]["frequency_estimate_hz"] = "10000000.001666666940"
     rows["estimates.csv"][0]["frequency_error_hz"] = "0.001666666940"
     exact, report, _ = replay_module._measurement_replay(manifest, identity)
     assert exact is True
     assert report["comparisons"][0]["pass"] is True
 
-    rows["counts.csv"][0]["counted_edges"] = "9999999"
+    rows = raw_measurement_rows([9_999_999] + [10_000_000] * 599)
     rows["estimates.csv"][0]["frequency_estimate_hz"] = "9999999.998333333333"
     rows["estimates.csv"][0]["frequency_error_hz"] = "-0.001666666667"
     exact, report, _ = replay_module._measurement_replay(manifest, identity)
