@@ -234,6 +234,19 @@ def test_rehearsal_raw_accepted_sources_and_phase_are_coherent(
     assert [(row["counted_edges"], row["flags"]) for row in rows["CNT"][1499:1503]] == [
         ("2462937", "4120"), ("7537063", "4120"), ("10000000", "4120"), ("10000000", "16")]
     assert [int(row["relative_phase_cycles"]) for row in rows["RPH"]] == [-6, -6, -3, 0, 6, 6]
+    assert [int(row["observation_sequence"]) for row in rows["RPH"]] == [1501, 3002, 3602, 4202, 5102, 6603]
+    assert [int(row["estimate_age_s"]) for row in rows["PHE"]] == [301, 300, 300, 300, 0, 300]
+    assert [float(row["estimated_frequency_error_hz"]) for row in rows["PHE"]] == pytest.approx([0, 0, 0, 3 / 600, 1 / 600, 0], abs=1e-12)
+    from host.otis_tools.adaptive_hybrid_supervisor import _authoritative_capture_health_faults
+    from host.otis_tools.firmware_host_contract import active_status_value_error
+    for metadata_state in ("normal", "hold", "requalified"):
+        instrument.metadata_state = metadata_state
+        health = {**instrument._active_health(), **instrument._pps_health()}
+        assert not _authoritative_capture_health_faults(health)
+        assert not [active_status_value_error(key, health[("adaptive_hybrid", key)])
+                    for key in rehearsal_module.ACTIVE_STATUS_KEYS
+                    if active_status_value_error(key, health[("adaptive_hybrid", key)])]
+
     applications = [int(item.phases[2]["event_timestamp_ticks"]) for item in (
         instrument.fixture.first_transaction, instrument.fixture.second_transaction)]
     for index, (decision, estimate) in enumerate(zip(instrument.fixture.decisions, rows["EST"], strict=True)):
@@ -252,3 +265,51 @@ def test_rehearsal_raw_accepted_sources_and_phase_are_coherent(
         assert float(response["cumulative_response_hz"]) == pytest.approx(-baseline, abs=1e-12)
         assert response["post_error_hz"] == transaction.response_decision["frequency_error_hz"]
         assert float(response["observed_response_hz"]) == pytest.approx(-float(response["pre_error_hz"]), abs=1e-12)
+
+
+def test_concurrent_snapshot_construction_preserves_generation_and_row_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import csv
+    import io
+
+    instrument = object.__new__(rehearsal_module.DeterministicPtyInstrument)
+    instrument.master_fd = 17
+    instrument._lock = threading.RLock()
+    instrument.generation = instrument.status_sequence = 0
+    instrument.latest_event_timestamp_ticks = 1200000000
+    instrument.accepted_boundary_ordinal = 1200
+    entered = threading.Event()
+    release = threading.Event()
+    second_constructed = threading.Event()
+    wire = bytearray()
+    calls = 0
+
+    def active_health():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            entered.set()
+            assert release.wait(2)
+        else:
+            second_constructed.set()
+        return {("adaptive_hybrid", key): "0" for key in rehearsal_module.ACTIVE_STATUS_KEYS}
+
+    monkeypatch.setattr(instrument, "_pps_health", lambda: {})
+    monkeypatch.setattr(instrument, "_active_health", active_health)
+    monkeypatch.setattr(rehearsal_module, "_write_all_fd", lambda _fd, payload: wire.extend(payload))
+    first = threading.Thread(target=instrument._emit_snapshot)
+    second = threading.Thread(target=instrument._emit_snapshot)
+    first.start()
+    assert entered.wait(1)
+    second.start()
+    try:
+        assert not second_constructed.wait(0.05)
+    finally:
+        release.set()
+    first.join(2)
+    second.join(2)
+    assert not first.is_alive() and not second.is_alive()
+    rows = list(csv.reader(io.StringIO(wire.decode())))
+    assert [int(row[2]) for row in rows] == list(range(1, len(rows) + 1))
+    assert [int(row[7]) for row in rows if row[6] == rehearsal_module.SNAPSHOT_BEGIN_KEY] == [1, 2]

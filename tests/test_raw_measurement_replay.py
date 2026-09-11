@@ -386,3 +386,35 @@ def test_missing_opening_snapshot_leaves_first_retained_count_unproven():
     assert len(intervals) == 2
     assert all(item["count_exact"] for item in intervals)
     assert "CNT records lack a unique adjacent same-session SNP/REF pair" in report["errors"]
+
+
+def test_accepted_ordinals_cannot_hide_a_skipped_raw_interval(monkeypatch):
+    rows = raw_measurement_rows([10_000_000] * 601)
+    del rows["spans.csv"][1]
+    for ordinal, span in enumerate(rows["spans.csv"], 1):
+        span["accepted_boundary_ordinal"] = str(ordinal)
+    rows["estimates.csv"][0].update(source_closing_accepted_boundary_ordinal="600",
+        source_accepted_spans_ref=accepted_window_ref(1, 1, 0, 600), accepted_sample_count="600")
+    exact, report, _ = run_measurement(monkeypatch, rows)
+    assert not exact
+    assert report["accepted_span_replay"]["raw_count_replay"]["exact"]
+    assert "previous accepted boundary" in report["accepted_span_replay"]["errors"][0]
+
+
+def test_accepted_span_cannot_skip_an_earlier_in_window_candidate():
+    from host.otis_tools.accepted_span_replay import replay_accepted_spans
+    rows = raw_measurement_rows([10_000_000, 10_000])
+    rows["snapshots.csv"][2]["reference_timestamp_ticks"] = "1001000"
+    rows["ref.csv"][2]["timestamp_ticks"] = "1001000"
+    rows["counts.csv"][1].update(gate_close_ticks="1001000", flags=str(16 | (1 << 3) | (1 << 12)))
+    span = rows["spans.csv"][0]
+    span.update(closing_snapshot_sequence="2", closing_reference_sequence="2",
+                closing_reference_timestamp_ticks="1001000", source_count_last_sequence="2",
+                source_count_record_count="2", excluded_candidate_count="1", counted_edges="10010000")
+    manifest = measurement_manifest_value()
+    exact, report, _ = replay_accepted_spans(rows["snapshots.csv"], rows["ref.csv"], rows["counts.csv"], [span],
+        acceptance_policy=authoritative_document(manifest["authoritative_inputs"], POLICY_PATH),
+        acceptance_policy_sha256=manifest["reference_acceptance"]["policy_sha256"])
+    assert not exact
+    assert report["raw_count_replay"]["exact"]
+    assert "at or after the acceptance window" in report["errors"][0]

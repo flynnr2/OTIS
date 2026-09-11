@@ -19,9 +19,12 @@ from .adaptive_hybrid_contract import (
 )
 from .adaptive_hybrid_proposal import validate_frozen_proposal
 from .authoritative_inputs import (
+    authoritative_binding,
+    authoritative_document,
     transaction_identities_from_bundle,
     validate_authoritative_inputs,
 )
+from .contracts import CONTRACT_SCHEMA_VERSIONS
 from .run_loader import (
     CAPTURE_IN_PROGRESS_FLAG,
     COMPLETE_MARKER,
@@ -293,6 +296,8 @@ def _operational_rehearsal_files() -> list[dict[str, Any]]:
         {"path": "csv/count_observations.csv", "contract": "count_observations_v1", "optional": True},
         {"path": "csv/pps_snapshots.csv", "contract": "pps_snapshots_v1", "optional": True},
         {"path": "csv/accepted_pps_spans_v1.csv", "contract": "accepted_pps_spans_v1", "optional": True},
+        {"path": "csv/relative_phase_observations_v2.csv", "contract": "relative_phase_observations_v2", "optional": True},
+        {"path": "csv/phase_estimator_outputs_v2.csv", "contract": "phase_estimator_outputs_v2", "optional": True},
         {"path": "csv/health.csv", "contract": "health_v1"},
         {"path": "csv/dac_steps.csv", "contract": "dac_steps_v1", "optional": True},
         {"path": "csv/estimates_v3.csv", "contract": "estimates_v3", "optional": True},
@@ -384,13 +389,18 @@ def _validate_operational_rehearsal_manifest(
     proposal = validate_frozen_proposal(proposal_path, programme)
     files = _operational_rehearsal_files()
     contracts = {
-        entry["contract"]: (
-            2
-            if entry["contract"]
-            in {"estimates_v3", "active_transactions_v3", "active_hybrid_decisions_v3"}
-            else 1
-        )
+        entry["contract"]: CONTRACT_SCHEMA_VERSIONS[entry["contract"]]
         for entry in files
+    }
+    acceptance_path = "data_contracts/reference_acceptance_policy_v1.json"
+    expected_reference_acceptance = {
+        "path": acceptance_path,
+        "policy_id": authoritative_document(
+            bundle["authoritative_inputs"], acceptance_path
+        )["policy_id"],
+        "policy_sha256": authoritative_binding(
+            bundle["authoritative_inputs"], acceptance_path
+        )["sha256"],
     }
     artifacts = _operational_rehearsal_artifacts()
     host = value.get("host")
@@ -447,7 +457,7 @@ def _validate_operational_rehearsal_manifest(
         "bundle", "proposal", "activation", "firmware", "authoritative_inputs",
         "policy", "host", programme.manifest_section, "domains", "channels",
         "contracts", "files", "expected_artifacts", "evidence_artifacts",
-        "acquisition_frontier", "transaction_identities",
+        "acquisition_frontier", "reference_acceptance", "transaction_identities",
         "manifest_sha256",
     }
     unsigned = {key: item for key, item in value.items() if key != "manifest_sha256"}
@@ -484,6 +494,7 @@ def _validate_operational_rehearsal_manifest(
         and value.get("board") == "deterministic_pty_no_physical_hardware"
         and value.get("capture_mode") == "real_capture_device_process_over_pty"
         and value.get("acquisition_frontier") == FRONTIER_POLICY
+        and value.get("reference_acceptance") == expected_reference_acceptance
         and value.get("transaction_identities") == transaction_identities_from_bundle(bundle)
         and _canonical_pty_path(host.get("serial_device"))
         and host == expected_host

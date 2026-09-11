@@ -326,9 +326,9 @@ void stale_accepted_source_after_requalification_has_zero_authority() {
 int main() {
   static_assert(OTIS_REGULATION_STATUS_FIELD_COUNT == 49u);
   static_assert(OTIS_REGULATION_STATUS_TELEMETRY_BURST == 52u);
-  static_assert(OTIS_TIMING_HEALTH_TELEMETRY_BURST == 143u);
-  static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 195u);
-  static_assert(OTIS_TELEMETRY_QUEUE_DEPTH == 196u);
+  static_assert(OTIS_TIMING_HEALTH_TELEMETRY_BURST == 144u);
+  static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 196u);
+  static_assert(OTIS_TELEMETRY_QUEUE_DEPTH == 197u);
   initialized = true;
   transaction_bound = true;
   const OtisRegulationBinding pre_setup_binding = expected_binding(7u);

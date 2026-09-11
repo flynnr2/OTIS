@@ -1699,6 +1699,7 @@ class DeterministicPtyInstrument:
         self.commands: list[str] = []
         self.generation = 0
         self.status_sequence = 0
+        self.latest_event_timestamp_ticks = 1200 * RP2040_US
         self.query_nonce = 1
         self.setup = False
         self.selected_interval_count = 0
@@ -1727,7 +1728,7 @@ class DeterministicPtyInstrument:
             for row in source_decisions
         }
         self.raw_interval_adjustments.update({1600: -5, 5500: 5})
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._timers: list[threading.Timer] = []
 
     def start(self) -> threading.Thread:
@@ -1749,6 +1750,10 @@ class DeterministicPtyInstrument:
     def _emit_rows(self, fields: list[str], rows: Iterable[dict[str, str]]) -> None:
         with self._lock:
             for row in rows:
+                self.latest_event_timestamp_ticks = max(
+                    self.latest_event_timestamp_ticks,
+                    int(row.get("event_timestamp_ticks", row.get("decision_timestamp_ticks", "0"))),
+                )
                 _write_all_fd(self.master_fd, _wire_row(fields, row))
 
     def _emit_late_attach_boot_preamble(self) -> None:
@@ -2003,24 +2008,25 @@ class DeterministicPtyInstrument:
         return "HYBRID_TRACKING"
 
     def _emit_health_items(self, health: Iterable[tuple[tuple[str, str], str]]) -> None:
-        rows: list[dict[str, str]] = []
-        for (component, key), value in health:
-            self.status_sequence += 1
-            rows.append(
-                {
-                    "record_type": "STS",
-                    "schema_version": "1",
-                    "status_seq": str(self.status_sequence),
-                    "timestamp_ticks": str(self.status_sequence * 1000),
-                    "status_domain": "rp2040_monotonic_us64",
-                    "component": component,
-                    "status_key": key,
-                    "status_value": value,
-                    "severity": "INFO",
-                    "flags": "0",
-                }
-            )
-        self._emit_rows(CONTRACT_FIELDS["health_v1"], rows)
+        with self._lock:
+            rows: list[dict[str, str]] = []
+            for (component, key), value in health:
+                self.status_sequence += 1
+                rows.append(
+                    {
+                        "record_type": "STS",
+                        "schema_version": "1",
+                        "status_seq": str(self.status_sequence),
+                        "timestamp_ticks": str(max(self.latest_event_timestamp_ticks, self.accepted_boundary_ordinal * RP2040_US) % (1 << 32)),
+                        "status_domain": "rp2040_monotonic_us32",
+                        "component": component,
+                        "status_key": key,
+                        "status_value": value,
+                        "severity": "INFO",
+                        "flags": "0",
+                    }
+                )
+            self._emit_rows(CONTRACT_FIELDS["health_v1"], rows)
 
     def _emit_health_map(self, health: dict[tuple[str, str], str]) -> None:
         self._emit_health_items((key, health[key]) for key in sorted(health))
@@ -2037,6 +2043,7 @@ class DeterministicPtyInstrument:
             **{("pps_gate", key): "0" for key in _authoritative_capture_counters(self.programme)},
             ("pps_gate", "snapshot_session"): "1",
             ("pps_gate", "reference_acceptance_epoch"): "1",
+            ("pps_gate", "reference_acceptance_last_loss_reason"): "none",
             ("pps_gate", "accepted_boundary_ordinal"): str(self.accepted_boundary_ordinal),
             ("pps_gate", "reference_acceptance_policy_sha256"): self.reference_acceptance_binding["policy_sha256"],
             ("pps_gate", "reference_acceptance_state"): "tracking",
@@ -2046,22 +2053,23 @@ class DeterministicPtyInstrument:
         }
 
     def _emit_snapshot(self) -> None:
-        self._emit_health_map(self._pps_health())
-        self.generation += 1
-        active = {
-            key: value
-            for (component, key), value in self._active_health().items()
-            if component == "adaptive_hybrid"
-        }
-        ordered: list[tuple[str, str]] = [
-            (SNAPSHOT_BEGIN_KEY, str(self.generation)),
-            (SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
-            *((key, active[key]) for key in ACTIVE_STATUS_KEYS),
-            (SNAPSHOT_COMPLETE_KEY, str(self.generation)),
-        ]
-        self._emit_health_items(
-            (("adaptive_hybrid", key), value) for key, value in ordered
-        )
+        with self._lock:
+            self._emit_health_map(self._pps_health())
+            self.generation += 1
+            active = {
+                key: value
+                for (component, key), value in self._active_health().items()
+                if component == "adaptive_hybrid"
+            }
+            ordered: list[tuple[str, str]] = [
+                (SNAPSHOT_BEGIN_KEY, str(self.generation)),
+                (SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
+                *((key, active[key]) for key in ACTIVE_STATUS_KEYS),
+                (SNAPSHOT_COMPLETE_KEY, str(self.generation)),
+            ]
+            self._emit_health_items(
+                (("adaptive_hybrid", key), value) for key, value in ordered
+            )
 
     def _emit_initial_observations(self) -> None:
         # The first SNP/REF is an anchor; only its adjacent successor produces

@@ -28,6 +28,10 @@ FRONTIER_POLICY = {
 }
 
 
+class _SourcePending(RuntimeError):
+    """A declared evidence source may still be queued on the raw transport."""
+
+
 def _digest(value: Any) -> str:
     return sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
@@ -206,6 +210,12 @@ class AcquisitionFrontierTracker:
         self.run_dir = Path(run_dir)
         self.manifest_sha = _digest(manifest_value)
         self.manifest = manifest_value
+        self.acceptance_policy = authoritative_document(
+            manifest_value.get("authoritative_inputs"), POLICY_PATH
+        )
+        self.acceptance_policy_sha256 = str(authoritative_binding(
+            manifest_value.get("authoritative_inputs"), POLICY_PATH
+        )["sha256"])
         self.frontier: dict[str, Any] | None = None
         self.errors: list[str] = []
         self.ordinals: dict[str, int] = {}
@@ -316,8 +326,18 @@ class AcquisitionFrontierTracker:
                 self.current_session_pair_ready = False
                 self.qualified_estimate_ids.clear()
                 self.qualified_estimates.clear()
-                self.pending_estimates.clear()
-                self.spans.clear()
+                self.pending_estimates = {
+                    identity: item
+                    for identity, item in self.pending_estimates.items()
+                    if int(item["record"]["capture_session"]) == session
+                }
+                self.spans = deque(
+                    (
+                        item for item in self.spans
+                        if int(item["record"]["capture_session"]) == session
+                    ),
+                    maxlen=601,
+                )
                 self.closed_sessions.add(int(before["session"]))
                 if session in self.closed_sessions:
                     raise ValueError("SNP returns to a closed session")
@@ -401,15 +421,16 @@ class AcquisitionFrontierTracker:
         ordinal = _u32(row, "accepted_boundary_ordinal")
         if not session or not epoch:
             raise ValueError("APS source identity is zero")
-        binding = authoritative_binding(
-            self.manifest.get("authoritative_inputs"), POLICY_PATH
-        )
-        if row.get("acceptance_policy_sha256") != binding["sha256"]:
+        if row.get("acceptance_policy_sha256") != self.acceptance_policy_sha256:
             raise ValueError("APS acceptance policy differs from frozen inputs")
-        if self.current_capture_session is not None and session != self.current_capture_session:
-            raise ValueError("APS capture session differs from current raw capture")
-        if self.spans:
-            before = self.spans[-1]["record"]
+        if session in self.closed_sessions:
+            raise ValueError("APS belongs to a closed capture session")
+        same_session = [
+            item for item in self.spans
+            if int(item["record"]["capture_session"]) == session
+        ]
+        if same_session:
+            before = same_session[-1]["record"]
             before_identity = (
                 int(before["capture_session"]), int(before["acceptance_epoch"]),
                 int(before["accepted_boundary_ordinal"]),
@@ -430,6 +451,8 @@ class AcquisitionFrontierTracker:
         self.previous_estimate_sequence = sequence
         if row.get("estimator_version") != SELECTED_ESTIMATOR_ID:
             return
+        if _u32(row, "capture_session") in self.closed_sessions:
+            raise ValueError("selected EST belongs to a closed capture session")
         identity = row["estimate_id"]
         if identity in self.seen_selected_ids:
             raise ValueError("selected EST identity is duplicated")
@@ -438,6 +461,10 @@ class AcquisitionFrontierTracker:
         self.seen_selected_ids.add(identity)
         if len(self.pending_estimates) >= 2:
             raise ValueError("selected EST source remains pending beyond bounded retention")
+        # A newer selected estimator frontier immediately retires earlier ARM
+        # proofs, even when its independent raw source queue is still catching up.
+        self.qualified_estimate_ids.clear()
+        self.qualified_estimates.clear()
         self.pending_estimates[identity] = source
         self._reconsider_estimates(force_publish=True)
 
@@ -491,23 +518,27 @@ class AcquisitionFrontierTracker:
             return "pending"
         if len(source_spans) != 600 or (closing - opening) % _U32_MODULUS != 600:
             raise ValueError("selected EST accepted source range is not exactly 600 spans")
-        policy = authoritative_document(self.manifest.get("authoritative_inputs"), POLICY_PATH)
-        policy_sha = authoritative_binding(self.manifest.get("authoritative_inputs"), POLICY_PATH)["sha256"]
+        try:
+            snapshots, references, counts = self._raw_sources_for_spans(source_spans)
+        except _SourcePending:
+            return "pending"
         exact, report, verified = replay_accepted_spans(
-            [item["record"] for item in self.snapshots],
-            [item["record"] for item in self.references],
-            [item["record"] for item in self.counts],
+            [item["record"] for item in snapshots],
+            [item["record"] for item in references],
+            [item["record"] for item in counts],
             [item["record"] for item in source_spans],
-            acceptance_policy=policy, acceptance_policy_sha256=str(policy_sha),
+            acceptance_policy=self.acceptance_policy,
+            acceptance_policy_sha256=self.acceptance_policy_sha256,
         )
         if not exact or len(verified) != 600:
             raise ValueError("selected EST source is not 600 exact accepted spans: " + "; ".join(report["errors"]))
         first = verified[0]
-        opening_snapshot = self.snapshots[first["source_first_snapshot_position"]]
+        opening_snapshot = snapshots[first["source_first_snapshot_position"]]
+        frontier_session = int(self.frontier["closing_snapshot"]["record"]["session"])
         if (
-            session != int(self.frontier["closing_snapshot"]["record"]["session"])
-            or opening_snapshot["capture_line_ordinal"]
-            < self.frontier["opening_snapshot"]["capture_line_ordinal"]
+            session == frontier_session
+            and opening_snapshot["capture_line_ordinal"]
+                < self.frontier["opening_snapshot"]["capture_line_ordinal"]
         ):
             return "unqualified_prefix"
         _validate_selected_estimate_source(row, verified, self.manifest)
@@ -521,15 +552,129 @@ class AcquisitionFrontierTracker:
             for item in source_spans
         ]
         source["raw_reference_sources"] = [
-            _live_source_pointer(item) for item in self.references
+            _live_source_pointer(item) for item in references
         ]
         source["raw_snapshot_sources"] = [
-            _live_source_pointer(item) for item in self.snapshots
+            _live_source_pointer(item) for item in snapshots
         ]
         source["raw_count_sources"] = [
-            _live_source_pointer(item) for item in self.counts
+            _live_source_pointer(item) for item in counts
         ]
         return "qualified"
+
+    def _raw_sources_for_spans(
+        self, source_spans: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        first_row = source_spans[0]["record"]
+        last_row = source_spans[-1]["record"]
+        session = int(first_row["capture_session"])
+        opening_key = (
+            session,
+            int(first_row["opening_snapshot_sequence"]),
+            int(first_row["opening_reference_timestamp_ticks"]),
+        )
+        closing_key = (
+            session,
+            int(last_row["closing_snapshot_sequence"]),
+            int(last_row["closing_reference_timestamp_ticks"]),
+        )
+        snapshots = list(self.snapshots)
+        opening_positions = [
+            index for index, item in enumerate(snapshots)
+            if (
+                int(item["record"]["session"]),
+                int(item["record"]["snapshot_sequence"]),
+                int(item["record"]["reference_timestamp_ticks"]),
+            ) == opening_key
+        ]
+        closing_positions = [
+            index for index, item in enumerate(snapshots)
+            if (
+                int(item["record"]["session"]),
+                int(item["record"]["snapshot_sequence"]),
+                int(item["record"]["reference_timestamp_ticks"]),
+            ) == closing_key
+        ]
+        if len(opening_positions) > 1 or len(closing_positions) > 1:
+            raise ValueError("selected EST APS window lacks unique raw SNP endpoints")
+        if not opening_positions and any(
+            int(item["record"]["session"]) == session
+            and int(item["record"]["snapshot_sequence"]) == opening_key[1]
+            for item in snapshots
+        ):
+            raise ValueError("selected EST APS opening SNP identity is contradictory")
+        if not closing_positions and any(
+            int(item["record"]["session"]) == session
+            and int(item["record"]["snapshot_sequence"]) == closing_key[1]
+            for item in snapshots
+        ):
+            raise ValueError("selected EST APS closing SNP identity is contradictory")
+        if not opening_positions or not closing_positions:
+            raise _SourcePending("selected EST APS raw SNP endpoints are pending")
+        opening_position, closing_position = opening_positions[0], closing_positions[0]
+        if closing_position <= opening_position:
+            raise ValueError("selected EST APS raw SNP window is reversed")
+        selected_snapshots = snapshots[opening_position : closing_position + 1]
+        if any(item.get("reference") is None for item in selected_snapshots):
+            raise ValueError("selected EST APS window lacks retained REF associations")
+        selected_references = [item["reference"] for item in selected_snapshots]
+        count_index: dict[int, list[dict[str, Any]]] = {}
+        for item in self.counts:
+            if item.get("session") == str(session):
+                count_index.setdefault(int(item["record"]["count_seq"]), []).append(item)
+        selected_counts: list[dict[str, Any]] = []
+        for span in source_spans:
+            row = span["record"]
+            first_sequence = int(row["source_count_first_sequence"])
+            last_sequence = int(row["source_count_last_sequence"])
+            record_count = int(row["source_count_record_count"])
+            if (
+                not 1 <= record_count <= 9
+                or (last_sequence - first_sequence) % _U32_MODULUS
+                    != record_count - 1
+            ):
+                raise ValueError("selected APS raw count range is malformed")
+            for offset in range(record_count):
+                sequence = (first_sequence + offset) % _U32_MODULUS
+                candidates = count_index.get(sequence, [])
+                if len(candidates) > 1:
+                    raise ValueError(
+                        "selected APS lacks one exact same-session raw count source"
+                    )
+                if not candidates:
+                    same_session_counts = [
+                        int(item["record"]["count_seq"])
+                        for item in self.counts
+                        if item.get("session") == str(session)
+                    ]
+                    if same_session_counts and (
+                        same_session_counts[-1] - sequence
+                    ) % _U32_MODULUS <= 0x7FFFFFFF:
+                        raise ValueError(
+                            "selected APS raw count frontier passed a missing source"
+                        )
+                    raise _SourcePending("selected APS raw count source is pending")
+                selected_counts.append(candidates[0])
+        same_session_counts = [
+            item for item in self.counts if item.get("session") == str(session)
+        ]
+        positions = {
+            item["capture_line_ordinal"]: index
+            for index, item in enumerate(same_session_counts)
+        }
+        selected_lines = [item["capture_line_ordinal"] for item in selected_counts]
+        if len(set(selected_lines)) != len(selected_lines):
+            raise ValueError("selected APS duplicates a raw count occurrence")
+        first_position = positions[selected_lines[0]]
+        last_position = positions[selected_lines[-1]]
+        retained_occurrences = same_session_counts[first_position : last_position + 1]
+        if selected_lines != [
+            item["capture_line_ordinal"] for item in retained_occurrences
+        ]:
+            raise ValueError(
+                "selected APS count sources omit or duplicate an interior raw count"
+            )
+        return selected_snapshots, selected_references, selected_counts
 
 
 _SOURCE_TYPES = {

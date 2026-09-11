@@ -66,7 +66,7 @@ Core 1 owns timing state; Core 0 transports immutable snapshot messages and
 does not reconstruct timing state from live getters.
 
 `ACTIVE SNAPSHOT <nonce>` publishes component `adaptive_hybrid` under
-[`adaptive_hybrid_active_status_snapshot_v1.md`](adaptive_hybrid_active_status_snapshot_v1.md).
+[`adaptive_hybrid_active_status_snapshot_v2.md`](adaptive_hybrid_active_status_snapshot_v2.md).
 Every canonical field must appear exactly once between equal non-zero
 generation markers. A command-bearing consumer may also require the solicited
 nonce. A newer incomplete generation prevents fallback to an older eligible
