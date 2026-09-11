@@ -87,9 +87,13 @@ disturbance. Acquisition/reacquisition, permitted consecutive rejections,
 phase continuity, estimator eligibility and control resumption all require
 explicit rules. Do not merely clear lifetime error counters to resume.
 
-The numerical tolerance and permitted continuation criteria remain design
-work. Use observed evidence and deterministic fault cases to assess them;
-freeze them before the next physical result is judged.
+The prospective native candidate now fixes an inclusive ±1.25 ms window,
+eight acquisition intervals, at most eight excluded early candidates per
+accepted span, and no qualification sum across acceptance epochs. See the
+[reference acceptance contract](../../data_contracts/reference_acceptance_v1.md)
+and its machine-readable policy. These criteria remain unpromoted to the live
+path until the complete firmware/host cutover and its verification are done;
+they do not reinterpret the closed attempt.
 
 ### Priority integration defects
 
@@ -278,3 +282,29 @@ must be frozen before a new physical qualification.
 Keep this execution record current at integration boundaries, recording checks
 actually run and explicit remaining dependencies. Do not mark a stage complete
 because code exists or a fixture passes.
+
+PR #174 was merged as `9fa9dc698be4944ddeda5fd4b1a5917cda3f8241`.
+All 596 repository files matched the remote merged tree. The operator aligned
+the local branch/index without changing the files, restoring a clean checkout.
+
+Stage 3 now has a pure native accepted-reference candidate, an explicit frozen
+assessment policy and a reproducible
+[retained-recording assessment](../60_EXPERIMENTS/REFERENCE_ACCEPTANCE_CANDIDATE_2026_09_11.md).
+It produces 52,300 accepted spans in one acceptance epoch after acquisition,
+excludes the one recorded extra edge, and reconstructs its accepted span as
+exactly 10,000,000 D8 edges. Every source CSV remains unchanged; the earlier
+unproved leading CNT and historical incomplete outcome remain explicit.
+The candidate and architectural checks passed all 47 focused tests in 2.14
+seconds; the source guard confirms that current firmware consumers remain
+unconnected to it. The earlier 552-test result applies to the merged host
+frontier tranche. A fixed-image build and complete release gate remain part
+of the forthcoming consumer cutover, not a claim of this native assessment.
+
+The next production change must carry accepted-span identity through frequency
+and phase together, then through telemetry, raw-to-derived replay, recorder
+source readiness, controller health and qualified-duration accounting. The
+native component is deliberately unwired until that complete cutover. Its
+tests are not evidence that the current live consumers already preserve
+history across the excluded edge, nor that a real producer supplies a truthful
+expiry frontier. No firmware has been flashed and no new live run authorized
+by this assessment.

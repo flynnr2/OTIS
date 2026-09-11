@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "policy_id": "otis_d14_accepted_reference_v1",
+  "implementation_stage": "native_candidate",
+  "control_authority": false,
+  "reference_pin": "D14",
+  "count_pin": "D8",
+  "admission_coordinate_domain": "rp2040_monotonic_us32",
+  "nominal_interval_ticks": 1000000,
+  "tolerance_ticks": 1250,
+  "acquisition_intervals": 8,
+  "maximum_edge_rate_hz": 133000000,
+  "maximum_count_span_ticks": 1200000,
+  "allowed_reference_flags": 16,
+  "maximum_excluded_candidates_per_span": 8,
+  "nominal_intervals_per_accepted_span": 1,
+  "rejected_candidate_moves_anchor": false,
+  "rejected_candidate_extends_expiry": false,
+  "missing_reference_requires_new_acceptance_epoch": true,
+  "qualification_may_sum_acceptance_epochs": false,
+  "raw_observations_preserved": true
+}
