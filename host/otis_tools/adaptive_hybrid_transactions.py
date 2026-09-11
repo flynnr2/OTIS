@@ -21,7 +21,7 @@ import time
 from .contracts import CsvValidationContext, validate_csv
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 
-ACTIVE_CSV = Path("csv/active_transactions_v2.csv")
+ACTIVE_CSV = Path("csv/active_transactions_v3.csv")
 HEALTH_CSV = Path("csv/health.csv")
 SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
 SUPERVISOR_EVENTS = Path("reports/adaptive_hybrid_supervisor_events.jsonl")
@@ -162,8 +162,9 @@ IMMUTABLE_REQUEST_FIELDS = (
    "nonce",
    "request_sequence",
    "decision_sequence",
-   "source_first_sequence",
-   "source_last_sequence",
+   "source_acceptance_epoch",
+   "source_opening_accepted_boundary_ordinal",
+   "source_closing_accepted_boundary_ordinal",
    "decision_timestamp_s",
    "current_applied_code",
    "requested_delta_codes",
@@ -438,7 +439,7 @@ class AdaptiveHybridTransactionSupervisor:
            )
 
            active_hybrid_csv = (
-               self.run_dir / "csv/active_hybrid_decisions_v2.csv"
+               self.run_dir / "csv/active_hybrid_decisions_v3.csv"
            )
            _fsync_path(active_hybrid_csv)
            attestation = replay_response_before_acknowledgement(
@@ -452,9 +453,9 @@ class AdaptiveHybridTransactionSupervisor:
                expected_active_policy_sha256=getattr(
                    self, "expected_active_policy_sha256", None
                ),
-               estimates_csv=self.run_dir / "csv/estimates_v2.csv",
+               estimates_csv=self.run_dir / "csv/estimates_v3.csv",
                maintenance_csv=(
-                   self.run_dir / "csv/active_hybrid_maintenance_v1.csv"
+                   self.run_dir / "csv/active_hybrid_maintenance_v2.csv"
                ),
                maximum_applications=self.spec.correction_limit,
                maximum_cumulative_movement_codes=self.spec.cumulative_limit,
@@ -525,7 +526,7 @@ class AdaptiveHybridTransactionSupervisor:
        validation = validate_csv(
            path,
            CsvValidationContext(
-               "active_transactions_v2",
+               "active_transactions_v3",
                frozenset(),
                frozenset({"rp2040_monotonic_us64"}),
            ),

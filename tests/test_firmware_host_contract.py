@@ -209,8 +209,8 @@ def test_contract_authority_is_current_complete_and_deterministically_generated(
     assert {name: tuple(fields) for name, fields in CONTRACT_FIELDS.items()} == (
         RECORD_FIELDS
     )
-    assert len(RECORD_FIELDS) == 16
-    assert sum(len(fields) for fields in RECORD_FIELDS.values()) == 418
+    assert len(RECORD_FIELDS) == 17
+    assert sum(len(fields) for fields in RECORD_FIELDS.values()) == 451
     assert RAW_ONLY_DIAGNOSTIC_RECORD_TYPES == {
         "BOOT",
         "BOOTDIAG",
@@ -222,6 +222,8 @@ def test_contract_authority_is_current_complete_and_deterministically_generated(
         for name, field_types in RECORD_FIELD_WIRE_TYPES.items()
     } == {name: set(fields) for name, fields in RECORD_FIELDS.items()}
     assert set(RELATIONS) == {
+        "accepted_span_sources_are_exact",
+        "phase_consumes_accepted_span",
         "active_decision_whole_seconds_from_exact_ticks",
         "estimate_capture_precedes_operational_decision",
         "active_status_generation_is_atomic",
@@ -250,7 +252,7 @@ def test_every_record_field_has_contract_derived_legal_and_illegal_boundaries() 
                 for value in illegal
             ), f"{contract}.{field} illegal matrix disagrees with the contract"
             exercised += 1
-    assert exercised == 418
+    assert exercised == 451
 
 
 def test_every_active_status_value_has_a_contract_derived_wire_type() -> None:
@@ -441,18 +443,19 @@ def test_firmware_uses_generated_headers_and_capacity_frontiers() -> None:
     for contract in (
         "raw_events_v1",
         "count_observations_v1",
+        "accepted_pps_spans_v1",
         "health_v1",
         "dac_steps_v1",
         "environment_v1",
         "pps_snapshots_v1",
         "forwarded_monitor_snapshots_v1",
-        "estimates_v2",
+        "estimates_v3",
         "control_previews_v1",
-        "active_transactions_v2",
-        "active_hybrid_decisions_v2",
-        "active_hybrid_maintenance_v1",
-        "relative_phase_observations_v1",
-        "phase_estimator_outputs_v1",
+        "active_transactions_v3",
+        "active_hybrid_decisions_v3",
+        "active_hybrid_maintenance_v2",
+        "relative_phase_observations_v2",
+        "phase_estimator_outputs_v2",
         "tight_deadband_decisions_v1",
     ):
         macro = "OTIS_CONTRACT_" + contract.upper()
@@ -771,4 +774,4 @@ def test_every_command_form_has_arguments_and_a_first_consumer() -> None:
         assert form["arguments"]
         assert form["acknowledgement"]
         assert form["first_consumer"]
-    assert RECORD_SCHEMA_VERSIONS["active_hybrid_decisions_v2"] == 2
+    assert RECORD_SCHEMA_VERSIONS["active_hybrid_decisions_v3"] == 3

@@ -20,11 +20,16 @@ static_assert(
 
 struct OtisAdaptiveHybridRegulationLiveHealth {
   uint32_t session_id;
-  // Monotonic producer identities.  Metadata qualification must advance
-  // first; a causally later exact D14/D8 observation must then advance before
-  // control can be rearmed.
+  const char *reference_acceptance_policy_sha256;
+  const char *reference_acceptance_state;
+  // Latest same-core accepted-reference identity.  This is distinct from the
+  // capture session and from the raw SNP/reference ordinals.
+  uint32_t acceptance_epoch;
+  uint32_t accepted_boundary_ordinal;
+  bool accepted_anchor_current;
+  // Metadata qualification must advance before a causally later accepted
+  // boundary can rearm control.
   uint32_t gnss_metadata_sequence;
-  uint32_t d14_d8_observation_sequence;
   bool gnss_metadata_valid;
   bool gnss_identity_stable;
   bool gnss_3d_evidence;
@@ -42,8 +47,6 @@ struct OtisAdaptiveHybridRegulationLiveHealth {
 
 struct OtisAdaptiveHybridRegulationLiveDecision {
   uint32_t decision_sequence;
-  uint32_t source_first_sequence;
-  uint32_t source_last_sequence;
   uint32_t timestamp_s;
   uint16_t current_applied_code;
   int32_t requested_delta_codes;
@@ -54,6 +57,9 @@ struct OtisAdaptiveHybridRegulationLiveDecision {
   bool control_eligible;
   bool preview_available;
   uint32_t capture_session;
+  uint32_t source_acceptance_epoch;
+  uint32_t source_opening_accepted_boundary_ordinal;
+  uint32_t source_closing_accepted_boundary_ordinal;
   int32_t accumulated_edge_error_counts;
   const char *tight_state;
   uint32_t dac_epoch;
@@ -121,8 +127,12 @@ struct OtisAdaptiveHybridRegulationLiveStatus {
   bool gnss_metadata_hold_transaction_pending;
   uint32_t gnss_metadata_hold_entry_sequence;
   uint32_t gnss_metadata_requalification_sequence;
-  uint32_t gnss_metadata_qualification_frontier;
-  uint32_t d14_d8_observation_sequence;
+  uint32_t gnss_metadata_qualification_accepted_boundary_ordinal;
+  const char *reference_acceptance_policy_sha256;
+  const char *reference_acceptance_state;
+  uint32_t acceptance_epoch;
+  uint32_t accepted_boundary_ordinal;
+  bool accepted_anchor_current;
   const char *hybrid_state;
   const char *hybrid_reason;
   uint16_t phase_nonzero_application_count;

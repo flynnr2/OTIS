@@ -22,15 +22,35 @@ from host.otis_tools.acquisition_frontier import (
     FRONTIER_STATE_PATH,
     read_acquisition_readiness,
 )
+from host.otis_tools.authoritative_inputs import (
+    REFERENCE_ACCEPTANCE_POLICY_PATH,
+    authoritative_binding,
+    authoritative_document,
+    collect_authoritative_inputs,
+)
 from host.otis_tools.contracts import CONTRACT_FIELDS
 from host.otis_tools.firmware_host_contract import RECORD_FIELD_WIRE_TYPES, WIRE_TYPES
 
+_FROZEN_INPUTS = collect_authoritative_inputs()
+_ACCEPTANCE_POLICY_SHA = str(
+    authoritative_binding(_FROZEN_INPUTS, REFERENCE_ACCEPTANCE_POLICY_PATH)["sha256"]
+)
+
 
 def _manifest() -> dict[str, object]:
+    frozen = _FROZEN_INPUTS
+    policy = authoritative_document(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
+    binding = authoritative_binding(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
     return {
         "schema_version": 1,
         "run_id": "frontier-pty",
         "acquisition_frontier": FRONTIER_POLICY,
+        "authoritative_inputs": frozen,
+        "reference_acceptance": {
+            "policy_id": policy["policy_id"],
+            "policy_sha256": binding["sha256"],
+            "path": REFERENCE_ACCEPTANCE_POLICY_PATH,
+        },
         "transaction_identities": {"estimator_sha256": "a" * 64},
         "channels": [
             {
@@ -54,7 +74,8 @@ def _manifest() -> dict[str, object]:
             {"contract": "raw_events_v1", "record_type": "REF", "path": "csv/reference_events.csv"},
             {"contract": "pps_snapshots_v1", "path": "csv/pps_snapshots.csv"},
             {"contract": "count_observations_v1", "path": "csv/count_observations.csv"},
-            {"contract": "estimates_v2", "path": "csv/estimates_v2.csv"},
+            {"contract": "accepted_pps_spans_v1", "path": "csv/accepted_pps_spans_v1.csv"},
+            {"contract": "estimates_v3", "path": "csv/estimates_v3.csv"},
         ],
     }
 
@@ -99,14 +120,14 @@ def _count(sequence: int, opening: int, closing: int) -> bytes:
     })
 
 
-def _canonical(contract: str) -> dict[str, str]:
+def _canonical(contract: str, *, record_type: str, schema_version: int) -> dict[str, str]:
     result: dict[str, str] = {}
     for field in CONTRACT_FIELDS[contract]:
         kind = WIRE_TYPES[RECORD_FIELD_WIRE_TYPES[contract][field]]
         if kind["kind"] == "record_type":
-            result[field] = "EST"
+            result[field] = record_type
         elif kind["kind"] == "schema_version":
-            result[field] = "2"
+            result[field] = str(schema_version)
         elif kind["kind"] == "optional":
             result[field] = ""
         elif kind["kind"] in {"integer", "finite_decimal"}:
@@ -125,19 +146,52 @@ def _canonical(contract: str) -> dict[str, str]:
 
 
 def _estimate(first: int, last: int, ticks: int, identifier: str, *, sequence: int = 1) -> bytes:
-    row = _canonical("estimates_v2")
+    row = _canonical("estimates_v3", record_type="EST", schema_version=3)
     row.update({
-        "record_type": "EST", "schema_version": "2", "estimate_seq": str(sequence),
+        "record_type": "EST", "schema_version": "3", "estimate_seq": str(sequence),
         "estimate_id": identifier, "estimator_timestamp_ticks": str(ticks),
-        "time_domain": "rp2040_monotonic_us32", "source_count_seq": str(last),
-        "source_count_ref": str(last), "source_reference_first_seq": str(first),
-        "source_reference_last_seq": str(last), "estimator_version": replay.SELECTED_ESTIMATOR_ID,
+        "time_domain": "rp2040_monotonic_us32", "capture_session": "1",
+        "source_acceptance_epoch": "1",
+        "source_opening_accepted_boundary_ordinal": "0",
+        "source_closing_accepted_boundary_ordinal": "600",
+        "source_opening_snapshot_sequence": str(first),
+        "source_closing_snapshot_sequence": str(last),
+        "source_opening_reference_sequence": str(first),
+        "source_closing_reference_sequence": str(last),
+        "source_accepted_spans_ref": "live:APS:1:1:0:600",
+        "estimator_version": replay.SELECTED_ESTIMATOR_ID,
         "config_hash": "a" * 64, "observation_validity": "valid",
-        "reference_validity": "valid", "count_validity": "valid",
+        "reference_continuity": "true", "reference_validity": "valid",
+        "count_validity": "valid", "count_continuity": "true",
+        "diagnostic_health": "healthy",
         "frequency_estimate_hz": "10000000", "frequency_error_hz": "0",
-        "accepted_sample_count": "600",
+        "accepted_sample_count": "600", "drift_enabled": "false",
+        "preview_eligibility": "true",
     })
-    return _row("estimates_v2", row)
+    return _row("estimates_v3", row)
+
+
+def _accepted_span(opening: int, closing: int, opening_ticks: int, closing_ticks: int) -> bytes:
+    row = _canonical(
+        "accepted_pps_spans_v1", record_type="APS", schema_version=1
+    )
+    row.update({
+        "record_type": "APS", "schema_version": "1", "capture_session": "1",
+        "acceptance_epoch": "1", "accepted_boundary_ordinal": str(closing - 10),
+        "opening_snapshot_sequence": str(opening),
+        "closing_snapshot_sequence": str(closing),
+        "opening_reference_sequence": str(opening),
+        "closing_reference_sequence": str(closing),
+        "opening_reference_timestamp_ticks": str(opening_ticks),
+        "closing_reference_timestamp_ticks": str(closing_ticks),
+        "time_domain": "rp2040_monotonic_us32",
+        "source_count_first_sequence": str(closing),
+        "source_count_last_sequence": str(closing),
+        "source_count_record_count": "1", "counted_edges": "10000000",
+        "excluded_candidate_count": "0", "nominal_interval_count": "1",
+        "acceptance_policy_sha256": _ACCEPTANCE_POLICY_SHA,
+    })
+    return _row("accepted_pps_spans_v1", row)
 
 
 def _write_all(descriptor: int, data: bytes) -> None:
@@ -236,7 +290,7 @@ def test_real_capture_keeps_d10_and_orphan_prefix_but_requires_complete_600_sour
     chunks.insert(8, pending)
     run_dir, manifest, device_bytes = _capture(tmp_path, chunks)
     readiness = read_acquisition_readiness(run_dir, manifest)
-    assert readiness["anchor_ready"] is True
+    assert readiness["anchor_ready"] is True, readiness
     assert read_acquisition_readiness(run_dir, manifest, source_estimate_id="missing-est")["ready"] is False
     assert read_acquisition_readiness(run_dir, manifest, source_estimate_id="pending-est")["ready"] is True
     assert (run_dir / "csv/external_events.csv").read_text(encoding="utf-8").count("EVT,") == 1
@@ -244,11 +298,18 @@ def test_real_capture_keeps_d10_and_orphan_prefix_but_requires_complete_600_sour
 
 
 def _complete_source_chunks(first: int, intervals: int) -> list[bytes]:
-    chunks = [_count(first, 0, 1_000_000), _evt(7, 17)]
-    chunks.extend((_ref(first, 1_000_000), _snapshot(first, 1_000_000)))
+    chunks = [_evt(7, 17), _ref(first, 1_000_000), _snapshot(first, 1_000_000)]
+    # Match the producer's SNP,CNT,APS order. This leading CNT closes at the
+    # retained opening SNP but belongs to an unretained aperture and must not
+    # enter the later accepted-span estimator source.
+    chunks.append(_count(first, 0, 1_000_000))
     for sequence in range(first + 1, first + intervals + 1):
         ticks = (sequence - first + 1) * 1_000_000
-        chunks.extend((_ref(sequence, ticks), _snapshot(sequence, ticks), _count(sequence, ticks - 1_000_000, ticks)))
+        chunks.extend((
+            _ref(sequence, ticks), _snapshot(sequence, ticks),
+            _count(sequence, ticks - 1_000_000, ticks),
+            _accepted_span(sequence - 1, sequence, ticks - 1_000_000, ticks),
+        ))
     return chunks
 
 
@@ -369,6 +430,7 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
 
     setup._acquisition_authority_ready = observe_setup_gate
     setup._maybe_start_or_arm({
+        ("pps_gate", "snapshot_session"): "1",
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "reason"): "",
         ("adaptive_hybrid", "manual_start_confirmed"): "false",
@@ -414,6 +476,7 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
         "est_input_ref": "unproved-estimate", "decision_id": "decision-1",
     }])
     arm._maybe_start_or_arm({
+        ("pps_gate", "snapshot_session"): "1",
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "reason"): "",
         ("adaptive_hybrid", "manual_start_confirmed"): "true",

@@ -23,8 +23,9 @@ struct OtisAdaptiveHybridMaintenanceHybridJoin {
   uint64_t hybrid_record_sequence;
   uint64_t decision_sequence;
   uint64_t capture_session;
-  uint64_t source_first_sequence;
-  uint64_t source_last_sequence;
+  uint64_t source_acceptance_epoch;
+  uint64_t source_opening_accepted_boundary_ordinal;
+  uint64_t source_closing_accepted_boundary_ordinal;
   uint64_t phase_epoch;
   uint64_t phase_observation_sequence;
   bool phase_valid;
@@ -36,8 +37,9 @@ struct OtisAdaptiveHybridMaintenanceTransactionJoin {
   uint64_t request_sequence;
   uint64_t decision_sequence;
   uint64_t capture_session;
-  uint64_t source_first_sequence;
-  uint64_t source_last_sequence;
+  uint64_t source_acceptance_epoch;
+  uint64_t source_opening_accepted_boundary_ordinal;
+  uint64_t source_closing_accepted_boundary_ordinal;
   uint64_t application_sequence;
   uint32_t actual_applied_code;
   uint64_t actual_dac_epoch;

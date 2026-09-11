@@ -5,7 +5,7 @@ from pathlib import Path
 
 from host.otis_tools.capture_serial import CsvRecordSplitter
 from host.otis_tools.contracts import (
-    ACTIVE_TRANSACTION_V2_FIELDS,
+    ACTIVE_TRANSACTION_V3_FIELDS,
     CsvValidationContext,
     validate_csv,
 )
@@ -13,11 +13,11 @@ from host.otis_tools.contracts import (
 
 def _row(sequence: int, event: str, evidence_state: str) -> dict[str, str]:
     digest = "a" * 64
-    values = {field: "" for field in ACTIVE_TRANSACTION_V2_FIELDS}
+    values = {field: "" for field in ACTIVE_TRANSACTION_V3_FIELDS}
     values.update(
         {
             "record_type": "ACT",
-            "schema_version": "2",
+            "schema_version": "3",
             "transaction_record_sequence": str(sequence),
             "event": event,
             "event_timestamp_ticks": str(2_400_000_000 + sequence),
@@ -30,8 +30,9 @@ def _row(sequence: int, event: str, evidence_state: str) -> dict[str, str]:
             "nonce": "12345",
             "request_sequence": "1",
             "decision_sequence": "81",
-            "source_first_sequence": "100",
-            "source_last_sequence": "699",
+            "source_acceptance_epoch": "1",
+            "source_opening_accepted_boundary_ordinal": "100",
+            "source_closing_accepted_boundary_ordinal": "699",
             "decision_timestamp_s": "2400",
             "current_applied_code": "43344",
             "requested_delta_codes": "-21",
@@ -77,37 +78,37 @@ def _row(sequence: int, event: str, evidence_state: str) -> dict[str, str]:
 def test_act_records_are_split_and_validate_as_durable_three_phase_evidence(
     tmp_path: Path,
 ) -> None:
-    path = tmp_path / "active_transactions_v2.csv"
+    path = tmp_path / "active_transactions_v3.csv"
     rows = (
         _row(1, "request_accepted", "acceptance_pending"),
         _row(2, "application", "application_pending"),
         _row(3, "response", "response_pending"),
     )
-    with CsvRecordSplitter({"active_transactions_v2": path}) as splitter:
+    with CsvRecordSplitter({"active_transactions_v3": path}) as splitter:
         for row in rows:
-            line = ",".join(row[field] for field in ACTIVE_TRANSACTION_V2_FIELDS)
-            assert splitter.process_line(line) == "active_transactions_v2"
+            line = ",".join(row[field] for field in ACTIVE_TRANSACTION_V3_FIELDS)
+            assert splitter.process_line(line) == "active_transactions_v3"
 
     result = validate_csv(
         path,
-        CsvValidationContext("active_transactions_v2", frozenset(), frozenset()),
+        CsvValidationContext("active_transactions_v3", frozenset(), frozenset()),
     )
     assert result.row_count == 3
     assert result.errors == ()
 
 
 def test_act_contract_rejects_actionable_or_wrong_evidence_phase(tmp_path: Path) -> None:
-    path = tmp_path / "active_transactions_v2.csv"
+    path = tmp_path / "active_transactions_v3.csv"
     row = _row(1, "request_accepted", "application_pending")
     row["actionable"] = "true"
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V2_FIELDS)
+        writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V3_FIELDS)
         writer.writeheader()
         writer.writerow(row)
 
     result = validate_csv(
         path,
-        CsvValidationContext("active_transactions_v2", frozenset(), frozenset()),
+        CsvValidationContext("active_transactions_v3", frozenset(), frozenset()),
     )
     assert any("must never be actionable" in error for error in result.errors)
     assert any("requires evidence_state=acceptance_pending" in error for error in result.errors)
@@ -116,7 +117,7 @@ def test_act_contract_rejects_actionable_or_wrong_evidence_phase(tmp_path: Path)
 def test_request_created_is_non_actionable_durable_evidence(
     tmp_path: Path,
 ) -> None:
-    path = tmp_path / "active_transactions_v2.csv"
+    path = tmp_path / "active_transactions_v3.csv"
     row = _row(1, "request_created", "request_pending")
     row.update(
         {
@@ -135,14 +136,14 @@ def test_request_created_is_non_actionable_durable_evidence(
         }
     )
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V2_FIELDS)
+        writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V3_FIELDS)
         writer.writeheader()
         writer.writerow(row)
 
     result = validate_csv(
         path,
         CsvValidationContext(
-            "active_transactions_v2", frozenset(), frozenset()
+            "active_transactions_v3", frozenset(), frozenset()
         ),
     )
     assert result.row_count == 1
@@ -152,17 +153,17 @@ def test_request_created_is_non_actionable_durable_evidence(
 def test_act_contract_accepts_durable_out_of_model_hold_response(
     tmp_path: Path,
 ) -> None:
-    path = tmp_path / "active_transactions_v2.csv"
+    path = tmp_path / "active_transactions_v3.csv"
     row = _row(4, "response", "response_pending")
     row["active_state"] = "OUT_OF_MODEL_HOLD"
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V2_FIELDS)
+        writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V3_FIELDS)
         writer.writeheader()
         writer.writerow(row)
 
     result = validate_csv(
         path,
-        CsvValidationContext("active_transactions_v2", frozenset(), frozenset()),
+        CsvValidationContext("active_transactions_v3", frozenset(), frozenset()),
     )
     assert result.row_count == 1
     assert result.errors == ()
@@ -171,18 +172,18 @@ def test_act_contract_accepts_durable_out_of_model_hold_response(
 def test_act_contract_rejects_missing_coarse_unknown_and_backward_timing(
     tmp_path: Path,
 ) -> None:
-    path = tmp_path / "active_transactions_v2.csv"
+    path = tmp_path / "active_transactions_v3.csv"
 
     def errors_for(rows: list[dict[str, str]]) -> str:
         with path.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V2_FIELDS)
+            writer = csv.DictWriter(handle, fieldnames=ACTIVE_TRANSACTION_V3_FIELDS)
             writer.writeheader()
             writer.writerows(rows)
         return " ".join(
             validate_csv(
                 path,
                 CsvValidationContext(
-                    "active_transactions_v2", frozenset(), frozenset()
+                    "active_transactions_v3", frozenset(), frozenset()
                 ),
             ).errors
         )

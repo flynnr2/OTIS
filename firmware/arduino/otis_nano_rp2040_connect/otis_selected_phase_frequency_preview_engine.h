@@ -2,6 +2,7 @@
 #define OTIS_SELECTED_PHASE_FREQUENCY_PREVIEW_ENGINE_H
 
 #include <stdint.h>
+#include "otis_reference_acceptance.h"
 
 // Pure D14-referenced D8 relative-phase and supporting frequency estimator.
 // This interface has no authority, transaction, actuator, serial, DAC-driver,
@@ -16,17 +17,9 @@ enum class OtisReferenceRelativePhaseState : uint8_t {
 };
 
 struct OtisSelectedPhaseFrequencyPreviewInput {
-  uint32_t capture_session;
-  uint32_t snapshot_sequence;
-  uint32_t cumulative_down_counter;
-  uint32_t reference_sequence;
-  uint64_t reference_timestamp_ticks;
+  const OtisReferenceAcceptanceOutcome *selection;
   uint64_t monotonic_timestamp_ticks;
-  uint32_t snapshot_status;
-  uint32_t counted_edges;
   uint32_t dac_epoch;
-  bool counted_edges_available;
-  bool reference_qualified;
   bool reset;
 };
 
@@ -34,6 +27,8 @@ struct OtisSelectedPhaseFrequencyPreviewOutput {
   uint32_t phase_epoch;
   uint32_t observation_sequence;
   uint32_t capture_session;
+  uint32_t acceptance_epoch;
+  uint32_t accepted_boundary_ordinal;
   uint32_t opening_snapshot_sequence;
   uint32_t closing_snapshot_sequence;
   uint32_t opening_reference_sequence;
@@ -49,6 +44,7 @@ struct OtisSelectedPhaseFrequencyPreviewOutput {
   bool interval_available;
   bool frequency_available;
   bool frequency_observation_event;
+  bool record_available;
   double frequency_error_hz;
   uint64_t frequency_estimate_age_ticks;
 };
@@ -60,6 +56,9 @@ struct OtisSelectedPhaseFrequencyPreviewEngine {
   uint32_t previous_counter;
   uint32_t previous_reference_sequence;
   uint64_t previous_reference_ticks;
+  uint64_t previous_monotonic_timestamp_ticks;
+  uint32_t acceptance_epoch;
+  uint32_t accepted_boundary_ordinal;
   uint32_t phase_epoch;
   uint32_t observation_sequence;
   int64_t cumulative_phase;

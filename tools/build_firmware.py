@@ -25,6 +25,11 @@ from host.otis_tools.firmware_host_contract import (  # noqa: E402
     binding as firmware_host_contract_binding,
     verify_generated_cpp_header,
 )
+from tools.generate_reference_acceptance_policy import (  # noqa: E402
+    HEADER as ACCEPTANCE_POLICY_HEADER,
+    POLICY as ACCEPTANCE_POLICY_PATH,
+    render_header as render_acceptance_policy_header,
+)
 
 DEFAULT_MANIFEST = (
     REPO_ROOT / "firmware" / "arduino" / "firmware_build_manifest.json"
@@ -77,8 +82,8 @@ REQUIRED_IMAGE_MARKERS = {
     "gnss_metadata_hold": b"metadata_hold",
     "frequency_estimator": b"OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
     "phase_estimator": b"OTIS_RELATIVE_PHASE_ESTIMATOR_V1",
-    "phase_raw_method": b"D14_REFERENCED_D8_RELATIVE_PHASE_ACCUMULATOR_V1",
-    "active_status_contract": b"adaptive_hybrid_active_status_snapshot_v1",
+    "phase_raw_method": b"D14_ACCEPTED_SPAN_RELATIVE_PHASE_ACCUMULATOR_V1",
+    "active_status_contract": b"adaptive_hybrid_active_status_snapshot_v2",
     "external_event_not_implemented": b"not_implemented",
 }
 FORBIDDEN_IMAGE_MARKERS = {
@@ -108,6 +113,7 @@ EXPECTED_SCHEMA_BINDINGS = {
 }
 EXPECTED_CONTRACT_BINDINGS = {
     "firmware_host": "data_contracts/otis_firmware_host_contract_v1.json",
+    "reference_acceptance": "data_contracts/reference_acceptance_policy_v1.json",
 }
 FIRMWARE_HOST_BINDING_HELPER = (
     REPO_ROOT / "host" / "otis_tools" / "firmware_host_contract.py"
@@ -120,7 +126,7 @@ PROFILE_BINDING_MACROS = {
     "response_policy": "OTIS_BUILD_RESPONSE_POLICY_SHA256",
 }
 ROOT_PROFILE = "profiles/discipline/adaptive_hybrid_regulation_v1.json"
-AUTHORITATIVE_INPUT_CONTRACT = "otis_adaptive_hybrid_authoritative_inputs_v1"
+AUTHORITATIVE_INPUT_CONTRACT = "otis_adaptive_hybrid_authoritative_inputs_v2"
 PROFILE_SCHEMA_BINDINGS = {
     ROOT_PROFILE: "schemas/adaptive_hybrid_regulation_v1.schema.json",
     "profiles/discipline/response_classification_v1.json": (
@@ -357,6 +363,7 @@ def authoritative_input_report() -> dict[str, Any]:
         "root_profile": ROOT_PROFILE,
         "profiles": [profiles[path] for path in sorted(profiles)],
         "schemas": schemas,
+        "contracts": [_authoritative_entry(EXPECTED_CONTRACT_BINDINGS["reference_acceptance"])[0]],
         "profile_schema_bindings": dict(PROFILE_SCHEMA_BINDINGS),
     }
     return {
@@ -371,6 +378,10 @@ def authoritative_input_report() -> dict[str, Any]:
             for item in unsigned["schemas"]
         ],
         "profile_schema_bindings": unsigned["profile_schema_bindings"],
+        "contracts": [
+            {key: item[key] for key in ("path", "sha256", "size_bytes")}
+            for item in unsigned["contracts"]
+        ],
         "set_sha256": _sha256_json(unsigned),
     }
 
@@ -407,7 +418,13 @@ def contract_binding_report(manifest: dict[str, Any]) -> dict[str, dict[str, Any
     current = firmware_host_contract_binding()
     if current["path"] != EXPECTED_CONTRACT_BINDINGS["firmware_host"]:
         raise BuildError("firmware/host contract path differs")
-    return {"firmware_host": current}
+    if ACCEPTANCE_POLICY_HEADER.read_text() != render_acceptance_policy_header():
+        raise BuildError("reference acceptance firmware policy differs from frozen JSON")
+    policy_bytes = ACCEPTANCE_POLICY_PATH.read_bytes()
+    return {"firmware_host": current, "reference_acceptance": {
+        "path": EXPECTED_CONTRACT_BINDINGS["reference_acceptance"],
+        "sha256": sha256(policy_bytes).hexdigest(), "size_bytes": len(policy_bytes),
+    }}
 
 
 def load_manifest() -> dict[str, Any]:
@@ -674,7 +691,7 @@ def source_input_paths(
     authoritative_inputs = authoritative_inputs or authoritative_input_report()
     authoritative_paths = {
         str(item["path"])
-        for group in ("profiles", "schemas")
+        for group in ("profiles", "schemas", "contracts")
         for item in authoritative_inputs[group]
     }
     return tuple(
@@ -690,6 +707,7 @@ def source_input_paths(
                 DEFAULT_MANIFEST.resolve(),
                 builder_path.resolve(),
                 FIRMWARE_HOST_BINDING_HELPER.resolve(),
+                (REPO_ROOT / "tools/generate_reference_acceptance_policy.py").resolve(),
                 _bound_repository_file(
                     EXPECTED_CONTRACT_BINDINGS["firmware_host"]
                 ),
@@ -712,7 +730,7 @@ def operational_source_pathspecs(
     authoritative_inputs = authoritative_inputs or authoritative_input_report()
     authoritative_paths = {
         str(item["path"])
-        for group in ("profiles", "schemas")
+        for group in ("profiles", "schemas", "contracts")
         for item in authoritative_inputs[group]
     }
     sketch_relative = SKETCH.relative_to(REPO_ROOT).as_posix()
@@ -720,6 +738,7 @@ def operational_source_pathspecs(
         DEFAULT_MANIFEST.relative_to(REPO_ROOT).as_posix(),
         Path(__file__).resolve().relative_to(REPO_ROOT).as_posix(),
         FIRMWARE_HOST_BINDING_HELPER.relative_to(REPO_ROOT).as_posix(),
+        "tools/generate_reference_acceptance_policy.py",
         EXPECTED_CONTRACT_BINDINGS["firmware_host"],
         *authoritative_paths,
         *(

@@ -33,8 +33,9 @@ void bind_response_commit_state() {
   transaction.request.nonce = 5u;
   transaction.request.session_id = 7u;
   transaction.request.decision_sequence = 10u;
-  transaction.request.source_first_sequence = 100u;
-  transaction.request.source_last_sequence = 700u;
+  transaction.request.source_acceptance_epoch = 3u;
+  transaction.request.source_opening_accepted_boundary_ordinal = 100u;
+  transaction.request.source_closing_accepted_boundary_ordinal = 700u;
   transaction.request.timestamp_s = 4400u;
   transaction.request.current_applied_code = 43085u;
   transaction.request.requested_delta_codes = 1;
@@ -85,8 +86,9 @@ void bind_response_commit_state() {
   pending_adaptive_hybrid_observation.timestamp_s = 4400u;
   pending_adaptive_hybrid_observation.timestamp_ticks = 4400000000ull;
   pending_adaptive_hybrid_observation.capture_session = 7u;
-  pending_adaptive_hybrid_observation.source_first_sequence = 100u;
-  pending_adaptive_hybrid_observation.source_last_sequence = 700u;
+  pending_adaptive_hybrid_observation.source_acceptance_epoch = 3u;
+  pending_adaptive_hybrid_observation.source_opening_accepted_boundary_ordinal = 100u;
+  pending_adaptive_hybrid_observation.source_closing_accepted_boundary_ordinal = 700u;
   pending_adaptive_hybrid_observation.dac_epoch = 1u;
   pending_adaptive_hybrid_observation.applied_code = 43085;
   pending_adaptive_hybrid_observation.phase_epoch = 3u;
@@ -99,12 +101,15 @@ void bind_response_commit_state() {
   pending_adaptive_hybrid_decision.safe_cap_codes = 1;
   pending_adaptive_hybrid_decision.reason = "outside_tight_ordinary_request_ready";
   pending_adaptive_hybrid_hybrid_join = {
-      10u, 10u, 7u, 100u, 700u, 3u, 700u, true};
+      10u, 10u, 7u, 3u, 100u, 700u, 3u, 700u, true};
   pending_adaptive_hybrid_decision_valid = true;
   pending_adaptive_hybrid_origin_valid = true;
 
   latest_health = {};
   latest_health.session_id = 7u;
+  latest_health.acceptance_epoch = 3u;
+  latest_health.accepted_boundary_ordinal = 700u;
+  latest_health.accepted_anchor_current = true;
   latest_health.gnss_metadata_valid = true;
   latest_health.gnss_identity_stable = true;
   latest_health.gnss_3d_evidence = true;
@@ -146,7 +151,7 @@ int main() {
   last_adaptive_hybrid_hybrid_join = pending_adaptive_hybrid_hybrid_join;
   last_adaptive_hybrid_origin_valid = true;
   latest_health.gnss_metadata_sequence = 42u;
-  latest_health.d14_d8_observation_sequence = 1300u;
+  latest_health.accepted_boundary_ordinal = 1300u;
   latest_health.gnss_metadata_valid = false;
   // Timestamped metadata hold is consumed before a delayed selected boundary.
   // No Core 0 consumer runs until the entire real producer frontier completes.

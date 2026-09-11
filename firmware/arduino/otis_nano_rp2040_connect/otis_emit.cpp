@@ -67,6 +67,8 @@ void otis_emit_csv_headers(void) {
   otis_emit_line_end();
   otis_transport_write_cstr(OTIS_CONTRACT_PPS_SNAPSHOTS_V1_HEADER);
   otis_emit_line_end();
+  otis_transport_write_cstr(OTIS_CONTRACT_ACCEPTED_PPS_SPANS_V1_HEADER);
+  otis_emit_line_end();
   otis_transport_write_cstr(
       OTIS_CONTRACT_FORWARDED_MONITOR_SNAPSHOTS_V1_HEADER);
   otis_emit_line_end();

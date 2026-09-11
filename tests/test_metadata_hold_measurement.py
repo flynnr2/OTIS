@@ -45,35 +45,21 @@ def test_metadata_hold_preserves_d14_d8_measurement_history_natively(
     subprocess.run([str(executable)], cwd=ROOT, check=True)
 
 
-def test_boundary_routes_raw_d14_d8_validity_to_both_measurement_previews() -> None:
-    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
-    gate = (FIRMWARE / "otis_dual_core_receiver_gate.h").read_text(
-        encoding="utf-8"
-    )
+def test_boundary_routes_same_accepted_selection_to_both_previews() -> None:
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text()
     start = sketch.index("void emit_pps_count_boundary(")
     end = sketch.index("\nvoid ", start)
     boundary = sketch[start:end]
-
-    assert "otis_regulation_reference_valid" not in gate
     assert "receiver_metadata_qualified" not in boundary
-    assert re.search(
-        r"otis_phase_preview_live_on_boundary\([\s\S]*?"
-        r"raw_d14_d8_interval_valid,\s*false\);",
-        boundary,
-    )
-    assert re.search(
-        r"otis_frequency_regulation_live_on_boundary\([\s\S]*?"
-        r"raw_d14_d8_interval_valid,\s*millis\(\) / 1000u",
-        boundary,
-    )
-    phase_publish = boundary.index("otis_phase_preview_live_on_boundary(")
-    health_refresh = boundary.index("update_adaptive_hybrid_regulation_health();")
-    frequency_decision = boundary.index("otis_frequency_regulation_live_on_boundary(")
-    assert phase_publish < health_refresh < frequency_decision
-
+    assert re.search(r"otis_phase_preview_live_on_reference_selection\(\s*&selection, closing_extended_ticks", boundary)
+    assert re.search(r"otis_frequency_regulation_live_on_reference_selection\(\s*&selection, closing_extended_ticks", boundary)
+    phase = boundary.index("otis_phase_preview_live_on_reference_selection(")
+    health = boundary.index("update_adaptive_hybrid_regulation_health();")
+    frequency = boundary.index("otis_frequency_regulation_live_on_reference_selection(")
+    assert phase < health < frequency
     health_start = sketch.index("void update_adaptive_hybrid_regulation_health(")
     health_end = sketch.index("\nvoid ", health_start)
-    health = sketch[health_start:health_end]
-    assert "dual_core_receiver_qualified_for_control()," in health
+    health_body = sketch[health_start:health_end]
+    assert "health.gnss_metadata_valid = dual_core_receiver_qualified_for_control();" in health_body
+    assert "accepted.tracking && accepted.anchor_current" in health_body
+    assert "tcxo.last_observation_valid" not in health_body

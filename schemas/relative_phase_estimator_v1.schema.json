@@ -12,28 +12,54 @@
     "frequency_estimator_id",
     "selection",
     "epoch_and_reset",
-    "outputs"
+    "outputs",
+    "reference_acceptance_policy_ref",
+    "reference_acceptance_policy_sha256"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "profile_id": {"const": "OTIS_RELATIVE_PHASE_ESTIMATOR_V1"},
-    "status": {"const": "selected_production_estimator"},
-    "oscillator_identity": {"const": "CX317"},
-    "frequency_estimator_id": {"const": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1"},
+    "schema_version": {
+      "const": 1
+    },
+    "profile_id": {
+      "const": "OTIS_RELATIVE_PHASE_ESTIMATOR_V1"
+    },
+    "status": {
+      "const": "selected_production_estimator"
+    },
+    "oscillator_identity": {
+      "const": "CX317"
+    },
+    "frequency_estimator_id": {
+      "const": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1"
+    },
     "selection": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["raw_phase_method", "filtered_phase_method", "frequency_support_intervals"],
+      "required": [
+        "raw_phase_method",
+        "filtered_phase_method",
+        "frequency_support_intervals"
+      ],
       "properties": {
-        "raw_phase_method": {"const": "D14_REFERENCED_D8_RELATIVE_PHASE_ACCUMULATOR_V1"},
-        "filtered_phase_method": {"const": "identity_from_raw_relative_phase_no_smoothing"},
-        "frequency_support_intervals": {"const": 600}
+        "raw_phase_method": {
+          "const": "D14_ACCEPTED_SPAN_RELATIVE_PHASE_ACCUMULATOR_V1"
+        },
+        "filtered_phase_method": {
+          "const": "identity_from_raw_relative_phase_no_smoothing"
+        },
+        "frequency_support_intervals": {
+          "const": 600
+        }
       }
     },
     "epoch_and_reset": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["new_raw_epoch_on", "preserve_raw_epoch_on", "no_guessed_epoch_offset"],
+      "required": [
+        "new_raw_epoch_on",
+        "preserve_raw_epoch_on",
+        "no_guessed_epoch_offset"
+      ],
       "properties": {
         "new_raw_epoch_on": {
           "const": [
@@ -42,27 +68,46 @@
             "unbridgeable_D14_discontinuity",
             "snapshot_sequence_or_association_discontinuity",
             "ambiguous_counter_wrap",
-            "D14_invalid_or_stale"
+            "accepted_reference_qualification_loss",
+            "acceptance_epoch_change"
           ]
         },
         "preserve_raw_epoch_on": {
           "const": [
             "healthy_dac_epoch_transition",
             "visible_phase_step_with_valid_continuity",
-            "D10_external_event_anomaly"
+            "D10_external_event_anomaly",
+            "accepted_early_candidate_exclusion",
+            "diagnostic_reference_delivery_hold"
           ]
         },
-        "no_guessed_epoch_offset": {"const": true}
+        "no_guessed_epoch_offset": {
+          "const": true
+        }
       }
     },
     "outputs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["raw_relative_phase_cycles", "phase_zero"],
+      "required": [
+        "raw_relative_phase_cycles",
+        "phase_zero"
+      ],
       "properties": {
-        "raw_relative_phase_cycles": {"const": "exact_integer_accumulator"},
-        "phase_zero": {"const": "arbitrary_at_first_qualified_boundary_of_each_phase_epoch"}
+        "raw_relative_phase_cycles": {
+          "const": "exact_integer_accumulator"
+        },
+        "phase_zero": {
+          "const": "arbitrary_at_first_qualified_boundary_of_each_phase_epoch"
+        }
       }
+    },
+    "reference_acceptance_policy_ref": {
+      "const": "data_contracts/reference_acceptance_policy_v1.json"
+    },
+    "reference_acceptance_policy_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   }
 }

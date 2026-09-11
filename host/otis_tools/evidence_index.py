@@ -82,6 +82,7 @@ ANALYSIS_SUPERSESSION_JOURNAL = Path("original_finalization_journal.json")
 REGISTRATION_SUPERSESSION_KIND = "append_only_package_finalization_v1"
 ANALYSIS_SUPERSESSION_TOOL_MODULES = frozenset(
     {
+        "accepted_span_replay",
         "acquisition_frontier",
         "active_status_contract",
         "active_status_live_state",

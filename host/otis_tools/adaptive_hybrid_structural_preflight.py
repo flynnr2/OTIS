@@ -63,8 +63,9 @@ def _observation(
         timestamp_s=timestamp_us // 1_000_000,
         timestamp_ticks=timestamp_us,
         capture_session=1,
-        source_first_sequence=opening,
-        source_last_sequence=closing,
+        source_acceptance_epoch=1,
+        source_opening_accepted_boundary_ordinal=opening,
+        source_closing_accepted_boundary_ordinal=closing,
         dac_epoch=controller.dac_epoch,
         applied_code=controller.applied_code,
         accumulated_edge_error_counts=-1,
@@ -170,7 +171,9 @@ def run(
             metadata_qualified=False,
         )
     )
-    controller.requalify_metadata(2400)
+    controller.requalify_metadata(
+        acceptance_epoch=1, accepted_boundary_ordinal=2400
+    )
     first_requalification = controller.decide(
         _observation(
             controller,

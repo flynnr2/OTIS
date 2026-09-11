@@ -56,8 +56,9 @@ def _observation(
         "timestamp_s": timestamp_s,
         "timestamp_ticks": timestamp_s * 1_000_000,
         "capture_session": 1,
-        "source_first_sequence": opening,
-        "source_last_sequence": closing,
+        "source_acceptance_epoch": 1,
+        "source_opening_accepted_boundary_ordinal": opening,
+        "source_closing_accepted_boundary_ordinal": closing,
         "dac_epoch": controller.dac_epoch,
         "applied_code": controller.applied_code,
         "accumulated_edge_error_counts": counts,
@@ -162,7 +163,9 @@ def test_picocode_debt_application_response_metadata_and_phase_loss() -> None:
     controller.enter_metadata_hold()
     assert controller.decide(_observation(controller, 1200, 1200, 1800)).reason == "metadata_hold"
     frozen = controller.debt
-    controller.requalify_metadata(1800)
+    controller.requalify_metadata(
+        acceptance_epoch=1, accepted_boundary_ordinal=1800
+    )
     first = controller.decide(_observation(controller, 1800, 1800, 2400))
     second = controller.decide(_observation(controller, 2400, 2400, 3000))
     assert first.reason == "metadata_requalification_window_hold"

@@ -9,7 +9,7 @@ import subprocess
 import pytest
 
 from host.otis_tools.contracts import (
-    ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS,
+    ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
     CsvValidationContext,
     validate_csv,
 )
@@ -59,19 +59,19 @@ def test_native_formatter_emits_exact_header_and_host_valid_lifecycle(
     assert completed.stdout.endswith(b"\r\n")
     decoded = completed.stdout.decode("ascii")
     rows = list(csv.reader(io.StringIO(decoded)))
-    assert rows[0] == ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS
-    assert len(rows[0]) == len(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS) == 59
+    assert rows[0] == ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS
+    assert len(rows[0]) == len(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS) == 60
     assert all(
-        len(row) == len(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS)
+        len(row) == len(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS)
         for row in rows[1:]
     )
     assert all(
-        validate_record_wire_values("active_hybrid_maintenance_v1", row) == ()
+        validate_record_wire_values("active_hybrid_maintenance_v2", row) == ()
         for row in rows[1:]
     )
 
     records = [
-        dict(zip(ACTIVE_HYBRID_MAINTENANCE_V1_FIELDS, row, strict=True))
+        dict(zip(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS, row, strict=True))
         for row in rows[1:]
     ]
     assert [record["event"] for record in records] == [
@@ -90,19 +90,19 @@ def test_native_formatter_emits_exact_header_and_host_valid_lifecycle(
     assert records[1]["raw_pll_demand_picocodes"] == SIGNED_128_MAX_TEXT
     assert {record["phase_valid"] for record in records} == {"true"}
     assert {record["actionable"] for record in records} == {"false"}
-    assert records[6]["requalification_d14_d8_observation_sequence"] == "2400"
+    assert records[6]["requalification_accepted_boundary_ordinal"] == "2400"
     assert all(
-        record["requalification_d14_d8_observation_sequence"] == "0"
+        record["requalification_accepted_boundary_ordinal"] == "0"
         for index, record in enumerate(records)
         if index != 6
     )
 
-    csv_path = tmp_path / "active_hybrid_maintenance_v1.csv"
+    csv_path = tmp_path / "active_hybrid_maintenance_v2.csv"
     csv_path.write_bytes(completed.stdout)
     result = validate_csv(
         csv_path,
         CsvValidationContext(
-            "active_hybrid_maintenance_v1",
+            "active_hybrid_maintenance_v2",
             frozenset(),
             frozenset({"rp2040_monotonic_us64"}),
         ),

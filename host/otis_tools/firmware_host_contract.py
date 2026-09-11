@@ -472,7 +472,10 @@ def load_contract(path: Path = CONTRACT_PATH) -> dict[str, Any]:
         raise FirmwareHostContractError("metadata transition frontier must be one frame")
     if type(queue_depth) is not int or queue_depth < 1 or queue_depth & (queue_depth - 1):
         raise FirmwareHostContractError("evidence queue depth must be a power of two")
-    expected_metadata_response = metadata_transition + expected_response
+    accepted_span = evidence.get("accepted_span")
+    if type(accepted_span) is not int or accepted_span != 1:
+        raise FirmwareHostContractError("accepted-span evidence frontier must be one frame")
+    expected_metadata_response = metadata_transition + accepted_span + expected_response
     if (
         evidence.get("request_frontier") != expected_request
         or evidence.get("response_frontier") != expected_response
@@ -903,6 +906,7 @@ def render_cpp_header() -> str:
             f"#define OTIS_EVIDENCE_REQUEST_DECISION_COUNT {evidence['request_decision']}u",
             f"#define OTIS_EVIDENCE_RESPONSE_DECISION_COUNT {evidence['response_decision']}u",
             f"#define OTIS_EVIDENCE_RESPONSE_COMPLETION_COUNT {evidence['response_completion']}u",
+            f"#define OTIS_EVIDENCE_ACCEPTED_SPAN_COUNT {evidence['accepted_span']}u",
             f"#define OTIS_EVIDENCE_FAIL_TRANSITION_COUNT {evidence['fail_transition']}u",
             f"#define OTIS_EVIDENCE_REQUEST_FRONTIER {evidence['request_frontier']}u",
             f"#define OTIS_EVIDENCE_RESPONSE_FRONTIER {evidence['response_frontier']}u",

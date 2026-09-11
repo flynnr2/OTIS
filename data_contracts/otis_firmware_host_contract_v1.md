@@ -92,7 +92,7 @@ separate.
 The contract check is necessary but not sufficient. Current release evidence
 must also compile the actual production firmware emitters, parsers and state
 machines and compare them with production host behavior. The contract-derived
-matrix exercises legal and illegal encodings for all 418 fields in all 16
+matrix exercises legal and illegal encodings for all 451 fields in all 17
 current record contracts. Native producer checks pass representative minimum
 and maximum values through the production raw emitters and pass derived records
 through their production formatters. The current parity regressions also cover
@@ -111,3 +111,18 @@ The complete Stage 0 claim additionally requires the fixed firmware build and
 the genuine process/FIFO/command/acknowledgement/abort/analyzer/sealing
 rehearsal. Native fixtures do not establish the physical serial, cross-core or
 device-driver boundaries.
+
+
+The accepted-reference cutover adds APS v1 and replaces the derived layouts
+with EST v3, RPH/PHE v2, AHY/ACT v3 and AHM v2. ACTIVE snapshot v2 publishes
+acceptance identity and current-anchor qualification within its complete
+query-bound generation. The raw REF/SNP/CNT layouts remain unchanged. The
+reference-policy header is separately generated and checked with
+`python tools/generate_reference_acceptance_policy.py --check`.
+
+The declared telemetry overlap is 196 frames (92 nonactive health plus two
+52-frame ACTIVE snapshots), held in 197 slots. Queue slot positions are owned
+separately from wrapping 32-bit publication counters, so non-power-of-two
+capacity cannot overwrite unread evidence at counter rollover. The fixed image
+must still pass its existing RAM limits; these counts alone are not a resource
+or physical qualification claim.

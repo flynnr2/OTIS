@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <string.h>
+#include "reference_selection_fixture.h"
 
 #define OTIS_BUILD_IMAGE_ID "adaptive_hybrid_regulation"
 
@@ -17,7 +18,7 @@ uint32_t captured_active_decision_count = 0u;
 bool otis_dual_core_publish_evidence(const OtisEvidenceFrameMessage *message) {
   if (message == nullptr) return false;
   captured_control = *message;
-  if (strncmp(message->data, "EST,2,", 6u) == 0)
+  if (strncmp(message->data, "EST,3,", 6u) == 0)
     captured_selected_estimate = *message;
   return true;
 }
@@ -32,11 +33,9 @@ void otis_dual_core_note_timing_estimate(uint32_t) {}
 
 void otis_dual_core_note_timing_progress(OtisTimingProgressPhase, uint64_t) {}
 
-bool otis_phase_preview_live_get_active_snapshot(
-    OtisPhasePreviewActiveSnapshot *snapshot) {
-  if (snapshot != nullptr) *snapshot = {};
-  return false;
-}
+bool otis_dual_core_publish_phase_preview(const OtisPhasePreviewRecordMessage *) { return true; }
+bool otis_dual_core_fail_static(void) { return false; }
+void otis_dual_core_latch_fault(OtisPartitionFault) {}
 
 void otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
     const OtisAdaptiveHybridRegulationLiveDecision *decision,
@@ -150,31 +149,29 @@ int main() {
   constexpr uint64_t kPriorBoundaryTicks = kFaultBoundaryTicks - 1000000ull;
   assert(otis_monotonic_us_extension_seed(
       &timer_extension, kPriorBoundaryTicks, 1u));
-  previous_boundary_available = true;
-  previous_boundary_session = 1u;
-  previous_boundary_extended_ticks = kPriorBoundaryTicks;
   estimator.selected_count = OTIS_FREQUENCY_ESTIMATOR_SPAN_INTERVALS - 1u;
   estimator.selected_sum =
       static_cast<uint64_t>(OTIS_FREQUENCY_ESTIMATOR_SPAN_INTERVALS - 1u) *
       10000000ull;
   estimator.selected_first_sequence = 58240u;
-  const OtisPpsCountBoundaryObservation fault_boundary = {
-      1u,
-      58840u,
-      59840u,
-      kFaultBoundaryTicks % OTIS_RP2040_MONOTONIC_US32_MODULUS,
-      0u,
-      10000000u,
-      0u,
-      0u,
-  };
+  estimator.selected_first_reference_sequence = 59240u;
+  estimator.selected_opening_accepted_boundary_ordinal = 0u;
+  OtisReferenceAcceptanceOutcome selection = {};
+  selection.disposition = OtisReferenceAcceptanceDisposition::AcceptedSpan;
+  selection.tracking = selection.has_span = true;
+  selection.acceptance_epoch = 1u;
+  selection.accepted_boundary_ordinal = 600u;
+  selection.interval_ticks = 1000000u;
+  selection.counted_edges = 10000000u;
+  selection.opening = {1u, 58839u, 59839u, uint32_t(kPriorBoundaryTicks), 10000000u, 0u, 16u};
+  selection.closing = {1u, 58840u, 59840u, uint32_t(kFaultBoundaryTicks), 0u, 0u, 16u};
   const OtisRegulationStaticCodeState exact_code = {
       true, true, true, 0xA844u};
   OtisAdaptiveHybridRegulationLiveOutcome active_outcome = {};
   constexpr uint64_t kMetadataTransitionTicks = kFaultBoundaryTicks + 500000u;
   constexpr uint64_t kOperationalDecisionTicks = kFaultBoundaryTicks + 750000u;
-  otis_frequency_regulation_live_on_boundary(
-      &fault_boundary, 10000000u, true,
+  otis_frequency_regulation_live_on_reference_selection(
+      &selection, kFaultBoundaryTicks,
       // Deliberately a different whole second from the operational sample.
       58843u, kOperationalDecisionTicks % OTIS_RP2040_MONOTONIC_US32_MODULUS,
       &exact_code, &active_outcome);
@@ -182,13 +179,118 @@ int main() {
   assert(captured_active_decision_ticks == kOperationalDecisionTicks);
   assert(captured_active_decision_ticks > kMetadataTransitionTicks);
   assert(captured_active_decision.timestamp_s == 58842u);
-  assert(captured_active_decision.source_first_sequence == 58240u);
-  assert(captured_active_decision.source_last_sequence == 58840u);
+  assert(captured_active_decision.source_acceptance_epoch == 1u);
+  assert(captured_active_decision.source_opening_accepted_boundary_ordinal == 0u);
+  assert(captured_active_decision.source_closing_accepted_boundary_ordinal == 600u);
   char captured_tick_field[40] = "";
   snprintf(captured_tick_field, sizeof(captured_tick_field), ",%llu,rp2040_monotonic_us32,",
-           static_cast<unsigned long long>(fault_boundary.pps_timestamp_ticks));
+           static_cast<unsigned long long>(selection.closing.reference_timestamp_ticks));
   assert(strstr(captured_selected_estimate.data, captured_tick_field) != nullptr);
   assert(captured_active_decision.timestamp_s ==
          captured_active_decision_ticks / 1000000ull);
+  // Real selector -> phase live -> frequency live, across exact settling.
+  // The excluded raw edge lies AFTER settling, while the accepted opening
+  // lies BEFORE it. Its full accepted span must still be excluded by frequency.
+  assert(otis_frequency_regulation_live_begin(0u));
+  assert(otis_phase_preview_live_begin());
+  assert(otis_phase_preview_live_update_applied_code(0xA844u, 1u));
+  const uint64_t applied_ticks = (uint64_t(kStartupWarmupS) + 100u) * 1000000u + 250000u;
+  otis_frequency_regulation_live_on_dac_applied_epoch_exact(
+      0xA844u, 1u, uint32_t(applied_ticks / 1000000u), applied_ticks, 7u);
+  ReferenceSelectionFixture trace;
+  const uint64_t acceptance_anchor_ticks = exact_settling_deadline_ticks - 250000u;
+  trace.extended_ticks = acceptance_anchor_ticks -
+      uint64_t(OTIS_REFERENCE_ACCEPTANCE_POLICY.acquisition_intervals) * 1000000u;
+  trace.raw.reference_timestamp_ticks = uint32_t(trace.extended_ticks);
+  trace.acquire();
+  auto consume = [&](bool phase_first = true) {
+    if (phase_first)
+      otis_phase_preview_live_on_reference_selection(&trace.selection, trace.extended_ticks, false);
+    otis_frequency_regulation_live_on_reference_selection(&trace.selection,
+        trace.extended_ticks, uint32_t(trace.extended_ticks / 1000000u),
+        uint32_t(trace.extended_ticks + 100u), &exact_code, &active_outcome);
+  };
+  consume();
+  trace.advance(500000u, 5000000u);
+  consume();
+  assert(estimator.selected_count == 0u);
+  trace.advance(500000u, 5000000u);
+  consume();
+  assert(estimator.selected_count == 0u);
+  const auto selected_opening = trace.raw;
+  captured_active_decision_count = 0u;
+  for (uint32_t i = 0; i < 600u; ++i) {
+    trace.advance();
+    consume();
+    if (i == 0u) assert(estimator.selected_count == 1u);
+    if (i < 599u) assert(captured_active_decision_count == 0u);
+  }
+  assert(captured_active_decision_count == 1u);
+  char raw_endpoint_fields[100] = "";
+  snprintf(raw_endpoint_fields, sizeof(raw_endpoint_fields), ",%u,%u,%u,%u,live:APS:",
+           selected_opening.snapshot_sequence, trace.raw.snapshot_sequence,
+           selected_opening.reference_sequence, trace.raw.reference_sequence);
+  assert(strstr(captured_selected_estimate.data, raw_endpoint_fields) != nullptr);
+  assert(captured_active_decision.source_acceptance_epoch == trace.selection.acceptance_epoch);
+  assert(captured_active_decision.source_opening_accepted_boundary_ordinal == 1u);
+  assert(captured_active_decision.source_closing_accepted_boundary_ordinal == 601u);
+  assert(captured_active_decision.phase_current && captured_active_decision.phase_continuous);
+  for (uint32_t i = 0; i < 600u; ++i) {
+    trace.advance();
+    consume(i != 599u);
+  }
+  assert(captured_active_decision_count == 2u);
+  assert(!captured_active_decision.phase_current && !captured_active_decision.phase_continuous);
+  // Actual association guard -> first dependent measurement consumers.
+  // A newly visible word is deferred. Another queued REF on the next pass
+  // forbids pairing it, so the selector/phase/frequency lose qualification.
+  // This is a deterministic software handoff, not a claim about electrical
+  // IRQ/PIO capture or physical queue latency.
+  OtisPpsSnapshotAssociationGuard association = {};
+  auto association_decision = otis_pps_snapshot_association_decide(
+      &association, true, trace.raw.capture_session, trace.raw.snapshot_sequence + 1u, false);
+  assert(association_decision == OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain);
+  assert(captured_active_decision_count == 2u);
+  association_decision = otis_pps_snapshot_association_decide(
+      &association, true, trace.raw.capture_session, trace.raw.snapshot_sequence + 1u, true);
+  assert(association_decision == OtisPpsSnapshotAssociationDecision::AssociationLoss);
+  trace.selection = trace.selector.invalidate(OtisReferenceAcceptanceReason::CaptureIntegrity);
+  consume();
+  assert(captured_active_decision_count == 2u);
+  assert(!selected_estimator_valid && estimator.selected_count == 0u);
+  OtisPhasePreviewActiveSnapshot phase_after_loss = {};
+  assert(otis_phase_preview_live_get_active_snapshot(&phase_after_loss));
+  assert(!phase_after_loss.phase_continuous && !phase_after_loss.phase_current);
+
+  ++trace.raw.capture_session;
+  trace.raw.snapshot_sequence = 0u;
+  auto guarded_pair = [&]() {
+    auto decision = otis_pps_snapshot_association_decide(
+        &association, true, trace.raw.capture_session, trace.raw.snapshot_sequence, false);
+    assert(decision == OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain);
+    decision = otis_pps_snapshot_association_decide(
+        &association, true, trace.raw.capture_session, trace.raw.snapshot_sequence, false);
+    assert(decision == OtisPpsSnapshotAssociationDecision::Pair);
+    otis_pps_snapshot_association_guard_reset(&association);
+  };
+  guarded_pair();
+  trace.observe();
+  consume();
+  auto advance_guarded_pair = [&]() {
+    trace.extended_ticks += 1000000u;
+    trace.raw.reference_timestamp_ticks = uint32_t(trace.extended_ticks);
+    ++trace.raw.snapshot_sequence;
+    ++trace.raw.reference_sequence;
+    trace.raw.cumulative_down_counter -= 10000000u;
+    guarded_pair();
+    trace.observe();
+    consume();
+  };
+  for (uint32_t i = 0; i < OTIS_REFERENCE_ACCEPTANCE_POLICY.acquisition_intervals; ++i)
+    advance_guarded_pair();
+  assert(trace.selection.disposition == OtisReferenceAcceptanceDisposition::TrackingEstablished);
+  assert(estimator.selected_count == 0u && captured_active_decision_count == 2u);
+  advance_guarded_pair();
+  assert(estimator.selected_count == 1u && captured_active_decision_count == 2u);
   return 0;
 }

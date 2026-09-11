@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import csv
 import shutil
 import subprocess
 
 import pytest
+
+from host.otis_tools.contracts import CONTRACT_FIELDS
+from host.otis_tools.firmware_host_contract import validate_record_wire_values
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +32,8 @@ def test_phase_preview_binds_only_after_confirmed_application(
             str(ROOT / "tests/cpp/phase_preview_binding_harness.cpp"),
             str(FIRMWARE / "otis_phase_preview_live.cpp"),
             str(FIRMWARE / "otis_selected_phase_frequency_preview_engine.cpp"),
+            str(FIRMWARE / "otis_phase_preview_format.cpp"),
+            str(FIRMWARE / "otis_decimal_format.cpp"),
             "-I",
             str(FIRMWARE),
             "-o",
@@ -36,7 +42,22 @@ def test_phase_preview_binds_only_after_confirmed_application(
         cwd=ROOT,
         check=True,
     )
-    subprocess.run([str(executable)], cwd=ROOT, check=True)
+    completed = subprocess.run([str(executable)], cwd=ROOT, check=True, capture_output=True, text=True)
+    rows = list(csv.reader(completed.stdout.splitlines()))
+    assert rows and len(rows) % 2 == 0
+    for rph_values, phe_values in zip(rows[::2], rows[1::2], strict=True):
+        assert validate_record_wire_values("relative_phase_observations_v2", rph_values) == ()
+        assert validate_record_wire_values("phase_estimator_outputs_v2", phe_values) == ()
+        rph = dict(zip(CONTRACT_FIELDS["relative_phase_observations_v2"], rph_values, strict=True))
+        phe = dict(zip(CONTRACT_FIELDS["phase_estimator_outputs_v2"], phe_values, strict=True))
+        for field in ("phase_epoch", "observation_sequence", "capture_session", "acceptance_epoch", "accepted_boundary_ordinal"):
+            assert rph[field] == phe[field]
+        if rph["qualification_state"] == "qualified":
+            assert rph["source_accepted_span_ref"] == (
+                f"live:APS:{rph['capture_session']}:{rph['acceptance_epoch']}:{rph['accepted_boundary_ordinal']}"
+            )
+        else:
+            assert rph["source_accepted_span_ref"] == ""
 
 
 def test_sketch_does_not_fabricate_a_pre_setup_code() -> None:

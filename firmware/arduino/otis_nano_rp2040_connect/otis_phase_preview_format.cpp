@@ -28,11 +28,11 @@ bool fixed(double value, char *output, size_t size) {
 }  // namespace
 
 const char *otis_phase_preview_rph_header(void) {
-  return OTIS_CONTRACT_RELATIVE_PHASE_OBSERVATIONS_V1_HEADER "\r\n";
+  return OTIS_CONTRACT_RELATIVE_PHASE_OBSERVATIONS_V2_HEADER "\r\n";
 }
 
 const char *otis_phase_preview_phe_header(void) {
-  return OTIS_CONTRACT_PHASE_ESTIMATOR_OUTPUTS_V1_HEADER "\r\n";
+  return OTIS_CONTRACT_PHASE_ESTIMATOR_OUTPUTS_V2_HEADER "\r\n";
 }
 
 bool otis_phase_preview_format_rph(const OtisPhasePreviewRecordMessage *message,
@@ -41,7 +41,12 @@ bool otis_phase_preview_format_rph(const OtisPhasePreviewRecordMessage *message,
     return false;
   char interval_edges[16] = "";
   char edge_error[24] = "";
+  char accepted_span_ref[80] = "";
   if (message->interval_available) {
+    snprintf(accepted_span_ref, sizeof(accepted_span_ref), "live:APS:%lu:%lu:%lu",
+             static_cast<unsigned long>(message->capture_session),
+             static_cast<unsigned long>(message->acceptance_epoch),
+             static_cast<unsigned long>(message->accepted_boundary_ordinal));
     snprintf(interval_edges, sizeof(interval_edges), "%lu",
              static_cast<unsigned long>(message->interval_edges));
     snprintf(edge_error, sizeof(edge_error), "%lld",
@@ -49,10 +54,13 @@ bool otis_phase_preview_format_rph(const OtisPhasePreviewRecordMessage *message,
   }
   const int used = snprintf(
       output, output_size,
-      "RPH,1,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%s,%s,%s,%s,%s,%lld,%lld,%s,0,%s,unavailable\r\n",
+      "RPH,2,%lu,%lu,%lu,%lu,%lu,%s,%lu,%lu,%lu,%lu,%lu,%s,%s,%s,%s,%s,%s,%lld,%lld,%s,0,%s,unavailable\r\n",
       static_cast<unsigned long>(message->phase_epoch),
       static_cast<unsigned long>(message->observation_sequence),
       static_cast<unsigned long>(message->capture_session),
+      static_cast<unsigned long>(message->acceptance_epoch),
+      static_cast<unsigned long>(message->accepted_boundary_ordinal),
+      accepted_span_ref,
       static_cast<unsigned long>(message->opening_snapshot_sequence),
       static_cast<unsigned long>(message->closing_snapshot_sequence),
       static_cast<unsigned long>(message->opening_reference_sequence),
@@ -92,9 +100,12 @@ bool otis_phase_preview_format_phe(const OtisPhasePreviewRecordMessage *message,
                  : "frequency_estimate_initializing");
   const int used = snprintf(
       output, output_size,
-      "PHE,1,%lu,%lu,RPH:%lu:%lu,%lld,%lld,%lld,%s,%s,%s,%s,%s,unavailable,%s\r\n",
+      "PHE,2,%lu,%lu,%lu,%lu,%lu,RPH:%lu:%lu,%lld,%lld,%lld,%s,%s,%s,%s,%s,unavailable,%s\r\n",
       static_cast<unsigned long>(message->phase_epoch),
       static_cast<unsigned long>(message->observation_sequence),
+      static_cast<unsigned long>(message->capture_session),
+      static_cast<unsigned long>(message->acceptance_epoch),
+      static_cast<unsigned long>(message->accepted_boundary_ordinal),
       static_cast<unsigned long>(message->phase_epoch),
       static_cast<unsigned long>(message->observation_sequence),
       static_cast<long long>(message->relative_phase_cycles),

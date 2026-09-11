@@ -19,7 +19,7 @@ from .serial_commands import send_timestamped_command_to_fifo
 from .time_domains import unwrap_domain_ticks
 
 
-ESTIMATES_CSV = Path("csv/estimates_v2.csv")
+ESTIMATES_CSV = Path("csv/estimates_v3.csv")
 DAC_CSV = Path("csv/dac_steps.csv")
 CAPTURE_TRANSPORT_STATE = Path("reports/capture_device_state.json")
 CAPTURE_TRANSPORT_STATE_MAX_AGE_S = 15

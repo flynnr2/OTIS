@@ -272,7 +272,8 @@ def _zero_write_review_inputs() -> dict[str, object]:
         "qualified_authoritative_capture_baseline": {
             "rejected_window_count": 0
         },
-        "qualified_d14_accepted_window_origin": 10,
+        "qualified_acceptance_ordinal_origin": 10,
+        "qualified_acceptance_epoch_origin": 1,
         "qualified_d14_reference_sequence_origin": 10,
         "qualified_d14_accepted_apertures": 20,
         "initial_session_id": 1,
@@ -333,7 +334,10 @@ def _zero_write_review_inputs() -> dict[str, object]:
     health.update(
         {
             ("pps_gate", "snapshot_session"): "1",
-            ("pps_gate", "accepted_window_count"): "30",
+            ("pps_gate", "accepted_boundary_ordinal"): "30",
+            ("pps_gate", "reference_acceptance_epoch"): "1",
+            ("pps_gate", "reference_acceptance_state"): "tracking",
+            ("pps_gate", "accepted_anchor_current"): "true",
             ("pps_gate", "boundary_reference_sequence"): "30",
             ("pps_gate", "rejected_window_count"): "0",
             ("pps_gate", "state"): "open",

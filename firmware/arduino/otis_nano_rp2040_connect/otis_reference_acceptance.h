@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-// Unwired, zero-authority native candidate. The caller supplies the frozen
-// reference_acceptance_policy_v1 policy; this module performs no capture or I/O.
+// Pure reference selection. The caller supplies the frozen policy; this
+// module performs no capture, I/O, or actuator operation.
 struct OtisReferenceAcceptancePolicy {
   uint32_t nominal_interval_ticks;
   uint32_t tolerance_ticks;
@@ -51,7 +51,7 @@ enum class OtisReferenceAcceptanceReason {
   None, AcquisitionRestart, UnknownSession, SessionChanged, CaptureIntegrity,
   RawSequence, RawTimestamp, RawCount, LateBoundary, MissingBoundary,
   IncompleteFrontier, StaleFrontier, ContradictoryFrontier,
-  ExclusionBudgetExhausted, EpochExhausted, Policy
+  ExclusionBudgetExhausted, EpochExhausted, ObservationAgeAmbiguous, Policy
 };
 
 struct OtisReferenceAcceptanceOutcome {
@@ -171,6 +171,13 @@ class OtisReferenceAcceptance {
   }
 
  public:
+  // An independently established association/coordinate defect withdraws this
+  // model's qualification. It does not modify the canonical observation or
+  // assert that a physical reference edge was absent.
+  OtisReferenceAcceptanceOutcome invalidate(OtisReferenceAcceptanceReason reason) {
+    return lose(reason);
+  }
+
   OtisReferenceAcceptanceOutcome expire(
       uint32_t now_ticks, const OtisReferenceAcceptanceDrainFrontier &frontier) {
     if (!valid_policy()) return outcome(Disposition::InvalidPolicy, Reason::Policy);

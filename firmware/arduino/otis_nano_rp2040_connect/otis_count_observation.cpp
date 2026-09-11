@@ -23,6 +23,7 @@
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
 #include "otis_timebase.h"
+#include "otis_reference_acceptance_policy.generated.h"
 
 #include <pico/platform.h>
 
@@ -146,6 +147,7 @@ PpsGatedRatioBackend pps_gated_ratio = {};
 uint32_t pps_gate_status_snapshot_generation = 0u;
 
 OtisPpsDiagnostics pps_diagnostics = {};
+OtisAcceptedReferenceStatus accepted_reference_status = {};
 
 void emit_status(OtisStatusEmitContext *context, const char *component,
                  const char *key, const char *value, const char *severity,
@@ -284,6 +286,31 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
   emit_status_u32(status_context, "pps_gate", "snapshot_generation",
                   pps_gate_status_snapshot_generation,
                   OTIS_SEVERITY_INFO, flags);
+  const auto &accepted = accepted_reference_status;
+  emit_status(status_context, "pps_gate", "reference_acceptance_policy_sha256",
+              OTIS_REFERENCE_ACCEPTANCE_POLICY_SHA256, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(status_context, "pps_gate", "reference_acceptance_state",
+              accepted.state, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "pps_gate", "reference_acceptance_epoch",
+                 accepted.acceptance_epoch, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "pps_gate", "accepted_boundary_ordinal",
+                 accepted.accepted_boundary_ordinal, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "pps_gate", "accepted_anchor_snapshot_sequence",
+                 accepted.anchor_snapshot_sequence, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "pps_gate", "accepted_anchor_reference_sequence",
+                 accepted.anchor_reference_sequence, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "pps_gate", "accepted_anchor_timestamp_ticks",
+                 accepted.anchor_timestamp_ticks, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "pps_gate", "reference_acquisition_progress",
+                 accepted.acquisition_progress, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "pps_gate", "reference_excluded_candidate_count",
+                 accepted.excluded_candidate_count, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status_u32(status_context, "pps_gate", "reference_acceptance_loss_count",
+                 accepted.loss_count, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(status_context, "pps_gate", "reference_acceptance_last_loss_reason",
+              accepted.last_loss_reason, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(status_context, "pps_gate", "accepted_anchor_current",
+              bool_text(accepted.anchor_current), OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status(status_context, "pps_gate", "backend", "pps_gated_ratio",
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status(status_context, "pps_gate", "boundary_owner", "pio_state_machine",
@@ -775,6 +802,11 @@ void emit_count_observation(OtisRuntimeState *runtime_state,
 }
 
 }  // namespace
+
+void otis_count_observation_update_reference_acceptance(
+    const OtisAcceptedReferenceStatus &status) {
+  accepted_reference_status = status;
+}
 
 bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   OtisStatusEmitContext *status_context,

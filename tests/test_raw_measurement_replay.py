@@ -3,14 +3,45 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
+from functools import lru_cache
 
 import pytest
 
 from host.otis_tools import adaptive_hybrid_replay as replay
 from host.otis_tools import raw_measurement_replay as raw
+from host.otis_tools.authoritative_inputs import collect_authoritative_inputs, authoritative_binding, authoritative_document
+from host.otis_tools.accepted_span_replay import POLICY_PATH, accepted_window_ref
 
 
 MODULUS = 1 << 32
+
+
+@lru_cache(maxsize=1)
+def measurement_manifest_value():
+    inputs = collect_authoritative_inputs()
+    binding = authoritative_binding(inputs, POLICY_PATH)
+    return {"transaction_identities": {"estimator_sha256": "a" * 64},
+            "authoritative_inputs": inputs,
+            "reference_acceptance": {"path": POLICY_PATH,
+                "policy_id": authoritative_document(inputs, POLICY_PATH)["policy_id"],
+                "policy_sha256": binding["sha256"]}}
+
+
+def accepted_rows(snapshots, counts, *, epoch=1, first_ordinal=0):
+    """Declare a retained tracking horizon; this fixture does not claim boot acquisition."""
+    policy_hash = measurement_manifest_value()["reference_acceptance"]["policy_sha256"]
+    result = []
+    for index, (opening, closing, count) in enumerate(zip(snapshots, snapshots[1:], counts), 1):
+        result.append(dict(record_type="APS", schema_version="1", capture_session=closing["session"],
+            acceptance_epoch=str(epoch), accepted_boundary_ordinal=str((first_ordinal + index) % MODULUS),
+            opening_snapshot_sequence=opening["snapshot_sequence"], closing_snapshot_sequence=closing["snapshot_sequence"],
+            opening_reference_sequence=opening["reference_sequence"], closing_reference_sequence=closing["reference_sequence"],
+            opening_reference_timestamp_ticks=opening["reference_timestamp_ticks"], closing_reference_timestamp_ticks=closing["reference_timestamp_ticks"],
+            time_domain="rp2040_monotonic_us32", source_count_first_sequence=count["count_seq"],
+            source_count_last_sequence=count["count_seq"], source_count_record_count="1",
+            counted_edges=count["counted_edges"], excluded_candidate_count="0", nominal_interval_count="1",
+            acceptance_policy_sha256=policy_hash))
+    return result
 
 
 def raw_measurement_rows(edge_counts=None, *, first_sequence=0, first_ticks=0, first_event_sequence=1000, interval_ticks=1_000_000):
@@ -35,20 +66,27 @@ def raw_measurement_rows(edge_counts=None, *, first_sequence=0, first_ticks=0, f
     frequency = float(sum(edge_counts)) / len(edge_counts)
     estimates = [dict(estimate_seq="1", estimate_id="selected-1", estimator_version=replay.SELECTED_ESTIMATOR_ID,
         estimator_timestamp_ticks=snapshots[-1]["reference_timestamp_ticks"], time_domain="rp2040_monotonic_us32",
-        source_reference_first_seq=str(first_sequence), source_reference_last_seq=snapshots[-1]["snapshot_sequence"],
-        source_count_seq=snapshots[-1]["snapshot_sequence"], accepted_sample_count=str(len(edge_counts)),
+        capture_session="1", source_acceptance_epoch="1",
+        source_opening_accepted_boundary_ordinal=str(first_sequence),
+        source_closing_accepted_boundary_ordinal=snapshots[-1]["snapshot_sequence"],
+        source_opening_snapshot_sequence=str(first_sequence), source_closing_snapshot_sequence=snapshots[-1]["snapshot_sequence"],
+        source_opening_reference_sequence=str(first_sequence), source_closing_reference_sequence=snapshots[-1]["reference_sequence"],
+        source_accepted_spans_ref=accepted_window_ref(1, 1, first_sequence, int(snapshots[-1]["snapshot_sequence"])),
+        accepted_sample_count=str(len(edge_counts)),
         config_hash="a" * 64, observation_validity="valid", reference_validity="valid", count_validity="valid",
         frequency_estimate_hz=f"{frequency:.12f}", frequency_error_hz=f"{frequency - 10_000_000.0:.12f}")]
-    return {"counts.csv": counts, "snapshots.csv": snapshots, "ref.csv": references, "evt.csv": [], "estimates.csv": estimates}
+    return {"counts.csv": counts, "snapshots.csv": snapshots, "ref.csv": references, "evt.csv": [], "estimates.csv": estimates,
+            "spans.csv": accepted_rows(snapshots, counts, first_ordinal=first_sequence)}
 
 
 def run_measurement(monkeypatch, rows):
     files = [dict(contract=contract, path=path) for contract, path in [
-        ("count_observations_v1", "counts.csv"), ("pps_snapshots_v1", "snapshots.csv"), ("estimates_v2", "estimates.csv")]]
+        ("count_observations_v1", "counts.csv"), ("pps_snapshots_v1", "snapshots.csv"),
+        ("accepted_pps_spans_v1", "spans.csv"), ("estimates_v3", "estimates.csv")]]
     files += [dict(contract="raw_events_v1", record_type=tag, path=path) for tag, path in [("REF", "ref.csv"), ("EVT", "evt.csv")]]
     monkeypatch.setattr(replay, "_read_csv", lambda path: rows[path.name])
     return replay._measurement_replay(SimpleNamespace(root=Path("/unused"), files=files),
-        {"transaction_identities": {"estimator_sha256": "a" * 64}})
+        measurement_manifest_value())
 
 
 def raw_replay(rows):
@@ -60,7 +98,7 @@ def test_valid_raw_count_and_native_timestamp_wrap_replay(monkeypatch):
     original = deepcopy(rows)
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert exact, report
-    assert report["raw_count_replay"]["counter_wrap_count"] == 1
+    assert report["accepted_span_replay"]["raw_count_replay"]["counter_wrap_count"] == 1
     assert rows == original
 
 
@@ -76,7 +114,7 @@ def test_valid_derived_counts_cannot_mask_frozen_raw_counter(monkeypatch):
         row["cumulative_down_counter"] = str(MODULUS - 1)
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert not exact
-    assert not report["raw_count_replay"]["exact"]
+    assert not report["accepted_span_replay"]["raw_count_replay"]["exact"]
     assert report["comparisons"][0]["pass"] is False
 
 
@@ -105,7 +143,7 @@ def test_one_sided_raw_or_derived_corruption_fails_closed(monkeypatch, mutation)
         rows["counts.csv"][200]["counted_edges"] = "10000001"
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert not exact, report
-    assert not report["raw_count_replay"]["exact"]
+    assert not report["accepted_span_replay"]["raw_count_replay"]["exact"]
 
 
 def test_declared_zero_aperture_is_reconstructable_but_cannot_enter_estimate(monkeypatch):
@@ -116,7 +154,7 @@ def test_declared_zero_aperture_is_reconstructable_but_cannot_enter_estimate(mon
     assert not intervals[0]["measurement_valid"]
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert not exact
-    assert report["raw_count_replay"]["exact"]
+    assert report["accepted_span_replay"]["raw_count_replay"]["exact"]
 
 
 def test_declared_short_aperture_and_recovery_are_excluded_then_resume():
@@ -160,14 +198,19 @@ def test_replay_bounds_match_current_firmware_profile():
 
 
 def test_declared_bad_aperture_does_not_poison_later_complete_estimate(monkeypatch):
-    rows = raw_measurement_rows([0] + [10_000_000] * 600)
+    rows = raw_measurement_rows([0] + [10_000_000] * 608)
     rows["counts.csv"][0]["flags"] = str(16 | (1 << 5) | (1 << 9))
+    # Retain the loss and eight acquisition intervals, then expose the new
+    # accepted anchor and the subsequent complete 600-span window.
+    rows["spans.csv"] = accepted_rows(rows["snapshots.csv"][9:], rows["counts.csv"][9:], epoch=2)
     estimate = rows["estimates.csv"][0]
-    estimate.update(source_reference_first_seq="1", accepted_sample_count="600",
+    estimate.update(source_acceptance_epoch="2", source_opening_accepted_boundary_ordinal="0",
+        source_closing_accepted_boundary_ordinal="600", source_accepted_spans_ref=accepted_window_ref(1, 2, 0, 600),
+        source_opening_snapshot_sequence="9", source_opening_reference_sequence="9", accepted_sample_count="600",
         frequency_estimate_hz="10000000.000000000000", frequency_error_hz="0.000000000000")
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert exact, report
-    assert report["raw_count_replay"]["invalid_aperture_count"] == 1
+    assert report["accepted_span_replay"]["raw_count_replay"]["invalid_aperture_count"] == 1
 
 
 def test_new_session_reanchors_and_estimate_uses_its_exact_closing_identity(monkeypatch):
@@ -177,11 +220,14 @@ def test_new_session_reanchors_and_estimate_uses_its_exact_closing_identity(monk
         row.update(session="2", reference_sequence=str(index + 4))
     for index, row in enumerate(later["ref.csv"]):
         row["event_seq"] = str(index + 1004)
+    later["spans.csv"] = earlier["spans.csv"] + accepted_rows(later["snapshots.csv"], later["counts.csv"])
+    later["estimates.csv"][0].update(capture_session="2", source_opening_reference_sequence="4",
+        source_closing_reference_sequence="604", source_accepted_spans_ref=accepted_window_ref(2, 1, 0, 600))
     for filename in ("snapshots.csv", "ref.csv", "counts.csv"):
         later[filename] = earlier[filename] + later[filename]
     exact, report, _ = run_measurement(monkeypatch, later)
     assert exact, report
-    assert report["raw_count_replay"]["interval_count"] == 603
+    assert report["accepted_span_replay"]["raw_count_replay"]["interval_count"] == 603
 
 
 @pytest.mark.parametrize("filename", ["counts.csv", "ref.csv"])
@@ -205,6 +251,9 @@ def test_actual_operational_rehearsal_bootstrap_has_one_replayable_aperture():
     from host.otis_tools.adaptive_hybrid_operational_rehearsal import DeterministicPtyInstrument
 
     instrument = object.__new__(DeterministicPtyInstrument)
+    instrument.raw_interval_adjustments = {}
+    instrument.bundle = {"authoritative_inputs": measurement_manifest_value()["authoritative_inputs"]}
+    instrument.reference_acceptance_binding = measurement_manifest_value()["reference_acceptance"]
     emitted = []
     instrument._emit_rows = lambda fields, rows: emitted.extend(rows)
     instrument._emit_initial_observations()
@@ -228,8 +277,8 @@ def test_unpaired_terminal_ref_is_retained_without_claiming_capture_completeness
     rows["ref.csv"].append(terminal_ref)
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert exact, report
-    assert report["raw_count_replay"]["unassociated_reference_count"] == 1
-    assert report["raw_count_replay"]["capture_completeness_claimed"] is False
+    assert report["accepted_span_replay"]["raw_count_replay"]["unassociated_reference_count"] == 1
+    assert report["accepted_span_replay"]["raw_count_replay"]["capture_completeness_claimed"] is False
 
 
 def test_independent_emitter_offset_and_external_event_gaps_do_not_veto_d14(monkeypatch):
@@ -308,10 +357,12 @@ def test_raw_association_uses_actual_distinct_producer_sequence_fields():
     assert "message.raw_edge.reference_record = record.reference_record;" in emitter
 
 
-def test_estimate_source_span_uses_snapshot_ordinal_not_physical_source_ordinal(monkeypatch):
+def test_estimate_names_distinct_snapshot_and_physical_source_ordinals(monkeypatch):
     rows = raw_measurement_rows()
     for row in rows["snapshots.csv"]:
         row["reference_sequence"] = str(int(row["reference_sequence"]) + 7300)
+    rows["spans.csv"] = accepted_rows(rows["snapshots.csv"], rows["counts.csv"])
+    rows["estimates.csv"][0].update(source_opening_reference_sequence="7300", source_closing_reference_sequence="7900")
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert exact, report
     root = Path(__file__).resolve().parents[1]
@@ -320,9 +371,10 @@ def test_estimate_source_span_uses_snapshot_ordinal_not_physical_source_ordinal(
     assert "observation.sequence = snapshot.sequence;" in source
     assert "snapshot_message.snapshot.reference_sequence =\n      observation.reference_sequence;" in source
     live = (firmware / "otis_frequency_regulation_live.cpp").read_text()
-    assert "&estimator, observation->sequence, interval_count, interval_valid, &span" in live
-    assert "span.selected_first_sequence" in live
+    assert "accepted_boundary_ordinal" in live
     assert "static_cast<unsigned long>(span.last_sequence)" in live
+    assert "span.selected_first_reference_sequence" in live
+    assert "span.last_reference_sequence" in live
 
 
 def test_missing_opening_snapshot_leaves_first_retained_count_unproven():
@@ -334,3 +386,35 @@ def test_missing_opening_snapshot_leaves_first_retained_count_unproven():
     assert len(intervals) == 2
     assert all(item["count_exact"] for item in intervals)
     assert "CNT records lack a unique adjacent same-session SNP/REF pair" in report["errors"]
+
+
+def test_accepted_ordinals_cannot_hide_a_skipped_raw_interval(monkeypatch):
+    rows = raw_measurement_rows([10_000_000] * 601)
+    del rows["spans.csv"][1]
+    for ordinal, span in enumerate(rows["spans.csv"], 1):
+        span["accepted_boundary_ordinal"] = str(ordinal)
+    rows["estimates.csv"][0].update(source_closing_accepted_boundary_ordinal="600",
+        source_accepted_spans_ref=accepted_window_ref(1, 1, 0, 600), accepted_sample_count="600")
+    exact, report, _ = run_measurement(monkeypatch, rows)
+    assert not exact
+    assert report["accepted_span_replay"]["raw_count_replay"]["exact"]
+    assert "previous accepted boundary" in report["accepted_span_replay"]["errors"][0]
+
+
+def test_accepted_span_cannot_skip_an_earlier_in_window_candidate():
+    from host.otis_tools.accepted_span_replay import replay_accepted_spans
+    rows = raw_measurement_rows([10_000_000, 10_000])
+    rows["snapshots.csv"][2]["reference_timestamp_ticks"] = "1001000"
+    rows["ref.csv"][2]["timestamp_ticks"] = "1001000"
+    rows["counts.csv"][1].update(gate_close_ticks="1001000", flags=str(16 | (1 << 3) | (1 << 12)))
+    span = rows["spans.csv"][0]
+    span.update(closing_snapshot_sequence="2", closing_reference_sequence="2",
+                closing_reference_timestamp_ticks="1001000", source_count_last_sequence="2",
+                source_count_record_count="2", excluded_candidate_count="1", counted_edges="10010000")
+    manifest = measurement_manifest_value()
+    exact, report, _ = replay_accepted_spans(rows["snapshots.csv"], rows["ref.csv"], rows["counts.csv"], [span],
+        acceptance_policy=authoritative_document(manifest["authoritative_inputs"], POLICY_PATH),
+        acceptance_policy_sha256=manifest["reference_acceptance"]["policy_sha256"])
+    assert not exact
+    assert report["raw_count_replay"]["exact"]
+    assert "at or after the acceptance window" in report["errors"][0]

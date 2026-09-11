@@ -68,6 +68,7 @@ HOST_TOOL_MODULES = (
     "adaptive_hybrid_evidence.py",
     "adaptive_hybrid_replay.py",
     "acquisition_frontier.py",
+    "accepted_span_replay.py",
     "raw_measurement_replay.py",
     "adaptive_hybrid_transactions.py",
     "adaptive_hybrid_transport.py",
@@ -332,9 +333,9 @@ def _validate_build(
         or external_event.get("terminal_authority") is not False
     ):
         raise ValueError("firmware build does not select adaptive_hybrid_regulation")
-    if configuration.get("contract_bindings") != {
-        "firmware_host": firmware_host_contract_binding()
-    }:
+    if configuration.get("contract_bindings") != build_firmware.contract_binding_report(
+        build_firmware.load_manifest()
+    ):
         raise ValueError(
             "firmware build does not bind the exact current firmware/host contract"
         )
@@ -481,8 +482,9 @@ def _progressive_replay(policy: Any) -> dict[str, Any]:
             timestamp_s=timestamp_s,
             timestamp_ticks=timestamp_s * 1_000_000,
             capture_session=1,
-            source_first_sequence=opening,
-            source_last_sequence=closing,
+            source_acceptance_epoch=1,
+        source_opening_accepted_boundary_ordinal=opening,
+            source_closing_accepted_boundary_ordinal=closing,
             dac_epoch=controller.dac_epoch,
             applied_code=controller.applied_code,
             accumulated_edge_error_counts=-1,

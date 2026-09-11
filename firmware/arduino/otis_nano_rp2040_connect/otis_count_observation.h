@@ -6,6 +6,11 @@
 #include "otis_pps_count_boundary.h"
 #include "otis_runtime_state.h"
 #include "otis_status_emit.h"
+#include "otis_reference_acceptance_live.h"
+
+// Core 1 publishes this copy inside the same pps_gate status envelope.
+void otis_count_observation_update_reference_acceptance(
+    const OtisAcceptedReferenceStatus &status);
 
 struct OtisCountObservationConfig {
   uint32_t gate_period_us;

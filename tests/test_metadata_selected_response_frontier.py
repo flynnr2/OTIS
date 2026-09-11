@@ -41,15 +41,15 @@ def test_actual_metadata_and_delayed_selected_response_fit_without_consumer(tmp_
     result = subprocess.run([str(executable)], check=True, capture_output=True, text=True)
     rows = list(csv.reader(result.stdout.splitlines()))
     assert len(rows) == FRONTIERS["adaptive_hybrid_evidence"]["metadata_response_frontier"]
-    assert [row[0] for row in rows] == ["AHM", "EST", "EST", "TDB", "AHY", "AHM", "ACT", "AHM", "CTL"]
-    maintenance = [dict(zip(CONTRACT_FIELDS["active_hybrid_maintenance_v1"], row, strict=True))
+    assert [row[0] for row in rows] == ["AHM", "APS", "EST", "EST", "TDB", "AHY", "AHM", "ACT", "AHM", "CTL"]
+    maintenance = [dict(zip(CONTRACT_FIELDS["active_hybrid_maintenance_v2"], row, strict=True))
         for row in rows if row[0] == "AHM"]
     assert [row["event"] for row in maintenance] == ["gnss_metadata_hold_enter", "decision", "response_complete"]
     assert [int(row["event_timestamp_ticks"]) for row in maintenance] == [5000000100, 5000000200, 5000000200]
-    decision = dict(zip(CONTRACT_FIELDS["active_hybrid_decisions_v2"], next(row for row in rows if row[0] == "AHY"), strict=True))
+    decision = dict(zip(CONTRACT_FIELDS["active_hybrid_decisions_v3"], next(row for row in rows if row[0] == "AHY"), strict=True))
     assert decision["decision_timestamp_ticks"] == "5000000200"
     assert decision["decision_timestamp_s"] == "5000"
     for values in (row for row in rows if row[0] == "EST"):
-        estimate = dict(zip(CONTRACT_FIELDS["estimates_v2"], values, strict=True))
+        estimate = dict(zip(CONTRACT_FIELDS["estimates_v3"], values, strict=True))
         assert int(estimate["estimator_timestamp_ticks"]) == 4999999000 % (1 << 32)
         assert estimate["time_domain"] == "rp2040_monotonic_us32"

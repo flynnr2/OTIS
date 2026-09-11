@@ -29,7 +29,7 @@ REQUIRED_MARKERS = {
     "d6_snapshot_topology": b"d6_d14_cumulative_snapshot",
     "gnss_metadata_hold": b"metadata_hold",
     "frequency_estimator": b"OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
-    "active_status_contract": b"adaptive_hybrid_active_status_snapshot_v1",
+    "active_status_contract": b"adaptive_hybrid_active_status_snapshot_v2",
     "external_event_not_implemented": b"not_implemented",
 }
 FORBIDDEN_MARKERS = {

@@ -54,7 +54,7 @@ class AdaptiveHybridProgramme:
     qualified_d14_aperture_count: int = 259_200
     correction_response_reserve_d14_apertures: int = 1_511
     maintenance_record_type: str = "AHM"
-    maintenance_record_contract: str = "active_hybrid_maintenance_v1"
+    maintenance_record_contract: str = "active_hybrid_maintenance_v2"
     qualification_deadline_s: int = 5_400
     response_checkpoint_observational: bool = True
     sustained_regulation: bool = True

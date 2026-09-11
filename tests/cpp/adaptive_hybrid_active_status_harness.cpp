@@ -144,8 +144,9 @@ void bind_response_commit_state() {
   transaction.request.nonce = 5u;
   transaction.request.session_id = 7u;
   transaction.request.decision_sequence = 10u;
-  transaction.request.source_first_sequence = 100u;
-  transaction.request.source_last_sequence = 700u;
+  transaction.request.source_acceptance_epoch = 3u;
+  transaction.request.source_opening_accepted_boundary_ordinal = 100u;
+  transaction.request.source_closing_accepted_boundary_ordinal = 700u;
   transaction.request.timestamp_s = 4400u;
   transaction.request.current_applied_code = 43085u;
   transaction.request.requested_delta_codes = 1;
@@ -196,8 +197,9 @@ void bind_response_commit_state() {
   pending_adaptive_hybrid_observation.timestamp_s = 4400u;
   pending_adaptive_hybrid_observation.timestamp_ticks = 4400000000ull;
   pending_adaptive_hybrid_observation.capture_session = 7u;
-  pending_adaptive_hybrid_observation.source_first_sequence = 100u;
-  pending_adaptive_hybrid_observation.source_last_sequence = 700u;
+  pending_adaptive_hybrid_observation.source_acceptance_epoch = 3u;
+  pending_adaptive_hybrid_observation.source_opening_accepted_boundary_ordinal = 100u;
+  pending_adaptive_hybrid_observation.source_closing_accepted_boundary_ordinal = 700u;
   pending_adaptive_hybrid_observation.dac_epoch = 1u;
   pending_adaptive_hybrid_observation.applied_code = 43085;
   pending_adaptive_hybrid_observation.phase_epoch = 3u;
@@ -210,12 +212,15 @@ void bind_response_commit_state() {
   pending_adaptive_hybrid_decision.safe_cap_codes = 1;
   pending_adaptive_hybrid_decision.reason = "outside_tight_ordinary_request_ready";
   pending_adaptive_hybrid_hybrid_join = {
-      10u, 10u, 7u, 100u, 700u, 3u, 700u, true};
+      10u, 10u, 7u, 3u, 100u, 700u, 3u, 700u, true};
   pending_adaptive_hybrid_decision_valid = true;
   pending_adaptive_hybrid_origin_valid = true;
 
   latest_health = {};
   latest_health.session_id = 7u;
+  latest_health.acceptance_epoch = 3u;
+  latest_health.accepted_boundary_ordinal = 700u;
+  latest_health.accepted_anchor_current = true;
   latest_health.gnss_metadata_valid = true;
   latest_health.gnss_identity_stable = true;
   latest_health.gnss_3d_evidence = true;
@@ -232,6 +237,8 @@ void bind_response_commit_state() {
   have_capture_lease = true;
   last_capture_lease_s = 5000u;
   evidence_phase = EvidencePhase::None;
+  evidence_request_sequence = 0u;
+  evidence_phase = EvidencePhase::None;
   transaction_record_sequence = 10u;
   hybrid_record_sequence = 10u;
   adaptive_hybrid_maintenance_record_sequence = 20u;
@@ -241,14 +248,87 @@ void bind_response_commit_state() {
   otis_dependent_response_identity_reset(&dependent_response_identity);
 }
 
+void stale_accepted_source_after_requalification_has_zero_authority() {
+  transaction = {};
+  transaction_bound = true;
+  manual_start_confirmed = true;
+  const OtisRegulationBinding binding = expected_binding(7u);
+  otis_regulation_transaction_init(&transaction, &binding);
+
+  latest_health = {};
+  latest_health.session_id = 7u;
+  latest_health.acceptance_epoch = 4u;
+  latest_health.accepted_boundary_ordinal = 1300u;
+  latest_health.accepted_anchor_current = true;
+  latest_health.gnss_metadata_valid = true;
+  latest_health.gnss_identity_stable = true;
+  latest_health.gnss_3d_evidence = true;
+  latest_health.raw_pps_valid = true;
+  latest_health.reference_integrity_valid = true;
+  latest_health.count_valid = true;
+  latest_health.estimator_valid = true;
+  latest_health.model_applicable = true;
+  latest_health.temperature_valid = true;
+  latest_health.applied_code_confirmed = true;
+  latest_health.applied_code = OTIS_ADAPTIVE_HYBRID_START_CODE;
+  latest_health.abort_path_live = true;
+  have_health = true;
+  have_capture_lease = true;
+  last_capture_lease_s = 5000u;
+  evidence_phase = EvidencePhase::None;
+  evidence_request_sequence = 0u;
+
+  const OtisAdaptiveHybridPolicy policy = otis_adaptive_hybrid_default_policy();
+  assert(otis_adaptive_hybrid_engine_init(
+      &adaptive_hybrid_engine, &policy, OTIS_ADAPTIVE_HYBRID_START_CODE, 1u));
+  adaptive_hybrid_engine_ready = true;
+  const OtisRegulationEligibility ready = eligibility(5000u);
+  const OtisRegulationArmRequest arm = {binding, 21u, 22u, 5060u};
+  assert(otis_regulation_arm(&transaction, &arm, &ready, 5000u));
+
+  OtisAdaptiveHybridRegulationLiveDecision stale = {};
+  stale.decision_sequence = 21u;
+  stale.timestamp_s = 5000u;
+  stale.current_applied_code = OTIS_ADAPTIVE_HYBRID_START_CODE;
+  stale.frequency_error_hz = 0.001;
+  stale.measurement_valid = true;
+  stale.model_applicable = true;
+  stale.preview_available = true;
+  stale.capture_session = 7u;
+  // This span was selected before requalification.  Its capture session and
+  // raw interval are plausible, but its accepted-reference epoch is stale.
+  stale.source_acceptance_epoch = 3u;
+  stale.source_opening_accepted_boundary_ordinal = 100u;
+  stale.source_closing_accepted_boundary_ordinal = 700u;
+  stale.accumulated_edge_error_counts = 1;
+  stale.tight_state = "OUTSIDE";
+  stale.dac_epoch = 1u;
+  stale.phase_epoch = 1u;
+  stale.phase_observation_sequence = 700u;
+  stale.phase_dac_epoch = 1u;
+  stale.phase_applied_code = OTIS_ADAPTIVE_HYBRID_START_CODE;
+  stale.phase_continuous = true;
+  stale.phase_current = true;
+  stale.phase_recorder_published = true;
+
+  OtisAdaptiveHybridRegulationLiveOutcome outcome = {};
+  otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
+      &stale, 5000000000ull, &outcome);
+  assert(!outcome.faulted);
+  assert(!outcome.request_created);
+  assert(!pending_actionable_request_valid);
+  assert(transaction.state == OtisRegulationState::Disarmed);
+  assert(strcmp(transaction.reason, "zero_delta_disarmed_without_request") == 0);
+}
+
 }  // namespace
 
 int main() {
-  static_assert(OTIS_REGULATION_STATUS_FIELD_COUNT == 45u);
-  static_assert(OTIS_REGULATION_STATUS_TELEMETRY_BURST == 48u);
-  static_assert(OTIS_TIMING_HEALTH_TELEMETRY_BURST == 128u);
-  static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 176u);
-  static_assert(OTIS_TELEMETRY_QUEUE_DEPTH == 176u);
+  static_assert(OTIS_REGULATION_STATUS_FIELD_COUNT == 49u);
+  static_assert(OTIS_REGULATION_STATUS_TELEMETRY_BURST == 52u);
+  static_assert(OTIS_TIMING_HEALTH_TELEMETRY_BURST == 144u);
+  static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST == 196u);
+  static_assert(OTIS_TELEMETRY_QUEUE_DEPTH == 197u);
   initialized = true;
   transaction_bound = true;
   const OtisRegulationBinding pre_setup_binding = expected_binding(7u);
@@ -262,10 +342,11 @@ int main() {
   // production adapter and then its first decision-bearing status consumer.
   OtisAdaptiveHybridRegulationLiveDecision pre_setup_decision = {};
   pre_setup_decision.decision_sequence = 1u;
-  pre_setup_decision.source_first_sequence = 1u;
-  pre_setup_decision.source_last_sequence = 600u;
   pre_setup_decision.timestamp_s = 600u;
   pre_setup_decision.capture_session = 7u;
+  pre_setup_decision.source_acceptance_epoch = 3u;
+  pre_setup_decision.source_opening_accepted_boundary_ordinal = 1u;
+  pre_setup_decision.source_closing_accepted_boundary_ordinal = 600u;
   pre_setup_decision.measurement_valid = true;
   pre_setup_decision.preview_available = true;
   OtisAdaptiveHybridRegulationLiveOutcome pre_setup_outcome = {};
@@ -336,10 +417,10 @@ int main() {
   assert(manual_start_confirmed);
   assert(transaction_record_sequence == 1u);
   assert(strstr(captured_evidence.data,
-                "ACT,2,1,manual_start,4294967297000,"
+                "ACT,3,1,manual_start,4294967297000,"
                 "rp2040_monotonic_us64,") != nullptr);
   assert(captured_evidence.length == strlen(captured_evidence.data));
-  assert(csv_field_count(captured_evidence.data) == 49u);
+  assert(csv_field_count(captured_evidence.data) == 50u);
   assert(!otis_adaptive_hybrid_regulation_live_note_manual_start_exact(
       OTIS_ADAPTIVE_HYBRID_START_CODE, 1u, true,
       static_cast<uint32_t>(exact_setup_ticks / 1000000ull),
@@ -349,8 +430,9 @@ int main() {
   OtisAdaptiveHybridRegulationLiveDecision dependent_source = {};
   dependent_source.timestamp_s = 5000u;
   dependent_source.capture_session = 7u;
-  dependent_source.source_first_sequence = 100u;
-  dependent_source.source_last_sequence = 700u;
+  dependent_source.source_acceptance_epoch = 3u;
+  dependent_source.source_opening_accepted_boundary_ordinal = 100u;
+  dependent_source.source_closing_accepted_boundary_ordinal = 700u;
   dependent_source.tight_state = "OUTSIDE";
   dependent_source.phase_recorder_published = true;
   dependent_source.current_applied_code = OTIS_ADAPTIVE_HYBRID_START_CODE;
@@ -381,7 +463,7 @@ int main() {
   assert(!dependent_response_identity.pending);
   assert(strstr(captured_evidence.data,
                 ",9,9,4,healthy_indeterminate_near_resolution,") != nullptr);
-  assert(csv_field_count(captured_evidence.data) == 58u);
+  assert(csv_field_count(captured_evidence.data) == 59u);
   dependent_decision.decision_sequence = 11u;
   dependent_decision.timestamp_s = 5600u;
   dependent_source.timestamp_s = 5600u;
@@ -401,8 +483,9 @@ int main() {
   response_source.model_applicable = true;
   response_source.preview_available = true;
   response_source.capture_session = 7u;
-  response_source.source_first_sequence = 700u;
-  response_source.source_last_sequence = 1300u;
+  response_source.source_acceptance_epoch = 3u;
+  response_source.source_opening_accepted_boundary_ordinal = 700u;
+  response_source.source_closing_accepted_boundary_ordinal = 1300u;
   response_source.tight_state = "TIGHT_INSIDE";
   response_source.dac_epoch = 2u;
   response_source.phase_epoch = 3u;
@@ -412,6 +495,7 @@ int main() {
   response_source.phase_continuous = true;
   response_source.phase_current = true;
   response_source.phase_recorder_published = true;
+  latest_health.accepted_boundary_ordinal = 1300u;
   OtisAdaptiveHybridRegulationLiveOutcome response_outcome = {};
   otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
       &response_source, 5000000000ull, &response_outcome);
@@ -420,10 +504,10 @@ int main() {
   assert(response_outcome.response_class ==
          OtisRegulationResponseClass::HealthyIndeterminateNearResolution);
   assert(captured_burst_count == 2u);
-  assert(strncmp(captured_burst[0].data, "ACT,2,11,response,5000000000,", 29u) == 0);
-  assert(strncmp(captured_burst[1].data, "AHM,1,22,response_complete,", 27u) == 0);
-  assert(csv_field_count(captured_burst[0].data) == 49u);
-  assert(csv_field_count(captured_burst[1].data) == 59u);
+  assert(strncmp(captured_burst[0].data, "ACT,3,11,response,5000000000,", 29u) == 0);
+  assert(strncmp(captured_burst[1].data, "AHM,2,22,response_complete,", 27u) == 0);
+  assert(csv_field_count(captured_burst[0].data) == 50u);
+  assert(csv_field_count(captured_burst[1].data) == 60u);
   assert(dependent_response_identity.pending);
   assert(dependent_response_identity.request_sequence == 9u);
   assert(dependent_response_identity.application_sequence == 4u);
@@ -439,7 +523,9 @@ int main() {
   assert(!dependent_response_identity.pending);
   assert(strstr(captured_evidence.data,
                 ",9,9,4,healthy_indeterminate_near_resolution,") != nullptr);
-  assert(csv_field_count(captured_evidence.data) == 58u);
+  assert(csv_field_count(captured_evidence.data) == 59u);
+
+  stale_accepted_source_after_requalification_has_zero_authority();
 
   bind_common_application_state();
 

@@ -8,9 +8,19 @@ programme execution surface. The most important present limitations are:
   pre-carrier queue ownership, or a changed reference-continuation policy;
 - raw snapshot/count replay now checks retained arithmetic and associations;
   it does not prove capture completeness or the analog cause of the reported
-  D14 disturbances. The actual operational host fixture still lacks a full
-  physical 600-aperture estimator producer;
-
+  D14 disturbances. Native integration exercises the real 600-accepted-span
+  frequency and phase consumers; the process rehearsal uses a synthetic
+  instrument and does not qualify the physical PIO/USB path;
+- the accepted-reference candidate admits the first trustworthy edge inside
+  the frozen inclusive ±1.25 ms window after eight acquisition intervals. It
+  cannot distinguish an impostor inside that window from the intended PPS.
+  Exclusion preserves raw evidence and does not establish GNSS accuracy;
+- CPU-observed expiry places control on hold while a paired hardware boundary
+  is delayed. It does not prove a physical missing pulse. Source-coordinate
+  ambiguity ends model qualification without inventing a missing timestamp;
+- the new APS/EST/phase/active wire contracts require a matching firmware and
+  host bundle. Current code has no compatibility reader for an earlier wire
+  version; historical packages use their recorded revision;
 - D10/channel 0 is reserved for external-event evidence, and the host contract
   preserves ingest, storage, replay, and zero-authority isolation, but firmware
   does not yet implement a capture backend that is safely isolated from D14;

@@ -308,3 +308,45 @@ tests are not evidence that the current live consumers already preserve
 history across the excluded edge, nor that a real producer supplies a truthful
 expiry frontier. No firmware has been flashed and no new live run authorized
 by this assessment.
+
+PR #175 was merged as `06f6288709459cf50c05d6aec75ad9900835ec6e`.
+The next tranche integrates the accepted-reference policy with both firmware
+measurement consumers and the current host path. Its implementation is one
+coupled cutover: APS v1, EST v3, RPH/PHE v2, AHY/ACT v3, AHM v2 and ACTIVE
+snapshot v2. Raw REF/SNP/CNT are unchanged. Historical recovery helpers and
+obsolete current wire readers are removed rather than kept as compatibility
+branches.
+
+Integration review has repaired these decision-bearing boundaries:
+
+- one post-association accepted-span object feeds frequency and phase;
+- settling uses the actual accepted opening, including an opening before an
+  excluded candidate;
+- exact 600-span source identity reaches request, acknowledgement, Core 0
+  execution, first downstream consumer, response and metadata requalification;
+- modular accepted ordinals, including zero, remain bound to their acceptance
+  epoch; qualification cannot combine epochs;
+- host ARM readiness replays canonical APS/raw evidence and the exact selected
+  estimate rather than trusting the mutable recorder-state claim;
+- a non-power-of-two SPSC queue preserves slot order across its 32-bit counter
+  rollover; and
+- the existing PPS status snapshot retains the latest selection-loss cause,
+  including CPU observation-age ambiguity that raw timestamps cannot explain.
+
+The native consumer fixture includes the recorded split, consecutive selected
+windows, DAC settling, retained phase, association loss and reacquisition.
+The prospective process fixture derives phase and frequency from its retained
+counts, respects exact acknowledgement and settling order, and exercises two
+bounded corrections with metadata requalification between them. These fixtures
+are not physical receiver or cross-core timing qualification.
+
+The [completed integration release record](../60_EXPERIMENTS/ACCEPTED_PPS_INTEGRATION_2026_09_11.md)
+binds all 609 passing current tests, the 7,936-case instruction proof, exact
+fixed firmware build and successful sealed and registered process rehearsal.
+The final host checks include delayed cross-queue evidence, exact source
+occurrences across timer rollover, and retirement of an older readiness proof
+when a newer selected estimate is pending. The retained 51-file rehearsal
+package is 9,084,964 bytes and remains outside Git.
+The remaining physical gate is an exact-bundle bench rehearsal on the rig,
+followed only then by the authorized finite qualification. No firmware was
+flashed and the original sealed experiment was not modified during this work.

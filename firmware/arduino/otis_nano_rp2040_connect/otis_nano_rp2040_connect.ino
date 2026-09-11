@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pico/time.h>
 
 #include "otis_config.h"
 
@@ -14,6 +15,9 @@
 #include "otis_capture_irq.h"
 #include "otis_capture_ring.h"
 #include "otis_count_observation.h"
+#include "otis_reference_acceptance_live.h"
+#include "otis_reference_acceptance_format.h"
+#include "otis_reference_acceptance_policy.generated.h"
 #include "otis_regulation_actuator.h"
 #include "otis_adaptive_hybrid_regulation_live.h"
 #include "otis_regulation_dual_core_state.h"
@@ -57,6 +61,7 @@ constexpr uint32_t kCountControlReadyCleanWindows =
     OTIS_COUNT_CONTROL_READY_CLEAN_WINDOWS;
 
 OtisRuntimeState runtime_state;
+OtisReferenceAcceptanceLive reference_acceptance(OTIS_REFERENCE_ACCEPTANCE_POLICY);
 OtisStatusEmitContext status_emit_context;
 OtisSerialFrameCollector serial_command_collector;
 bool deferred_serial_command_ready = false;
@@ -1030,8 +1035,21 @@ void service_dual_core_actuator_request(
   const bool exact_release =
       request.request_sequence == pending.request_sequence &&
       request.decision_sequence == pending.decision_sequence &&
+      request.session_id == pending.session_id &&
+      request.source_acceptance_epoch == pending.source_acceptance_epoch &&
+      request.source_acceptance_epoch != 0u &&
+      request.source_opening_accepted_boundary_ordinal ==
+          pending.source_opening_accepted_boundary_ordinal &&
+      request.source_closing_accepted_boundary_ordinal ==
+          pending.source_closing_accepted_boundary_ordinal &&
+      otis_exact_selected_accepted_span(
+          request.source_opening_accepted_boundary_ordinal,
+          request.source_closing_accepted_boundary_ordinal) &&
+      request.decision_reference_ticks == pending.decision_reference_ticks &&
+      request.monotonic_deadline_s == pending.monotonic_deadline_s &&
       request.authorization_sequence == pending.authorization_sequence &&
       request.nonce == pending.nonce &&
+      request.requested_delta_codes == pending.requested_delta_codes &&
       request.requested_code == pending.requested_code &&
       request.current_applied_code == pending.current_applied_code &&
       request.correction_ordinal == pending.correction_ordinal;
@@ -1052,8 +1070,9 @@ void service_dual_core_actuator_request(
       pending.nonce,
       pending.session_id,
       pending.decision_sequence,
-      pending.source_first_sequence,
-      pending.source_last_sequence,
+      pending.source_acceptance_epoch,
+      pending.source_opening_accepted_boundary_ordinal,
+      pending.source_closing_accepted_boundary_ordinal,
       static_cast<uint32_t>(pending.decision_reference_ticks / 1000000ull),
       pending.current_applied_code,
       pending.requested_delta_codes,
@@ -1554,10 +1573,12 @@ void update_adaptive_hybrid_regulation_health(void) {
   // counts only D8 oscillator edges at D14 boundaries. D10 is the independent
   // external-event input; this fixed image does not claim it and no D10 observation
   // may validate or veto this control-health predicate.
-  // Rejected-short/long and association-loss counters are lifetime evidence,
-  // not current validity. The count gate below owns transient inhibition and
-  // clean-window requalification; only unrecoverable capture loss remains
-  // latched in this raw-path predicate.
+  // Raw aperture rejection remains diagnostic. Accepted-reference continuity
+  // and freshness own measurement/control admission; receiver metadata is an
+  // independent actuation gate and cannot erase the measurement histories.
+  reference_acceptance.service(time_us_64());
+  const auto &accepted = reference_acceptance.status();
+  otis_count_observation_update_reference_acceptance(accepted);
   const bool raw_pps_valid = d14.d14_accepted_pps_count > 0u;
   const bool reference_integrity_valid =
       otis_capture_ring_dropped_count() == 0u &&
@@ -1569,28 +1590,29 @@ void update_adaptive_hybrid_regulation_health(void) {
       dual_core_static_code.available &&
       dual_core_static_code.requested_applied_match &&
       dual_core_static_code.i2c_ok;
-  const OtisAdaptiveHybridRegulationLiveHealth health = {
-      snapshot.session,
-      dual_core_receiver.metadata_sequence,
-      runtime_state.sequences.count_seq == 0u
-          ? 0u
-          : runtime_state.sequences.count_seq - 1u,
-      dual_core_receiver_qualified_for_control(),
-      dual_core_receiver.identity_stable,
-      dual_core_receiver.gsa_3d,
-      raw_pps_valid,
-      reference_integrity_valid,
-      runtime_state.tcxo.valid_for_control &&
-          runtime_state.tcxo.last_observation_valid &&
-          !runtime_state.tcxo.fault_after_startup,
-      preview.estimator_valid,
-      preview.model_applicable,
-      preview.temperature_valid,
-      applied_confirmed,
-      dual_core_static_code.applied_code,
-      !otis_dual_core_fail_static(),
-      preview.selected_interval_count,
-  };
+  OtisAdaptiveHybridRegulationLiveHealth health = {};
+  health.session_id = snapshot.session;
+  health.acceptance_epoch = accepted.acceptance_epoch;
+  health.accepted_boundary_ordinal = accepted.accepted_boundary_ordinal;
+  health.reference_acceptance_policy_sha256 = OTIS_REFERENCE_ACCEPTANCE_POLICY_SHA256;
+  health.reference_acceptance_state = accepted.state;
+  health.accepted_anchor_current = accepted.anchor_current;
+  health.gnss_metadata_sequence = dual_core_receiver.metadata_sequence;
+  health.gnss_metadata_valid = dual_core_receiver_qualified_for_control();
+  health.gnss_identity_stable = dual_core_receiver.identity_stable;
+  health.gnss_3d_evidence = dual_core_receiver.gsa_3d;
+  health.raw_pps_valid = raw_pps_valid;
+  health.reference_integrity_valid = reference_integrity_valid;
+  health.count_valid = accepted.tracking && accepted.anchor_current &&
+      accepted.capture_session == snapshot.session &&
+      uint32_t(now_ms - runtime_state.tcxo.startup_inhibit_start_ms) >= kCountStartupInhibitMs;
+  health.estimator_valid = preview.estimator_valid;
+  health.model_applicable = preview.model_applicable;
+  health.temperature_valid = preview.temperature_valid;
+  health.applied_code_confirmed = applied_confirmed;
+  health.applied_code = dual_core_static_code.applied_code;
+  health.abort_path_live = !otis_dual_core_fail_static();
+  health.selected_interval_count = preview.selected_interval_count;
   otis_adaptive_hybrid_regulation_live_update_health_at_ticks(
       &health, now_ms / 1000u, otis_monotonic_us32_now());
 }
@@ -1637,35 +1659,53 @@ void drain_capture_ring(void) {
 void emit_pps_count_boundary(
     const OtisPpsCountBoundaryObservation &observation,
     uint32_t snapshot_status) {
+  // timerawl/micros() and time_us_64() are two widths of the same RP2040
+  // hardware microsecond counter. Project the captured low word into its
+  // nearest past 64-bit coordinate, with an explicit bounded service age.
+  const uint64_t now_ticks = time_us_64();
+  const uint32_t capture_age = uint32_t(now_ticks) -
+      uint32_t(observation.pps_timestamp_ticks);
+  const uint64_t closing_extended_ticks =
+      now_ticks >= capture_age ? now_ticks - capture_age : UINT64_MAX;
+  const OtisReferenceAcceptanceObservation paired = {
+      observation.session, observation.sequence, observation.reference_sequence,
+      uint32_t(observation.pps_timestamp_ticks),
+      observation.cumulative_down_counter, snapshot_status, observation.capture_flags};
+  OtisReferenceAcceptanceOutcome selection = reference_acceptance.observe(
+      paired, closing_extended_ticks, now_ticks,
+      OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS);
+  otis_count_observation_update_reference_acceptance(reference_acceptance.status());
+
+  // Canonical raw CNT production remains independent of accepted selection.
+  // Its shorter rejected fragments are retained before derived APS evidence.
   OtisCountObservationConfig count_config = count_observation_config();
-  bool window_completed = otis_count_observation_on_pps_boundary(
+  const bool window_completed = otis_count_observation_on_pps_boundary(
       &runtime_state, &status_emit_context, &count_config, &observation);
+  if (selection.has_span) {
+    // Reuse the timing owner's existing sequential evidence scratch buffer.
+    // Association-loss and accepted-span formatting cannot be concurrent.
+    auto &frame = dual_core_association_loss_scratch;
+    frame = {};
+    if (!otis_reference_acceptance_format_span(selection,
+            OTIS_REFERENCE_ACCEPTANCE_POLICY_SHA256, frame.data,
+            sizeof(frame.data), &frame.length) ||
+        !otis_dual_core_publish_evidence(&frame)) {
+      selection = reference_acceptance.invalidate(
+          OtisReferenceAcceptanceReason::CaptureIntegrity);
+      otis_count_observation_update_reference_acceptance(reference_acceptance.status());
+      otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+    }
+  }
   const OtisRegulationStaticCodeState regulation_code = regulation_static_code_state();
-  OtisAdaptiveHybridRegulationLiveOutcome active_outcome;
-  const bool raw_d14_d8_interval_valid =
-      window_completed && runtime_state.tcxo.last_observation_valid;
-  // Publish the canonical phase record before the selected frequency decision
-  // can observe its same-core snapshot.
-  otis_phase_preview_live_on_boundary(
-      &observation, snapshot_status,
-      static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
-      window_completed,
-      raw_d14_d8_interval_valid,
-      false);
-  // Metadata holds new correction authority, not D14/D8 measurement history.
-  // Refresh the independently qualified control health before this boundary
-  // can produce a selected estimate and its first dependent active decision.
+  OtisAdaptiveHybridRegulationLiveOutcome active_outcome = {};
+  // Both consumers receive the identical immutable selection. Publishing phase
+  // before the frequency decision binds its first dependent control consumer.
+  otis_phase_preview_live_on_reference_selection(
+      &selection, closing_extended_ticks, false);
   update_adaptive_hybrid_regulation_health();
-  otis_frequency_regulation_live_on_boundary(
-      &observation,
-      static_cast<uint32_t>(runtime_state.tcxo.last_counted_edges),
-      // The PPS-gated backend normally retains
-      // OTIS_FLAG_TIMESTAMP_RECONSTRUCTED as provenance on a valid CNT row.
-      // Use the backend's completed validity assessment instead of requiring
-      // a numerically zero flag word.
-      raw_d14_d8_interval_valid,
-      millis() / 1000u, otis_monotonic_us32_now(),
-      &regulation_code, &active_outcome);
+  otis_frequency_regulation_live_on_reference_selection(
+      &selection, closing_extended_ticks, millis() / 1000u,
+      otis_monotonic_us32_now(), &regulation_code, &active_outcome);
   if (active_outcome.application_attempted) {
     otis_emit_dac_step(
         runtime_state.sequences.dac_seq++, millis(),
@@ -1743,6 +1783,8 @@ void drain_pps_count_boundary_ring(void) {
         pending_age_ticks, otis_pps_count_boundary_ring_depth(),
         otis_pps_count_boundary_ring_dropped_count(),
         have_next_reference ? &next_reference : nullptr, stats);
+    reference_acceptance.invalidate(OtisReferenceAcceptanceReason::CaptureIntegrity);
+    otis_count_observation_update_reference_acceptance(reference_acceptance.status());
     otis_count_observation_note_association_loss(
         &runtime_state, &status_emit_context,
         pending_reference.reference_sequence, association_reason);

@@ -197,10 +197,12 @@ def replay_adaptive_hybrid_maintenance_history(
                         == active_policy_sha256
                         and int(source["capture_session"])
                         == int(maintenance["capture_session"])
-                        and int(source["source_first_sequence"])
-                        == int(maintenance["source_first_sequence"])
-                        and int(source["source_last_sequence"])
-                        == int(maintenance["source_last_sequence"])
+                        and int(source["source_acceptance_epoch"])
+                        == int(maintenance["source_acceptance_epoch"])
+                        and int(source["source_opening_accepted_boundary_ordinal"])
+                        == int(maintenance["source_opening_accepted_boundary_ordinal"])
+                        and int(source["source_closing_accepted_boundary_ordinal"])
+                        == int(maintenance["source_closing_accepted_boundary_ordinal"])
                         and int(source["decision_timestamp_ticks"])
                         == int(maintenance["event_timestamp_ticks"])
                         and int(source["current_applied_code"])
@@ -212,8 +214,13 @@ def replay_adaptive_hybrid_maintenance_history(
                         timestamp_s=int(source["decision_timestamp_s"]),
                         timestamp_ticks=int(maintenance["event_timestamp_ticks"]),
                         capture_session=int(source["capture_session"]),
-                        source_first_sequence=int(source["source_first_sequence"]),
-                        source_last_sequence=int(source["source_last_sequence"]),
+                        source_acceptance_epoch=int(source["source_acceptance_epoch"]),
+                        source_opening_accepted_boundary_ordinal=int(
+                            source["source_opening_accepted_boundary_ordinal"]
+                        ),
+                        source_closing_accepted_boundary_ordinal=int(
+                            source["source_closing_accepted_boundary_ordinal"]
+                        ),
                         dac_epoch=int(source["dac_epoch"]),
                         applied_code=int(source["current_applied_code"]),
                         accumulated_edge_error_counts=int(
@@ -349,14 +356,17 @@ def replay_adaptive_hybrid_maintenance_history(
                 elif event == "gnss_metadata_requalified":
                     frontier = int(
                         maintenance[
-                            "requalification_d14_d8_observation_sequence"
+                            "requalification_accepted_boundary_ordinal"
                         ]
                     )
                     if frontier <= 0:
                         raise ValueError(
                             "AdaptiveHybrid GNSS requalification lacks its causal D14/D8 frontier"
                         )
-                    controller.requalify_metadata(frontier)
+                    controller.requalify_metadata(
+                        acceptance_epoch=int(maintenance["source_acceptance_epoch"]),
+                        accepted_boundary_ordinal=frontier,
+                    )
                     numerical_exact = before_exact and _adaptive_hybrid_snapshot_exact(
                         maintenance, controller, suffix="after"
                     )
@@ -413,7 +423,7 @@ def replay_adaptive_hybrid_maintenance_history(
     return {
         "exact": bool(exact),
         "replay_mode": "adaptive_hybrid_phase_priority_oracle_with_AHM_v1",
-        "controller_state_authority": "active_hybrid_maintenance_v1",
+        "controller_state_authority": "active_hybrid_maintenance_v2",
         "policy_id": policy.policy_id,
         "policy_sha256": policy.policy_sha256,
         "decision_count": len(decisions),
@@ -482,7 +492,7 @@ def replay_response_before_acknowledgement(
     validation = validate_csv(
         active_hybrid_csv,
         CsvValidationContext(
-            "active_hybrid_decisions_v2",
+            "active_hybrid_decisions_v3",
             frozenset(),
             frozenset({"rp2040_monotonic_us64"}),
         ),
@@ -530,7 +540,7 @@ def replay_response_before_acknowledgement(
         maintenance_validation = validate_csv(
             maintenance_csv,
             CsvValidationContext(
-                "active_hybrid_maintenance_v1",
+                "active_hybrid_maintenance_v2",
                 frozenset(),
                 frozenset({"rp2040_monotonic_us64"}),
             ),
@@ -636,7 +646,7 @@ def replay_response_before_acknowledgement(
             "response_class": response["response_class"],
             "predicted_sign_observed": predicted_sign_observed,
             "response_checkpoint_mode": "observational_non_terminal",
-            "controller_state_authority": "active_hybrid_maintenance_v1",
+            "controller_state_authority": "active_hybrid_maintenance_v2",
             "exact_replay": True,
         }
         result["attestation_sha256"] = sha256(

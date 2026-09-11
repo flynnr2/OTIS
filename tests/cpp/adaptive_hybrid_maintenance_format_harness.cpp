@@ -29,8 +29,9 @@ OtisAdaptiveHybridMaintenanceRecord base_record(uint64_t sequence) {
   record.image_identity = kImageIdentity;
   record.active_policy_sha256 = kSha;
   record.capture_session = 7u;
-  record.source_first_sequence = 1200u;
-  record.source_last_sequence = 1800u;
+  record.source_acceptance_epoch = 3u;
+  record.source_opening_accepted_boundary_ordinal = 1200u;
+  record.source_closing_accepted_boundary_ordinal = 1800u;
   record.frequency_estimator_sha256 = kSha;
   record.phase_epoch = 3u;
   record.phase_observation_sequence = 1800u;
@@ -67,7 +68,7 @@ OtisAdaptiveHybridMaintenanceRecord base_record(uint64_t sequence) {
 bool emit_header() {
   char output[2048] = {};
   const int used =
-      otis_format_adaptive_hybrid_maintenance_v1_header(output, sizeof(output));
+      otis_format_adaptive_hybrid_maintenance_v2_header(output, sizeof(output));
   if (used <= 0 || static_cast<size_t>(used) != strlen(output)) return false;
   fputs(output, stdout);
   return true;
@@ -76,7 +77,7 @@ bool emit_header() {
 bool emit_record(const OtisAdaptiveHybridMaintenanceRecord &record) {
   char output[4096] = {};
   const int used =
-      otis_format_adaptive_hybrid_maintenance_v1(output, sizeof(output), &record);
+      otis_format_adaptive_hybrid_maintenance_v2(output, sizeof(output), &record);
   if (used <= 0 || static_cast<size_t>(used) != strlen(output)) return false;
   fputs(output, stdout);
   return true;
@@ -87,8 +88,9 @@ bool emit_lifecycle() {
 
   OtisAdaptiveHybridMaintenanceRecord activation = base_record(1u);
   activation.event = OtisAdaptiveHybridMaintenanceEvent::PolicyActivation;
-  activation.source_first_sequence = 0u;
-  activation.source_last_sequence = 0u;
+  activation.source_acceptance_epoch = 0u;
+  activation.source_opening_accepted_boundary_ordinal = 0u;
+  activation.source_closing_accepted_boundary_ordinal = 0u;
   activation.hybrid_record_sequence = 0u;
   activation.decision_sequence = 0u;
   activation.maintenance_state_before =
@@ -197,7 +199,7 @@ bool emit_lifecycle() {
   requalified.frontier_relation = OtisAdaptiveHybridFrontierRelation::NotApplicable;
   requalified.metadata_hold_before = true;
   requalified.metadata_hold_after = true;
-  requalified.requalification_d14_d8_observation_sequence = 2400u;
+  requalified.requalification_accepted_boundary_ordinal = 2400u;
   requalified.evidence_burst_record_ordinal = 1u;
   requalified.evidence_burst_record_count = 1u;
   requalified.reason = "fresh_same_receiver_metadata";
@@ -243,23 +245,23 @@ bool emit_lifecycle() {
 bool rejects(const OtisAdaptiveHybridMaintenanceRecord &record) {
   char output[4096] = {'x', '\0'};
   const int result =
-      otis_format_adaptive_hybrid_maintenance_v1(output, sizeof(output), &record);
+      otis_format_adaptive_hybrid_maintenance_v2(output, sizeof(output), &record);
   return result == -1 && output[0] == '\0';
 }
 
 bool run_selftest() {
   OtisAdaptiveHybridMaintenanceRecord valid = base_record(1u);
   char full[4096] = {};
-  if (otis_format_adaptive_hybrid_maintenance_v1(full, sizeof(full), &valid) <= 0)
+  if (otis_format_adaptive_hybrid_maintenance_v2(full, sizeof(full), &valid) <= 0)
     return false;
   char short_output[32] = {'x', '\0'};
-  if (otis_format_adaptive_hybrid_maintenance_v1(short_output, sizeof(short_output),
+  if (otis_format_adaptive_hybrid_maintenance_v2(short_output, sizeof(short_output),
                                        &valid) != -1 ||
       short_output[0] != '\0')
     return false;
-  if (otis_format_adaptive_hybrid_maintenance_v1(nullptr, sizeof(full), &valid) != -1 ||
-      otis_format_adaptive_hybrid_maintenance_v1(full, 0u, &valid) != -1 ||
-      otis_format_adaptive_hybrid_maintenance_v1(full, sizeof(full), nullptr) != -1)
+  if (otis_format_adaptive_hybrid_maintenance_v2(nullptr, sizeof(full), &valid) != -1 ||
+      otis_format_adaptive_hybrid_maintenance_v2(full, 0u, &valid) != -1 ||
+      otis_format_adaptive_hybrid_maintenance_v2(full, sizeof(full), nullptr) != -1)
     return false;
 
   OtisAdaptiveHybridMaintenanceRecord invalid = valid;
@@ -309,7 +311,7 @@ bool run_selftest() {
   if (!rejects(invalid)) return false;
 
   char header_short[16] = {'x', '\0'};
-  if (otis_format_adaptive_hybrid_maintenance_v1_header(header_short,
+  if (otis_format_adaptive_hybrid_maintenance_v2_header(header_short,
                                                sizeof(header_short)) != -1 ||
       header_short[0] != '\0')
     return false;

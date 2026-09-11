@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "otis_adaptive_hybrid_regulation.h"
+
 enum class OtisRegulationState : uint8_t {
   Disarmed,
   Armed,
@@ -80,8 +82,9 @@ struct OtisRegulationArmRequest {
 
 struct OtisRegulationDecision {
   uint32_t decision_sequence;
-  uint32_t source_first_sequence;
-  uint32_t source_last_sequence;
+  uint32_t source_acceptance_epoch;
+  uint32_t source_opening_accepted_boundary_ordinal;
+  uint32_t source_closing_accepted_boundary_ordinal;
   uint32_t timestamp_s;
   uint16_t current_applied_code;
   int32_t requested_delta_codes;
@@ -95,8 +98,9 @@ struct OtisRegulationActionableRequest {
   uint32_t nonce;
   uint32_t session_id;
   uint32_t decision_sequence;
-  uint32_t source_first_sequence;
-  uint32_t source_last_sequence;
+  uint32_t source_acceptance_epoch;
+  uint32_t source_opening_accepted_boundary_ordinal;
+  uint32_t source_closing_accepted_boundary_ordinal;
   uint32_t timestamp_s;
   uint16_t current_applied_code;
   int32_t requested_delta_codes;

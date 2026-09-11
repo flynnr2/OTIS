@@ -1,8 +1,8 @@
-# Adaptive-hybrid active status snapshot v1
+# Adaptive-hybrid active status snapshot v2
 
 ## Purpose
 
-`adaptive_hybrid_active_status_snapshot_v1` defines one complete, coherent
+`adaptive_hybrid_active_status_snapshot_v2` defines one complete, coherent
 command-bearing adaptive-hybrid status burst inside `health_v1`. It changes no
 CSV columns. It defines which ordered `STS` rows may be used together for a
 control-readiness or supervision decision.
@@ -12,7 +12,7 @@ control-readiness or supervision decision.
 Every burst has exactly this order:
 
 1. `snapshot_generation_begin=<positive generation>`;
-2. `snapshot_contract=adaptive_hybrid_active_status_snapshot_v1`;
+2. `snapshot_contract=adaptive_hybrid_active_status_snapshot_v2`;
 3. every canonical active-status field exactly once and in the
    firmware-declared order;
 4. `snapshot_generation_complete=<same generation>`.
@@ -37,3 +37,10 @@ shared firmware visitor used by both direct and dual-core publication.
 Ordinary non-active health remains latest-value telemetry. Command-bearing
 consumers combine it only with one complete active snapshot selected by this
 contract. Missing complete active status is failure, never clean or zero.
+
+The v2 snapshot binds control readiness to the accepted-reference state through
+`reference_acceptance_policy_sha256`, `reference_acceptance_state`,
+`acceptance_epoch`, `accepted_boundary_ordinal`, and
+`accepted_anchor_current`. `gnss_qualified_accepted_ordinal` records the GNSS
+qualification frontier in the same accepted-boundary domain. Raw D14 diagnostic
+eligibility is retained separately and cannot substitute for these fields.

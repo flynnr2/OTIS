@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import pytest
+from pathlib import Path
+from types import SimpleNamespace
 
-from host.otis_tools.adaptive_hybrid_supervisor import AdaptiveHybridSupervisor
+from host.otis_tools import adaptive_hybrid_replay as replay
 from host.otis_tools.firmware_host_contract import (
     RELATIONS, bounded_modular_lag_matches,
 )
@@ -32,20 +34,35 @@ def test_operational_decision_requires_bounded_preceding_capture(
     ) is expected
 
 
-def test_actual_supervisor_binds_source_identity_as_well_as_capture_age():
+def test_current_decision_replay_binds_source_identity_as_well_as_capture_age(monkeypatch):
     estimate = {
+        "estimate_id": "selected",
+        "pass": True,
         "estimator_timestamp_ticks": "2000000",
         "time_domain": "rp2040_monotonic_us32",
-        "source_reference_first_seq": "1",
-        "source_reference_last_seq": "601",
+        "source_capture_session": 1, "source_acceptance_epoch": 2,
+        "source_opening_accepted_boundary_ordinal": 1,
+        "source_closing_accepted_boundary_ordinal": 601,
+        "estimator_sha256": "a" * 64, "frequency_error_hz": "0",
+        "accumulated_edge_error_counts": 0,
     }
     decision = {
         "decision_timestamp_ticks": "2000123",
         "time_domain": "rp2040_monotonic_us64",
-        "source_first_sequence": "1", "source_last_sequence": "601",
+        "capture_session": "1", "source_acceptance_epoch": "2",
+        "source_opening_accepted_boundary_ordinal": "1", "source_closing_accepted_boundary_ordinal": "601",
+        "frequency_estimator_sha256": "a" * 64, "frequency_error_hz": "0",
+        "accumulated_edge_error_counts": "0",
     }
-    consumes = AdaptiveHybridSupervisor._decision_timestamp_consumes_estimate
+    manifest = SimpleNamespace(root=Path("/unused"), files=[{"contract": "active_hybrid_decisions_v3", "path": "decisions.csv"}])
+    def consumes(decision, estimate):
+        monkeypatch.setattr(replay, "_read_csv", lambda _path: [decision])
+        return replay.replay_active_decision_measurement_sources(manifest, {"selected_estimate_sources": [estimate]})["exact"]
     assert consumes(decision, estimate)
-    assert not consumes({**decision, "source_last_sequence": "602"}, estimate)
+    assert not consumes({**decision, "source_closing_accepted_boundary_ordinal": "602"}, estimate)
+    assert not consumes({**decision, "source_acceptance_epoch": "3"}, estimate)
+    assert not consumes({**decision, "capture_session": "2"}, estimate)
     assert not consumes({**decision, "time_domain": "rp2040_monotonic_us32"}, estimate)
     assert not consumes(decision, {**estimate, "estimator_timestamp_ticks": "2000124"})
+    assert consumes({**decision, "decision_timestamp_ticks": str((1 << 32) + 50)},
+                    {**estimate, "estimator_timestamp_ticks": (1 << 32) - 100})
