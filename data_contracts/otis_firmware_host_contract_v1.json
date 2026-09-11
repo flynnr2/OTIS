@@ -182,10 +182,10 @@
       "field_count": 49
     },
     "telemetry": {
-      "maximum_boot": 186,
-      "maximum_concurrent": 195,
-      "nonactive_timing_health": 91,
-      "queue_depth": 196
+      "maximum_boot": 187,
+      "maximum_concurrent": 196,
+      "nonactive_timing_health": 92,
+      "queue_depth": 197
     }
   },
   "mismatch_disposition": {
@@ -2103,8 +2103,8 @@
           "reason",
           "evidence_phase",
           "hybrid_state",
-          "hybrid_reason"
-          ,"reference_acceptance_state"
+          "hybrid_reason",
+          "reference_acceptance_state"
         ],
         "bool": [
           "enabled",
@@ -2121,8 +2121,8 @@
           "first_phase_checkpoint_passed",
           "confirmed_applied_code_known",
           "automatic_retry",
-          "automatic_restore"
-          ,"accepted_anchor_current"
+          "automatic_restore",
+          "accepted_anchor_current"
         ],
         "hex_uint16": [
           "expected_setup_code"
@@ -2132,8 +2132,8 @@
           "model_sha256",
           "active_policy_sha256",
           "response_policy_sha256",
-          "numerical_policy_sha256"
-          ,"reference_acceptance_policy_sha256"
+          "numerical_policy_sha256",
+          "reference_acceptance_policy_sha256"
         ],
         "uint16": [
           "phase_nonzero_application_count",

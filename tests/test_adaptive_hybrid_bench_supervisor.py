@@ -164,6 +164,9 @@ def _zero_write_terminal_health(
     health.update(
         {("pps_gate", key): str(value) for key, value in baseline.items()}
     )
+    health[("adaptive_hybrid", "session_id")] = str(session_id)
+    for key in ("reference_acceptance_state", "accepted_anchor_current"):
+        health[("adaptive_hybrid", key)] = health[("pps_gate", key)]
     return health
 
 
@@ -608,9 +611,10 @@ def test_arm_admission_closes_at_exact_accepted_aperture_boundary(
     supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
-            "qualified_d14_segment_accepted_window_origin": 100,
-            "qualified_d14_segment_reference_sequence_origin": 200,
-            "qualified_d14_completed_apertures_before_segment": 0,
+            "qualified_acceptance_ordinal_origin": 100,
+            "qualified_acceptance_epoch_origin": 1,
+            "qualified_origin_session_id": 5,
+
         }
     )
     supervisor._save = lambda: None
@@ -620,11 +624,15 @@ def test_arm_admission_closes_at_exact_accepted_aperture_boundary(
     deadline = limits.automatic_application_admission_deadline_apertures
 
     before = {
-        ("pps_gate", "accepted_window_count"): str(100 + deadline - 1),
+        ("pps_gate", "accepted_boundary_ordinal"): str(100 + deadline - 1),
+        ("pps_gate", "reference_acceptance_epoch"): "1",
+        ("pps_gate", "snapshot_session"): "5",
         ("pps_gate", "boundary_reference_sequence"): str(200 + deadline - 1),
     }
     endpoint = {
-        ("pps_gate", "accepted_window_count"): str(100 + deadline),
+        ("pps_gate", "accepted_boundary_ordinal"): str(100 + deadline),
+        ("pps_gate", "reference_acceptance_epoch"): "1",
+        ("pps_gate", "snapshot_session"): "5",
         ("pps_gate", "boundary_reference_sequence"): str(200 + deadline),
     }
 
@@ -650,9 +658,10 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
                 "dac_epoch": 1,
             },
             "initial_session_id": 5,
-            "qualified_d14_segment_accepted_window_origin": 100,
-            "qualified_d14_segment_reference_sequence_origin": 200,
-            "qualified_d14_completed_apertures_before_segment": 0,
+            "qualified_acceptance_ordinal_origin": 100,
+            "qualified_acceptance_epoch_origin": 1,
+            "qualified_origin_session_id": 5,
+
         }
     )
     supervisor._identity_ready = lambda _health: True
@@ -695,7 +704,8 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
         ("adaptive_hybrid", "session_id"): "5",
         ("adaptive_hybrid", "snapshot_generation_complete"): "12",
         ("adaptive_hybrid", "query_nonce"): "91",
-            ("pps_gate", "accepted_window_count"): "700",
+            ("pps_gate", "accepted_boundary_ordinal"): "700",
+            ("pps_gate", "reference_acceptance_epoch"): "1",
             ("pps_gate", "boundary_reference_sequence"): "800",
             ("pps_gate", "snapshot_session"): "5",
     }
@@ -890,6 +900,7 @@ def test_qualification_selector_uses_frozen_policy_estimator_identity(
         "preview_eligibility": "true",
         "source_dac_ref": "live:DAC:1",
         "accepted_sample_count": "600",
+        "source_accepted_spans_ref": "live:APS:1:1:0:600",
     }
 
     assert supervisor._fresh_authoritative_selected_estimate(
@@ -897,19 +908,46 @@ def test_qualification_selector_uses_frozen_policy_estimator_identity(
     ) is row
 
 
-def test_extended_decision_timestamp_consumes_wrapped_estimate_coordinate() -> None:
-    estimate = {
-        "time_domain": "rp2040_monotonic_us32",
-        "estimator_timestamp_ticks": "506319339",
+@pytest.mark.parametrize("session,epoch,exact", [(5, 1, True), (5, 2, False), (6, 1, False)])
+def test_metadata_requalification_is_epoch_bound_and_accepts_ordinal_wrap(
+    tmp_path: Path, session: int, epoch: int, exact: bool,
+) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    supervisor._save = lambda: None
+    supervisor._programme_event = lambda *args, **kwargs: None
+    values = {
+        "session_id": "5", "acceptance_epoch": "1",
+        "confirmed_applied_code_known": "true", "confirmed_applied_code": "0xA84D",
+        "dac_epoch": "1", "correction_count": "0", "cumulative_movement_codes": "0",
+        "gnss_metadata_hold_entry_sequence": "10", "gnss_metadata_hold_transaction_pending": "false",
     }
-    decision = {
-        "time_domain": "rp2040_monotonic_us64",
-        "decision_timestamp_ticks": str((1 << 32) + 506319339),
-    }
+    health = {("adaptive_hybrid", key): value for key, value in values.items()}
+    supervisor._update_gnss_metadata_hold(health, True)
+    for key, value in {
+        "session_id": str(session), "acceptance_epoch": str(epoch),
+        "state": "DISARMED", "gnss_metadata_requalification_sequence": "11",
+        "gnss_qualified_accepted_ordinal": str((1 << 32) - 1), "accepted_boundary_ordinal": "0",
+    }.items():
+        health[("adaptive_hybrid", key)] = value
+    if exact:
+        supervisor._update_gnss_metadata_hold(health, False)
+        assert supervisor.state["gnss_metadata_hold"] is None
+    else:
+        with pytest.raises(ValueError, match="fresh causal requalification"):
+            supervisor._update_gnss_metadata_hold(health, False)
+        assert supervisor.state["gnss_metadata_hold"] is not None
 
-    assert supervisor_module.AdaptiveHybridSupervisor._decision_timestamp_consumes_estimate(
-        decision, estimate
-    )
+
+def test_qualified_apertures_allow_zero_wrap_but_never_add_epochs(tmp_path: Path) -> None:
+    supervisor = _bare_supervisor(CONTINGENT_72_HOUR_HYBRID_CONTROL, tmp_path)
+    supervisor.state.update(qualified_origin_session_id=5, qualified_acceptance_epoch_origin=1,
+                            qualified_acceptance_ordinal_origin=(1 << 32) - 600)
+    health = {("pps_gate", "snapshot_session"): "5", ("pps_gate", "reference_acceptance_epoch"): "1",
+              ("pps_gate", "accepted_boundary_ordinal"): "0"}
+    assert supervisor._qualified_d14_apertures(health) == 600
+    health[("pps_gate", "reference_acceptance_epoch")] = "2"
+    with pytest.raises(ValueError, match="epoch changed"):
+        supervisor._qualified_d14_apertures(health)
 
 
 def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> None:

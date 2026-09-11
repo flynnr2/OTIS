@@ -323,7 +323,7 @@ def test_shared_analyzer_host_consumers_recompute_every_applicable_result(
         analyze_module,
         "_validate_manifest_csvs",
         lambda *_args, **_kwargs: {
-            "active_transactions_v2": {
+            "active_transactions_v3": {
                 "authority": "authoritative",
                 "exact": True,
             },
@@ -391,9 +391,9 @@ def test_shared_analyzer_host_consumers_recompute_every_applicable_result(
     assert result["exact"] is True
     assert all(result["checks"].values())
     assert calls == [
-        "active_transactions_v2.csv",
-        "active_hybrid_decisions_v2.csv",
-        "active_hybrid_maintenance_v1.csv",
+        "active_transactions_v3.csv",
+        "active_hybrid_decisions_v3.csv",
+        "active_hybrid_maintenance_v2.csv",
     ]
     assert result["csv_validation"]["raw_events_v1:EVT"] == {
         "authority": "fail_local",
@@ -513,7 +513,7 @@ def test_complete_exact_act_is_durable_before_phase_acknowledgement(
 
     assert supervisor._preserve_and_acknowledge(row, 1)
     command_index = events.index("command:ACTIVE EVIDENCE 1 1")
-    assert events.index("fsync:active_transactions_v2.csv") < command_index
+    assert events.index("fsync:active_transactions_v3.csv") < command_index
     assert events.index("fsync:record_000001_request_created.json") < command_index
 
 

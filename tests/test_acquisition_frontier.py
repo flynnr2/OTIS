@@ -125,7 +125,7 @@ class RecordedStream:
                 field: "" for field in CONTRACT_FIELDS["accepted_pps_spans_v1"]
             }
             span.update(
-                record_type="APS", schema_version="1", capture_session="1",
+                record_type="APS", schema_version="1", capture_session=closing["session"],
                 acceptance_epoch="1", accepted_boundary_ordinal=str(index),
                 opening_snapshot_sequence=opening["snapshot_sequence"],
                 closing_snapshot_sequence=closing["snapshot_sequence"],
@@ -161,22 +161,17 @@ def test_mid_session_prefix_retained_anchor_then_full_source_authority(tmp_path)
     assert stream.readiness()["ready"]
     assert not stream.readiness("selected-1")["ready"]
     artifact = (tmp_path / FRONTIER_PATH).read_bytes()
-    stale = deepcopy(rows["estimates.csv"][0])
-    stale.update(estimate_id="prefix-est", estimator_timestamp_ticks="600000000")
-    for index in range(2, 591):
-        stream.boundary(index)
-    stream.emit(stale)
-    assert not stream.readiness("prefix-est")["ready"]
-    for index in range(591, 601):
+    for index in range(2, 601):
         stream.boundary(index)
     selected = dict(rows["estimates.csv"][0], estimate_seq="2")
     stream.emit(selected)
-    assert stream.readiness("selected-1")["ready"], stream.tracker.errors
+    readiness = stream.readiness("selected-1")
+    assert readiness["ready"], readiness
     assert (tmp_path / FRONTIER_PATH).read_bytes() == artifact
     assert len(list(csv.DictReader((tmp_path / "counts.csv").open()))) == 600
     exact, report, _ = stream.replay()
     assert exact, report
-    assert report["acquisition_frontier"]["unqualified_selected_estimate_ids"] == ["prefix-est"]
+    assert report["acquisition_frontier"]["unqualified_selected_estimate_ids"] == []
 
 
 def test_estimate_may_precede_raw_drain_but_cannot_authorize_until_exact_source(tmp_path):

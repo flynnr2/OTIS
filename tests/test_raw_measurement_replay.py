@@ -251,6 +251,9 @@ def test_actual_operational_rehearsal_bootstrap_has_one_replayable_aperture():
     from host.otis_tools.adaptive_hybrid_operational_rehearsal import DeterministicPtyInstrument
 
     instrument = object.__new__(DeterministicPtyInstrument)
+    instrument.raw_interval_adjustments = {}
+    instrument.bundle = {"authoritative_inputs": measurement_manifest_value()["authoritative_inputs"]}
+    instrument.reference_acceptance_binding = measurement_manifest_value()["reference_acceptance"]
     emitted = []
     instrument._emit_rows = lambda fields, rows: emitted.extend(rows)
     instrument._emit_initial_observations()
@@ -369,8 +372,9 @@ def test_estimate_names_distinct_snapshot_and_physical_source_ordinals(monkeypat
     assert "snapshot_message.snapshot.reference_sequence =\n      observation.reference_sequence;" in source
     live = (firmware / "otis_frequency_regulation_live.cpp").read_text()
     assert "accepted_boundary_ordinal" in live
-    assert "source_opening_snapshot_sequence" in live
-    assert "source_opening_reference_sequence" in live
+    assert "static_cast<unsigned long>(span.last_sequence)" in live
+    assert "span.selected_first_reference_sequence" in live
+    assert "span.last_reference_sequence" in live
 
 
 def test_missing_opening_snapshot_leaves_first_retained_count_unproven():

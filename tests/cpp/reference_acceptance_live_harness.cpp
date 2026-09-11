@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include "otis_reference_acceptance_live.h"
 #include "otis_reference_acceptance_policy.generated.h"
 #include "otis_reference_acceptance_format.h"
@@ -58,13 +59,16 @@ int main() {
   const auto ambiguous = deliver(750000u, 7500000u);
   assert(ambiguous.disposition == D::QualificationLost);
   assert(ambiguous.reason == R::ObservationAgeAmbiguous);
+  assert(strcmp(owner.status().last_loss_reason, "observation_age_ambiguous") == 0);
   assert(!owner.status().tracking && !owner.status().anchor_current);
   assert(deliver(1000000u, 10000000u).disposition == D::Seeded);
   for (unsigned i = 0; i < 8; ++i) assert(!deliver(1000000u, 10000000u).has_span);
   assert(owner.status().acceptance_epoch != epoch);
   assert(deliver(1000000u, 10000000u).accepted_boundary_ordinal == 1u);
+  assert(strcmp(owner.status().last_loss_reason, "observation_age_ambiguous") == 0);
   // A physical association defect withdraws model continuity immediately.
   owner.invalidate(R::CaptureIntegrity);
+  assert(strcmp(owner.status().last_loss_reason, "capture_integrity") == 0);
   assert(!owner.status().tracking && !owner.status().anchor_current);
   return 0;
 }

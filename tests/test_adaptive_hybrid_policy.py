@@ -163,7 +163,9 @@ def test_picocode_debt_application_response_metadata_and_phase_loss() -> None:
     controller.enter_metadata_hold()
     assert controller.decide(_observation(controller, 1200, 1200, 1800)).reason == "metadata_hold"
     frozen = controller.debt
-    controller.requalify_metadata(1800)
+    controller.requalify_metadata(
+        acceptance_epoch=1, accepted_boundary_ordinal=1800
+    )
     first = controller.decide(_observation(controller, 1800, 1800, 2400))
     second = controller.decide(_observation(controller, 2400, 2400, 3000))
     assert first.reason == "metadata_requalification_window_hold"

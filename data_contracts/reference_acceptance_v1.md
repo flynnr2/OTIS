@@ -119,6 +119,13 @@ continuity loss. It never manufactures a complete producer frontier. A
 source-coordinate ambiguity withdraws model qualification with an explicit
 reason, without asserting physical edge absence.
 
+The existing PPS health snapshot retains `reference_acceptance_last_loss_reason`
+alongside the loss count and accepted identity. It starts as `none` and remains
+sticky through recovery until the next loss replaces it. In particular,
+`observation_age_ambiguous` preserves the CPU projection failure that raw
+timestamps alone cannot explain. This is the latest loss cause, not a claim
+that periodic status preserves every intermediate transition in a burst.
+
 ## Limits of timing admission
 
 The first trustworthy candidate inside the window is admitted under this

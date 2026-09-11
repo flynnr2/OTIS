@@ -3,6 +3,30 @@
 
 #include "otis_reference_acceptance.h"
 
+inline const char *otis_reference_acceptance_reason_name(OtisReferenceAcceptanceReason reason) {
+  using R = OtisReferenceAcceptanceReason;
+  switch (reason) {
+    case R::None: return "none";
+    case R::AcquisitionRestart: return "acquisition_restart";
+    case R::UnknownSession: return "unknown_session";
+    case R::SessionChanged: return "session_changed";
+    case R::CaptureIntegrity: return "capture_integrity";
+    case R::RawSequence: return "raw_sequence";
+    case R::RawTimestamp: return "raw_timestamp";
+    case R::RawCount: return "raw_count";
+    case R::LateBoundary: return "late_boundary";
+    case R::MissingBoundary: return "missing_boundary";
+    case R::IncompleteFrontier: return "incomplete_frontier";
+    case R::StaleFrontier: return "stale_frontier";
+    case R::ContradictoryFrontier: return "contradictory_frontier";
+    case R::ExclusionBudgetExhausted: return "exclusion_budget_exhausted";
+    case R::EpochExhausted: return "epoch_exhausted";
+    case R::ObservationAgeAmbiguous: return "observation_age_ambiguous";
+    case R::Policy: return "policy";
+  }
+  return "unknown_reason";
+}
+
 // Core 1 owns this state. Source coordinates are explicitly projected by the
 // caller from the same RP2040 timer into its unsigned 64-bit domain. CPU age
 // can withhold authority, but cannot prove physical reference absence.
@@ -16,6 +40,7 @@ struct OtisAcceptedReferenceStatus {
   uint32_t acquisition_progress = 0u;
   uint32_t excluded_candidate_count = 0u;
   uint32_t loss_count = 0u;
+  const char *last_loss_reason = "none";
   bool tracking = false;
   bool anchor_current = false;
   const char *state = "unseeded";
@@ -102,8 +127,10 @@ class OtisReferenceAcceptanceLive {
     }
     if (result.disposition == D::QualificationLost) {
       if (status_.loss_count != UINT32_MAX) ++status_.loss_count;
+      status_.last_loss_reason = otis_reference_acceptance_reason_name(result.reason);
       status_.state = "lost";
     } else if (result.disposition == D::InvalidPolicy) {
+      status_.last_loss_reason = otis_reference_acceptance_reason_name(result.reason);
       status_.state = "fault";
     } else if (!result.tracking) {
       status_.state = "acquiring";

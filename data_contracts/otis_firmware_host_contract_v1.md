@@ -120,8 +120,8 @@ query-bound generation. The raw REF/SNP/CNT layouts remain unchanged. The
 reference-policy header is separately generated and checked with
 `python tools/generate_reference_acceptance_policy.py --check`.
 
-The declared telemetry overlap is 195 frames (91 nonactive health plus two
-52-frame ACTIVE snapshots), held in 196 slots. Queue slot positions are owned
+The declared telemetry overlap is 196 frames (92 nonactive health plus two
+52-frame ACTIVE snapshots), held in 197 slots. Queue slot positions are owned
 separately from wrapping 32-bit publication counters, so non-power-of-two
 capacity cannot overwrite unread evidence at counter rollover. The fixed image
 must still pass its existing RAM limits; these counts alone are not a resource

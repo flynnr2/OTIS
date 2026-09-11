@@ -1,13 +1,13 @@
-# active_hybrid_decisions_v2.csv
+# active_hybrid_decisions_v3.csv
 
-`AHY` schema version 2 is the sole current adaptive-hybrid decision record.
+`AHY` schema version 3 is the sole current adaptive-hybrid decision record.
 Each row carries the complete controller decision and its exact
 `decision_timestamp_ticks` in `rp2040_monotonic_us64`; there is no separate
 timing record or compatibility product.
 
-The exact field order is `ACTIVE_HYBRID_DECISION_V2_FIELDS` in
+The exact field order is `ACTIVE_HYBRID_DECISION_V3_FIELDS` in
 `host/otis_tools/contracts.py`. `hybrid_record_sequence` is strictly increasing.
-Run, build, image, estimator, policy, capture-session, D14/D8 source-frontier,
+Run, build, image, estimator, policy, capture-session, accepted-span session, acceptance-epoch and accepted-boundary source,
 phase, applied-code and DAC-epoch identities bind the complete decision.
 
 `decision_timestamp_s` remains an explicit derived controller-policy input.
@@ -22,3 +22,8 @@ validity or authority.
 
 AHY is evidence only and always `actionable=false`. Physical actuation requires
 the separately recorded exact ACT transaction.
+
+The source coordinate is explicit: `source_acceptance_epoch` plus opening and
+closing accepted-boundary ordinals identify the same 600 APS window as the
+selected EST. Accepted ordinals use uint32 modular order; an ordinal of zero is
+valid after wrap and does not denote a missing source.

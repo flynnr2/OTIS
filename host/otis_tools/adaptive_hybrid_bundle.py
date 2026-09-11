@@ -333,9 +333,9 @@ def _validate_build(
         or external_event.get("terminal_authority") is not False
     ):
         raise ValueError("firmware build does not select adaptive_hybrid_regulation")
-    if configuration.get("contract_bindings") != {
-        "firmware_host": firmware_host_contract_binding()
-    }:
+    if configuration.get("contract_bindings") != build_firmware.contract_binding_report(
+        build_firmware.load_manifest()
+    ):
         raise ValueError(
             "firmware build does not bind the exact current firmware/host contract"
         )

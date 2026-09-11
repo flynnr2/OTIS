@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <type_traits>
+#include "otis_firmware_host_contract.generated.h"
 
 // Set a reachable pre-rollover state without billions of queue operations.
 // No test-only mutator or alternative counter type enters the production API.
@@ -10,7 +11,7 @@
 #undef private
 
 int main() {
-  constexpr uint32_t capacity = 196u;
+  constexpr uint32_t capacity = OTIS_TELEMETRY_QUEUE_DEPTH;
   OtisSpscQueue<uint32_t, capacity> queue;
   const uint32_t origin = UINT32_MAX - 2u;
   queue.head_ = queue.tail_ = origin;

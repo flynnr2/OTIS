@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import errno
 from hashlib import sha256
@@ -802,6 +802,7 @@ class _LifecycleBuilder:
             setup_applied_code=self.programme.setup_code,
             setup_dac_epoch=1,
         )
+        self.response_baseline_error_hz: float | None = None
         self.hybrid_sequence = 0
         self.maintenance_sequence = 0
         self.burst_sequence = 0
@@ -941,7 +942,7 @@ class _LifecycleBuilder:
                 "tight_state": observation.tight_state,
                 "phase_estimator_sha256": self.bindings["phase_estimator"]["sha256"],
                 "phase_epoch": str(observation.phase_epoch),
-                "phase_observation_sequence": str(observation.source_closing_accepted_boundary_ordinal),
+                "phase_observation_sequence": str(observation.source_closing_accepted_boundary_ordinal - 1200),
                 "relative_phase_cycles": str(observation.relative_phase_cycles),
                 "phase_continuous": str(observation.phase_valid).lower(),
                 "phase_current": str(observation.phase_valid).lower(),
@@ -995,6 +996,7 @@ class _LifecycleBuilder:
         *,
         authority_state: str = "ARMED",
     ) -> tuple[AdaptiveHybridDecision, dict[str, str], dict[str, str]]:
+        observation = replace(observation, cadence_eligible=authority_state == "ARMED")
         before = {
             **self._snapshot("before"),
             "frontier_relation_before": self._frontier_relation(observation),
@@ -1124,7 +1126,7 @@ class _LifecycleBuilder:
                 "source_opening_accepted_boundary_ordinal": str(observation.source_opening_accepted_boundary_ordinal),
                     "source_closing_accepted_boundary_ordinal": str(observation.source_closing_accepted_boundary_ordinal),
                     "phase_epoch": str(observation.phase_epoch),
-                    "phase_observation_sequence": str(observation.source_closing_accepted_boundary_ordinal),
+                    "phase_observation_sequence": str(observation.source_closing_accepted_boundary_ordinal - 1200),
                     "phase_valid": str(observation.phase_valid).lower(),
                 }
             )
@@ -1192,8 +1194,11 @@ class _LifecycleBuilder:
             / 600.0
             - 10_000_000.0
         )
+        if self.response_baseline_error_hz is None:
+            self.response_baseline_error_hz = frequency_error
         post_error = 0.0
         observed_response = post_error - frequency_error
+        cumulative_response = post_error - self.response_baseline_error_hz
         common = {
             "record_type": "ACT",
             "schema_version": "3",
@@ -1315,7 +1320,8 @@ class _LifecycleBuilder:
                 "cumulative_movement_codes": str(cumulative),
                 "post_error_hz": f"{post_error:.12f}",
                 "observed_response_hz": f"{observed_response:.12f}",
-                "cumulative_response_hz": f"{observed_response:.12f}",
+                "cumulative_response_hz": f"{cumulative_response:.12f}",
+                "consecutive_indeterminate": str(application_sequence),
                 "active_state": "DISARMED",
                 "response_class": "healthy_indeterminate_near_resolution",
                 "reason": "healthy_evidence_below_empirical_detection_floor",
@@ -1551,7 +1557,7 @@ class _LifecycleBuilder:
         metadata_hold = self._maintenance_row(
             "gnss_metadata_hold_enter",
             before=hold_before,
-            timestamp_ticks=4_203 * RP2040_US,
+            timestamp_ticks=4_202 * RP2040_US + 300_000,
             reason="recoverable_gnss_metadata_anomaly",
             observation=hold_origin,
             hybrid=first.response_decision,
@@ -1561,7 +1567,7 @@ class _LifecycleBuilder:
         metadata_requalified = self._maintenance_row(
             "gnss_metadata_requalified",
             before=requalified_before,
-            timestamp_ticks=4_204 * RP2040_US,
+            timestamp_ticks=4_202 * RP2040_US + 400_000,
             reason="fresh_same_receiver_metadata",
             observation=hold_origin,
             hybrid=first.response_decision,
@@ -1660,6 +1666,7 @@ class DeterministicPtyInstrument:
         self.bundle = bundle
         self.programme = ADAPTIVE_HYBRID_PROGRAMME
         self.fixture = build_lifecycle_fixture(bundle)
+        self.reference_acceptance_binding = _reference_acceptance_binding(bundle)
         self.identities = {
             "run_identity": self.programme.runtime_run_identity,
             "build_identity": str(bundle["firmware"]["build_identity"]),
@@ -1859,16 +1866,17 @@ class DeterministicPtyInstrument:
         active.update(
             {
                 "query_nonce": str(self.query_nonce),
+                "uptime_s": str(max(1200, self.accepted_boundary_ordinal)),
                 "gnss_metadata_hold_active": "false",
                 "gnss_metadata_hold_transaction_pending": "false",
                 "gnss_metadata_hold_entry_sequence": "0",
                 "gnss_metadata_requalification_sequence": "0",
-                "gnss_metadata_qualification_accepted_boundary_ordinal": "0",
+                "gnss_qualified_accepted_ordinal": "0",
                 "accepted_boundary_ordinal": str(self.accepted_boundary_ordinal),
                 "acceptance_epoch": "1",
                 "accepted_anchor_current": "true",
                 "reference_acceptance_state": "tracking",
-                "reference_acceptance_policy_sha256": _reference_acceptance_binding(self.bundle)["policy_sha256"],
+                "reference_acceptance_policy_sha256": self.reference_acceptance_binding["policy_sha256"],
                 "hybrid_state": "SETUP_PENDING",
                 "hybrid_reason": "awaiting_exact_setup",
                 "first_phase_checkpoint_passed": "false",
@@ -1923,7 +1931,7 @@ class DeterministicPtyInstrument:
                     "gnss_metadata_requalification_sequence": (
                         "2" if self.metadata_state == "requalified" else "0"
                     ),
-                    "gnss_metadata_qualification_accepted_boundary_ordinal": (
+                    "gnss_qualified_accepted_ordinal": (
                         "4202" if self.metadata_state == "requalified" else "0"
                     ),
                     "accepted_boundary_ordinal": (
@@ -1935,7 +1943,7 @@ class DeterministicPtyInstrument:
                     "phase_nonzero_application_count": str(applied_count),
                     "phase_material_application_count": str(applied_count),
                     "frequency_only_application_count": "0",
-                    "uptime_s": str(1200 + 2100 * self.transaction_index),
+                    "uptime_s": str(max(1200, self.accepted_boundary_ordinal)),
                 }
             )
             health[("dac", "applied_code_known")] = "true"
@@ -2024,7 +2032,21 @@ class DeterministicPtyInstrument:
         with self._lock:
             _write_all_fd(self.master_fd, b"\n")
 
+    def _pps_health(self) -> dict[tuple[str, str], str]:
+        return {
+            **{("pps_gate", key): "0" for key in _authoritative_capture_counters(self.programme)},
+            ("pps_gate", "snapshot_session"): "1",
+            ("pps_gate", "reference_acceptance_epoch"): "1",
+            ("pps_gate", "accepted_boundary_ordinal"): str(self.accepted_boundary_ordinal),
+            ("pps_gate", "reference_acceptance_policy_sha256"): self.reference_acceptance_binding["policy_sha256"],
+            ("pps_gate", "reference_acceptance_state"): "tracking",
+            ("pps_gate", "accepted_anchor_current"): "true",
+            ("pps_gate", "fifo_continuity"): "continuous",
+            ("pps_gate", "association_state"): "clean",
+        }
+
     def _emit_snapshot(self) -> None:
+        self._emit_health_map(self._pps_health())
         self.generation += 1
         active = {
             key: value
@@ -2109,7 +2131,7 @@ class DeterministicPtyInstrument:
             "counted_edges": str(10_000_000 + self.raw_interval_adjustments.get(ordinal, 0)),
             "excluded_candidate_count": str(closing - opening - 1),
             "nominal_interval_count": "1",
-            "acceptance_policy_sha256": _reference_acceptance_binding(self.bundle)["policy_sha256"],
+            "acceptance_policy_sha256": self.reference_acceptance_binding["policy_sha256"],
         }
 
     def _emit_source_through(self, target_sequence: int) -> None:
@@ -2228,6 +2250,7 @@ class DeterministicPtyInstrument:
     def _emit_phase_source(self, decision: dict[str, str]) -> None:
         ordinal = int(decision["source_closing_accepted_boundary_ordinal"])
         span = self._accepted_span(ordinal)
+        phase_sequence = ordinal - 1200
         # Phase opens at setup. Every adjustment since then is retained in raw APS.
         phase = sum(delta for closing, delta in self.raw_interval_adjustments.items()
                     if 1200 < closing <= ordinal)
@@ -2237,7 +2260,7 @@ class DeterministicPtyInstrument:
             authoritative_document(self.bundle["authoritative_inputs"], ROOT_PROFILE)["bindings"]["phase_estimator"])["sha256"]
         row = {
             "record_type": "RPH", "schema_version": "2", "phase_epoch": "1",
-            "observation_sequence": str(ordinal), "capture_session": "1",
+            "observation_sequence": str(phase_sequence), "capture_session": "1",
             "acceptance_epoch": "1", "accepted_boundary_ordinal": str(ordinal),
             "source_accepted_span_ref": f"live:APS:1:1:{ordinal}",
             **{key: span[key] for key in ("opening_snapshot_sequence", "closing_snapshot_sequence",
@@ -2254,17 +2277,26 @@ class DeterministicPtyInstrument:
             "discontinuity_reason": "", "calibrated_uncertainty_status": "unavailable",
         }
         self._emit_rows(CONTRACT_FIELDS["relative_phase_observations_v2"], [row])
+        # The existing phase estimator retains a 600-span endpoint slope at
+        # its own 600-span output cadence. DAC changes reset that support only.
+        dac_epoch = int(decision["dac_epoch"])
+        support_origin = (1200 if dac_epoch == 1 else
+            int((self.fixture.first_transaction if dac_epoch == 2 else
+                 self.fixture.second_transaction).phases[2]["application_timestamp_s"]) + 1)
+        frequency_closing = support_origin + ((ordinal - support_origin) // 600) * 600
+        frequency_error = sum(delta for closing, delta in self.raw_interval_adjustments.items()
+                              if frequency_closing - 600 < closing <= frequency_closing) / 600.0
         self._emit_rows(CONTRACT_FIELDS["phase_estimator_outputs_v2"], [{
             "record_type": "PHE", "schema_version": "2", "phase_epoch": "1",
-            "observation_sequence": str(ordinal), "capture_session": "1",
+            "observation_sequence": str(phase_sequence), "capture_session": "1",
             "acceptance_epoch": "1", "accepted_boundary_ordinal": str(ordinal),
-            "source_relative_phase_observation": f"RPH:1:{ordinal}",
+            "source_relative_phase_observation": f"RPH:1:{phase_sequence}",
             "raw_relative_phase_cycles": str(phase), "raw_relative_phase_time_ns": str(phase * 100),
             "filtered_relative_phase_cycles": str(phase),
-            "estimated_frequency_error_hz": decision["frequency_error_hz"],
+            "estimated_frequency_error_hz": f"{frequency_error:.12f}",
             "estimator_id": "OTIS_RELATIVE_PHASE_ESTIMATOR_V1", "configuration_sha256": phase_hash,
-            "estimate_age_s": "0", "qualification_state": "qualified",
-            "uncertainty_status": "unavailable", "reason_codes": "uncertainty_model_unavailable",
+            "estimate_age_s": str(ordinal - frequency_closing), "qualification_state": "qualified",
+            "uncertainty_status": "unavailable", "reason_codes": ("frequency_estimate_fresh" if ordinal == frequency_closing else "frequency_estimate_retained"),
         }])
 
     def _emit_control_preview(
@@ -2311,22 +2343,6 @@ class DeterministicPtyInstrument:
             "decision_reason_code": "eligible_preview",
         }
         self._emit_rows(CONTRACT_FIELDS["control_previews_v1"], [row])
-
-    def _emit_transaction(self, transaction: TransactionFixture) -> None:
-        self._emit_rows(
-            ACTIVE_HYBRID_DECISION_V3_FIELDS,
-            [transaction.request_decision, transaction.response_decision],
-        )
-        self._emit_rows(ACTIVE_TRANSACTION_V3_FIELDS, transaction.phases)
-        self._emit_rows(
-            ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
-            [
-                transaction.request_maintenance,
-                transaction.application_maintenance,
-                transaction.response_decision_maintenance,
-                transaction.response_maintenance,
-            ],
-        )
 
     def _enter_hold(self) -> None:
         if self.stop_event.is_set() or self.transaction_index != 1:
@@ -2430,13 +2446,9 @@ class DeterministicPtyInstrument:
                 if self.transaction_index == 1
                 else self.fixture.second_transaction
             )
-            response_decision = transaction.response_decision
-            self._emit_source_through(
-                int(response_decision["source_closing_accepted_boundary_ordinal"])
-            )
-            response_estimate = self._emit_selected_estimate(response_decision)
-            self._emit_control_preview(response_estimate, response_decision)
-            self._emit_transaction(transaction)
+            self._emit_rows(ACTIVE_HYBRID_DECISION_V3_FIELDS, [transaction.request_decision])
+            self._emit_rows(ACTIVE_TRANSACTION_V3_FIELDS, [transaction.phases[0]])
+            self._emit_rows(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS, [transaction.request_maintenance])
             self._emit_snapshot()
             return
         if command.startswith("ACTIVE EVIDENCE "):
@@ -2458,6 +2470,22 @@ class DeterministicPtyInstrument:
                 3: "response_pending",
                 4: "evidence_clear",
             }[phase]
+            transaction = (self.fixture.first_transaction if request == 1
+                           else self.fixture.second_transaction)
+            if phase == 1:
+                self._emit_rows(ACTIVE_TRANSACTION_V3_FIELDS, [transaction.phases[1]])
+            elif phase == 2:
+                self._emit_rows(ACTIVE_TRANSACTION_V3_FIELDS, [transaction.phases[2]])
+                self._emit_rows(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS, [transaction.application_maintenance])
+            elif phase == 3:
+                response = transaction.response_decision
+                self._emit_source_through(int(response["source_closing_accepted_boundary_ordinal"]))
+                estimate = self._emit_selected_estimate(response)
+                self._emit_control_preview(estimate, response)
+                self._emit_rows(ACTIVE_HYBRID_DECISION_V3_FIELDS, [response])
+                self._emit_rows(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS, [transaction.response_decision_maintenance])
+                self._emit_rows(ACTIVE_TRANSACTION_V3_FIELDS, [transaction.phases[3]])
+                self._emit_rows(ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS, [transaction.response_maintenance])
             if phase == 4:
                 self.first_checkpoint = True
             self._emit_snapshot()
@@ -2478,6 +2506,7 @@ class DeterministicPtyInstrument:
         try:
             self._emit_late_attach_boot_preamble()
             self._emit_initial_observations()
+            self._emit_source_through(1200)
             while not self.stop_event.is_set():
                 readable, _, _ = select.select([self.master_fd], [], [], 0.05)
                 if not readable:

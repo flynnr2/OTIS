@@ -171,7 +171,9 @@ def run(
             metadata_qualified=False,
         )
     )
-    controller.requalify_metadata(2400)
+    controller.requalify_metadata(
+        acceptance_epoch=1, accepted_boundary_ordinal=2400
+    )
     first_requalification = controller.decide(
         _observation(
             controller,

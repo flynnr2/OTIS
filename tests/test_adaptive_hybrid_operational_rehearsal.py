@@ -200,6 +200,25 @@ def test_rehearsal_raw_accepted_sources_and_phase_are_coherent(
     for values in csv.reader(io.StringIO(wire.decode())):
         if values[0] in contracts:
             rows[values[0]].append(dict(zip(CONTRACT_FIELDS[contracts[values[0]]], values, strict=True)))
+    from host.otis_tools.contracts import CsvValidationContext, validate_csv
+    validation_rows = {contracts[tag]: values for tag, values in rows.items()}
+    validation_rows.update({
+        "active_transactions_v3": instrument.fixture.transactions,
+        "active_hybrid_decisions_v3": instrument.fixture.decisions,
+        "active_hybrid_maintenance_v2": instrument.fixture.maintenance,
+    })
+    for contract, records in validation_rows.items():
+        path = tmp_path / f"{contract}.csv"
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=CONTRACT_FIELDS[contract])
+            writer.writeheader()
+            writer.writerows(records)
+        validation = validate_csv(path, CsvValidationContext(
+            contract=contract, known_channels=frozenset({0, 1, 2}),
+            known_domains=frozenset({"rp2040_monotonic_us32", "rp2040_monotonic_us64", "h1_oscillator_10mhz"}),
+            expected_policy_sha256=instrument.reference_acceptance_binding["policy_sha256"],
+        ))
+        assert validation.ok, (contract, validation.errors)
     policy = authoritative_document(bundle["authoritative_inputs"], "data_contracts/reference_acceptance_policy_v1.json")
     exact, report, accepted = replay_accepted_spans(
         rows["SNP"], rows["REF"], rows["CNT"], rows["APS"],
@@ -226,7 +245,10 @@ def test_rehearsal_raw_accepted_sources_and_phase_are_coherent(
         if index in (0, 1, 5):
             application = 1200071551 if index == 0 else applications[0 if index == 1 else 1]
             assert opening * 1000000 >= application + 900000000
-    for transaction in (instrument.fixture.first_transaction, instrument.fixture.second_transaction):
+    baseline = float(instrument.fixture.first_transaction.phases[0]["pre_error_hz"])
+    for number, transaction in enumerate((instrument.fixture.first_transaction, instrument.fixture.second_transaction), 1):
         response = transaction.phases[3]
+        assert int(response["consecutive_indeterminate"]) == number
+        assert float(response["cumulative_response_hz"]) == pytest.approx(-baseline, abs=1e-12)
         assert response["post_error_hz"] == transaction.response_decision["frequency_error_hz"]
         assert float(response["observed_response_hz"]) == pytest.approx(-float(response["pre_error_hz"]), abs=1e-12)

@@ -22,12 +22,16 @@ Responsibilities are grouped as follows:
 - `adaptive_hybrid_bundle`, `adaptive_hybrid_proposal`,
   `adaptive_hybrid_structural_preflight`, `adaptive_hybrid_activation`, and
   `adaptive_hybrid_run` form the frozen operational path;
-- `authoritative_inputs` freezes the exact five-profile transitive closure and
-  all seven current schemas as content-addressed bytes, while
+- `authoritative_inputs` freezes the exact five-profile transitive closure,
+  all seven current schemas, and the reference-acceptance policy as
+  content-addressed bytes, while
   `firmware_binary` independently reconstructs and inspects the UF2 payload;
 - `adaptive_hybrid_replay`, `adaptive_hybrid_analyze`, and
   `adaptive_hybrid_monitor` provide deterministic replay, analysis, and
   retained-state monitoring;
+- `accepted_span_replay` reconstructs accepted PPS spans from unchanged raw
+  REF/SNP/CNT evidence; `acquisition_frontier` binds authority to an immutable
+  retained opening and an exact same-epoch 600-span estimate;
 - `adaptive_hybrid_evidence`, `evidence`, `evidence_finalization`, and
   `evidence_index` preserve provenance, sealing, and registration; and
 - `time_domains`, `contracts`, `run_loader`, and `run_paths` provide shared
@@ -69,6 +73,17 @@ fixed firmware + policy + tools
 The bundle embeds and content-addresses every decision-bearing component,
 including the exact profile/schema bytes used by later supervision, replay,
 and analysis. Those consumers do not substitute files from the live checkout.
+An accepted boundary ordinal is a wrapping 32-bit coordinate within a
+nonzero acceptance epoch. It is distinct from a raw capture sequence, phase
+epoch, and DAC epoch. A rejected early edge does not advance it or create a
+new accepted opening. Qualification cannot add progress across epochs.
+
+Before ARM, the host binds the selected EST to its 600 APS records and their
+raw sources at retained canonical CSV positions. A recent observer state alone
+does not prove source identity or completeness. Partial late-attachment evidence
+stays unqualified; a fully retained opening can anchor later complete spans
+without pretending the recorder observed the original acquisition sequence.
+
 The retained `adaptive_hybrid_structural_preflight` tool is a deterministic
 structural preflight: it exercises current controller, exact-timing, evidence,
 and D10-isolation semantics without device or process I/O, and cannot authorize

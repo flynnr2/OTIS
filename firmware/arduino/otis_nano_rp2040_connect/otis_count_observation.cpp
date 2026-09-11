@@ -307,6 +307,8 @@ void emit_pps_gate_status(OtisStatusEmitContext *status_context,
                  accepted.excluded_candidate_count, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status_u32(status_context, "pps_gate", "reference_acceptance_loss_count",
                  accepted.loss_count, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+  emit_status(status_context, "pps_gate", "reference_acceptance_last_loss_reason",
+              accepted.last_loss_reason, OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status(status_context, "pps_gate", "accepted_anchor_current",
               bool_text(accepted.anchor_current), OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   emit_status(status_context, "pps_gate", "backend", "pps_gated_ratio",

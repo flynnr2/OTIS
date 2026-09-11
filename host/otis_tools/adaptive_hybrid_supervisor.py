@@ -2269,6 +2269,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
             if not isinstance(retained, dict):
                 retained = {
+                    "capture_session": int(health[("adaptive_hybrid", "session_id")]),
+                    "acceptance_epoch": int(health[("adaptive_hybrid", "acceptance_epoch")]),
                     "entry_sequence": entry_sequence,
                     "applied_code": code,
                     "dac_epoch": epoch,
@@ -2333,7 +2335,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         if (
             metadata_sequence <= retained["entry_sequence"]
-            or observation_sequence <= qualification_frontier
+            or not 0 <= observation_sequence < 1 << 32
+            or not 0 <= qualification_frontier < 1 << 32
+            or not 0 < (observation_sequence - qualification_frontier) % (1 << 32) < 1 << 31
+            or int(health[("adaptive_hybrid", "session_id")]) != retained["capture_session"]
+            or int(health[("adaptive_hybrid", "acceptance_epoch")]) != retained["acceptance_epoch"]
             or health.get(("adaptive_hybrid", "state")) != "DISARMED"
         ):
             raise ValueError("GNSS metadata hold cleared without fresh causal requalification")
@@ -2492,7 +2498,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 if (
                     acceptance_epoch_origin <= 0
                     or current_epoch != acceptance_epoch_origin
-                    or not (0 < accepted_origin < 1 << 32)
+                    or not (0 <= accepted_origin < 1 << 32)
                 ):
                     raise ValueError("ADAPTIVE_HYBRID qualified D14 aperture origin is malformed")
         else:
@@ -2588,7 +2594,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         if (
             session_id <= 0
             or acceptance_epoch <= 0
-            or not 0 < accepted_origin < 1 << 32
+            or not 0 <= accepted_origin < 1 << 32
             or any(value < 0 for value in baseline.values())
         ):
             return
@@ -2797,6 +2803,12 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             raise ValueError(
                 "ADAPTIVE_HYBRID acceptance session or epoch changed during qualification"
             )
+        if (
+            origin_epoch <= 0 or origin_session <= 0
+            or not 0 <= origin_ordinal < 1 << 32
+            or not 0 <= current_ordinal < 1 << 32
+        ):
+            raise ValueError("ADAPTIVE_HYBRID accepted boundary coordinate is malformed")
         accepted_delta = (current_ordinal - origin_ordinal) & 0xFFFFFFFF
         if accepted_delta > 0x7FFFFFFF:
             raise ValueError(

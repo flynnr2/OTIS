@@ -11,7 +11,9 @@ from .raw_measurement_replay import (
     SELECTED_ESTIMATOR_ID, _RAW_REFERENCE_DOMAIN, _SNAPSHOT_BACKEND,
     _U32_MODULUS, _raw_count_replay, _u32,
 )
-from .accepted_span_replay import POLICY_PATH, replay_accepted_spans
+from .accepted_span_replay import (
+    POLICY_PATH, accepted_window_ref, replay_accepted_spans,
+)
 from .authoritative_inputs import authoritative_binding, authoritative_document
 from .time_domains import forward_progress
 
@@ -28,6 +30,54 @@ FRONTIER_POLICY = {
 
 def _digest(value: Any) -> str:
     return sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def _validate_selected_estimate_source(
+    row: dict[str, str], verified: list[dict[str, Any]], manifest: dict[str, Any]
+) -> None:
+    if len(verified) != 600:
+        raise ValueError("selected EST source is not exactly 600 accepted spans")
+    session = int(row["capture_session"])
+    epoch = int(row["source_acceptance_epoch"])
+    opening = int(row["source_opening_accepted_boundary_ordinal"])
+    closing = int(row["source_closing_accepted_boundary_ordinal"])
+    first, last = verified[0], verified[-1]
+    if (
+        row.get("time_domain") != _RAW_REFERENCE_DOMAIN
+        or (closing - opening) % _U32_MODULUS != 600
+        or row.get("source_accepted_spans_ref")
+            != accepted_window_ref(session, epoch, opening, closing)
+        or int(row.get("source_opening_snapshot_sequence", -1))
+            != first["opening_snapshot_sequence"]
+        or int(row.get("source_closing_snapshot_sequence", -1))
+            != last["closing_snapshot_sequence"]
+        or int(row.get("source_opening_reference_sequence", -1))
+            != first["opening_reference_sequence"]
+        or int(row.get("source_closing_reference_sequence", -1))
+            != last["closing_reference_sequence"]
+        or row.get("accepted_sample_count") != "600"
+        or row.get("config_hash")
+            != manifest.get("transaction_identities", {}).get("estimator_sha256")
+        or any(
+            row.get(field) != "valid"
+            for field in ("observation_validity", "reference_validity", "count_validity")
+        )
+    ):
+        raise ValueError("selected EST does not match its accepted source identity")
+    from decimal import Decimal
+    total = sum(item["counted_edges"] for item in verified)
+    frequency = Decimal.from_float(float(total) / 600.0)
+    error_hz = Decimal.from_float(float(total) / 600.0 - 10_000_000.0)
+    tolerance = Decimal("0.0000000000005")
+    reported_frequency = Decimal(row["frequency_estimate_hz"])
+    reported_error = Decimal(row["frequency_error_hz"])
+    if not reported_frequency.is_finite() or not reported_error.is_finite():
+        raise ValueError("selected EST arithmetic is not finite")
+    if (
+        abs(reported_frequency - frequency) > tolerance
+        or abs(reported_error - error_hz) > tolerance
+    ):
+        raise ValueError("selected EST arithmetic differs from retained raw source")
 
 
 def _write_state(path: Path, value: dict[str, Any]) -> None:
@@ -89,8 +139,49 @@ def read_acquisition_readiness(
         result["anchor_ready"] = state["anchor_ready"] and not result["errors"]
         if source_estimate_id is not None and source_estimate_id in ids:
             proof = proofs[ids.index(source_estimate_id)]
-            _bind_source_at_offset(run_dir, manifest_value, "EST", proof)
-            _bind_accepted_span_window(run_dir, manifest_value, proof)
+            estimate = _bind_source_at_offset(run_dir, manifest_value, "EST", proof)
+            spans = _bind_accepted_span_window(run_dir, manifest_value, proof)
+            snapshots, references, counts = _bind_raw_source_window(
+                run_dir, manifest_value, proof
+            )
+            policy = authoritative_document(
+                manifest_value.get("authoritative_inputs"), POLICY_PATH
+            )
+            policy_sha = authoritative_binding(
+                manifest_value.get("authoritative_inputs"), POLICY_PATH
+            )["sha256"]
+            exact, report, verified = replay_accepted_spans(
+                snapshots, references, counts, spans,
+                acceptance_policy=policy,
+                acceptance_policy_sha256=str(policy_sha),
+            )
+            session = int(estimate["capture_session"])
+            epoch = int(estimate["source_acceptance_epoch"])
+            opening = int(estimate["source_opening_accepted_boundary_ordinal"])
+            closing = int(estimate["source_closing_accepted_boundary_ordinal"])
+            if (
+                not exact
+                or len(verified) != 600
+                or proof.get("capture_session") != session
+                or proof.get("source_acceptance_epoch") != epoch
+                or proof.get("source_opening_accepted_boundary_ordinal") != opening
+                or proof.get("source_closing_accepted_boundary_ordinal") != closing
+                or (closing - opening) % _U32_MODULUS != 600
+                or estimate.get("source_accepted_spans_ref")
+                    != accepted_window_ref(session, epoch, opening, closing)
+                or any(
+                    int(row["capture_session"]) != session
+                    or int(row["acceptance_epoch"]) != epoch
+                    or int(row["accepted_boundary_ordinal"])
+                        != (opening + index) % _U32_MODULUS
+                    for index, row in enumerate(spans, start=1)
+                )
+            ):
+                raise ValueError(
+                    "live selected EST source does not reconstruct from retained APS/raw evidence: "
+                    + "; ".join(report["errors"])
+                )
+            _validate_selected_estimate_source(estimate, verified, manifest_value)
             if proof.get("capture_session") != result["capture_session"]:
                 raise ValueError("selected EST proof belongs to a different capture session")
             result["source_proof"] = proof
@@ -372,6 +463,9 @@ class AcquisitionFrontierTracker:
                     "source_opening_accepted_boundary_ordinal": int(source["record"]["source_opening_accepted_boundary_ordinal"]),
                     "source_closing_accepted_boundary_ordinal": int(source["record"]["source_closing_accepted_boundary_ordinal"]),
                     "accepted_span_sources": source["accepted_span_sources"],
+                    "raw_reference_sources": source["raw_reference_sources"],
+                    "raw_snapshot_sources": source["raw_snapshot_sources"],
+                    "raw_count_sources": source["raw_count_sources"],
                 })
         if force_publish:
             self._publish()
@@ -408,30 +502,15 @@ class AcquisitionFrontierTracker:
         )
         if not exact or len(verified) != 600:
             raise ValueError("selected EST source is not 600 exact accepted spans: " + "; ".join(report["errors"]))
-        first, last = verified[0], verified[-1]
-        from .accepted_span_replay import accepted_window_ref
-        if (row.get("time_domain") != _RAW_REFERENCE_DOMAIN
-            or row.get("source_accepted_spans_ref") != accepted_window_ref(session, epoch, opening, closing)
-            or int(row.get("source_opening_snapshot_sequence", -1)) != first["opening_snapshot_sequence"]
-            or int(row.get("source_closing_snapshot_sequence", -1)) != last["closing_snapshot_sequence"]
-            or int(row.get("source_opening_reference_sequence", -1)) != first["opening_reference_sequence"]
-            or int(row.get("source_closing_reference_sequence", -1)) != last["closing_reference_sequence"]
-            or row.get("accepted_sample_count") != "600"
-            or row.get("config_hash") != self.manifest.get("transaction_identities", {}).get("estimator_sha256")
-            or any(row.get(field) != "valid" for field in ("observation_validity", "reference_validity", "count_validity"))):
-            raise ValueError("selected EST does not match its accepted source identity")
-        total = sum(item["counted_edges"] for item in verified)
-        # Firmware computes its double frequency before serializing 12 places.
-        from decimal import Decimal
-        frequency = Decimal.from_float(float(total) / 600.0)
-        error_hz = Decimal.from_float(float(total) / 600.0 - 10_000_000.0)
-        tolerance = Decimal("0.0000000000005")
-        reported_frequency = Decimal(row["frequency_estimate_hz"])
-        reported_error = Decimal(row["frequency_error_hz"])
-        if not reported_frequency.is_finite() or not reported_error.is_finite():
-            raise ValueError("selected EST arithmetic is not finite")
-        if abs(reported_frequency - frequency) > tolerance or abs(reported_error - error_hz) > tolerance:
-            raise ValueError("selected EST arithmetic differs from retained raw source")
+        first = verified[0]
+        opening_snapshot = self.snapshots[first["source_first_snapshot_position"]]
+        if (
+            session != int(self.frontier["closing_snapshot"]["record"]["session"])
+            or opening_snapshot["capture_line_ordinal"]
+            < self.frontier["opening_snapshot"]["capture_line_ordinal"]
+        ):
+            return "unqualified_prefix"
+        _validate_selected_estimate_source(row, verified, self.manifest)
         source["accepted_span_sources"] = [
             {
                 "csv_row_ordinal": item["csv_row_ordinal"],
@@ -440,6 +519,15 @@ class AcquisitionFrontierTracker:
                 "row_sha256": item["row_sha256"],
             }
             for item in source_spans
+        ]
+        source["raw_reference_sources"] = [
+            _live_source_pointer(item) for item in self.references
+        ]
+        source["raw_snapshot_sources"] = [
+            _live_source_pointer(item) for item in self.snapshots
+        ]
+        source["raw_count_sources"] = [
+            _live_source_pointer(item) for item in self.counts
         ]
         return "qualified"
 
@@ -582,7 +670,18 @@ def _verify_live_marker(run_dir: Path, artifact: dict[str, Any]) -> bool:
     return markers == 1
 
 
-def _bind_source_at_offset(run_dir: Path, manifest: dict[str, Any], tag: str, source: dict[str, Any]) -> None:
+def _live_source_pointer(source: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "csv_row_ordinal": source["csv_row_ordinal"],
+        "capture_line_ordinal": source["capture_line_ordinal"],
+        "csv_byte_offset": source["csv_byte_offset"],
+        "row_sha256": source["row_sha256"],
+    }
+
+
+def _bind_source_at_offset(
+    run_dir: Path, manifest: dict[str, Any], tag: str, source: dict[str, Any]
+) -> dict[str, str]:
     import csv
     offset = source.get("csv_byte_offset")
     if type(offset) is not int or offset < 0:
@@ -604,17 +703,20 @@ def _bind_source_at_offset(run_dir: Path, manifest: dict[str, Any], tag: str, so
         raise ValueError("live source header or record is incomplete or exceeds capture bound")
     fields = next(csv.reader([header.decode("utf-8").strip()]))
     values = next(csv.reader([raw.decode("utf-8").strip()]))
-    if len(fields) != len(values) or _digest(dict(zip(fields, values))) != source["row_sha256"]:
+    row = dict(zip(fields, values))
+    if len(fields) != len(values) or _digest(row) != source["row_sha256"]:
         raise ValueError("live source differs from its retained canonical CSV byte position")
+    return row
 
 
 def _bind_accepted_span_window(
     run_dir: Path, manifest: dict[str, Any], proof: dict[str, Any]
-) -> None:
+) -> list[dict[str, str]]:
     sources = proof.get("accepted_span_sources")
     if not isinstance(sources, list) or len(sources) != 600:
         raise ValueError("live selected EST lacks its 600-span proof")
     previous_ordinal = 0
+    rows: list[dict[str, str]] = []
     for source in sources:
         if (
             not isinstance(source, dict)
@@ -624,12 +726,44 @@ def _bind_accepted_span_window(
             }
         ):
             raise ValueError("live accepted-span proof entry is malformed")
-        _bind_source_at_offset(run_dir, manifest, "APS", source)
+        rows.append(_bind_source_at_offset(run_dir, manifest, "APS", source))
         ordinal = source["csv_row_ordinal"]
         if type(ordinal) is not int or ordinal != previous_ordinal + 1:
             if previous_ordinal:
                 raise ValueError("live accepted-span CSV rows are not contiguous")
         previous_ordinal = ordinal
+    return rows
+
+
+def _bind_raw_source_window(
+    run_dir: Path, manifest: dict[str, Any], proof: dict[str, Any]
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
+    result: list[list[dict[str, str]]] = []
+    for field, tag, maximum in (
+        ("raw_snapshot_sources", "SNP", 5402),
+        ("raw_reference_sources", "REF", 5402),
+        ("raw_count_sources", "CNT", 5401),
+    ):
+        sources = proof.get(field)
+        if not isinstance(sources, list) or not sources or len(sources) > maximum:
+            raise ValueError(f"live selected EST {field} is malformed or unbounded")
+        rows: list[dict[str, str]] = []
+        previous_ordinal = 0
+        for source in sources:
+            if not isinstance(source, dict) or set(source) != {
+                "csv_row_ordinal", "capture_line_ordinal", "csv_byte_offset",
+                "row_sha256",
+            }:
+                raise ValueError(f"live selected EST {field} entry is malformed")
+            ordinal = source.get("csv_row_ordinal")
+            if type(ordinal) is not int or ordinal < 1 or (
+                previous_ordinal and ordinal != previous_ordinal + 1
+            ):
+                raise ValueError(f"live selected EST {field} rows are not contiguous")
+            previous_ordinal = ordinal
+            rows.append(_bind_source_at_offset(run_dir, manifest, tag, source))
+        result.append(rows)
+    return result[0], result[1], result[2]
 
 
 def _live_marker_at_offset(run_dir: Path, artifact: dict[str, Any], offset: int | None) -> bool:
