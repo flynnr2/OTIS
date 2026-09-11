@@ -81,6 +81,19 @@ lasting preference changes.
 
 ## Architecture and scope discipline
 
+- Be ruthless about complexity. Retain machinery only where it protects timing
+  correctness, preserves required evidence, or makes a decision-bearing
+  experiment easier to run. Prefer deletion and replacement to maintaining
+  parallel approaches or compatibility with retired campaigns.
+- Keep qualification runners, private fixtures, campaign manifests and sealing
+  outside the normal instrument runtime. They are removable engineering tools,
+  not requirements for eventual power-on standalone operation or ordinary host
+  attachment. Automate necessary engineering checks without making the operator
+  manage their process topology or evidence bookkeeping by hand.
+- Do not postpone demonstrated architectural simplification until every
+  qualification passes; choose a finite replacement boundary and verify it
+  end to end. Do not use this rule to expand test scaffolding into a framework.
+
 - Develop toward a standalone instrument on the current hardware: firmware
   owns capture, qualification, operating state, and bounded oscillator control;
   a host discovers the current state and requests explicit transitions. Host

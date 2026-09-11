@@ -20,9 +20,10 @@ import stat
 import subprocess
 import sys
 import time
-from typing import Any, Callable, IO
+from typing import Any, Callable
 
-from . import adaptive_hybrid_monitor as _adaptive_hybrid_monitor
+from .adaptive_hybrid_session import AdaptiveHybridSession
+from .adaptive_hybrid_monitor import monitor_command
 
 from .adaptive_hybrid_activation import (
     EXPECTED_BAUD,
@@ -50,7 +51,7 @@ from .adaptive_hybrid_contract import (
     programme_from_mapping,
     validate_bench_attempt_envelope,
 )
-from .capture_device import _capture_state_ready, _detect_single_device, _serial_owner_pids
+from .capture_device import _detect_single_device, _serial_owner_pids
 from .contracts import HEALTH_FIELDS
 from .evidence import (
     EVIDENCE_MANIFEST,
@@ -508,16 +509,6 @@ def _supervisor_command(
     ]
 
 
-def _launch_process(command: list[str], log: IO[str]) -> subprocess.Popen[str]:
-    return subprocess.Popen(
-        command,
-        cwd=Path(__file__).resolve().parents[2],
-        stdout=log,
-        stderr=log,
-        text=True,
-        start_new_session=True,
-    )
-
 
 def _terminal(run_dir: Path) -> dict[str, Any] | None:
     state = _read_json(run_dir / SUPERVISOR_STATE)
@@ -705,19 +696,6 @@ def _wait_for_terminal_abort_delivery(
         )
         raise
 
-
-def _graceful_capture_stop(capture: subprocess.Popen[str]) -> int:
-    if capture.poll() is None:
-        capture.send_signal(signal.SIGINT)
-    try:
-        return capture.wait(timeout=CAPTURE_STOP_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        capture.send_signal(signal.SIGINT)
-        try:
-            return capture.wait(timeout=10.0)
-        except subprocess.TimeoutExpired:
-            capture.terminate()
-            return capture.wait(timeout=5.0)
 
 
 def _bounded_priority_abort(
@@ -1195,6 +1173,29 @@ def _finalize_and_register(
     }
 
 
+def _close_session_after_capture(
+    session: AdaptiveHybridSession, *, journal: Path,
+    primary_error: Exception | None,
+) -> Exception | None:
+    """Retain closure failures without masking acquisition's original outcome."""
+    try:
+        session.close_after_capture_closed()
+    except Exception as close_error:
+        failures = ([] if primary_error is None else [("live_orchestration", primary_error)])
+        failures.append(("session_closure", close_error))
+        for phase, error in failures:
+            try:
+                record_failure(journal, phase=phase, error=error)
+            except (OSError, TypeError, ValueError) as publication_error:
+                print(
+                    f"OTIS REVIEW REQUIRED: {phase} failure could not be retained: "
+                    f"{error}; journal publication failed: {publication_error}",
+                    file=sys.stderr, flush=True,
+                )
+        return primary_error if primary_error is not None else close_error
+    return primary_error
+
+
 def run_adaptive_hybrid_qualification(
     *,
     activation_path: Path,
@@ -1325,71 +1326,47 @@ def run_adaptive_hybrid_qualification(
             f"{indexed['content_sha256']}: {exc}"
         ) from exc
 
-    capture_log: IO[str] | None = None
-    supervisor_log: IO[str] | None = None
+    session: AdaptiveHybridSession | None = None
+    review_hold_result: dict[str, Any] | None = None
     capture: subprocess.Popen[str] | None = None
     supervisor: subprocess.Popen[str] | None = None
     orchestration_error: Exception | None = None
     capture_closed = False
     abort_delivery_resolved_or_bounded = False
     try:
-        capture_log = (run_dir / CAPTURE_LOG).open("x", encoding="utf-8")
-        supervisor_log = (run_dir / SUPERVISOR_LOG).open("x", encoding="utf-8")
-        capture = _launch_process(
+        session = AdaptiveHybridSession(run_dir=run_dir, device=device, physical=True)
+        capture = session.launch_capture(
             _capture_command(
                 device=device,
                 run_dir=run_dir,
                 bench_attempt=bench_attempt,
                 programme=programme,
             ),
-            capture_log,
+            run_dir / CAPTURE_LOG,
         )
         normal_fifo = run_dir / NORMAL_FIFO
         emergency_fifo = run_dir / EMERGENCY_FIFO
         host_abort_fifo = run_dir / HOST_ABORT_FIFO
-        _wait_until(
-            lambda: (
-                capture.poll() is None
-                and normal_fifo.exists()
-                and emergency_fifo.exists()
-                and stat.S_ISFIFO(normal_fifo.stat().st_mode)
-                and stat.S_ISFIFO(emergency_fifo.stat().st_mode)
-                and _capture_state_ready(run_dir, capture.pid)
-            ),
-            PROCESS_START_TIMEOUT_S,
-            "sole-owner capture and bounded command paths",
-        )
-        if _serial_owner_pids(device) != {capture.pid}:
-            raise RuntimeError("capture_device is not the sole serial owner")
+        session.wait_capture_ready(PROCESS_START_TIMEOUT_S)
         capture_owned_board = read_board_identity(
             device, bench_attempt=bench_attempt, arduino_cli=arduino_cli
         )
         if capture_owned_board.get("serial_number") != board.get("serial_number"):
             raise RuntimeError("board identity changed after capture ownership")
-        supervisor = _launch_process(
-            _supervisor_command(
+        supervisor, _monitor = session.launch_support(
+            supervisor_command=_supervisor_command(
                 run_dir=run_dir,
                 build_identity=str(bundle["firmware"]["build_identity"]),
                 bench_attempt=bench_attempt,
                 programme=programme,
             ),
-            supervisor_log,
+            monitor_command=monitor_command(run_dir),
+            supervisor_log=run_dir / SUPERVISOR_LOG,
+            monitor_log=run_dir / "reports/adaptive_hybrid_monitor.stdout.log",
         )
-        _wait_until(
-            lambda: (
-                supervisor is not None
-                and supervisor.poll() is None
-                and host_abort_fifo.exists()
-                and stat.S_ISFIFO(host_abort_fifo.stat().st_mode)
-            ),
-            PROCESS_START_TIMEOUT_S,
-            "live supervisor and independent host abort path",
-        )
-        _wait_until(
-            lambda: _terminal(run_dir) is not None
-            or (supervisor is not None and supervisor.poll() is not None),
-            int(bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]) + 120,
-            "finite ADAPTIVE_HYBRID supervisor terminal",
+        session.wait_support_ready(PROCESS_START_TIMEOUT_S)
+        session.wait_for_terminal(
+            int(bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]) + 120
         )
         terminal = _terminal(run_dir)
         if not _terminal_expected(terminal, bench_attempt, programme):
@@ -1411,7 +1388,7 @@ def run_adaptive_hybrid_qualification(
             # raising.  Either result satisfies the required ordering gate for
             # the subsequent retained close path; it must not be retried.
             abort_delivery_resolved_or_bounded = True
-        capture_exit = _graceful_capture_stop(capture)
+        capture_exit = session.close_capture_after_authorized_terminal(timeout_s=CAPTURE_STOP_TIMEOUT_S)
         capture_closed = True
         advance_phase(
             finalization_journal, "capture_closed", {"capture_exit": capture_exit}
@@ -1426,6 +1403,11 @@ def run_adaptive_hybrid_qualification(
             else RuntimeError("operator interrupted ADAPTIVE_HYBRID live orchestration")
         )
         orchestration_error = exc
+        if session is not None:
+            # A later support launch may fail before tuple assignment. The
+            # common owner still knows every process that actually started.
+            capture = session.processes.get("capture", capture)
+            supervisor = session.processes.get("supervisor", supervisor)
         if capture is not None:
             caught_terminal = _terminal(run_dir)
             if (
@@ -1465,21 +1447,14 @@ def run_adaptive_hybrid_qualification(
                         "automatic_abort_or_teardown": False,
                     },
                 )
-                complete = _write_complete(
-                    run_dir,
-                    terminal=None,
-                    orchestration_error=None,
-                )
-                return {
+                review_hold_result = {
                     "status": "pending_review",
                     "primary_decision": "operator_review_required",
                     "run_dir": str(run_dir),
-                    "complete": str(complete),
-                    "host_review_hold": str(
-                        run_dir / HOST_REVIEW_HOLD
-                    ),
+                    "host_review_hold": str(run_dir / HOST_REVIEW_HOLD),
                     "firmware_flashes": 1,
                 }
+
         _write_failure(
             run_dir=run_dir,
             activation=activation,
@@ -1495,7 +1470,7 @@ def run_adaptive_hybrid_qualification(
             )
         elif not capture_closed:
             try:
-                capture_exit = _graceful_capture_stop(capture)
+                capture_exit = session.close_capture_after_authorized_terminal(timeout_s=CAPTURE_STOP_TIMEOUT_S)
                 capture_closed = True
                 advance_phase(
                     finalization_journal,
@@ -1509,28 +1484,15 @@ def run_adaptive_hybrid_qualification(
                     error=close_error,
                 )
     finally:
-        if capture_log is not None:
-            capture_log.close()
-        if supervisor_log is not None:
-            supervisor_log.close()
-        if supervisor is not None and supervisor.poll() is None:
-            supervisor.terminate()
-            try:
-                supervisor.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                supervisor.kill()
-                supervisor.wait(timeout=5.0)
-        if capture is not None and capture.poll() is None:
-            capture.terminate()
-            try:
-                capture.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                capture.kill()
-                capture.wait(timeout=5.0)
+        # Physical diagnostic holds retain their live capture owner. No common
+        # cleanup helper is permitted to reinterpret an exception as teardown.
+        if session is not None and (capture is None or capture.poll() is not None):
+            orchestration_error = _close_session_after_capture(
+                session, journal=finalization_journal, primary_error=orchestration_error
+            )
 
-    # The finally block is the last bounded process-reaping path.  If it had to
-    # reap capture after an earlier close failure, retain and finalize that
-    # partial terminal instead of stranding it as an unfinalized package.
+    # A capture that exited during bounded closure remains a retained partial
+    # terminal, even if an earlier close observation raised an exception.
     if capture is not None and not capture_closed and capture.poll() is not None:
         capture_closed = True
         advance_phase(
@@ -1541,6 +1503,22 @@ def run_adaptive_hybrid_qualification(
                 "forced_after_error": str(orchestration_error or ""),
             },
         )
+
+    if review_hold_result is not None:
+        complete = _write_complete(run_dir, terminal=None, orchestration_error=orchestration_error)
+        advance_phase(finalization_journal, "completion", {
+            "terminal": None, "host_review_required": True,
+            "orchestration_error": str(orchestration_error),
+        })
+        indexed = _register_unfinalized(
+            run_dir=run_dir, activation=activation,
+            evidence_index_path=evidence_index_path,
+            error=orchestration_error or RuntimeError("host review required"),
+        )
+        review_hold_result.update(complete=str(complete),
+                                  evidence_content_sha256=indexed["content_sha256"],
+                                  evidence_index=str(evidence_index_path))
+        return review_hold_result
 
     if not capture_closed:
         indexed = _register_unfinalized(

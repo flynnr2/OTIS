@@ -9,7 +9,7 @@ import pytest
 
 from host.otis_tools import adaptive_hybrid_replay as replay
 from host.otis_tools import raw_measurement_replay as raw
-from host.otis_tools.authoritative_inputs import collect_authoritative_inputs, authoritative_binding, authoritative_document
+from host.otis_tools.authoritative_inputs import collect_authoritative_inputs, validate_authoritative_inputs
 from host.otis_tools.accepted_span_replay import POLICY_PATH, accepted_window_ref
 
 
@@ -18,12 +18,12 @@ MODULUS = 1 << 32
 
 @lru_cache(maxsize=1)
 def measurement_manifest_value():
-    inputs = collect_authoritative_inputs()
-    binding = authoritative_binding(inputs, POLICY_PATH)
+    inputs = validate_authoritative_inputs(collect_authoritative_inputs())
+    binding = inputs.binding(POLICY_PATH)
     return {"transaction_identities": {"estimator_sha256": "a" * 64},
-            "authoritative_inputs": inputs,
+            "authoritative_inputs": inputs.as_dict(),
             "reference_acceptance": {"path": POLICY_PATH,
-                "policy_id": authoritative_document(inputs, POLICY_PATH)["policy_id"],
+                "policy_id": inputs.document(POLICY_PATH)["policy_id"],
                 "policy_sha256": binding["sha256"]}}
 
 
@@ -413,7 +413,7 @@ def test_accepted_span_cannot_skip_an_earlier_in_window_candidate():
                 source_count_record_count="2", excluded_candidate_count="1", counted_edges="10010000")
     manifest = measurement_manifest_value()
     exact, report, _ = replay_accepted_spans(rows["snapshots.csv"], rows["ref.csv"], rows["counts.csv"], [span],
-        acceptance_policy=authoritative_document(manifest["authoritative_inputs"], POLICY_PATH),
+        acceptance_policy=validate_authoritative_inputs(manifest["authoritative_inputs"]).document(POLICY_PATH),
         acceptance_policy_sha256=manifest["reference_acceptance"]["policy_sha256"])
     assert not exact
     assert report["raw_count_replay"]["exact"]

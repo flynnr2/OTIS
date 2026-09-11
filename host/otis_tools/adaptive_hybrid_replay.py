@@ -22,7 +22,7 @@ from .accepted_span_replay import (
     accepted_window_ref,
     replay_accepted_spans,
 )
-from .authoritative_inputs import authoritative_binding, authoritative_document
+from .authoritative_inputs import ValidatedAuthoritativeInputs, validate_authoritative_inputs
 SERIALIZED_12_DECIMAL_HALF_UNIT = Decimal("0.0000000000005")
 
 
@@ -80,6 +80,7 @@ def _selected_frequency_estimator_sha256(manifest_value: dict[str, Any]) -> str:
 def _measurement_replay(
     manifest: Any,
     manifest_value: dict[str, Any],
+    *, validated_inputs: ValidatedAuthoritativeInputs | None = None,
 ) -> tuple[bool, dict[str, Any], dict[str, dict[str, str]]]:
     """Recompute selected estimates from retained accepted PPS spans."""
 
@@ -108,9 +109,13 @@ def _measurement_replay(
             "D10": {"row_count": len(external_events), "channel_exact": d10_channel_exact,
                     "local_error": d10_local_error},
         }, {}
-    frozen_inputs = manifest_value.get("authoritative_inputs")
-    policy = authoritative_document(frozen_inputs, REFERENCE_ACCEPTANCE_POLICY_PATH)
-    policy_binding = authoritative_binding(frozen_inputs, REFERENCE_ACCEPTANCE_POLICY_PATH)
+    frozen_inputs = validated_inputs
+    if frozen_inputs is None:
+        frozen_inputs = validate_authoritative_inputs(manifest_value.get("authoritative_inputs"))
+    elif not frozen_inputs.matches(manifest_value.get("authoritative_inputs")):
+        raise ValueError("measurement replay authoritative inputs differ")
+    policy = frozen_inputs.document(REFERENCE_ACCEPTANCE_POLICY_PATH)
+    policy_binding = frozen_inputs.binding(REFERENCE_ACCEPTANCE_POLICY_PATH)
     policy_sha256 = str(policy_binding["sha256"])
     expected_reference_acceptance = {
         "policy_id": policy.get("policy_id"),

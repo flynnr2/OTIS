@@ -27,7 +27,7 @@ class CaptureOwner:
 def _supervisor(root):
     supervisor = object.__new__(AdaptiveHybridSupervisor)
     supervisor.run_dir = root
-    supervisor.envelope = SimpleNamespace(bundle_sha256="b" * 64, bench_attempt=None)
+    supervisor.runtime_context = SimpleNamespace(bundle_sha256="b" * 64, bench_attempt=None)
     supervisor.state = {"host_verification_hold": None, "terminal": None,
                         "arm_pending": False, "arm_sent_at_utc": None,
                         "inflight_evidence_acknowledgement": {

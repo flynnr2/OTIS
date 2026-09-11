@@ -19,8 +19,6 @@ from .adaptive_hybrid_contract import (
 )
 from .adaptive_hybrid_proposal import validate_frozen_proposal
 from .authoritative_inputs import (
-    authoritative_binding,
-    authoritative_document,
     transaction_identities_from_bundle,
     validate_authoritative_inputs,
 )
@@ -87,7 +85,7 @@ OPERATIONAL_REHEARSAL_PROCESS_EVIDENCE_PATH = Path(
     "reports/adaptive_hybrid_operational_process_evidence_v1.json"
 )
 OPERATIONAL_REHEARSAL_MONITOR_SAMPLES_PATH = Path(
-    "reports/adaptive_hybrid_rehearsal_monitor_v1.jsonl"
+    "reports/adaptive_hybrid_monitor_samples_v1.jsonl"
 )
 OPERATIONAL_REHEARSAL_TRANSITION_DIR = Path("segments/transition")
 OPERATIONAL_REHEARSAL_TRANSITION_MANIFEST_PATH = (
@@ -348,6 +346,9 @@ def _operational_rehearsal_artifacts() -> list[str]:
         "reports/capture_device_state.json",
         "reports/adaptive_hybrid_supervisor_state.json",
         "reports/adaptive_hybrid_supervisor_events.jsonl",
+        "reports/adaptive_hybrid_session_v1.json",
+        "reports/adaptive_hybrid_supervisor_ready_v1.json",
+        "reports/adaptive_hybrid_monitor_state_v1.json",
         "reports/capture_segment_closure_v1.json",
         OPERATIONAL_REHEARSAL_PROCESS_EVIDENCE_PATH.as_posix(),
         OPERATIONAL_REHEARSAL_MONITOR_SAMPLES_PATH.as_posix(),
@@ -392,14 +393,13 @@ def _validate_operational_rehearsal_manifest(
         entry["contract"]: CONTRACT_SCHEMA_VERSIONS[entry["contract"]]
         for entry in files
     }
+    frozen_inputs = validate_authoritative_inputs(bundle["authoritative_inputs"])
     acceptance_path = "data_contracts/reference_acceptance_policy_v1.json"
     expected_reference_acceptance = {
         "path": acceptance_path,
-        "policy_id": authoritative_document(
-            bundle["authoritative_inputs"], acceptance_path
+        "policy_id": frozen_inputs.document(acceptance_path
         )["policy_id"],
-        "policy_sha256": authoritative_binding(
-            bundle["authoritative_inputs"], acceptance_path
+        "policy_sha256": frozen_inputs.binding(acceptance_path
         )["sha256"],
     }
     artifacts = _operational_rehearsal_artifacts()
@@ -528,7 +528,8 @@ def _validate_operational_rehearsal_manifest(
         _binding_exact(item) for item in tool_bindings.values()
     ):
         raise ValueError("rehearsal manifest current host-tool closure differs")
-    validate_authoritative_inputs(value.get("authoritative_inputs"))
+    if not frozen_inputs.matches(value.get("authoritative_inputs")):
+        raise ValueError("rehearsal manifest authoritative inputs differ from bundle")
     domain_errors = validate_domain_declarations(value.get("domains"), require_complete=True)
     if domain_errors:
         raise ValueError("rehearsal manifest time domains differ: " + "; ".join(domain_errors))

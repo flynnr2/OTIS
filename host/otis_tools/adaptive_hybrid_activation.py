@@ -35,9 +35,8 @@ from .adaptive_hybrid_proposal import (
 )
 from .authoritative_inputs import (
     REFERENCE_ACCEPTANCE_POLICY_PATH,
-    authoritative_binding,
-    authoritative_document,
     transaction_identities_from_bundle,
+    ValidatedAuthoritativeInputs,
     validate_authoritative_inputs,
 )
 from .run_paths import adaptive_hybrid_csv_files
@@ -51,10 +50,9 @@ OPERATION = ADAPTIVE_HYBRID_PROGRAMME.operation
 LIVE_STAGE = ADAPTIVE_HYBRID_PROGRAMME.live_stage
 
 
-def _reference_acceptance(bundle: dict[str, Any]) -> dict[str, str]:
-    frozen = bundle.get("authoritative_inputs")
-    policy = authoritative_document(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
-    binding = authoritative_binding(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
+def _reference_acceptance(frozen: ValidatedAuthoritativeInputs) -> dict[str, str]:
+    policy = frozen.document(REFERENCE_ACCEPTANCE_POLICY_PATH)
+    binding = frozen.binding(REFERENCE_ACCEPTANCE_POLICY_PATH)
     return {
         "policy_id": str(policy["policy_id"]),
         "policy_sha256": str(binding["sha256"]),
@@ -333,7 +331,7 @@ def _activation_unsigned(
         "device": _device_contract(bench_attempt),
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
-        "reference_acceptance": _reference_acceptance(bundle),
+        "reference_acceptance": _reference_acceptance(inputs),
         "policy": bundle["policy"],
         "host_tools": bundle["host_tools"],
         "topology": {
@@ -1018,6 +1016,10 @@ def _expected_artifacts(
         "reports/capture_device_state.json",
         "reports/adaptive_hybrid_supervisor_state.json",
         "reports/adaptive_hybrid_supervisor_events.jsonl",
+        "reports/adaptive_hybrid_session_v1.json",
+        "reports/adaptive_hybrid_supervisor_ready_v1.json",
+        "reports/adaptive_hybrid_monitor_state_v1.json",
+        "reports/adaptive_hybrid_monitor_samples_v1.jsonl",
         "reports/capture_segment_closure_v1.json",
         "reports/adaptive_hybrid_hybrid_firmware_entry_v1.json",
         str(programme.run_activation_path),
@@ -1034,6 +1036,10 @@ def _evidence_artifacts(programme: AdaptiveHybridProgramme) -> list[str]:
         "reports/capture_device_state.json",
         "reports/adaptive_hybrid_supervisor_state.json",
         "reports/adaptive_hybrid_supervisor_events.jsonl",
+        "reports/adaptive_hybrid_session_v1.json",
+        "reports/adaptive_hybrid_supervisor_ready_v1.json",
+        "reports/adaptive_hybrid_monitor_state_v1.json",
+        "reports/adaptive_hybrid_monitor_samples_v1.jsonl",
         "reports/capture_segment_closure_v1.json",
         "reports/adaptive_hybrid_hybrid_firmware_entry_v1.json",
         str(programme.run_activation_path),
@@ -1085,6 +1091,7 @@ def create_run_manifest(
         bench_attempt.limits.setup_application_limit > 0
         or bench_attempt.limits.automatic_application_limit > 0
     )
+    inputs = validate_authoritative_inputs(bundle.get("authoritative_inputs"))
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "evidence_epoch": programme.evidence_epoch,
@@ -1112,9 +1119,9 @@ def create_run_manifest(
         "activation": {**_binding(activation_path), "activation_sha256": activation["activation_sha256"]},
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
-        "reference_acceptance": _reference_acceptance(bundle),
+        "reference_acceptance": _reference_acceptance(inputs),
         "policy": bundle["policy"],
-        "transaction_identities": transaction_identities_from_bundle(bundle),
+        "transaction_identities": transaction_identities_from_bundle(bundle, inputs=inputs),
         "host": _host_contract(serial_device, bundle, bench_attempt),
         programme.manifest_section: section,
         "domains": [canonical_domain_declaration(name) for name in ("rp2040_monotonic_us32", "rp2040_monotonic_us64", "h1_oscillator_10mhz")],
@@ -1154,6 +1161,7 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
     proposal_path = Path(str(proposal_binding["path"])).resolve()
     activation_path = Path(str(activation_binding["path"])).resolve()
     bundle = validate_frozen_bundle(bundle_path, programme)
+    inputs = validate_authoritative_inputs(bundle.get("authoritative_inputs"))
     proposal = validate_frozen_proposal(proposal_path, programme)
     activation = _read_object(activation_path, "adaptive-hybrid activation")
     raw_bench_attempt = activation.get("bench_attempt")
@@ -1230,9 +1238,9 @@ def validate_frozen_run_manifest(path: Path) -> dict[str, Any]:
         },
         "firmware": bundle["firmware"],
         "authoritative_inputs": bundle["authoritative_inputs"],
-        "reference_acceptance": _reference_acceptance(bundle),
+        "reference_acceptance": _reference_acceptance(inputs),
         "policy": bundle["policy"],
-        "transaction_identities": transaction_identities_from_bundle(bundle),
+        "transaction_identities": transaction_identities_from_bundle(bundle, inputs=inputs),
         "host": _host_contract(str(serial_device), bundle, bench_attempt),
         programme.manifest_section: _run_section(
             programme, activation["authority"], bench_attempt

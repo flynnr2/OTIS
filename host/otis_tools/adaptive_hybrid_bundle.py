@@ -28,9 +28,7 @@ from .adaptive_hybrid_policy import (
 )
 from .authoritative_inputs import (
     ROOT_PROFILE,
-    authoritative_binding,
-    authoritative_document,
-    authoritative_summary,
+    ValidatedAuthoritativeInputs,
     collect_authoritative_inputs,
     validate_authoritative_inputs,
 )
@@ -77,6 +75,7 @@ HOST_TOOL_MODULES = (
     "adaptive_hybrid_operational_rehearsal.py",
     "adaptive_hybrid_supervisor.py",
     "adaptive_hybrid_run.py",
+    "adaptive_hybrid_session.py",
     "adaptive_hybrid_analyze.py",
     "adaptive_hybrid_structural_preflight.py",
     "adaptive_hybrid_monitor.py",
@@ -292,11 +291,11 @@ def _validate_build(
     build_manifest_path: Path,
     programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
     *,
-    authoritative_inputs: dict[str, Any] | None = None,
+    authoritative_inputs: ValidatedAuthoritativeInputs | None = None,
     verify_deterministic_reproduction: bool = True,
 ) -> dict[str, Any]:
-    frozen_inputs = authoritative_inputs or collect_authoritative_inputs()
-    frozen_summary = authoritative_summary(frozen_inputs)
+    frozen_inputs = authoritative_inputs or validate_authoritative_inputs(collect_authoritative_inputs())
+    frozen_summary = frozen_inputs.summary()
     manifest = _read_object(build_manifest_path)
     provenance = manifest.get("provenance", {})
     if not isinstance(provenance, dict):
@@ -555,12 +554,12 @@ def _progressive_replay(policy: Any) -> dict[str, Any]:
 def create_progressive_replay(
     output_path: Path | None = None,
     *,
-    authoritative_inputs: dict[str, Any] | None = None,
+    authoritative_inputs: ValidatedAuthoritativeInputs | None = None,
 ) -> dict[str, Any]:
-    frozen_inputs = authoritative_inputs or collect_authoritative_inputs()
-    root_binding = authoritative_binding(frozen_inputs, ROOT_PROFILE)
+    frozen_inputs = authoritative_inputs or validate_authoritative_inputs(collect_authoritative_inputs())
+    root_binding = frozen_inputs.binding(ROOT_PROFILE)
     policy = policy_from_mapping(
-        authoritative_document(frozen_inputs, ROOT_PROFILE),
+        frozen_inputs.document(ROOT_PROFILE),
         policy_sha256=str(root_binding["sha256"]),
     )
     report = _progressive_replay(policy)
@@ -579,7 +578,7 @@ def create_progressive_replay(
 def validate_progressive_replay(
     report: dict[str, Any],
     *,
-    authoritative_inputs: dict[str, Any] | None = None,
+    authoritative_inputs: ValidatedAuthoritativeInputs | None = None,
 ) -> dict[str, Any]:
     """Require the one deterministic replay, not merely a self-consistent hash."""
 
@@ -595,15 +594,14 @@ def create_bundle(
     replay_path: Path | None = None,
     programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
     _created_utc: str | None = None,
-    _authoritative_inputs: dict[str, Any] | None = None,
+    _authoritative_inputs: ValidatedAuthoritativeInputs | None = None,
     _verify_deterministic_reproduction: bool = True,
     _frozen_host_tools: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    frozen_inputs = _authoritative_inputs or collect_authoritative_inputs()
-    validate_authoritative_inputs(frozen_inputs)
-    policy_binding = authoritative_binding(frozen_inputs, ROOT_PROFILE)
+    frozen_inputs = _authoritative_inputs or validate_authoritative_inputs(collect_authoritative_inputs())
+    policy_binding = frozen_inputs.binding(ROOT_PROFILE)
     policy = policy_from_mapping(
-        authoritative_document(frozen_inputs, ROOT_PROFILE),
+        frozen_inputs.document(ROOT_PROFILE),
         policy_sha256=str(policy_binding["sha256"]),
     )
     replay = (
@@ -632,7 +630,7 @@ def create_bundle(
             microsecond=0
         ).isoformat().replace("+00:00", "Z"),
         "status": "frozen_non_effective_physical_proposal_input",
-        "authoritative_inputs": frozen_inputs,
+        "authoritative_inputs": frozen_inputs.as_dict(),
         "policy": {
             **policy_binding,
             "policy_id": policy.policy_id,
@@ -774,8 +772,7 @@ def _validate_bundle(
     programme = programme or programme_from_mapping(bundle)
     if claimed != observed:
         raise ValueError("bundle semantic identity differs")
-    frozen_inputs = bundle.get("authoritative_inputs")
-    validate_authoritative_inputs(frozen_inputs)
+    frozen_inputs = validate_authoritative_inputs(bundle.get("authoritative_inputs"))
     if (
         bundle.get("bundle_id") != programme.bundle_id
         or bundle.get("programme_id") != programme.programme_id

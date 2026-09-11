@@ -28,9 +28,8 @@ from .adaptive_hybrid_policy import (
     policy_from_mapping,
 )
 from .authoritative_inputs import (
+    validate_authoritative_inputs,
     ROOT_PROFILE,
-    authoritative_binding,
-    authoritative_document,
 )
 from .adaptive_hybrid_proposal import validate_proposal
 
@@ -122,11 +121,11 @@ def run(
 ) -> dict[str, Any]:
     bundle = validate_bundle(bundle_path)
     proposal = validate_proposal(proposal_path, programme)
-    frozen_inputs = bundle["authoritative_inputs"]
+    frozen_inputs = validate_authoritative_inputs(bundle["authoritative_inputs"])
     policy = policy_from_mapping(
-        authoritative_document(frozen_inputs, ROOT_PROFILE),
+        frozen_inputs.document(ROOT_PROFILE),
         policy_sha256=str(
-            authoritative_binding(frozen_inputs, ROOT_PROFILE)["sha256"]
+            frozen_inputs.binding(ROOT_PROFILE)["sha256"]
         ),
     )
     controller = AdaptiveHybridPhasePriorityController(policy)

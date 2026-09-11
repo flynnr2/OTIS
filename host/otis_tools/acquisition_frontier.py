@@ -14,7 +14,7 @@ from .raw_measurement_replay import (
 from .accepted_span_replay import (
     POLICY_PATH, accepted_window_ref, replay_accepted_spans,
 )
-from .authoritative_inputs import authoritative_binding, authoritative_document
+from .authoritative_inputs import ValidatedAuthoritativeInputs, validate_authoritative_inputs
 from .time_domains import forward_progress
 
 FRONTIER_PATH = "reports/acquisition_frontier_v1.json"
@@ -110,6 +110,7 @@ def _read_frontier(run_dir: Path, manifest_value: dict[str, Any]) -> dict[str, A
 
 def read_acquisition_readiness(
     run_dir: Path, manifest_value: dict[str, Any], *, source_estimate_id: str | None = None, expected_capture_session: int | None = None,
+    validated_inputs: ValidatedAuthoritativeInputs | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = dict(ready=False, anchor_ready=False, source_ready=False, errors=[], frontier_sha256=None, source_proof=None, capture_session=None)
     try:
@@ -148,12 +149,13 @@ def read_acquisition_readiness(
             snapshots, references, counts = _bind_raw_source_window(
                 run_dir, manifest_value, proof
             )
-            policy = authoritative_document(
-                manifest_value.get("authoritative_inputs"), POLICY_PATH
-            )
-            policy_sha = authoritative_binding(
-                manifest_value.get("authoritative_inputs"), POLICY_PATH
-            )["sha256"]
+            inputs = validated_inputs
+            if inputs is None:
+                inputs = validate_authoritative_inputs(manifest_value.get("authoritative_inputs"))
+            elif not inputs.matches(manifest_value.get("authoritative_inputs")):
+                raise ValueError("acquisition readiness authoritative inputs differ")
+            policy = inputs.document(POLICY_PATH)
+            policy_sha = inputs.binding(POLICY_PATH)["sha256"]
             exact, report, verified = replay_accepted_spans(
                 snapshots, references, counts, spans,
                 acceptance_policy=policy,
@@ -210,12 +212,9 @@ class AcquisitionFrontierTracker:
         self.run_dir = Path(run_dir)
         self.manifest_sha = _digest(manifest_value)
         self.manifest = manifest_value
-        self.acceptance_policy = authoritative_document(
-            manifest_value.get("authoritative_inputs"), POLICY_PATH
-        )
-        self.acceptance_policy_sha256 = str(authoritative_binding(
-            manifest_value.get("authoritative_inputs"), POLICY_PATH
-        )["sha256"])
+        inputs = validate_authoritative_inputs(manifest_value.get("authoritative_inputs"))
+        self.acceptance_policy = inputs.document(POLICY_PATH)
+        self.acceptance_policy_sha256 = str(inputs.binding(POLICY_PATH)["sha256"])
         self.frontier: dict[str, Any] | None = None
         self.errors: list[str] = []
         self.ordinals: dict[str, int] = {}

@@ -41,6 +41,25 @@ The goal is disciplined, comprehensible engineering.
 
 ---
 
+# Simplicity Is an Operational Requirement
+
+The finished instrument should be usable without understanding its engineering
+campaign machinery. Power on, allow acquisition and discipline, use the output;
+attach a host when recording or inspection is useful. This is the intended
+experience, not a claim that autonomous startup is already implemented.
+
+Be ruthless about accumulated scaffolding. A component must protect timing
+correctness, preserve necessary evidence, or make an experiment easier to run.
+Remove or replace it otherwise. Qualification manifests, private simulators,
+runners and sealing belong outside the ordinary instrument runtime. Their
+necessary checks should run automatically, not become operator bookkeeping.
+Retired campaigns survive in their source revisions and retained evidence, not
+in permanent compatibility layers. Sunk engineering effort is not a reason to
+keep an approach. Fix demonstrated architectural duplication before another
+qualification when that is the finite, safer route to a useful result.
+
+---
+
 # Explicit Over Clever
 
 OTIS strongly prefers:

@@ -17,8 +17,7 @@ from host.otis_tools.acquisition_frontier import (
 from host.otis_tools.adaptive_hybrid_replay import _measurement_replay
 from host.otis_tools.authoritative_inputs import (
     REFERENCE_ACCEPTANCE_POLICY_PATH,
-    authoritative_binding,
-    authoritative_document,
+    validate_authoritative_inputs,
     collect_authoritative_inputs,
 )
 from host.otis_tools.contracts import CONTRACT_FIELDS
@@ -28,9 +27,9 @@ from test_raw_measurement_replay import raw_measurement_rows
 class RecordedStream:
     def __init__(self, root: Path, rows):
         self.root, self.rows = root, rows
-        frozen = collect_authoritative_inputs()
-        policy = authoritative_document(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
-        binding = authoritative_binding(frozen, REFERENCE_ACCEPTANCE_POLICY_PATH)
+        frozen = validate_authoritative_inputs(collect_authoritative_inputs())
+        policy = frozen.document(REFERENCE_ACCEPTANCE_POLICY_PATH)
+        binding = frozen.binding(REFERENCE_ACCEPTANCE_POLICY_PATH)
         self.policy_sha = str(binding["sha256"])
         self.first_sequence = int(rows["snapshots.csv"][0]["snapshot_sequence"])
         old = rows["estimates.csv"][0]
@@ -64,7 +63,7 @@ class RecordedStream:
         self.manifest = {
             "acquisition_frontier": FRONTIER_POLICY,
             "transaction_identities": {"estimator_sha256": "a" * 64},
-            "authoritative_inputs": frozen,
+            "authoritative_inputs": frozen.as_dict(),
             "reference_acceptance": {
                 "policy_id": policy["policy_id"], "policy_sha256": self.policy_sha,
                 "path": REFERENCE_ACCEPTANCE_POLICY_PATH,
