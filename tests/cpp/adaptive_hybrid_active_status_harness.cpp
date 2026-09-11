@@ -116,10 +116,6 @@ void bind_common_application_state() {
   last_adaptive_hybrid_observation = {};
   last_adaptive_hybrid_observation.phase_valid = true;
 
-  // Adaptive hybrid owns the selected controller status independently; an
-  // inactive auxiliary engine must not overwrite its projection.
-  hybrid_engine = {};
-  hybrid_engine_ready = false;
 }
 
 void assert_common_application_status(

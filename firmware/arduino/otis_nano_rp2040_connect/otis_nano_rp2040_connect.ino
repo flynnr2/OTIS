@@ -3650,6 +3650,10 @@ void loop() {
   // reset starts a new evidence session.
   const uint32_t now_ms = millis();
   otis_gnss_receiver_service(now_ms);
+  // Receiver/DAC state is an internal Core 0 -> Core 1 service, independent
+  // of carrier presence and outbound frame progress. Its own cadence and
+  // queue reservation bound publication on every transport path.
+  publish_dual_core_service_metadata(now_ms);
   if (!otis_transport_ready()) {
     if (!otis_transport_liveness_note_carrier_absent(
             &dual_core_transport_liveness, now_ms,
@@ -3687,7 +3691,6 @@ void loop() {
     }
     service_serial_commands(false);
     discard_dual_core_outputs_after_transport_fault();
-    publish_dual_core_service_metadata(now_ms);
     return;
   }
   if (frame_active) {
@@ -3702,6 +3705,5 @@ void loop() {
   emit_resource_ownership_status();
   service_serial_commands();
   service_environment_sensors();
-  publish_dual_core_service_metadata(millis());
   emit_periodic_status();
 }

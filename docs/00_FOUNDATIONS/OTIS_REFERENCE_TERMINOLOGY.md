@@ -32,6 +32,11 @@ OTIS firmware should primarily capture events and preserve enough metadata for l
 
 Host-side software should normally own interpretation, including pendulum analysis, oscillator characterization, Allan deviation, event classification, phase analysis, and application-specific models.
 
+Metrology required by the instrument's selected live controller remains a
+firmware responsibility. Offline host interpretation does not make a connected
+host the owner of firmware operating state or a prerequisite for the intended
+standalone instrument.
+
 ### Domains are not optional
 
 Two numeric timestamps with the same unit are not necessarily comparable. They may come from different timing domains.
@@ -170,6 +175,26 @@ excluded candidates. Its accepted-boundary ordinal and acceptance epoch must
 not be substituted for raw source ordinals or a phase epoch. The integrated candidate records these identities separately in APS and the
 versioned estimator, phase and active-control records. Raw adjacent CNT
 records retain their original meaning.
+
+### Instrument operating policy and evidence profile
+
+An instrument operating policy specifies who may authorize control, how the
+oscillator is qualified and steered, and how holds, faults and configuration
+transitions behave. An evidence profile specifies the observations and derived
+records delivered to a consumer, their rate/coverage bounds and loss semantics.
+They are distinct: changing output detail does not transfer control ownership.
+Standalone control and compact output are intended future capabilities, not
+properties already established by the current supervised campaign.
+
+### Capture-to-service latency
+
+A diagnostic interval between a precisely identified capture event and a
+precisely identified software-service observation in a common or explicitly
+related clock domain. Its name must state the actual endpoints. Current OTIS
+can form D14 ISR-timestamp-to-foreground-service age in the RP2040 timer domain;
+that interval excludes physical-edge-to-ISR delay. The PIO D8 count snapshot
+does not provide a corresponding hardware timer latch, so this is not a
+measurement of PIO-latch-to-ISR latency.
 
 ### Host written
 

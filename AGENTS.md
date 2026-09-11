@@ -81,6 +81,24 @@ lasting preference changes.
 
 ## Architecture and scope discipline
 
+- Develop toward a standalone instrument on the current hardware: firmware
+  owns capture, qualification, operating state, and bounded oscillator control;
+  a host discovers the current state and requests explicit transitions. Host
+  attachment must not imply a fresh boot, reset, known DAC code, or permission
+  to take over an existing transaction. An explicitly authorized campaign
+  firmware upload remains a separate operation from ordinary attachment.
+- Keep instrument operating policy separate from serial evidence detail.
+  Future compact output, full replay, characterization, and integer output
+  division must not create competing control owners. These are design
+  directions, not permission to silently enable autonomous steering or waive
+  the current campaign's leases, acknowledgements, or evidence requirements.
+- Existing D10 implementation scaffolding, test artefacts, and prospective
+  wire formats may be replaced completely; no backward compatibility is
+  required. Preserve D10's intended external-event role and isolation from
+  D14/D8, and leave already retained historical evidence unchanged.
+- Treat capture-to-service latency as diagnostic evidence with explicit start,
+  end, clock domain, and ambiguity bounds. Never call an ISR-created timestamp
+  a hardware latch timestamp or subtract unrelated counters to infer latency.
 - Separate architectural requirements from implementations. For example,
   deterministic capture is architectural; RP2040 PIO is one implementation.
 - Isolate host services, dashboards, networking, and storage from the timing

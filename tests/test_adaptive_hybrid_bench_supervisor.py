@@ -68,7 +68,19 @@ def _bare_supervisor(purpose: str, run_dir: Path) -> supervisor_module.AdaptiveH
         "arm_pending": False,
         "arm_sent_at_utc": None,
         "authorization_sequence": 0,
+        "startup_census": {
+            "contract": supervisor_module.STARTUP_CENSUS_CONTRACT,
+            "authority_admitted": True,
+            "process_nonce": 1,
+            "session_id": None,
+        },
+        "startup_census_authority_admitted": True,
+        "startup_census_process_nonce": 1,
+        "initial_session_id": None,
     }
+    # Downstream authority tests start after the separately covered solicited
+    # startup census has admitted this synthetic supervisor.
+    supervisor._startup_census_admitted = lambda: True
     return supervisor
 
 

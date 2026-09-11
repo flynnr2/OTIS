@@ -78,6 +78,14 @@ Provides archival, replay, reports, plots, comparative analysis, dashboards,
 APIs, and future applications. Host activity must not compromise timing capture
 or bypass control safety.
 
+The intended standalone operating model puts instrument state, acquisition,
+qualification and oscillator control in firmware. Host attachment first
+discovers the running instrument; it does not establish its initial state or
+authorize a reset or controller takeover. Operating policy and serial evidence
+detail are separate choices. The current firmware still uses a host-acknowledged
+campaign protocol; autonomous startup steering and compact output remain
+future work with explicit authority and evidence contracts.
+
 ## Guiding principles
 
 - Keep implementation, plant, and reference domains explicit.

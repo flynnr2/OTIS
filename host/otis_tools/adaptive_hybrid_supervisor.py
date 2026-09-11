@@ -29,6 +29,8 @@ from .adaptive_hybrid_evidence import (
 from .adaptive_hybrid_contract import (
     AdaptiveHybridProgramme,
     ADAPTIVE_HYBRID_PROGRAMME,
+    HOST_REVIEW_HOLD,
+    ORCHESTRATION_FAILURE,
     programme_from_mapping,
 )
 from .adaptive_hybrid_contract import (
@@ -65,6 +67,7 @@ from .adaptive_hybrid_transactions import (
     _atomic_json,
     _read_csv,
     _utc_now,
+    validate_transaction_history,
 )
 from .contracts import CsvValidationContext, validate_csv
 from .capture_device import CAPTURE_STATE
@@ -91,12 +94,27 @@ from .adaptive_hybrid_health import (
     SETUP_AUTHORITY_PATH,
     SETUP_RESULT_GRACE_S,
     AdaptiveHybridSupervisorBase,
+    canonical_health,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG
 from .time_domains import forward_progress
 
 
 FORWARDED_OUTPUT_STATUS_PERIOD_S = 60.0
+STARTUP_CENSUS_CONTRACT = "adaptive_hybrid_startup_census_v1"
+
+
+def _startup_query_command(command: str) -> bool:
+    """Return whether *command* is observational and safe before ownership."""
+
+    return command in {
+        "CONFIG?",
+        "DUALCORE?",
+        "DAC?",
+        "DAC LIMITS?",
+        "COUNT?",
+        "ACTIVE?",
+    } or command.startswith("ACTIVE SNAPSHOT ")
 
 
 def gnss_operational_runtime_invariant_errors(
@@ -573,6 +591,14 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         private_rehearsal_capability: object | None = None,
         **kwargs: object,
     ) -> None:
+        requested_run_dir = kwargs.get("run_dir")
+        if not isinstance(requested_run_dir, Path):
+            raise ValueError("ADAPTIVE_HYBRID supervisor requires a run directory")
+        self._retained_supervisor_state_at_start = (
+            requested_run_dir / "reports/adaptive_hybrid_supervisor_state.json"
+        ).is_file()
+        self._explicit_abort_submission = False
+        self._startup_census_process_nonce = secrets.randbits(32) or 1
         envelope = _runtime_envelope(
             manifest,
             private_rehearsal_capability=private_rehearsal_capability,
@@ -711,6 +737,23 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.state.setdefault("controller_authority_inhibited_reason", None)
         self.state.setdefault("controller_authority_inhibited_utc", None)
         self.state.setdefault("persistent_wrong_direction_terminal", False)
+        prior_census = self.state.get("startup_census")
+        census_history = self.state.setdefault("startup_census_history", [])
+        if not isinstance(census_history, list):
+            raise ValueError("retained startup census history is malformed")
+        if prior_census is not None:
+            if not isinstance(prior_census, dict):
+                raise ValueError("retained startup census is malformed")
+            if not census_history or census_history[-1] != prior_census:
+                census_history.append(prior_census)
+        # Every supervisor process must obtain its own solicited snapshot.  A
+        # census retained by an earlier process is provenance, not continuing
+        # permission for this process to renew a lease or release evidence.
+        self.state["startup_census"] = None
+        self.state["startup_census_authority_admitted"] = False
+        self.state["startup_census_process_nonce"] = (
+            self._startup_census_process_nonce
+        )
         if envelope.bench_attempt is not None:
             initial_closed = bool(limits.authority_initially_closed)
             initial_causal_state = {
@@ -1145,6 +1188,408 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             and not _authoritative_capture_health_faults(health)
         )
 
+    def _startup_census_admitted(self) -> bool:
+        census = self.state.get("startup_census")
+        if not isinstance(census, dict):
+            return False
+        return bool(
+            self.state.get("startup_census_authority_admitted") is True
+            and census.get("contract") == STARTUP_CENSUS_CONTRACT
+            and census.get("authority_admitted") is True
+            and census.get("process_nonce")
+            == self.state.get("startup_census_process_nonce")
+            and census.get("session_id") == self.state.get("initial_session_id")
+        )
+
+    def _assert_command_admitted(self, command: str) -> None:
+        """Enforce the lowest host command boundary before serial ingress."""
+
+        if _startup_query_command(command):
+            return
+        if command == "ACTIVE ABORT" and self._explicit_abort_submission:
+            return
+        if not self._startup_census_admitted():
+            raise ValueError(
+                "startup census has not admitted controller command authority"
+            )
+        if command.startswith("ACTIVE EVIDENCE "):
+            fields = command.split()
+            inflight = self.state.get("inflight_evidence_acknowledgement")
+            if (
+                len(fields) != 4
+                or not isinstance(inflight, dict)
+                or str(inflight.get("request_sequence")) != fields[2]
+                or str(inflight.get("phase")) != fields[3]
+                or inflight.get("host_write_confirmed") is not False
+            ):
+                raise ValueError(
+                    "evidence command lacks its exact retained pending acknowledgement"
+                )
+        if command.startswith("ACTIVE SETUP ") or command.startswith("ACTIVE ARM "):
+            if self._consume_orchestration_review_hold():
+                raise ValueError(
+                    "orchestration review hold inhibits new SETUP/ARM authority"
+                )
+            if self.state.get("host_verification_hold") is not None:
+                raise ValueError("host verification hold inhibits new SETUP/ARM authority")
+
+    def _command(self, command: str) -> None:
+        self._assert_command_admitted(command)
+        super()._command(command)
+
+    def _renew_lease(self) -> None:
+        # The base implementation advances the durable lease sequence before
+        # submitting the command.  Check census first so a rejected startup
+        # cannot leave a fictitious retained lease sequence.
+        self._assert_command_admitted(
+            f"ACTIVE LEASE {int(self.state.get('lease_sequence', 0)) + 1}"
+        )
+        super()._renew_lease()
+
+    def _fresh_startup_state_exact(
+        self, health: dict[tuple[str, str], str]
+    ) -> tuple[bool, list[str]]:
+        expected_health = {
+            "state": "DISARMED",
+            "evidence_pending": "false",
+            "evidence_phase": "evidence_clear",
+            "capture_lease_live": "false",
+            "manual_start_confirmed": "false",
+            "arm_eligible": "false",
+            "fail_static": "false",
+            "hybrid_state": "SETUP_PENDING",
+            "first_phase_checkpoint_passed": "false",
+            "phase_nonzero_application_count": "0",
+            "phase_material_application_count": "0",
+            "frequency_only_application_count": "0",
+            "evidence_request_sequence": "0",
+            "confirmed_applied_code_known": "false",
+            "confirmed_applied_code": "unavailable",
+            "correction_count": "0",
+            "cumulative_movement_codes": "0",
+            "dac_epoch": "0",
+            "automatic_retry": "false",
+            "automatic_restore": "false",
+        }
+        mismatches = [
+            f"adaptive_hybrid.{key}={health.get(('adaptive_hybrid', key))!r}, expected {value!r}"
+            for key, value in expected_health.items()
+            if health.get(("adaptive_hybrid", key)) != value
+        ]
+        expected_code = health.get(("adaptive_hybrid", "expected_setup_code"))
+        if expected_code is None:
+            mismatches.append("adaptive_hybrid.expected_setup_code is missing")
+        else:
+            try:
+                if int(expected_code, 0) != self.programme.setup_code:
+                    mismatches.append(
+                        "adaptive_hybrid.expected_setup_code differs from the programme"
+                    )
+            except ValueError:
+                mismatches.append("adaptive_hybrid.expected_setup_code is malformed")
+        pristine_state = {
+            "manual_start_sent": False,
+            "arm_pending": False,
+            "authorization_sequence": 0,
+            "lease_sequence": 0,
+            "setup_confirmed_utc": None,
+            "setup_confirmation": None,
+            "setup_authority_path": None,
+            "setup_requested_utc": None,
+            "terminal": None,
+            "inflight_evidence_acknowledgement": None,
+            "acknowledged_record_sequences": [],
+            "observed_manual_record_sequences": [],
+            "host_verification_hold": None,
+        }
+        mismatches.extend(
+            f"retained {key} is not pristine"
+            for key, value in pristine_state.items()
+            if self.state.get(key) != value
+        )
+        return not mismatches, mismatches
+
+    def _retained_ack_resume_exact(
+        self, health: dict[tuple[str, str], str]
+    ) -> tuple[bool, list[str]]:
+        """Validate the one already-supported restart: an exact pending ACK."""
+
+        mismatches: list[str] = []
+        if not self._retained_supervisor_state_at_start:
+            return False, ["no retained supervisor state existed at process start"]
+        if self.state.get("terminal") is not None:
+            mismatches.append("retained terminal is present")
+        if self.state.get("host_verification_hold") is not None:
+            mismatches.append("retained host verification hold is present")
+        if health.get(("adaptive_hybrid", "state")) in {
+            "FAULT",
+            "ABORTED",
+            "OUT_OF_MODEL_HOLD",
+        }:
+            mismatches.append("live firmware state is terminal or faulted")
+        if health.get(("adaptive_hybrid", "fail_static")) != "false":
+            mismatches.append("live firmware is fail-static or lacks exact health")
+        if health.get(("adaptive_hybrid", "hybrid_state")) == "FAIL_STATIC":
+            mismatches.append("live hybrid controller is fail-static")
+        session = self.state.get("initial_session_id")
+        if type(session) is not int or session <= 0:
+            mismatches.append("retained initial session is unavailable")
+        elif health.get(("adaptive_hybrid", "session_id")) != str(session):
+            mismatches.append("live session differs from retained initial session")
+        confirmation = self.state.get("setup_confirmation")
+        if (
+            not isinstance(confirmation, dict)
+            or confirmation.get("session_id") != session
+            or confirmation.get("applied_code") != self.programme.setup_code
+            or confirmation.get("dac_epoch") != 1
+            or not isinstance(self.state.get("setup_confirmed_utc"), str)
+            or not self.state.get("setup_confirmed_utc")
+            or self.state.get("manual_start_sent") is not True
+        ):
+            mismatches.append("retained setup authority or confirmation is not exact")
+        if self.state.get("setup_authority_path") != str(SETUP_AUTHORITY_PATH):
+            mismatches.append("retained setup authority path is unavailable")
+        else:
+            try:
+                if not self._latch_setup_confirmation():
+                    mismatches.append(
+                        "retained setup authority has no observed leading manual-start proof"
+                    )
+            except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                mismatches.append(f"retained setup authority validation failed: {exc}")
+
+        inflight = self.state.get("inflight_evidence_acknowledgement")
+        if not isinstance(inflight, dict):
+            mismatches.append("no exact retained evidence acknowledgement is inflight")
+            return False, mismatches
+        try:
+            record_sequence = int(inflight["record_sequence"])
+            request_sequence = int(inflight["request_sequence"])
+            phase = int(inflight["phase"])
+            pre_submit_generation = int(inflight["pre_submit_snapshot_generation"])
+            pre_submit_phase = str(inflight["pre_submit_evidence_phase"])
+        except (KeyError, TypeError, ValueError):
+            mismatches.append("retained evidence acknowledgement identity is malformed")
+            return False, mismatches
+        expected_phase = {
+            1: "request_pending",
+            2: "acceptance_pending",
+            3: "application_pending",
+            4: "response_pending",
+        }.get(phase)
+        if (
+            record_sequence <= 0
+            or request_sequence <= 0
+            or expected_phase is None
+            or pre_submit_generation <= 0
+            or pre_submit_phase != expected_phase
+            or inflight.get("host_write_confirmed") is not True
+        ):
+            mismatches.append("retained evidence acknowledgement fields differ")
+
+        observed_phase = health.get(("adaptive_hybrid", "evidence_phase"))
+        observed_request_text = health.get(
+            ("adaptive_hybrid", "evidence_request_sequence")
+        )
+        try:
+            observed_request = int(observed_request_text)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            observed_request = -1
+        permitted_after = {
+            1: {"evidence_clear", "acceptance_pending", "application_pending", "response_pending"},
+            2: {"evidence_clear", "application_pending", "response_pending"},
+            3: {"evidence_clear", "response_pending"},
+            4: {"evidence_clear"},
+        }.get(phase, set())
+        same_pending = observed_phase == pre_submit_phase and observed_request == request_sequence
+        advanced = observed_phase in permitted_after and (
+            observed_request == 0
+            if observed_phase == "evidence_clear"
+            else observed_request == request_sequence
+        )
+        if not (same_pending or advanced):
+            mismatches.append("live evidence phase/request differs from retained acknowledgement")
+
+        try:
+            validation = validate_csv(
+                self.run_dir / ACTIVE_CSV,
+                CsvValidationContext(
+                    "active_transactions_v3",
+                    frozenset(),
+                    frozenset({"rp2040_monotonic_us64"}),
+                ),
+            )
+            if validation.errors:
+                raise ValueError("; ".join(validation.errors))
+            rows = _read_csv(self.run_dir / ACTIVE_CSV)
+            validate_transaction_history(
+                rows,
+                self.spec,
+                self.identities,
+                self.expected_build_identity,
+                dual_core=True,
+            )
+            row = next(
+                item
+                for item in rows
+                if int(item["transaction_record_sequence"]) == record_sequence
+            )
+            expected_event = {
+                1: "request_created",
+                2: "request_accepted",
+                3: {"application", "application_fault"},
+                4: "response",
+            }[phase]
+            event = row.get("event")
+            event_exact = (
+                event in expected_event
+                if isinstance(expected_event, set)
+                else event == expected_event
+            )
+            if (
+                int(row["request_sequence"]) != request_sequence
+                or not event_exact
+            ):
+                mismatches.append("retained acknowledgement differs from canonical ACT row")
+            row_session = int(row["session_id"])
+            row_epoch = int(row["source_acceptance_epoch"])
+            row_closing = int(row["source_closing_accepted_boundary_ordinal"])
+            live_epoch = int(health[("adaptive_hybrid", "acceptance_epoch")])
+            live_ordinal = int(
+                health[("adaptive_hybrid", "accepted_boundary_ordinal")]
+            )
+            accepted_progress = (live_ordinal - row_closing) & 0xFFFFFFFF
+            if (
+                row_session != session
+                or row_epoch <= 0
+                or row_epoch != live_epoch
+                or not 0 <= row_closing < 1 << 32
+                or accepted_progress > 0x7FFFFFFF
+            ):
+                mismatches.append(
+                    "retained ACT accepted-source identity differs from live authority"
+                )
+        except (
+            FileNotFoundError,
+            KeyError,
+            OSError,
+            StopIteration,
+            TypeError,
+            ValueError,
+        ) as exc:
+            mismatches.append(f"canonical ACT acknowledgement proof failed: {exc}")
+
+        try:
+            code = int(health[("adaptive_hybrid", "confirmed_applied_code")], 0)
+            dac_epoch = int(health[("adaptive_hybrid", "dac_epoch")])
+            corrections = int(health[("adaptive_hybrid", "correction_count")])
+        except (KeyError, TypeError, ValueError):
+            mismatches.append("live applied-code/DAC identity is unavailable")
+        else:
+            causal = self.state.get("bench_attempt_causal_state")
+            if (
+                health.get(("adaptive_hybrid", "confirmed_applied_code_known")) != "true"
+                or code != self.state.get("terminal_static_code")
+                or not self.programme.minimum_code <= code <= self.programme.maximum_code
+                or dac_epoch != corrections + 1
+                or not isinstance(causal, dict)
+                or causal.get("firmware_correction_count") != corrections
+            ):
+                mismatches.append("live applied-code/DAC epoch differs from retained authority")
+        return not mismatches, mismatches
+
+    def _classify_startup_snapshot(
+        self, health: dict[tuple[str, str], str]
+    ) -> tuple[str, bool, list[str]]:
+        if not self._identity_ready(health):
+            return "incoherent", False, ["complete current firmware identity is unavailable"]
+        fresh, fresh_mismatches = self._fresh_startup_state_exact(health)
+        if fresh:
+            return "fresh_disarmed", True, []
+        retained, retained_mismatches = self._retained_ack_resume_exact(health)
+        if retained:
+            return "known_retained_resume", True, []
+        state = health.get(("adaptive_hybrid", "state"))
+        evidence_pending = health.get(("adaptive_hybrid", "evidence_pending"))
+        manual = health.get(("adaptive_hybrid", "manual_start_confirmed"))
+        if (
+            state in {"FAULT", "ABORTED", "OUT_OF_MODEL_HOLD"}
+            or health.get(("adaptive_hybrid", "fail_static")) == "true"
+            or health.get(("adaptive_hybrid", "hybrid_state")) == "FAIL_STATIC"
+        ):
+            classification = "terminal_or_fault"
+        elif evidence_pending == "true" or health.get(
+            ("adaptive_hybrid", "evidence_phase")
+        ) != "evidence_clear":
+            classification = "transaction_inflight"
+        elif manual == "true" or state != "DISARMED":
+            classification = "already_setup_or_tracking"
+        else:
+            classification = "incoherent"
+        return classification, False, [*fresh_mismatches, *retained_mismatches]
+
+    def _establish_startup_census(self) -> dict[tuple[str, str], str]:
+        if self.state.get("startup_census") is not None:
+            raise ValueError("startup census was already established for this process")
+        health: dict[tuple[str, str], str] = {}
+        try:
+            current = self._current_health()
+            generation_text = current.get(
+                ("adaptive_hybrid", "snapshot_generation_complete")
+            )
+            generation = 0 if generation_text is None else int(generation_text)
+            health = self._fresh_active_snapshot_after(generation)
+            orchestration_hold = self._consume_orchestration_review_hold()
+            classification, admitted, diagnostics = self._classify_startup_snapshot(
+                health
+            )
+            if orchestration_hold:
+                classification = "retained_review_hold"
+                admitted = False
+                diagnostics.append("retained orchestration review hold is present")
+        except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            classification = "incoherent"
+            admitted = False
+            diagnostics = [f"{type(exc).__name__}: {exc}"]
+
+        def optional_integer(key: str) -> int | None:
+            value = health.get(("adaptive_hybrid", key))
+            try:
+                return int(value)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return None
+
+        snapshot = canonical_health(health)
+        census = {
+            "contract": STARTUP_CENSUS_CONTRACT,
+            "observed_utc": _utc_now(),
+            "classification": classification,
+            "authority_admitted": admitted,
+            "process_nonce": self.state.get("startup_census_process_nonce"),
+            "retained_supervisor_state_at_start": self._retained_supervisor_state_at_start,
+            "snapshot_generation": optional_integer("snapshot_generation_complete"),
+            "query_nonce": optional_integer("query_nonce"),
+            "session_id": optional_integer("session_id"),
+            "snapshot_sha256": sha256(
+                json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "health": snapshot,
+            "diagnostics": diagnostics,
+        }
+        self.state["startup_census"] = census
+        self.state["startup_census_authority_admitted"] = admitted
+        self._save()
+        self._programme_event("startup_census_established", **census)
+        if not admitted:
+            self._enter_host_verification_hold(
+                ValueError(
+                    f"startup census classified {classification}: "
+                    + "; ".join(diagnostics)
+                ),
+                source="startup_census",
+            )
+        return health
+
     def _fresh_active_snapshot_after(
         self, generation: int
     ) -> dict[tuple[str, str], str]:
@@ -1522,6 +1967,66 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                         f"{row.get(field)!r} != {value!r}"
                     )
 
+    def _consume_orchestration_review_hold(self) -> bool:
+        """Adopt runner discrepancies before any new host authority.
+
+        Presence is fail-closed: malformed or foreign markers cannot erase a
+        review request. Established ownership retains its existing lease and
+        independently verified pending-transaction policy; startup census must
+        establish ownership before granting either.
+        """
+        for relative in (HOST_REVIEW_HOLD, ORCHESTRATION_FAILURE):
+            path = self.run_dir / relative
+            marker_sha256 = None
+            try:
+                marker_bytes = path.read_bytes()
+                marker_sha256 = sha256(marker_bytes).hexdigest()
+                value = json.loads(marker_bytes.decode("utf-8"))
+            except FileNotFoundError:
+                continue
+            except (OSError, UnicodeError, ValueError) as exc:
+                detail = f"orchestration review marker is unreadable: {relative}: {exc}"
+            else:
+                expected_report = (
+                    "adaptive_hybrid_hybrid_host_review_hold_v1"
+                    if relative == HOST_REVIEW_HOLD
+                    else "adaptive_hybrid_hybrid_orchestration_failure_v1"
+                )
+                valid = (
+                    isinstance(value, dict)
+                    and type(value.get("schema_version")) is int
+                    and value["schema_version"] == 1
+                    and value.get("report_type") == expected_report
+                    and value.get("bundle_sha256") == self.envelope.bundle_sha256
+                    and isinstance(value.get("error"), str)
+                    and bool(value["error"])
+                    and (
+                        relative != HOST_REVIEW_HOLD
+                        or value.get("run_directory") == str(self.run_dir.resolve())
+                    )
+                )
+                detail = (
+                    f"runner retained orchestration review: {relative}: {value['error']}"
+                    if valid else
+                    f"orchestration review marker has malformed or contradictory identity: {relative}"
+                )
+            existing = self.state.get("host_verification_hold")
+            if (
+                not isinstance(existing, dict)
+                or existing.get("orchestration_marker") != str(relative)
+                or existing.get("orchestration_marker_sha256") != marker_sha256
+            ):
+                self._enter_host_verification_hold(
+                    ValueError(detail), source="runner_orchestration_review"
+                )
+                self.state["host_verification_hold"]["orchestration_marker"] = str(relative)
+                self.state["host_verification_hold"]["orchestration_marker_sha256"] = marker_sha256
+                self.state["host_verification_hold"]["orchestration_run_directory"] = str(self.run_dir.resolve())
+                self.state["host_verification_hold"]["orchestration_bundle_sha256"] = self.envelope.bundle_sha256
+                self._save()
+            return True
+        return False
+
     def _enter_host_verification_hold(
         self, error: Exception, *, source: str = "host_verifier"
     ) -> None:
@@ -1648,6 +2153,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
 
     def _process_transactions(self) -> None:
+        if not self._startup_census_admitted():
+            return
         if self.state.get("host_verification_hold") is not None:
             self._process_transactions_during_host_verification_hold()
             return
@@ -1751,7 +2258,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     )
         self._validate_hybrid_decisions_or_hold()
 
-    def _latch_setup_confirmation(self) -> None:
+    def _latch_setup_confirmation(self) -> bool:
         """Bind the validated leading ``manual_start`` to setup authority.
 
         The base transaction consumer durably records that it has observed the
@@ -1771,13 +2278,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         rows = _read_csv(self.run_dir / ACTIVE_CSV)
         manual_rows = [row for row in rows if row.get("event") == "manual_start"]
         if not manual_rows:
-            return
+            return False
         if len(manual_rows) != 1 or manual_rows[0] is not rows[0]:
             raise ValueError("ADAPTIVE_HYBRID setup evidence is not one leading row")
         row = manual_rows[0]
         record_sequence = int(row["transaction_record_sequence"])
         if record_sequence not in set(self.state["observed_manual_record_sequences"]):
-            return
+            return False
 
         authority_relative = self.state.get("setup_authority_path")
         if authority_relative != str(SETUP_AUTHORITY_PATH):
@@ -1959,6 +2466,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             self.state["terminal_static_code"] = setup_code
             self._save()
             self._programme_event("setup_first_consumer_confirmed", **confirmation)
+        return True
 
     def _runtime_health_integrity(
         self, health: dict[tuple[str, str], str]
@@ -2911,6 +3419,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self,
         health: dict[tuple[str, str], str],
     ) -> None:
+        if not self._startup_census_admitted():
+            return
         if self.state.get("host_verification_hold") is not None:
             return
         bench_attempt = self.envelope.bench_attempt
@@ -3496,7 +4006,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 )
 
     def _abort(self, reason: str) -> None:
-        super()._abort(reason)
+        self._explicit_abort_submission = reason == "independent_host_abort_fifo"
+        try:
+            super()._abort(reason)
+        finally:
+            self._explicit_abort_submission = False
         terminal = self.state["terminal"]
         if reason == "independent_host_abort_fifo":
             terminal["primary_decision"] = _programme_terminal_decision(
@@ -3599,7 +4113,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     )
                     self.duration_s = None
                 try:
-                    if now - last_lease >= LEASE_PERIOD_S:
+                    if self.state.get("startup_census") is None:
+                        self._establish_startup_census()
+                        last_query = time.monotonic()
+                    else:
+                        self._consume_orchestration_review_hold()
+                    if (
+                        self._startup_census_admitted()
+                        and now - last_lease >= LEASE_PERIOD_S
+                    ):
                         self._check_capture_transport_state()
                         self._renew_lease()
                         last_lease = now
@@ -3621,6 +4143,12 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                         self._command("CONFIG?")
                         last_output_status_query = now
                     health = self._current_health()
+                    if not self._startup_census_admitted():
+                        # An unowned device remains observational.  Queries and
+                        # the explicit operator-abort FIFO are the only active
+                        # routes until a census proves current-run ownership.
+                        time.sleep(0.2)
+                        continue
                     if not self._abort_on_authoritative_capture_discontinuity(
                         health
                     ):

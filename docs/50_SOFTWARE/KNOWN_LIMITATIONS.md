@@ -35,7 +35,22 @@ programme execution surface. The most important present limitations are:
 - D9/D6 evidence establishes digital forwarding/monitor behavior only; it does
   not qualify analog waveform shape, jitter, loading, or independent frequency;
 - the supported instrument still requires a continuously drained sole-owner
-  host carrier; and
+  host carrier for supervised steering. Internal receiver/DAC metadata service
+  now runs before carrier and pending-frame branches, but that does not enable
+  autonomous steering or preserve full replay through a transport fault;
+- startup census observes current firmware before lease or control admission.
+  It admits a proven fresh start or the narrowly supported exact retained
+  acknowledgement continuation; arbitrary active-state campaign adoption is
+  not implemented. Unowned or incoherent state remains a review hold;
+- runner review-hold publication and supervisor consumption are separate
+  recorded facts. If retained storage fails, controller inhibition cannot be
+  claimed solely because the runner requested it;
+- existing capture-age observations measure D14 ISR timestamp to foreground
+  service. They exclude physical-edge-to-IRQ dispatch latency and cannot be
+  interpreted as PIO-latch-to-service latency;
+- a process rehearsal does not establish the older Mac's actual launch-context
+  permission to access a USB bootloader volume; that exact context must be
+  exercised before a physical campaign; and
 - source edits after this reset require a new exact build identity and the
   proportionate rehearsal/physical gate before live use.
 

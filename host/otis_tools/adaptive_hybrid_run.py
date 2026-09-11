@@ -45,6 +45,8 @@ from .adaptive_hybrid_contract import (
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
     INHIBITED_ZERO_WRITE,
+    HOST_REVIEW_HOLD,
+    ORCHESTRATION_FAILURE,
     programme_from_mapping,
     validate_bench_attempt_envelope,
 )
@@ -78,8 +80,6 @@ HOST_MARKER_PREFIX = "# OTIS_HOST "
 CAPTURE_LOG = Path("reports/adaptive_hybrid_hybrid_capture.log")
 SUPERVISOR_LOG = Path("reports/adaptive_hybrid_hybrid_supervisor.log")
 SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
-ORCHESTRATION_FAILURE = Path("reports/adaptive_hybrid_hybrid_orchestration_failure_v1.json")
-HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
 HOST_REVIEW_RESOLUTION = Path(
     "reports/adaptive_hybrid_hybrid_host_review_resolution_v1.json"
 )
@@ -804,6 +804,8 @@ def _retain_live_capture_for_host_review(
     enforces its lease/evidence timeouts and fail-static behavior.
     """
     capture_alive_at_entry = capture.poll() is None
+    hold_marker_published = False
+    published_marker_path = run_dir / HOST_REVIEW_HOLD
     try:
         path = run_dir / HOST_REVIEW_HOLD
         if not path.exists():
@@ -818,7 +820,11 @@ def _retain_live_capture_for_host_review(
                     "host_abort_authority_exercised": False,
                     "capture_alive_at_entry": capture_alive_at_entry,
                     "capture_and_serial_owner_retained": capture_alive_at_entry,
-                    "new_controller_authority": False,
+                    "requested_new_controller_authority": False,
+                    "authority_inhibition_confirmed": False,
+                    "run_directory": str(run_dir.resolve()),
+                    "activation_sha256": activation["activation_sha256"],
+                    "bundle_sha256": activation["bundle"]["bundle_sha256"],
                     "firmware_fail_static_independent": True,
                     "error_type": type(error).__name__,
                     "error": str(error),
@@ -831,14 +837,62 @@ def _retain_live_capture_for_host_review(
                     ),
                 },
             )
-    except (OSError, TypeError, ValueError):
-        # Evidence publication failure cannot authorize teardown either.
-        pass
+        hold_marker_published = True
+    except (OSError, KeyError, TypeError, ValueError) as publication_error:
+        # The supervisor also consumes this existing failure artifact. A
+        # partial primary marker is itself a hold, never a clean absence.
+        try:
+            _write_failure(run_dir=run_dir, activation=activation,
+                           error=publication_error,
+                           phase="host_review_hold_publication")
+            published_marker_path = run_dir / ORCHESTRATION_FAILURE
+            hold_marker_published = True
+        except (OSError, KeyError, TypeError, ValueError) as fallback_error:
+            print(
+                "OTIS REVIEW REQUIRED: authority-hold propagation is unconfirmed; "
+                "capture remains alive. Primary publication failed: "
+                f"{publication_error}; fallback failed: {fallback_error}",
+                file=sys.stderr, flush=True,
+            )
+    try:
+        published_marker_sha256 = (
+            _sha256_file(published_marker_path) if hold_marker_published else None
+        )
+    except OSError:
+        published_marker_sha256 = None
+
+    def supervisor_consumed_marker() -> bool:
+        if published_marker_sha256 is None:
+            return False
+        try:
+            state = _read_json(run_dir / SUPERVISOR_STATE)
+            if not isinstance(state, dict):
+                return False
+            hold = state.get("host_verification_hold")
+            return (
+                isinstance(hold, dict)
+                and hold.get("new_authority") is False
+                and hold.get("orchestration_marker")
+                    == str(published_marker_path.relative_to(run_dir))
+                and hold.get("orchestration_marker_sha256") == published_marker_sha256
+                and hold.get("orchestration_run_directory") == str(run_dir.resolve())
+                and hold.get("orchestration_bundle_sha256")
+                    == activation["bundle"]["bundle_sha256"]
+            )
+        except (OSError, KeyError, TypeError, ValueError):
+            return False
+
+    supervisor_hold_confirmed = False
     while capture.poll() is None:
+        supervisor_hold_confirmed = supervisor_consumed_marker()
         time.sleep(1.0)
+    supervisor_hold_confirmed = supervisor_consumed_marker()
     return {
         "capture_alive_at_entry": capture_alive_at_entry,
         "capture_exit": capture.poll(),
+        "authority_hold_marker_published": hold_marker_published,
+        "authority_hold_marker_sha256": published_marker_sha256,
+        "supervisor_hold_confirmed": supervisor_hold_confirmed,
     }
 
 

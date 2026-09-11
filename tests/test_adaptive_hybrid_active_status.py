@@ -48,7 +48,7 @@ def test_adaptive_hybrid_status_getter_preserves_application_and_checkpoint(
             "-fdata-sections",
             str(ROOT / "tests/cpp/adaptive_hybrid_active_status_harness.cpp"),
             str(FIRMWARE / "otis_regulation_transaction.cpp"),
-            str(FIRMWARE / "otis_active_hybrid_policy_engine.cpp"),
+            str(FIRMWARE / "otis_active_hybrid_decision_types.cpp"),
             str(FIRMWARE / "otis_active_hybrid_decision_format.cpp"),
             str(FIRMWARE / "otis_adaptive_hybrid_regulation.cpp"),
             str(FIRMWARE / "otis_adaptive_hybrid_maintenance_format.cpp"),
