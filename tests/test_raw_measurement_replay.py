@@ -77,11 +77,50 @@ def raw_measurement_rows(edge_counts=None, *, first_sequence=0, first_ticks=0, f
         source_opening_snapshot_sequence=str(first_sequence), source_closing_snapshot_sequence=snapshots[-1]["snapshot_sequence"],
         source_opening_reference_sequence=str(first_sequence), source_closing_reference_sequence=snapshots[-1]["reference_sequence"],
         source_accepted_spans_ref=accepted_window_ref(1, 1, first_sequence, int(snapshots[-1]["snapshot_sequence"])),
-        accepted_sample_count=str(len(edge_counts)),
-        config_hash="a" * 64, observation_validity="valid", reference_validity="valid", count_validity="valid",
-        frequency_estimate_hz=f"{frequency:.12f}", frequency_error_hz=f"{frequency - 10_000_000.0:.12f}")]
+        accepted_sample_count=str(len(edge_counts)), source_status_refs="live:STS:pps_gate",
+        source_dac_ref="live:DAC:1", config_hash="a" * 64, observation_validity="valid",
+        reference_validity="valid", count_validity="valid",
+        frequency_observation_hz=f"{frequency:.12f}", frequency_estimate_hz=f"{frequency:.12f}",
+        frequency_error_hz=f"{frequency - 10_000_000.0:.12f}")]
     return {"counts.csv": counts, "snapshots.csv": snapshots, "ref.csv": references, "evt.csv": [], "estimates.csv": estimates,
             "spans.csv": accepted_rows(snapshots, counts, first_ordinal=first_sequence)}
+
+
+def diagnostic_estimate(rows, *, estimate_seq=0, opening_offset=0):
+    """Build the compact form of an actual overlapping diagnostic EST row."""
+    sources = rows["spans.csv"][
+        opening_offset : opening_offset + replay.DIAGNOSTIC_ESTIMATOR_SAMPLE_COUNT
+    ]
+    first, last = sources[0], sources[-1]
+    opening = (int(first["accepted_boundary_ordinal"]) - 1) % MODULUS
+    closing = int(last["accepted_boundary_ordinal"])
+    total = sum(int(span["counted_edges"]) for span in sources)
+    frequency = float(total) / replay.DIAGNOSTIC_ESTIMATOR_SAMPLE_COUNT
+    row = deepcopy(rows["estimates.csv"][0])
+    row.update(
+        estimate_seq=str(estimate_seq),
+        estimate_id=f"est:frequency_regulation:diagnostic60:{estimate_seq:06d}",
+        estimator_version=replay.DIAGNOSTIC_ESTIMATOR_ID,
+        estimator_timestamp_ticks=last["closing_reference_timestamp_ticks"],
+        capture_session=last["capture_session"],
+        source_acceptance_epoch=last["acceptance_epoch"],
+        source_opening_accepted_boundary_ordinal=str(opening),
+        source_closing_accepted_boundary_ordinal=str(closing),
+        source_opening_snapshot_sequence=first["opening_snapshot_sequence"],
+        source_closing_snapshot_sequence=last["closing_snapshot_sequence"],
+        source_opening_reference_sequence=first["opening_reference_sequence"],
+        source_closing_reference_sequence=last["closing_reference_sequence"],
+        source_accepted_spans_ref=accepted_window_ref(
+            int(last["capture_session"]), int(last["acceptance_epoch"]),
+            opening, closing,
+        ),
+        accepted_sample_count=str(replay.DIAGNOSTIC_ESTIMATOR_SAMPLE_COUNT),
+        frequency_estimate_hz=f"{frequency:.12f}",
+        frequency_error_hz=f"{frequency - 10_000_000.0:.12f}",
+        preview_eligibility="false",
+        eligibility_reason_codes="diagnostic_non_authoritative",
+    )
+    return row
 
 
 def run_measurement(monkeypatch, rows):
@@ -212,6 +251,7 @@ def test_declared_bad_aperture_does_not_poison_later_complete_estimate(monkeypat
     estimate.update(source_acceptance_epoch="2", source_opening_accepted_boundary_ordinal="0",
         source_closing_accepted_boundary_ordinal="600", source_accepted_spans_ref=accepted_window_ref(1, 2, 0, 600),
         source_opening_snapshot_sequence="9", source_opening_reference_sequence="9", accepted_sample_count="600",
+        frequency_observation_hz="10000000.000000000000",
         frequency_estimate_hz="10000000.000000000000", frequency_error_hz="0.000000000000")
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert exact, report
@@ -569,6 +609,7 @@ def test_raw_accepted_spans_replay_without_estimator_output(monkeypatch):
     assert report["estimate_replay"] == {
         "applicability": "not_applicable_no_emitted_estimates",
         "emitted_count": 0,
+        "selected_sources_exact": True,
         "exact": True,
     }
     assert report["selected_estimate_sources"] == []
@@ -584,3 +625,173 @@ def test_missing_raw_count_fails_even_without_estimator_output(monkeypatch):
 
     assert exact is False
     assert report["accepted_span_replay"]["raw_count_replay"]["exact"] is False
+
+
+def test_selected_replay_isolated_from_actual_overlapping_diagnostic_rows(monkeypatch):
+    rows = raw_measurement_rows()
+    selected = rows["estimates.csv"][0]
+    selected["estimate_seq"] = "1"
+    first_diagnostic = diagnostic_estimate(rows, estimate_seq=0)
+    second_diagnostic = diagnostic_estimate(rows, estimate_seq=2, opening_offset=1)
+    rows["estimates.csv"] = [first_diagnostic, selected, second_diagnostic]
+
+    exact, report, estimates_by_id = run_measurement(monkeypatch, rows)
+
+    assert exact, report
+    assert report["raw_measurement_exact"] is True
+    assert report["estimate_replay"] == {
+        "applicability": "emitted_selected_estimates",
+        "emitted_count": 1,
+        "selected_sources_exact": True,
+        "exact": True,
+    }
+    assert report["diagnostic_estimate_replay"]["emitted_count"] == 2
+    assert report["diagnostic_estimate_replay"]["exact"] is True
+    assert report["diagnostic_estimate_replay"]["authority"] == "none"
+    assert report["estimate_stream_integrity"]["exact"] is True
+    assert report["known_estimator_versions"]["exact"] is True
+    assert list(estimates_by_id) == ["selected-1"]
+    assert [source["estimate_id"] for source in report["selected_estimate_sources"]] == [
+        "selected-1"
+    ]
+    assert report["selected_estimate_sources"][0]["source_status_refs"] == (
+        "live:STS:pps_gate"
+    )
+    assert report["selected_estimate_sources"][0]["source_dac_ref"] == "live:DAC:1"
+    assert report["selected_estimate_sources"][0]["source_dac_epoch"] == 1
+    assert report["comparisons"][0]["absolute_observation_difference_hz"] == 0.0
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("frequency_error_hz", "1.000000000000"),
+        ("frequency_observation_hz", "9999999.000000000000"),
+        ("source_status_refs", "live:SNP:0:60"),
+        ("source_dac_ref", "live:DAC:not-a-number"),
+        ("observation_validity", "invalid"),
+        ("preview_eligibility", "true"),
+    ],
+)
+def test_diagnostic_corruption_fails_locally_without_vetoing_selected_replay(
+    monkeypatch, field, value,
+):
+    rows = raw_measurement_rows()
+    diagnostic = diagnostic_estimate(rows, estimate_seq=0)
+    diagnostic[field] = value
+    rows["estimates.csv"] = [diagnostic, rows["estimates.csv"][0]]
+
+    exact, report, estimates_by_id = run_measurement(monkeypatch, rows)
+
+    assert exact, report
+    assert report["raw_measurement_exact"] is True
+    assert report["estimate_replay"]["exact"] is True
+    assert report["estimate_replay"]["selected_sources_exact"] is True
+    assert report["diagnostic_estimate_replay"]["exact"] is False
+    assert report["diagnostic_estimate_replay"]["error_count"] == 1
+    assert list(estimates_by_id) == ["selected-1"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("frequency_error_hz", "1.000000000000"),
+        ("frequency_observation_hz", "9999999.000000000000"),
+        ("source_status_refs", "live:SNP:0:600"),
+        ("source_dac_ref", "live:DAC:02"),
+    ],
+)
+def test_selected_corruption_still_fails_decision_bearing_replay(
+    monkeypatch, field, value,
+):
+    rows = raw_measurement_rows()
+    diagnostic = diagnostic_estimate(rows, estimate_seq=0)
+    rows["estimates.csv"][0][field] = value
+    rows["estimates.csv"] = [diagnostic, rows["estimates.csv"][0]]
+
+    exact, report, estimates_by_id = run_measurement(monkeypatch, rows)
+
+    assert exact is False
+    assert report["raw_measurement_exact"] is True
+    assert report["estimate_replay"]["exact"] is False
+    assert report["estimate_replay"]["selected_sources_exact"] is False
+    assert report["diagnostic_estimate_replay"]["exact"] is True
+    assert estimates_by_id == {}
+
+
+def test_unknown_estimator_is_reported_and_cannot_supply_a_selected_source(monkeypatch):
+    rows = raw_measurement_rows()
+    unknown = diagnostic_estimate(rows, estimate_seq=0)
+    unknown["estimator_version"] = "unpromoted_unknown_estimator_v1"
+    unknown["estimate_id"] = "est:frequency_regulation:unknown:000000"
+    rows["estimates.csv"] = [unknown]
+
+    exact, report, estimates_by_id = run_measurement(monkeypatch, rows)
+
+    assert exact is False
+    assert report["raw_measurement_exact"] is True
+    assert report["estimate_replay"]["exact"] is False
+    assert report["estimate_replay"]["selected_sources_exact"] is True
+    assert report["estimate_replay"]["emitted_count"] == 0
+    assert report["known_estimator_versions"] == {
+        "exact": False,
+        "unknown_row_count": 1,
+        "unknown_versions": {"unpromoted_unknown_estimator_v1": 1},
+    }
+    assert report["selected_estimate_sources"] == []
+    assert estimates_by_id == {}
+
+
+@pytest.mark.parametrize("mutation", ["sequence_gap", "identity_collision"])
+def test_estimate_stream_corruption_reaches_consumed_estimate_verdict(
+    monkeypatch, mutation,
+):
+    rows = raw_measurement_rows()
+    diagnostic = diagnostic_estimate(rows, estimate_seq=0)
+    selected = rows["estimates.csv"][0]
+    if mutation == "sequence_gap":
+        selected["estimate_seq"] = "2"
+    else:
+        selected["estimate_id"] = diagnostic["estimate_id"]
+    rows["estimates.csv"] = [diagnostic, selected]
+
+    exact, report, _ = run_measurement(monkeypatch, rows)
+
+    assert exact is False
+    assert report["raw_measurement_exact"] is True
+    assert report["estimate_stream_integrity"]["exact"] is False
+    assert report["estimate_replay"]["exact"] is False
+
+
+@pytest.mark.parametrize(("decision_dac_epoch", "expected_exact"), [("1", True), ("2", False)])
+def test_active_decision_binds_selected_estimate_dac_epoch(
+    monkeypatch, decision_dac_epoch, expected_exact,
+):
+    rows = raw_measurement_rows()
+    _, measurement, _ = run_measurement(monkeypatch, rows)
+    decision = {
+        "decision_sequence": "1",
+        "capture_session": "1",
+        "source_acceptance_epoch": "1",
+        "source_opening_accepted_boundary_ordinal": "0",
+        "source_closing_accepted_boundary_ordinal": "600",
+        "frequency_estimator_sha256": "a" * 64,
+        "frequency_error_hz": "0.000000000000",
+        "accumulated_edge_error_counts": "0",
+        "decision_timestamp_ticks": "600000123",
+        "time_domain": "rp2040_monotonic_us64",
+        "dac_epoch": decision_dac_epoch,
+    }
+    monkeypatch.setattr(replay, "_read_csv", lambda _path: [decision])
+    manifest = SimpleNamespace(
+        root=Path("/unused"),
+        files=[{
+            "contract": "active_hybrid_decisions_v3",
+            "path": "active_hybrid_decisions_v3.csv",
+        }],
+    )
+
+    result = replay.replay_active_decision_measurement_sources(manifest, measurement)
+
+    assert result["exact"] is expected_exact
+    assert result["joins"][0]["exact"] is expected_exact

@@ -44,7 +44,7 @@ def test_current_decision_replay_binds_source_identity_as_well_as_capture_age(mo
         "source_opening_accepted_boundary_ordinal": 1,
         "source_closing_accepted_boundary_ordinal": 601,
         "estimator_sha256": "a" * 64, "frequency_error_hz": "0",
-        "accumulated_edge_error_counts": 0,
+        "accumulated_edge_error_counts": 0, "source_dac_epoch": 0,
     }
     decision = {
         "decision_timestamp_ticks": "2000123",
@@ -52,7 +52,7 @@ def test_current_decision_replay_binds_source_identity_as_well_as_capture_age(mo
         "capture_session": "1", "source_acceptance_epoch": "2",
         "source_opening_accepted_boundary_ordinal": "1", "source_closing_accepted_boundary_ordinal": "601",
         "frequency_estimator_sha256": "a" * 64, "frequency_error_hz": "0",
-        "accumulated_edge_error_counts": "0",
+        "accumulated_edge_error_counts": "0", "dac_epoch": "0",
     }
     manifest = SimpleNamespace(root=Path("/unused"), files=[{"contract": "active_hybrid_decisions_v3", "path": "decisions.csv"}])
     def consumes(decision, estimate):

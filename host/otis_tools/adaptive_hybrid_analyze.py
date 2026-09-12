@@ -44,11 +44,12 @@ from .authoritative_inputs import (
     ROOT_PROFILE,
     validate_authoritative_inputs,
 )
-from .contracts import CsvValidationContext, validate_csv
+from .contracts import CONTRACT_FIELDS, CsvValidationContext, validate_csv
 from .evidence_package import (
     ANALYSIS_CONTRACT,
     ANALYSIS_REPORT,
     ANALYZER_TOOL,
+    CAPTURE_RAW,
     PACKAGE_MANIFEST,
     PASSING_ANALYSIS_CHECKS,
     validate_package,
@@ -480,6 +481,127 @@ def replay_current_adaptive_hybrid_host_consumers(
     }
 
 
+def _replay_control_preview_estimate_sources(
+    manifest: RunManifest,
+    selected_estimates: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Bind each CTL to its exact selected EST and retained wire order."""
+
+    controls = _read_csv(_one_contract(manifest, "control_previews_v1"))
+    if not controls:
+        return {
+            "exact": True,
+            "applicability": "not_applicable_no_control_previews",
+            "control_count": 0,
+            "joins": [],
+            "errors": [],
+            "error_count": 0,
+        }
+
+    needed_estimate_ids = {row.get("est_input_ref", "") for row in controls}
+    needed_decision_ids = {row.get("decision_id", "") for row in controls}
+    raw_estimates: dict[str, tuple[int, int, dict[str, str]]] = {}
+    raw_controls: dict[str, tuple[int, int, dict[str, str]]] = {}
+    errors: list[str] = []
+    error_count = 0
+
+    def note_error(message: str) -> None:
+        nonlocal error_count
+        error_count += 1
+        if len(errors) < 20:
+            errors.append(message)
+
+    with (manifest.root / CAPTURE_RAW).open("rb") as stream:
+        for line_ordinal, raw_line in enumerate(stream, 1):
+            if not raw_line.startswith((b"EST,", b"CTL,")):
+                continue
+            try:
+                values = next(csv.reader([raw_line.decode("utf-8").strip()]))
+            except (UnicodeError, csv.Error):
+                continue
+            record_type = values[0] if values else ""
+            contract = "estimates_v3" if record_type == "EST" else "control_previews_v1"
+            fields = CONTRACT_FIELDS[contract]
+            if len(values) != len(fields):
+                continue
+            row = dict(zip(fields, values, strict=True))
+            if record_type == "EST" and row["estimate_id"] in needed_estimate_ids:
+                previous = raw_estimates.get(row["estimate_id"])
+                raw_estimates[row["estimate_id"]] = (
+                    1 if previous is None else previous[0] + 1,
+                    line_ordinal if previous is None else previous[1],
+                    row if previous is None else previous[2],
+                )
+            elif record_type == "CTL" and row["decision_id"] in needed_decision_ids:
+                previous = raw_controls.get(row["decision_id"])
+                raw_controls[row["decision_id"]] = (
+                    1 if previous is None else previous[0] + 1,
+                    line_ordinal if previous is None else previous[1],
+                    row if previous is None else previous[2],
+                )
+
+    joins: list[dict[str, Any]] = []
+    for control in controls:
+        decision_id = control.get("decision_id", "")
+        estimate_id = control.get("est_input_ref", "")
+        estimate = selected_estimates.get(estimate_id)
+        estimate_occurrence = raw_estimates.get(estimate_id)
+        control_occurrence = raw_controls.get(decision_id)
+        timestamp_domain_exact = (
+            estimate is not None
+            and control.get("decision_timestamp_ticks")
+            == estimate.get("estimator_timestamp_ticks")
+            and control.get("time_domain") == estimate.get("time_domain")
+        )
+        raw_estimate_exact = (
+            estimate is not None
+            and estimate_occurrence is not None
+            and estimate_occurrence[0] == 1
+            and estimate_occurrence[2] == estimate
+        )
+        raw_control_exact = (
+            control_occurrence is not None
+            and control_occurrence[0] == 1
+            and control_occurrence[2] == control
+        )
+        publication_order_exact = (
+            raw_estimate_exact
+            and raw_control_exact
+            and estimate_occurrence[1] < control_occurrence[1]
+        )
+        exact = (
+            estimate is not None
+            and timestamp_domain_exact
+            and raw_estimate_exact
+            and raw_control_exact
+            and publication_order_exact
+        )
+        if not exact:
+            note_error(
+                f"CTL {decision_id or '?'} does not bind one earlier exact selected "
+                f"EST {estimate_id or '?'} with the same timestamp and domain"
+            )
+        joins.append(
+            {
+                "decision_id": decision_id,
+                "estimate_id": estimate_id,
+                "timestamp_domain_exact": timestamp_domain_exact,
+                "raw_estimate_exact": raw_estimate_exact,
+                "raw_control_exact": raw_control_exact,
+                "publication_order_exact": publication_order_exact,
+                "exact": exact,
+            }
+        )
+    return {
+        "exact": error_count == 0,
+        "applicability": "emitted_control_previews",
+        "control_count": len(controls),
+        "joins": joins,
+        "errors": errors,
+        "error_count": error_count,
+    }
+
+
 def _inhibited_zero_write_maintenance_replay(
     record_replay: dict[str, Any], *, authority_exact: bool
 ) -> dict[str, Any]:
@@ -610,13 +732,19 @@ def analyze(
         authority_exact=inhibited_zero_write and inhibited_authority_exact,
     )
     transactions = _read_csv(_one_contract(manifest, "active_transactions_v3"))
-    _, measurement, _ = _measurement_replay(manifest, manifest_value, validated_inputs=frozen_inputs)
+    _, measurement, selected_estimates = _measurement_replay(
+        manifest, manifest_value, validated_inputs=frozen_inputs
+    )
+    control_estimate_sources = _replay_control_preview_estimate_sources(
+        manifest, selected_estimates
+    )
     decision_measurement_sources = replay_active_decision_measurement_sources(
         manifest, measurement
     )
     phase_sources = replay_phase_accepted_sources(manifest)
     measurement["active_decision_sources"] = decision_measurement_sources
     measurement["phase_sources"] = phase_sources
+    measurement["control_preview_estimate_sources"] = control_estimate_sources
     responses = shared_consumers["response_replay"]
     supervisor_state = _read_object(run_dir / SUPERVISOR_STATE)
     qualification_coordinate_exact = False
@@ -643,9 +771,10 @@ def analyze(
     d10_isolated = _d10_isolated(section, measurement)
     checks = {
         "manifest_current": True,
-        "csv_contracts_exact": shared_consumers["checks"][
-            "authoritative_csvs_exact"
-        ],
+        "csv_contracts_exact": (
+            shared_consumers["checks"]["authoritative_csvs_exact"]
+            and control_estimate_sources.get("exact") is True
+        ),
         "exact_lifecycle_records": shared_consumers["checks"][
             "exact_lifecycle_records"
         ],

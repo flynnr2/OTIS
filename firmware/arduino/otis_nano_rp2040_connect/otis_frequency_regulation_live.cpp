@@ -507,8 +507,8 @@ void otis_frequency_regulation_live_on_reference_selection(
         static_code);
     OtisFrequencyRegulationDecision decision;
     otis_frequency_regulation_engine_evaluate(&controller, &input, &decision);
-    emit_control(decision, static_code, observation->reference_timestamp_ticks,
-                 estimate_seq);
+    // Retain the internal transition. CTL requires a selected EST, which does
+    // not exist at this warmup boundary.
   }
   // A boundary stamped exactly at settling_until_s closes the oscillator
   // interval that began one second earlier, so it still straddles the
@@ -540,8 +540,7 @@ void otis_frequency_regulation_live_on_reference_selection(
         uptime_s, 0.0, false, false, false, false, static_code);
     OtisFrequencyRegulationDecision decision;
     otis_frequency_regulation_engine_evaluate(&controller, &input, &decision);
-    emit_control(decision, static_code, observation->reference_timestamp_ticks,
-                 estimate_seq);
+    // The discontinuity has no selected EST to bind to a CTL record.
     return;
   }
   if (span.diagnostic_available &&
@@ -645,7 +644,8 @@ void otis_frequency_regulation_live_on_capture_fault(
       uptime_s, 0.0, false, false, false, false, static_code);
   OtisFrequencyRegulationDecision decision;
   otis_frequency_regulation_engine_evaluate(&controller, &input, &decision);
-  emit_control(decision, static_code, 0u, estimate_seq);
+  // Capture/acceptance diagnostics retain the fault event independently. A
+  // CTL cannot be emitted until a fresh selected EST supplies its provenance.
 }
 
 void otis_frequency_regulation_live_get_authority_state(

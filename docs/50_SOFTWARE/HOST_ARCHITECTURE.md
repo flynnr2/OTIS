@@ -77,7 +77,15 @@ accepted spans, phase-source associations, transactions, responses, and controll
 history. Phase replay follows the producer's two-stage qualification: an exact
 qualified RPH may feed an initializing PHE until the 600-point frequency support
 exists, while an invalid RPH requires an invalid PHE. Raw D14/D8 replay is
-independent of whether a controller or estimator produced a record. An inhibited attachment can have valid measurements and no
+independent of whether a controller or estimator produced a record. Selected
+600-span estimates and overlapping 60-span diagnostic estimates have separate
+replay scopes. Diagnostics are reported locally and never populate the selected
+source map used by controller and transaction consumers. EST stream identity
+and CSV integrity remain explicit checks; a diagnostic numeric mismatch is not
+a failure of the selected estimator or canonical D14/D8 observations. Source
+windows are looked up by capture session, acceptance epoch and ordinal, so dense
+diagnostic output does not require a full APS scan for every estimate.
+An inhibited attachment can have valid measurements and no
 control decisions; emitted estimates and decisions still require exact source
 bindings. D10 remains optional external-event evidence and cannot veto D14/D8
 validity or control. Evidence integrity and scientific outcome are separate.

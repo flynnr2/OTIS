@@ -1636,7 +1636,7 @@ class DeterministicPtyInstrument:
                 "source_opening_reference_sequence": str(self._raw_sequence(first)),
                 "source_closing_reference_sequence": str(self._raw_sequence(last)),
                 "source_accepted_spans_ref": f"live:APS:1:1:{first}:{last}",
-                "source_status_refs": f"live:SNP:{self._raw_sequence(first)}:{self._raw_sequence(last)}",
+                "source_status_refs": "live:STS:pps_gate",
                 "source_dac_ref": f"live:DAC:{decision['dac_epoch']}",
                 "manifest_ref": "run_manifest",
                 "estimator_version": "OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
@@ -1666,8 +1666,35 @@ class DeterministicPtyInstrument:
                 "eligibility_reason_codes": "eligible",
             }
         )
+        # Real firmware interleaves overlapping diagnostic estimates with the
+        # selected non-overlapping controller input. Exercise that distinction
+        # through capture, replay and the first dependent control decision.
+        diagnostic_first = last - 60
+        diagnostic_frequency = float(60 * 10_000_000 + sum(
+            self.raw_interval_adjustments.get(ordinal, 0)
+            for ordinal in range(diagnostic_first + 1, last + 1)
+        )) / 60.0
+        diagnostic = dict(row)
+        diagnostic.update(
+            estimate_id=f"rehearsal:diagnostic60:{self.estimate_sequence}",
+            estimator_version="accepted_reference_frequency_diagnostic_60s_overlap_v1",
+            source_opening_accepted_boundary_ordinal=str(diagnostic_first),
+            source_opening_snapshot_sequence=str(self._raw_sequence(diagnostic_first)),
+            source_opening_reference_sequence=str(self._raw_sequence(diagnostic_first)),
+            source_accepted_spans_ref=f"live:APS:1:1:{diagnostic_first}:{last}",
+            source_status_refs="live:STS:pps_gate",
+            accepted_sample_count="60",
+            frequency_observation_hz=f"{diagnostic_frequency:.12f}",
+            frequency_estimate_hz=f"{diagnostic_frequency:.12f}",
+            frequency_error_hz=f"{diagnostic_frequency - 10_000_000.0:.12f}",
+            preview_eligibility="false",
+            eligibility_reason_codes="diagnostic_non_authoritative",
+        )
         self.estimate_sequence += 1
-        self._emit_rows(CONTRACT_FIELDS["estimates_v3"], [row])
+        row.update(estimate_seq=str(self.estimate_sequence),
+                   estimate_id=f"rehearsal:selected:{self.estimate_sequence}")
+        self.estimate_sequence += 1
+        self._emit_rows(CONTRACT_FIELDS["estimates_v3"], [diagnostic, row])
         self._emit_phase_source(decision)
         return row
 
