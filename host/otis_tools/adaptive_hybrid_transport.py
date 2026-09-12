@@ -7,6 +7,7 @@ the mechanics shared by the current adaptive-hybrid control supervisors.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,8 @@ import json
 import time
 from typing import Any
 
-from .adaptive_hybrid_transactions import AdaptiveHybridTransactionSupervisor, _read_csv, _utc_now
+from .adaptive_hybrid_transactions import AdaptiveHybridTransactionSupervisor, LEASE_PERIOD_S, _read_csv, _utc_now
+from .adaptive_hybrid_contract import NORMAL_COMMAND_ACK_TIMEOUT_S
 from .serial_commands import send_timestamped_command_to_fifo
 from .time_domains import unwrap_domain_ticks
 
@@ -23,9 +25,12 @@ ESTIMATES_CSV = Path("csv/estimates_v3.csv")
 DAC_CSV = Path("csv/dac_steps.csv")
 CAPTURE_TRANSPORT_STATE = Path("reports/capture_device_state.json")
 CAPTURE_TRANSPORT_STATE_MAX_AGE_S = 15
-NORMAL_COMMAND_ACK_TIMEOUT_S = 3.0
 NORMAL_COMMAND_ACK_POLL_S = 0.02
 RP2040_MONOTONIC_US_PER_SECOND = 1_000_000
+
+
+class ExplicitSupervisorAbort(BaseException):
+    """Unwind a bounded wait after the explicit operator abort was submitted."""
 
 
 @dataclass(frozen=True)
@@ -106,22 +111,80 @@ class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
         self.state.setdefault("arm_sent_at_utc", None)
         self._save()
 
+    @contextmanager
+    def _causal_observation(self, timeout_s: float, *, deadline_ns: int | None = None):
+        previous = getattr(self, "_causal_deadline_ns", None)
+        deadline = time.monotonic_ns() + int(timeout_s * 1_000_000_000)
+        if deadline_ns is not None:
+            if type(deadline_ns) is not int or deadline_ns <= 0:
+                raise ValueError("causal observation deadline is malformed")
+            deadline = min(deadline, deadline_ns)
+        if previous is not None:
+            deadline = min(deadline, previous)
+        self._causal_deadline_ns = deadline
+        try:
+            self._check_wait_deadline()
+            yield deadline
+            self._check_wait_deadline()
+        finally:
+            self._causal_deadline_ns = previous
+
+    def _check_wait_deadline(self, deadline_ns: int | None = None) -> None:
+        active = getattr(self, "_causal_deadline_ns", None)
+        if active is not None:
+            deadline_ns = active if deadline_ns is None else min(active, deadline_ns)
+        if deadline_ns is not None and time.monotonic_ns() >= deadline_ns:
+            raise TimeoutError("causal observation deadline expired")
+
+    def _poll_wait_abort(self) -> None:
+        abort = getattr(self, "_wait_abort_fifo", None)
+        if abort is not None and abort.poll():
+            self._abort("independent_host_abort_fifo")
+            raise ExplicitSupervisorAbort()
+
+    def _wait_slice(self, seconds: float, *, allow_lease: bool = False,
+                    deadline_ns: int | None = None) -> None:
+        self._poll_wait_abort()
+        self._check_wait_deadline(deadline_ns)
+        last_lease = getattr(self, "_last_lease_monotonic_ns", None)
+        if (allow_lease and last_lease is not None
+            and not getattr(self, "_normal_command_ack_pending", False)
+            and self._startup_census_admitted()
+            and time.monotonic_ns() - last_lease >= int(LEASE_PERIOD_S * 1_000_000_000)):
+            self._renew_lease()
+        self._check_wait_deadline(deadline_ns)
+        active = getattr(self, "_causal_deadline_ns", None)
+        bounds = [value for value in (active, deadline_ns) if value is not None]
+        if bounds:
+            seconds = min(seconds, (min(bounds) - time.monotonic_ns()) / 1_000_000_000)
+        time.sleep(max(0.0, seconds))
+        self._poll_wait_abort()
+        self._check_wait_deadline(deadline_ns)
+
     def _command(self, command: str) -> None:
+        self._poll_wait_abort()
+        self._check_wait_deadline()
+        if getattr(self, "_normal_command_ack_pending", False):
+            raise ValueError("normal command acknowledgement is unresolved")
         before = (
             self._check_capture_transport_state()
             if self._live_command_ack_required
             else None
         )
+        deadline_ns = time.monotonic_ns() + int(NORMAL_COMMAND_ACK_TIMEOUT_S * 1_000_000_000)
+        self._normal_command_ack_pending = before is not None
         send_timestamped_command_to_fifo(self.command_fifo, command)
         self._event("command_submitted", command=command)
         if before is None:
             return
         before_sent = int(before["commands_sent"])
-        deadline = time.monotonic() + NORMAL_COMMAND_ACK_TIMEOUT_S
         while True:
+            self._poll_wait_abort()
+            self._check_wait_deadline(deadline_ns)
             current = self._check_capture_transport_state()
             sent = int(current["commands_sent"])
             if sent == before_sent + 1:
+                self._normal_command_ack_pending = False
                 self._event("host_written", command=command, commands_sent=sent)
                 return
             if sent != before_sent:
@@ -129,12 +192,9 @@ class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
                     "capture command acknowledgement sequence changed "
                     f"unexpectedly: before={before_sent} current={sent}"
                 )
-            if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    "capture did not acknowledge the fresh normal command "
-                    f"within {NORMAL_COMMAND_ACK_TIMEOUT_S:.1f} s: {command}"
-                )
-            time.sleep(NORMAL_COMMAND_ACK_POLL_S)
+            # A timed-out/contradictory ACK stays unresolved. Do not insert a
+            # lease or another normal command into that counter frontier.
+            self._wait_slice(NORMAL_COMMAND_ACK_POLL_S, deadline_ns=deadline_ns)
 
     def _check_capture_transport_state(self) -> dict[str, Any]:
         path = self.run_dir / CAPTURE_TRANSPORT_STATE

@@ -74,7 +74,7 @@ Host startup previously renewed the capture lease before consuming its first
 solicited current ACTIVE snapshot. Fresh flashing hid that ordering assumption
 in the current campaign runner. Startup discovery now precedes lease and
 control admission: a durable census distinguishes a fresh disarmed instrument,
-an exactly retained continuation, an unowned active or in-flight state, and a
+an unsupported retained continuation, an unowned active or in-flight state, and a
 faulted or incoherent state. A host may observe any of these. Observation alone
 cannot authorize lease renewal, SETUP, ARM, or acknowledgement of another
 transaction. Unsupported continuation retains capture in a review hold;
@@ -337,3 +337,20 @@ campaign adapters and fixtures when their decision is complete; preserve their
 source revision and evidence rather than current compatibility branches. Future
 standalone operation should consume the explicit instrument state/protocol,
 not reproduce this campaign's activation, manifest or process topology.
+
+## Causal waiting and restart ownership
+
+The September 11 causal-wait repair supersedes the earlier narrowly retained
+ACK restart path above. Exact retained records are necessary but cannot make
+an old process's monotonic deadline valid in a new process. Such attachment
+now retains a review hold without resuming the pending acknowledgement.
+Within one admitted process, the phase owns its complete observation budget,
+including nested queries, retries and confirmation; explicit abort remains
+serviced throughout. An unresolved capture-write acknowledgement prevents a
+lease or second normal command from contaminating its exact command counter.
+
+The private rehearsal coordinator owns managed child lifetime and a finite
+causal-progress deadline. It no longer races healthy capture against unrelated
+90/120-second stopwatches. This correction is host verification work, not a
+claim that the physical firmware or plant is qualified. Evidence and final
+validation are recorded in the [repair report](../60_EXPERIMENTS/CAUSAL_WAIT_REPAIR_2026_09_11.md).

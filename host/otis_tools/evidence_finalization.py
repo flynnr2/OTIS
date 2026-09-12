@@ -12,7 +12,7 @@ from pathlib import Path
 import tempfile
 from typing import Any, Iterator
 
-from .evidence_index import package_identity, register_package
+from .evidence_index import package_identity, register_package, validate_index_location
 
 
 CONTRACT_ID = "otis_evidence_finalization_v1"
@@ -96,6 +96,7 @@ def begin_finalization(
     """Create or validate the out-of-package recovery intent."""
 
     run = run_dir.expanduser().resolve()
+    index_path = validate_index_location(index_path, package_path=run)
     path = journal_path_for(run)
     with _locked(path):
         if path.exists():
@@ -185,6 +186,43 @@ def record_failure(
         else:
             value["secondary_failures"].append(failure)
         value["updated_utc"] = failure["observed_utc"]
+        _atomic_json(journal_path, value)
+        return value
+
+
+def prepare_registration_recovery(
+    journal_path: Path, *, index_path: Path, recovery_tool_path: Path,
+) -> dict[str, Any]:
+    """Retain an explicit destination correction outside the sealed package."""
+
+    from hashlib import sha256
+
+    destination = validate_index_location(index_path)
+    tool_path = recovery_tool_path.resolve()
+    tool_bytes = tool_path.read_bytes()
+    with _locked(journal_path):
+        value = _read(journal_path)
+        validate_index_location(destination, package_path=Path(value["run_dir"]))
+        if value["phases"]["seal"] is None or value.get("expected_content_sha256") is None:
+            raise ValueError("registration recovery requires a sealed package intent")
+        prior = value["index_path"]
+        if value["phases"]["registration"] is not None and prior != str(destination):
+            raise ValueError("cannot relocate an acknowledged registration")
+        attempts = value.setdefault("recovery_attempts", [])
+        if not isinstance(attempts, list):
+            raise ValueError("finalization recovery attempts are malformed")
+        attempts.append({
+            "started_utc": _utc_now(),
+            "previous_index_path": prior,
+            "index_path": str(destination),
+            "expected_content_sha256": value["expected_content_sha256"],
+            "recovery_tool": {
+                "path": str(tool_path), "sha256": sha256(tool_bytes).hexdigest(),
+                "size_bytes": len(tool_bytes),
+            },
+        })
+        value["index_path"] = str(destination)
+        value["updated_utc"] = _utc_now()
         _atomic_json(journal_path, value)
         return value
 

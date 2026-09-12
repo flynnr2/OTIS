@@ -48,6 +48,8 @@ from .acquisition_frontier import (
 )
 from .adaptive_hybrid_bundle import validate_bundle
 from .adaptive_hybrid_contract import (
+    operational_rehearsal_timing,
+    OPERATIONAL_REHEARSAL_CHECKS,
     ADAPTIVE_HYBRID_PROGRAMME,
     operational_rehearsal_authorization_contract,
     programme_from_mapping,
@@ -55,6 +57,7 @@ from .adaptive_hybrid_contract import (
 from .adaptive_hybrid_analyze import (
     replay_current_adaptive_hybrid_host_consumers,
 )
+from .adaptive_hybrid_run import _wait_for_terminal_abort_delivery
 from .adaptive_hybrid_monitor import (
     run_monitor,
 )
@@ -109,10 +112,13 @@ from .evidence import (
 from .evidence_finalization import (
     advance_phase,
     begin_finalization,
+    journal_path_for,
+    prepare_registration_recovery,
     record_failure,
+    recover_registration,
     set_registration_intent,
 )
-from .evidence_index import package_identity, register_package, validate_index
+from .evidence_index import package_identity, register_package, validate_index, validate_index_location
 from .prewrite_readiness_contract import (
     GNSS_PREWRITE_EXACT,
     HEALTH_INTEGRITY_EXACT,
@@ -509,6 +515,7 @@ def create_rehearsal_run_manifest(
             "sole_serial_owner": True,
             "serial_owner_count": 1,
             "tool_bindings": bundle["host_tools"],
+            "rehearsal_timing": operational_rehearsal_timing(),
             "fifos": {
                 "normal_command": "control/normal_commands.fifo",
                 "emergency_abort": "control/emergency_abort.fifo",
@@ -646,6 +653,7 @@ def _validate_manifest_value(
         "sole_serial_owner": True,
         "serial_owner_count": 1,
         "tool_bindings": bundle["host_tools"],
+            "rehearsal_timing": operational_rehearsal_timing(),
         "fifos": expected_fifos,
     }
     expected_section = {
@@ -2689,7 +2697,7 @@ def _supervisor_worker(manifest_path: Path, run_dir: Path) -> int:
         ),
         abort_fifo=run_dir / private["host"]["fifos"]["host_abort"],
         expected_build_identity=str(private["firmware"]["build_identity"]),
-        duration_s=120.0,
+        duration_s=None,
         console_events=False,
     )
     _record_supervisor_startup_phase(
@@ -2798,7 +2806,7 @@ def _rotate_to_transition(
         run_dir / "carrier" / SEGMENT_RESPONSE_DIR / f"{request_id}.json"
     )
     _wait_until(
-        lambda: response_path.is_file(), 10.0, "same-owner segment response"
+        lambda: response_path.is_file(), operational_rehearsal_timing()["rotation_s"], "same-owner segment response"
     )
     response = _read_object(response_path, "same-owner segment response")
     if response.get("status") != "completed":
@@ -2825,6 +2833,97 @@ def _process_command(module: str, *arguments: str) -> list[str]:
     return [sys.executable, "-m", module, *arguments]
 
 
+def _remaining_host_seconds(deadline_ns: int, description: str) -> float:
+    remaining_ns = deadline_ns - time.monotonic_ns()
+    if remaining_ns <= 0:
+        raise TimeoutError(f"{description} exhausted its shared host deadline")
+    return remaining_ns / 1_000_000_000
+
+
+def _rehearsal_progress_facts(state: dict[str, Any]) -> frozenset[str]:
+    """Count each exact fixture transition once, never observer activity."""
+    acknowledged = state.get("acknowledged_record_sequences", [])
+    if (not isinstance(acknowledged, list)
+        or any(type(item) is not int for item in acknowledged)
+        or len(acknowledged) > 8
+        or acknowledged != list(range(2, 2 + len(acknowledged)))):
+        raise ValueError("rehearsal acknowledgement frontier is not the exact fixture prefix")
+    facts = {f"acknowledged_record_{item}" for item in acknowledged}
+    census = state.get("startup_census")
+    if isinstance(census, dict) and census.get("authority_admitted") is True:
+        facts.add("startup_census")
+    if state.get("setup_confirmed_utc") and state.get("setup_confirmation"):
+        facts.add("setup_confirmed")
+    if state.get("gnss_metadata_hold_count") == 1 and state.get("gnss_metadata_hold") is None:
+        facts.add("metadata_requalified")
+    return frozenset(facts)
+
+
+@dataclass
+class _RehearsalProgressDeadline:
+    """One advancing deadline for a finite set of one-shot fixture facts."""
+    started_ns: int
+    last_progress_ns: int
+    timing: dict[str, Any]
+    facts: frozenset[str] = frozenset()
+
+    def observe(self, facts: frozenset[str], now_ns: int) -> bool:
+        if not self.facts.issubset(facts):
+            raise ValueError("rehearsal causal frontier moved backward")
+        if len(facts) > self.timing["maximum_progress_facts"]:
+            raise ValueError("rehearsal causal frontier exceeded its frozen fixture")
+        if now_ns < self.last_progress_ns:
+            raise ValueError("rehearsal host monotonic clock moved backward")
+        if now_ns - self.last_progress_ns >= self.timing["causal_progress_s"] * 1_000_000_000:
+            raise TimeoutError("rehearsal stalled without exact causal progress: " + ",".join(sorted(self.facts)))
+        changed = facts != self.facts
+        if changed:
+            self.facts, self.last_progress_ns = facts, now_ns
+        return changed
+
+
+def _wait_for_rehearsal_transactions(
+    session: AdaptiveHybridSession, emulator: DeterministicPtyInstrument,
+    timing: dict[str, Any],
+) -> None:
+    started_ns = time.monotonic_ns()
+    progress = _RehearsalProgressDeadline(started_ns, started_ns, timing)
+    while True:
+        session._require_alive(("capture", "supervisor", "monitor"))
+        session.check_monitor()
+        if emulator.error is not None:
+            raise RuntimeError(str(emulator.error))
+        state = _read_object(session.run_dir / "reports/adaptive_hybrid_supervisor_state.json", "supervisor state")
+        if state.get("host_verification_hold") is not None:
+            raise RuntimeError("rehearsal supervisor requires review: " + json.dumps(state["host_verification_hold"], sort_keys=True))
+        if state.get("terminal") is not None:
+            raise RuntimeError("rehearsal supervisor reached a terminal before the transaction sequence completed")
+        facts = _rehearsal_progress_facts(state)
+        complete = (
+            emulator.ready_for_obstruction.is_set()
+            and state.get("acknowledged_record_sequences") == list(range(2, 10))
+            and state.get("inflight_evidence_acknowledgement") is None
+            and state.get("response_count") == 2
+            and state.get("later_authority_released") is True
+            and "metadata_requalified" in facts
+        )
+        if complete:
+            facts |= {"complete"}
+        observed_ns = time.monotonic_ns()
+        if progress.observe(facts, observed_ns) or "causal_progress" not in session.state:
+            session.state["causal_progress"] = {
+                "clock_domain": timing["clock_domain"],
+                "started_monotonic_ns": started_ns,
+                "last_progress_monotonic_ns": progress.last_progress_ns,
+                "elapsed_host_monotonic_ns": observed_ns - started_ns,
+                "facts": sorted(facts),
+            }
+            session._save()
+        if complete:
+            return
+        time.sleep(0.05)
+
+
 
 def _run_process_topology(
     *,
@@ -2839,6 +2938,9 @@ def _run_process_topology(
     supervisor: subprocess.Popen[str] | None = None
     monitor: subprocess.Popen[str] | None = None
     session = AdaptiveHybridSession(run_dir=run_dir, device=device, physical=False)
+    timing = operational_rehearsal_timing()
+    session.state["rehearsal_timing"] = timing
+    session._save()
     emulator: DeterministicPtyInstrument | None = None
     emulator_thread: threading.Thread | None = None
     capture_continued = False
@@ -2856,8 +2958,6 @@ def _run_process_topology(
                 device,
                 "--run-dir",
                 str(run_dir),
-                "--duration-s",
-                "120",
                 "--status-interval",
                 "1",
                 "--command-fifo",
@@ -2879,7 +2979,7 @@ def _run_process_topology(
         slave_fd = -1
         # Do not write the synthetic boot stream until the child actually owns
         # the slave. A launched PID alone leaves a PTY-open race (EIO on macOS).
-        session.wait_capture_ready(10.0)
+        session.wait_capture_ready(timing["capture_start_s"])
         emulator = DeterministicPtyInstrument(master_fd, bundle)
         emulator_thread = emulator.start()
 
@@ -2897,29 +2997,9 @@ def _run_process_topology(
             supervisor_log=run_dir / "reports/adaptive_hybrid_supervisor.stdout.log",
             monitor_log=run_dir / "reports/adaptive_hybrid_monitor.stdout.log",
         )
-        session.wait_support_ready(10.0)
+        session.wait_support_ready(timing["support_start_s"])
 
-        def lifecycle_complete() -> bool:
-            if emulator is not None and emulator.error is not None:
-                raise RuntimeError(str(emulator.error))
-            state = _read_object(
-                run_dir / "reports/adaptive_hybrid_supervisor_state.json",
-                "supervisor state",
-            )
-            return bool(
-                emulator is not None
-                and emulator.ready_for_obstruction.is_set()
-                and state.get("acknowledged_record_sequences")
-                == list(range(2, 10))
-                and state.get("inflight_evidence_acknowledgement") is None
-                and state.get("response_count") == 2
-                and state.get("later_authority_released") is True
-                and state.get("gnss_metadata_hold_count") == 1
-                and state.get("gnss_metadata_hold") is None
-                and state.get("host_verification_hold") is None
-            )
-
-        _wait_until(lifecycle_complete, 90.0, "two exact progressive transactions")
+        _wait_for_rehearsal_transactions(session, emulator, timing)
         stale_line = (
             f"OTISQ1 {time.monotonic_ns() - 3_000_000_000} ACTIVE?\n"
         ).encode("ascii")
@@ -2938,18 +3018,19 @@ def _run_process_topology(
                 )
             )
             == 1,
-            5.0,
+            timing["stale_command_s"],
             "stale normal command rejection",
         )
         os.kill(capture.pid, signal.SIGSTOP)
         obstruction = _fill_fifo_to_obstruction(
             run_dir / "control/normal_commands.fifo"
         )
-        abort_started = time.monotonic()
+        abort_started_ns = time.monotonic_ns()
+        abort_deadline_ns = abort_started_ns + timing["abort_delivery_s"] * 1_000_000_000
         send_abort(run_dir / "control/host_abort.fifo")
         _wait_until(
             lambda: supervisor.poll() is not None,
-            8.0,
+            _remaining_host_seconds(abort_deadline_ns, "priority abort delivery"),
             "supervisor priority abort submission",
         )
         supervisor_exit = supervisor.wait(timeout=1.0)
@@ -2957,22 +3038,17 @@ def _run_process_topology(
             raise RuntimeError(f"supervisor abort exit was {supervisor_exit}, expected 3")
         os.kill(capture.pid, signal.SIGCONT)
         capture_continued = True
-        _wait_until(
-            lambda: (
-                emulator is not None
-                and emulator.abort_observed.is_set()
-                and int(
-                    _read_object(run_dir / CAPTURE_STATE, "capture state").get(
-                        "emergency_aborts_sent", 0
-                    )
-                )
-                == 1
-            ),
-            8.0,
-            "priority abort transmission and deterministic consumption",
-        )
-        abort_elapsed = time.monotonic() - abort_started
-        if abort_elapsed > 8.0:
+        terminal = _read_object(
+            run_dir / "reports/adaptive_hybrid_supervisor_state.json", "supervisor state"
+        ).get("terminal")
+        if not isinstance(terminal, dict) or terminal.get("result") != "aborted":
+            raise RuntimeError("explicit rehearsal abort lacks its supervisor terminal")
+        _wait_for_terminal_abort_delivery(run_dir, terminal, deadline_ns=abort_deadline_ns)
+        if not emulator.abort_observed.is_set():
+            raise RuntimeError("post-abort evidence preceded simulated command consumption")
+        abort_elapsed_ns = time.monotonic_ns() - abort_started_ns
+        abort_elapsed = abort_elapsed_ns / 1_000_000_000
+        if abort_elapsed_ns > timing["abort_delivery_s"] * 1_000_000_000:
             raise RuntimeError("priority abort delivery exceeded its bounded deadline")
 
         rotation = _rotate_to_transition(
@@ -2981,7 +3057,7 @@ def _run_process_topology(
             capture_pid=capture.pid,
             device=device,
         )
-        capture_exit = session.close_capture_after_authorized_terminal(timeout_s=10.0)
+        capture_exit = session.close_capture_after_authorized_terminal(timeout_s=timing["capture_close_s"])
         if capture_exit != 0:
             raise RuntimeError(f"capture process exited {capture_exit}")
         transition_closure_path = transition_dir / SEGMENT_CLOSURE
@@ -3017,6 +3093,8 @@ def _run_process_topology(
             "schema_version": 1,
             "tool": TOOL_ID,
             "nonphysical": True,
+            "timing": timing,
+            "causal_progress": session.state["causal_progress"],
             "physical_actions_performed": 0,
             "processes": {
                 "capture": {"pid": capture.pid, "exit": capture_exit},
@@ -3484,7 +3562,29 @@ def analyze_and_seal_rehearsal(
         for marker in raw_markers
         if marker.get("event") == "host_command_rejected"
     ]
+    session_state = _read_object(run_dir / SESSION_PATH, "rehearsal session")
+    timing = operational_rehearsal_timing()
+    progress = process_evidence.get("causal_progress", {})
+    expected_facts = {"startup_census", "setup_confirmed", "metadata_requalified", "complete"}
+    expected_facts.update(f"acknowledged_record_{record}" for record in range(2, 10))
+    progress_coordinates = [progress.get(name) for name in (
+        "started_monotonic_ns", "last_progress_monotonic_ns", "elapsed_host_monotonic_ns"
+    )]
+    progress_exact = (
+        all(type(value) is int and value >= 0 for value in progress_coordinates)
+        and progress_coordinates[1] - progress_coordinates[0] == progress_coordinates[2]
+        and progress_coordinates[2] < timing["transaction_sequence_s"] * 1_000_000_000
+        and progress.get("clock_domain") == timing["clock_domain"]
+        and progress.get("facts") == sorted(expected_facts)
+        and progress == session_state.get("causal_progress")
+    )
     checks = {
+        "coordinator_timing_and_exact_progress_bound": (
+            process_evidence.get("timing") == timing
+            == manifest_value["host"].get("rehearsal_timing")
+            == session_state.get("rehearsal_timing")
+            and progress_exact
+        ),
         "private_nonphysical_manifest_exact": manifest_value.get("stage")
         == REHEARSAL_STAGE,
         "process_command_transcript_matches_raw": commands == raw_commands,
@@ -3607,7 +3707,10 @@ def analyze_and_seal_rehearsal(
         == ["capture_started", "capture_stopped"],
         "read_only_monitor_observed_lifecycle": any(
             row.get("tool") == "adaptive_hybrid_hybrid_monitor_v1"
-            and row.get("progress", {}).get("active_transactions", {}).get("rows", 0) >= 5
+            and row.get("progress", {}).get("active_transactions", {}).get("observed_tail_only") is True
+            and (row.get("progress", {}).get("active_transactions", {}).get("latest") or {}).get(
+                "transaction_record_sequence"
+            ) in {"5", "9"}
             for row in monitor_rows
         ),
         "supervisor_terminal_is_operator_abort": supervisor.get("terminal", {}).get(
@@ -3625,6 +3728,8 @@ def analyze_and_seal_rehearsal(
         )
         == 8,
     }
+    if frozenset(checks) != OPERATIONAL_REHEARSAL_CHECKS:
+        raise ValueError("rehearsal producer check inventory differs from the frozen contract")
     if not all(checks.values()):
         failed = sorted(name for name, value in checks.items() if not value)
         raise ValueError("operational rehearsal analysis failed: " + ", ".join(failed))
@@ -3733,16 +3838,7 @@ def _run_validated(
     """Run an already validated frozen bundle without any physical operation."""
 
     run_dir = run_dir.resolve()
-    evidence_index_path = evidence_index_path.expanduser().resolve()
-    try:
-        evidence_index_path.relative_to(run_dir)
-    except ValueError:
-        pass
-    else:
-        raise ValueError(
-            "operational rehearsal evidence index must be outside the immutable "
-            "package"
-        )
+    evidence_index_path = validate_index_location(evidence_index_path, package_path=run_dir)
     run_dir.mkdir(parents=True, exist_ok=False)
     master_fd, slave_fd = pty.openpty()
     device = os.path.realpath(os.ttyname(slave_fd))
@@ -3888,28 +3984,36 @@ def _run_validated(
         classification="successful_rehearsal",
         reason="adaptive-hybrid operational rehearsal passed",
     )
-    registration = register_package(
-        index_path=evidence_index_path,
-        package_path=run_dir,
-        expected_content_sha256=identity["content_sha256"],
-        **success_metadata,
-    )
-    registration_metadata = success_metadata
-    successful_registration = True
-    success_error: str | None = None
     set_registration_intent(
         journal,
-        registration=registration_metadata,
+        registration=success_metadata,
         expected_content_sha256=identity["content_sha256"],
     )
-    advance_phase(
-        journal,
-        "registration",
-        {
-            "content_sha256": registration["content_sha256"],
-            "attempt_classification": registration["attempt_classification"],
-        },
+    registration = recover_registration(journal)
+    return _publish_authorization_report(
+        run_dir=run_dir, bundle=bundle, proposal=proposal,
+        identity=identity, registration=registration,
+        evidence_index_path=evidence_index_path,
     )
+
+
+def _publish_authorization_report(
+    *, run_dir: Path, bundle: dict[str, Any], proposal: dict[str, Any],
+    identity: dict[str, Any], registration: dict[str, Any], evidence_index_path: Path,
+) -> Path:
+    """Project the validated sealed result; never synthesize acquisition evidence."""
+
+    manifest_path = run_dir / "run_manifest.json"
+    snapshot_path = run_dir / "evidence_manifest.json"
+    snapshot = _read_object(snapshot_path, "rehearsal snapshot")
+    seal = _read_object(run_dir / SEAL_PATH, "rehearsal seal")
+    if (registration.get("attempt_classification") != "successful_rehearsal"
+        or registration.get("content_sha256") != identity["content_sha256"]):
+        raise ValueError("authorization report requires exact successful registration")
+    report_path = run_dir.parent / f"{run_dir.name}-{REPORT_NAME}"
+    existing = _read_object(report_path, "rehearsal report") if report_path.exists() else None
+    if existing is not None and not _explicit_utc(existing.get("created_utc")):
+        raise ValueError("retained rehearsal report creation timestamp is malformed")
     seal_checks = seal["checks"]
     boundary_results = {
         "continuous_capture_and_exact_frozen_identity_consumption": bool(
@@ -3929,7 +4033,8 @@ def _run_validated(
             and seal_checks["first_dependent_checkpoint_before_second_arm"]
         ),
         "timeout_periodic_and_repeated_transaction_boundaries": bool(
-            seal_checks["periodic_lease_and_snapshot_boundaries"]
+            seal_checks["coordinator_timing_and_exact_progress_bound"]
+            and seal_checks["periodic_lease_and_snapshot_boundaries"]
             and seal_checks["stale_command_timeout_rejected"]
             and seal_checks["two_arm_envelopes_bound_to_supervisor_events"]
             and seal_checks["two_transactions_replayed"]
@@ -3948,11 +4053,13 @@ def _run_validated(
             seal.get("status") == "passed"
             and seal_checks["shared_current_analyzer_consumers_exact"]
             and snapshot.get("run_state") == "complete"
-            and successful_registration
+            and registration["attempt_classification"] == "successful_rehearsal"
         ),
     }
     if tuple(boundary_results) != REQUIRED_BOUNDARIES:
         raise RuntimeError("derived rehearsal boundary ordering differs")
+    if not all(boundary_results.values()):
+        raise ValueError("authorization report lacks a complete passed rehearsal boundary")
     authorization_contract = operational_rehearsal_authorization_contract(
         bundle=bundle, proposal=proposal
     )
@@ -3960,21 +4067,15 @@ def _run_validated(
     required_evidence["shared_current_analyzer_consumers_exact"] = bool(
         seal_checks["shared_current_analyzer_consumers_exact"]
     )
-    required_evidence["successful_rehearsal_registration"] = (
-        successful_registration
-    )
+    required_evidence["successful_rehearsal_registration"] = True
     claim_boundary = dict(authorization_contract["claim_boundary"])
-    claim_boundary["authorizes_activation_input_only"] = successful_registration
+    claim_boundary["authorizes_activation_input_only"] = True
     report: dict[str, Any] = {
         **authorization_contract,
         "tool": TOOL_ID,
-        "tool_binding": _binding(Path(__file__)),
-        "status": (
-            "passed"
-            if successful_registration
-            else "passed_pending_successful_rehearsal_registration"
-        ),
-        "created_utc": _utc_now(),
+        "tool_binding": bundle["host_tools"]["adaptive_hybrid_operational_rehearsal"],
+        "status": "passed",
+        "created_utc": existing["created_utc"] if existing is not None else _utc_now(),
         "boundary_results": boundary_results,
         "required_evidence": required_evidence,
         "package": {
@@ -3994,24 +4095,67 @@ def _run_validated(
             "index_path": str(evidence_index_path.resolve()),
             "content_sha256": registration["content_sha256"],
             "attempt_classification": registration["attempt_classification"],
-            "successful_rehearsal_validation_error": success_error,
+            "successful_rehearsal_validation_error": None,
         },
-        "activation_input_ready": successful_registration,
-        "minimal_remaining_extension": (
-            None
-            if successful_registration
-            else (
-                "evidence_index._validated_success_package must dispatch "
-                "successful_rehearsal to validate_operational_rehearsal_package "
-                "for the new seal path instead of the physical campaign seal"
-            )
-        ),
+        "activation_input_ready": True,
+        "minimal_remaining_extension": None,
         "claim_boundary": claim_boundary,
     }
     report["report_sha256"] = _canonical_sha256(report)
-    report_path = run_dir.parent / f"{run_dir.name}-{REPORT_NAME}"
-    _atomic_json(report_path, report, exclusive=True)
+    if existing is not None:
+        if existing != report:
+            raise ValueError("retained rehearsal authorization report differs")
+    else:
+        _atomic_json(report_path, report, exclusive=True)
     return report_path
+
+
+
+def recover_operational_rehearsal(
+    *, run_dir: Path, evidence_index_path: Path,
+) -> Path:
+    """Finish same-revision sealed rehearsal registration/report without I/O."""
+
+    run_dir = run_dir.resolve()
+    evidence_index_path = validate_index_location(evidence_index_path, package_path=run_dir)
+    if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
+        raise ValueError("cannot recover rehearsal while capture is active")
+    journal = journal_path_for(run_dir)
+    retained = _read_object(journal, "rehearsal finalization journal")
+    if (retained.get("run_dir") != str(run_dir)
+        or retained.get("required_seal") != SEAL_PATH.as_posix()
+        or retained.get("registration", {}).get("attempt_classification") != "successful_rehearsal"):
+        raise ValueError("recovery requires the exact sealed successful-rehearsal intent")
+    identity = package_identity(run_dir)
+    if identity["content_sha256"] != retained.get("expected_content_sha256"):
+        raise ValueError("sealed rehearsal differs from registration intent")
+    prepare_registration_recovery(
+        journal, index_path=evidence_index_path, recovery_tool_path=Path(__file__),
+    )
+    # The existing independent validator enforces recorded producer/tool bytes;
+    # this is not a historical-reader or changed-criteria recovery path.
+    registration = recover_registration(journal)
+    manifest = _read_object(run_dir / "run_manifest.json", "rehearsal manifest")
+    def bound_input(name: str, semantic_field: str) -> dict[str, Any]:
+        binding = manifest[name]
+        source = Path(binding["path"])
+        data = source.read_bytes()
+        document = json.loads(data)
+        if (not isinstance(document, dict)
+            or binding.get("size_bytes") != len(data)
+            or binding.get("sha256") != sha256(data).hexdigest()
+            or binding.get(semantic_field) != document.get(semantic_field)):
+            raise ValueError(f"recovery {name} differs from the sealed manifest binding")
+        return document
+    bundle = bound_input("bundle", "bundle_sha256")
+    proposal = bound_input("proposal", "proposal_sha256")
+    if package_identity(run_dir) != identity:
+        raise ValueError("sealed rehearsal changed during registration recovery")
+    return _publish_authorization_report(
+        run_dir=run_dir, bundle=bundle, proposal=proposal,
+        identity=identity, registration=registration,
+        evidence_index_path=evidence_index_path,
+    )
 
 
 def run_operational_rehearsal(
@@ -4021,6 +4165,7 @@ def run_operational_rehearsal(
     run_dir: Path,
     evidence_index_path: Path,
 ) -> Path:
+    evidence_index_path = validate_index_location(evidence_index_path, package_path=run_dir)
     bundle_path = bundle_path.resolve()
     proposal_path = proposal_path.resolve()
     bundle = validate_bundle(bundle_path, ADAPTIVE_HYBRID_PROGRAMME)
@@ -4043,6 +4188,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--proposal", type=Path, required=True)
     run.add_argument("--run-dir", type=Path, required=True)
     run.add_argument("--evidence-index", type=Path, required=True)
+    recover = operations.add_parser("recover")
+    recover.add_argument("--run-dir", type=Path, required=True)
+    recover.add_argument("--evidence-index", type=Path, required=True)
     supervisor = operations.add_parser("_supervisor_worker")
     supervisor.add_argument("--manifest", type=Path, required=True)
     supervisor.add_argument("--run-dir", type=Path, required=True)
@@ -4060,6 +4208,11 @@ def main(argv: list[str] | None = None) -> int:
                 evidence_index_path=args.evidence_index,
             )
             print(path)
+            return 0
+        if args.operation == "recover":
+            print(recover_operational_rehearsal(
+                run_dir=args.run_dir, evidence_index_path=args.evidence_index,
+            ))
             return 0
         if args.operation == "_supervisor_worker":
             return _supervisor_worker(args.manifest, args.run_dir)

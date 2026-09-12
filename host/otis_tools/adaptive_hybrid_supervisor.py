@@ -58,6 +58,7 @@ from .adaptive_hybrid_transport import (
     ESTIMATES_CSV,
     RP2040_MONOTONIC_US_PER_SECOND,
     ControlSupervisorBase,
+    ExplicitSupervisorAbort,
     _parse_utc_epoch,
 )
 from .adaptive_hybrid_transactions import (
@@ -1192,17 +1193,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _programme_event(self, suffix: str, **payload: object) -> None:
         self._event(f"{self.programme.key}_{suffix}", **payload)
 
-    def _current_health(
-        self, *, required_query_nonce: int | None = None
-    ) -> dict[tuple[str, str], str]:
-        if required_query_nonce is None:
-            required_query_nonce = int(
-                self.state["active_snapshot_request_nonce"]
-            )
-        return super()._current_health(
-            required_query_nonce=required_query_nonce
-        )
-
     def _identity_ready(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
@@ -1260,11 +1250,50 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             if self.state.get("host_verification_hold") is not None:
                 raise ValueError("host verification hold inhibits new SETUP/ARM authority")
 
+    def _ack_observation_deadline(self, acknowledgement: dict[str, object]) -> int:
+        owner = acknowledgement.get("causal_observation_owner_nonce")
+        if (type(owner) is not int or owner <= 0
+            or owner != self.state.get("startup_census_process_nonce")):
+            raise ValueError("inflight acknowledgement deadline belongs to an unknown supervisor process")
+        deadline = acknowledgement.get("causal_observation_deadline_monotonic_ns")
+        if type(deadline) is not int or deadline <= 0:
+            raise ValueError("inflight acknowledgement lacks its causal observation deadline")
+        return deadline
+
+    def _pending_ack_deadline(self) -> int | None:
+        acknowledgement = self.state.get("inflight_evidence_acknowledgement")
+        if isinstance(acknowledgement, dict) and self._startup_census_admitted():
+            return self._ack_observation_deadline(acknowledgement)
+        return None
+
     def _command(self, command: str) -> None:
         self._assert_command_admitted(command)
-        super()._command(command)
+        deadline_ns = self._pending_ack_deadline()
+        if deadline_ns is not None:
+            with self._causal_observation(
+                ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S, deadline_ns=deadline_ns
+            ):
+                super()._command(command)
+        else:
+            super()._command(command)
+
+    def _current_health(
+        self, *, required_query_nonce: int | None = None
+    ) -> dict[tuple[str, str], str]:
+        if required_query_nonce is None:
+            required_query_nonce = int(self.state["active_snapshot_request_nonce"])
+        # Periodic observations between confirmation passes consume the same
+        # pending phase budget. A cleared phase cannot constrain its successor.
+        with self._causal_observation(
+            ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S,
+            deadline_ns=self._pending_ack_deadline(),
+        ):
+            return super()._current_health(required_query_nonce=required_query_nonce)
 
     def _renew_lease(self) -> None:
+        if getattr(self, "_normal_command_ack_pending", False):
+            raise ValueError("normal command acknowledgement is unresolved")
+        self._check_wait_deadline(self._pending_ack_deadline())
         # The base implementation advances the durable lease sequence before
         # submitting the command.  Check census first so a rejected startup
         # cannot leave a fictitious retained lease sequence.
@@ -1272,6 +1301,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             f"ACTIVE LEASE {int(self.state.get('lease_sequence', 0)) + 1}"
         )
         super()._renew_lease()
+        self._last_lease_monotonic_ns = time.monotonic_ns()
 
     def _fresh_startup_state_exact(
         self, health: dict[tuple[str, str], str]
@@ -1336,195 +1366,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         return not mismatches, mismatches
 
-    def _retained_ack_resume_exact(
-        self, health: dict[tuple[str, str], str]
-    ) -> tuple[bool, list[str]]:
-        """Validate the one already-supported restart: an exact pending ACK."""
-
-        mismatches: list[str] = []
-        if not self._retained_supervisor_state_at_start:
-            return False, ["no retained supervisor state existed at process start"]
-        if self.state.get("terminal") is not None:
-            mismatches.append("retained terminal is present")
-        if self.state.get("host_verification_hold") is not None:
-            mismatches.append("retained host verification hold is present")
-        if health.get(("adaptive_hybrid", "state")) in {
-            "FAULT",
-            "ABORTED",
-            "OUT_OF_MODEL_HOLD",
-        }:
-            mismatches.append("live firmware state is terminal or faulted")
-        if health.get(("adaptive_hybrid", "fail_static")) != "false":
-            mismatches.append("live firmware is fail-static or lacks exact health")
-        if health.get(("adaptive_hybrid", "hybrid_state")) == "FAIL_STATIC":
-            mismatches.append("live hybrid controller is fail-static")
-        session = self.state.get("initial_session_id")
-        if type(session) is not int or session <= 0:
-            mismatches.append("retained initial session is unavailable")
-        elif health.get(("adaptive_hybrid", "session_id")) != str(session):
-            mismatches.append("live session differs from retained initial session")
-        confirmation = self.state.get("setup_confirmation")
-        if (
-            not isinstance(confirmation, dict)
-            or confirmation.get("session_id") != session
-            or confirmation.get("applied_code") != self.programme.setup_code
-            or confirmation.get("dac_epoch") != 1
-            or not isinstance(self.state.get("setup_confirmed_utc"), str)
-            or not self.state.get("setup_confirmed_utc")
-            or self.state.get("manual_start_sent") is not True
-        ):
-            mismatches.append("retained setup authority or confirmation is not exact")
-        if self.state.get("setup_authority_path") != str(SETUP_AUTHORITY_PATH):
-            mismatches.append("retained setup authority path is unavailable")
-        else:
-            try:
-                if not self._latch_setup_confirmation():
-                    mismatches.append(
-                        "retained setup authority has no observed leading manual-start proof"
-                    )
-            except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
-                mismatches.append(f"retained setup authority validation failed: {exc}")
-
-        inflight = self.state.get("inflight_evidence_acknowledgement")
-        if not isinstance(inflight, dict):
-            mismatches.append("no exact retained evidence acknowledgement is inflight")
-            return False, mismatches
-        try:
-            record_sequence = int(inflight["record_sequence"])
-            request_sequence = int(inflight["request_sequence"])
-            phase = int(inflight["phase"])
-            pre_submit_generation = int(inflight["pre_submit_snapshot_generation"])
-            pre_submit_phase = str(inflight["pre_submit_evidence_phase"])
-        except (KeyError, TypeError, ValueError):
-            mismatches.append("retained evidence acknowledgement identity is malformed")
-            return False, mismatches
-        expected_phase = {
-            1: "request_pending",
-            2: "acceptance_pending",
-            3: "application_pending",
-            4: "response_pending",
-        }.get(phase)
-        if (
-            record_sequence <= 0
-            or request_sequence <= 0
-            or expected_phase is None
-            or pre_submit_generation <= 0
-            or pre_submit_phase != expected_phase
-            or inflight.get("host_write_confirmed") is not True
-        ):
-            mismatches.append("retained evidence acknowledgement fields differ")
-
-        observed_phase = health.get(("adaptive_hybrid", "evidence_phase"))
-        observed_request_text = health.get(
-            ("adaptive_hybrid", "evidence_request_sequence")
-        )
-        try:
-            observed_request = int(observed_request_text)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            observed_request = -1
-        permitted_after = {
-            1: {"evidence_clear", "acceptance_pending", "application_pending", "response_pending"},
-            2: {"evidence_clear", "application_pending", "response_pending"},
-            3: {"evidence_clear", "response_pending"},
-            4: {"evidence_clear"},
-        }.get(phase, set())
-        same_pending = observed_phase == pre_submit_phase and observed_request == request_sequence
-        advanced = observed_phase in permitted_after and (
-            observed_request == 0
-            if observed_phase == "evidence_clear"
-            else observed_request == request_sequence
-        )
-        if not (same_pending or advanced):
-            mismatches.append("live evidence phase/request differs from retained acknowledgement")
-
-        try:
-            validation = validate_csv(
-                self.run_dir / ACTIVE_CSV,
-                CsvValidationContext(
-                    "active_transactions_v3",
-                    frozenset(),
-                    frozenset({"rp2040_monotonic_us64"}),
-                ),
-            )
-            if validation.errors:
-                raise ValueError("; ".join(validation.errors))
-            rows = _read_csv(self.run_dir / ACTIVE_CSV)
-            validate_transaction_history(
-                rows,
-                self.spec,
-                self.identities,
-                self.expected_build_identity,
-                dual_core=True,
-            )
-            row = next(
-                item
-                for item in rows
-                if int(item["transaction_record_sequence"]) == record_sequence
-            )
-            expected_event = {
-                1: "request_created",
-                2: "request_accepted",
-                3: {"application", "application_fault"},
-                4: "response",
-            }[phase]
-            event = row.get("event")
-            event_exact = (
-                event in expected_event
-                if isinstance(expected_event, set)
-                else event == expected_event
-            )
-            if (
-                int(row["request_sequence"]) != request_sequence
-                or not event_exact
-            ):
-                mismatches.append("retained acknowledgement differs from canonical ACT row")
-            row_session = int(row["session_id"])
-            row_epoch = int(row["source_acceptance_epoch"])
-            row_closing = int(row["source_closing_accepted_boundary_ordinal"])
-            live_epoch = int(health[("adaptive_hybrid", "acceptance_epoch")])
-            live_ordinal = int(
-                health[("adaptive_hybrid", "accepted_boundary_ordinal")]
-            )
-            accepted_progress = (live_ordinal - row_closing) & 0xFFFFFFFF
-            if (
-                row_session != session
-                or row_epoch <= 0
-                or row_epoch != live_epoch
-                or not 0 <= row_closing < 1 << 32
-                or accepted_progress > 0x7FFFFFFF
-            ):
-                mismatches.append(
-                    "retained ACT accepted-source identity differs from live authority"
-                )
-        except (
-            FileNotFoundError,
-            KeyError,
-            OSError,
-            StopIteration,
-            TypeError,
-            ValueError,
-        ) as exc:
-            mismatches.append(f"canonical ACT acknowledgement proof failed: {exc}")
-
-        try:
-            code = int(health[("adaptive_hybrid", "confirmed_applied_code")], 0)
-            dac_epoch = int(health[("adaptive_hybrid", "dac_epoch")])
-            corrections = int(health[("adaptive_hybrid", "correction_count")])
-        except (KeyError, TypeError, ValueError):
-            mismatches.append("live applied-code/DAC identity is unavailable")
-        else:
-            causal = self.state.get("bench_attempt_causal_state")
-            if (
-                health.get(("adaptive_hybrid", "confirmed_applied_code_known")) != "true"
-                or code != self.state.get("terminal_static_code")
-                or not self.programme.minimum_code <= code <= self.programme.maximum_code
-                or dac_epoch != corrections + 1
-                or not isinstance(causal, dict)
-                or causal.get("firmware_correction_count") != corrections
-            ):
-                mismatches.append("live applied-code/DAC epoch differs from retained authority")
-        return not mismatches, mismatches
-
     def _classify_startup_snapshot(
         self, health: dict[tuple[str, str], str]
     ) -> tuple[str, bool, list[str]]:
@@ -1533,9 +1374,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         fresh, fresh_mismatches = self._fresh_startup_state_exact(health)
         if fresh:
             return "fresh_disarmed", True, []
-        retained, retained_mismatches = self._retained_ack_resume_exact(health)
-        if retained:
-            return "known_retained_resume", True, []
         state = health.get(("adaptive_hybrid", "state"))
         evidence_pending = health.get(("adaptive_hybrid", "evidence_pending"))
         manual = health.get(("adaptive_hybrid", "manual_start_confirmed"))
@@ -1553,7 +1391,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             classification = "already_setup_or_tracking"
         else:
             classification = "incoherent"
-        return classification, False, [*fresh_mismatches, *retained_mismatches]
+        return classification, False, [
+            *fresh_mismatches,
+            (
+                "retained supervisor continuation is unsupported; this process "
+                "may observe and preserve capture but cannot assume prior authority"
+            ),
+        ]
 
     def _establish_startup_census(self) -> dict[tuple[str, str], str]:
         if self.state.get("startup_census") is not None:
@@ -1620,192 +1464,190 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _fresh_active_snapshot_after(
         self, generation: int
     ) -> dict[tuple[str, str], str]:
-        prior_nonce = int(self.state["active_snapshot_request_nonce"])
-        query_nonce = prior_nonce + 1 if prior_nonce < 0xFFFFFFFF else 1
-        if query_nonce == int(self.state["host_attach_query_nonce"]):
-            query_nonce = query_nonce + 1 if query_nonce < 0xFFFFFFFF else 1
-        self.state["active_snapshot_request_nonce"] = query_nonce
-        self._save()
-        self._programme_event(
-            "active_snapshot_query_started",
-            query_nonce=query_nonce,
-            pre_submit_snapshot_generation=generation,
-        )
-        self._command(f"ACTIVE SNAPSHOT {query_nonce}")
-        # One request remains outstanding until a matching, later complete
-        # generation arrives. Fresh host publication alone is insufficient:
-        # periodic snapshots retain the prior nonce, and a generation at or
-        # behind the pre-submit frontier cannot answer this request.
-        deadline = time.monotonic() + ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S
-        while True:
-            health = self._current_health(required_query_nonce=query_nonce)
-            observed = int(
-                health.get(("adaptive_hybrid", "snapshot_generation_complete"), "0")
+        with self._causal_observation(
+            ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S,
+            deadline_ns=self._pending_ack_deadline(),
+        ):
+            prior_nonce = int(self.state["active_snapshot_request_nonce"])
+            query_nonce = prior_nonce + 1 if prior_nonce < 0xFFFFFFFF else 1
+            if query_nonce == int(self.state["host_attach_query_nonce"]):
+                query_nonce = query_nonce + 1 if query_nonce < 0xFFFFFFFF else 1
+            self.state["active_snapshot_request_nonce"] = query_nonce
+            self._save()
+            self._programme_event(
+                "active_snapshot_query_started",
+                query_nonce=query_nonce,
+                pre_submit_snapshot_generation=generation,
             )
-            if observed > generation:
-                self._programme_event(
-                    "active_snapshot_query_completed",
-                    query_nonce=query_nonce,
-                    pre_submit_snapshot_generation=generation,
-                    response_snapshot_generation=observed,
+            self._command(f"ACTIVE SNAPSHOT {query_nonce}")
+            # One request remains outstanding until a matching, later complete
+            # generation arrives. Fresh host publication alone is insufficient:
+            # periodic snapshots retain the prior nonce, and a generation at or
+            # behind the pre-submit frontier cannot answer this request.
+            while True:
+                health = self._current_health(required_query_nonce=query_nonce)
+                observed = int(
+                    health.get(("adaptive_hybrid", "snapshot_generation_complete"), "0")
                 )
-                return health
-            if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    "ADAPTIVE_HYBRID causally bound active snapshot did not follow "
-                    f"query_nonce={query_nonce} generation={generation}"
-                )
-            time.sleep(0.05)
+                if observed > generation:
+                    self._programme_event(
+                        "active_snapshot_query_completed",
+                        query_nonce=query_nonce,
+                        pre_submit_snapshot_generation=generation,
+                        response_snapshot_generation=observed,
+                    )
+                    return health
+                self._wait_slice(0.05, allow_lease=True)
 
     def _prepare_evidence_acknowledgement(
         self, row: dict[str, str], phase: int
     ) -> dict[str, object]:
-        current = self._current_health()
-        generation = int(
-            current.get(("adaptive_hybrid", "snapshot_generation_complete"), "0")
-        )
-        health = self._fresh_active_snapshot_after(generation)
-        expected_phase = {
-            1: "request_pending",
-            2: "acceptance_pending",
-            3: "application_pending",
-            4: "response_pending",
-        }[phase]
-        request_sequence = int(row["request_sequence"])
-        stale_phases = {
-            1: (),
-            2: ("request_pending",),
-            3: ("request_pending", "acceptance_pending"),
-            4: (
-                "request_pending",
-                "acceptance_pending",
-                "application_pending",
-            ),
-        }[phase]
-        # A periodic query can already be in flight when the ACT record arrives.
-        # Its completion is generation-fresh but causally precedes the record.
-        # Wait through that bounded stale frontier instead of aborting a valid
-        # transaction.  Four queries remain inside the firmware's frozen
-        # 30-second evidence-acknowledgement deadline.
-        for _ in range(4):
-            observed_phase = health.get(("adaptive_hybrid", "evidence_phase"), "")
-            observed_request = int(
-                health.get(("adaptive_hybrid", "evidence_request_sequence"), "0")
-            )
-            if (
-                observed_phase == expected_phase
-                and observed_request == request_sequence
-            ):
-                preparation = {
-                    "pre_submit_snapshot_generation": int(
-                        health[("adaptive_hybrid", "snapshot_generation_complete")]
-                    ),
-                    "pre_submit_evidence_phase": expected_phase,
-                }
-                if phase == 3 and self.runtime_context.bench_attempt is not None:
-                    preparation.update(
-                        self._record_bench_application_before_acknowledgement(
-                            row, health
-                        )
-                    )
-                return preparation
-            if observed_phase == "evidence_clear" and observed_request == 0:
-                pass
-            elif (
-                observed_phase in stale_phases
-                and observed_request == request_sequence
-            ):
-                pass
-            else:
-                raise ValueError(
-                    "ADAPTIVE_HYBRID firmware evidence frontier differs before "
-                    "acknowledgement: "
-                    f"expected_request={request_sequence} "
-                    f"expected_phase={expected_phase} "
-                    f"observed_request={observed_request} "
-                    f"observed_phase={observed_phase}"
-                )
+        with self._causal_observation(ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S) as deadline_ns:
+            current = self._current_health()
             generation = int(
-                health[("adaptive_hybrid", "snapshot_generation_complete")]
+                current.get(("adaptive_hybrid", "snapshot_generation_complete"), "0")
             )
             health = self._fresh_active_snapshot_after(generation)
-        raise TimeoutError(
-            "ADAPTIVE_HYBRID firmware evidence frontier did not reach the expected "
-            "pre-acknowledgement state: "
-            f"request={request_sequence} phase={expected_phase}"
-        )
+            expected_phase = {
+                1: "request_pending",
+                2: "acceptance_pending",
+                3: "application_pending",
+                4: "response_pending",
+            }[phase]
+            request_sequence = int(row["request_sequence"])
+            stale_phases = {
+                1: (),
+                2: ("request_pending",),
+                3: ("request_pending", "acceptance_pending"),
+                4: (
+                    "request_pending",
+                    "acceptance_pending",
+                    "application_pending",
+                ),
+            }[phase]
+            # Causally behind snapshots are pending within this one operation.
+            # Every returned response is examined; a query never resets the budget.
+            while True:
+                self._check_wait_deadline()
+                observed_phase = health.get(("adaptive_hybrid", "evidence_phase"), "")
+                observed_request = int(
+                    health.get(("adaptive_hybrid", "evidence_request_sequence"), "0")
+                )
+                if (
+                    observed_phase == expected_phase
+                    and observed_request == request_sequence
+                ):
+                    preparation = {
+                        "causal_observation_owner_nonce": self.state["startup_census_process_nonce"],
+                        "causal_observation_deadline_monotonic_ns": deadline_ns,
+                        "pre_submit_snapshot_generation": int(
+                            health[("adaptive_hybrid", "snapshot_generation_complete")]
+                        ),
+                        "pre_submit_evidence_phase": expected_phase,
+                    }
+                    if phase == 3 and self.runtime_context.bench_attempt is not None:
+                        preparation.update(
+                            self._record_bench_application_before_acknowledgement(
+                                row, health
+                            )
+                        )
+                    return preparation
+                if observed_phase == "evidence_clear" and observed_request == 0:
+                    pass
+                elif (
+                    observed_phase in stale_phases
+                    and observed_request == request_sequence
+                ):
+                    pass
+                else:
+                    raise ValueError(
+                        "ADAPTIVE_HYBRID firmware evidence frontier differs before "
+                        "acknowledgement: "
+                        f"expected_request={request_sequence} "
+                        f"expected_phase={expected_phase} "
+                        f"observed_request={observed_request} "
+                        f"observed_phase={observed_phase}"
+                    )
+                generation = int(
+                    health[("adaptive_hybrid", "snapshot_generation_complete")]
+                )
+                health = self._fresh_active_snapshot_after(generation)
 
     def _confirm_evidence_acknowledgement(
         self, acknowledgement: dict[str, object]
     ) -> bool:
-        phase = int(acknowledgement["phase"])
-        request_sequence = int(acknowledgement["request_sequence"])
-        baseline = int(acknowledgement["pre_submit_snapshot_generation"])
-        pre_submit_phase = str(acknowledgement["pre_submit_evidence_phase"])
-        permitted = {
-            1: {
-                "evidence_clear",
-                "acceptance_pending",
-                "application_pending",
-                "response_pending",
-            },
-            2: {"evidence_clear", "application_pending", "response_pending"},
-            3: {"evidence_clear", "response_pending"},
-            4: {"evidence_clear"},
-        }[phase]
-        # A periodic status query submitted immediately before the evidence
-        # command can arrive after the pre-submit baseline and is therefore
-        # generation-fresh but causally stale.  Observe one complete snapshot
-        # per supervisor pass and persist that frontier in the inflight record.
-        # This keeps platform-health checks interleaved with acknowledgement
-        # observation instead of blocking them behind four back-to-back queries.
-        baseline = int(
-            acknowledgement.get("last_observed_snapshot_generation", baseline)
-        )
-        health = self._fresh_active_snapshot_after(baseline)
-        observed_generation = int(
-            health[("adaptive_hybrid", "snapshot_generation_complete")]
-        )
-        acknowledgement["last_observed_snapshot_generation"] = observed_generation
-        observed_phase = health.get(("adaptive_hybrid", "evidence_phase"), "")
-        observed_request = int(
-            health.get(("adaptive_hybrid", "evidence_request_sequence"), "0")
-        )
-        if observed_phase == pre_submit_phase:
-            if observed_request != request_sequence:
+        deadline_ns = self._ack_observation_deadline(acknowledgement)
+        with self._causal_observation(
+            ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S, deadline_ns=deadline_ns
+        ):
+            phase = int(acknowledgement["phase"])
+            request_sequence = int(acknowledgement["request_sequence"])
+            baseline = int(acknowledgement["pre_submit_snapshot_generation"])
+            pre_submit_phase = str(acknowledgement["pre_submit_evidence_phase"])
+            permitted = {
+                1: {
+                    "evidence_clear",
+                    "acceptance_pending",
+                    "application_pending",
+                    "response_pending",
+                },
+                2: {"evidence_clear", "application_pending", "response_pending"},
+                3: {"evidence_clear", "response_pending"},
+                4: {"evidence_clear"},
+            }[phase]
+            # A periodic status query submitted immediately before the evidence
+            # command can arrive after the pre-submit baseline and is therefore
+            # generation-fresh but causally stale.  Observe one complete snapshot
+            # per supervisor pass and persist that frontier in the inflight record.
+            # This keeps platform-health checks interleaved with acknowledgement
+            # observation instead of blocking them behind four back-to-back queries.
+            baseline = int(
+                acknowledgement.get("last_observed_snapshot_generation", baseline)
+            )
+            health = self._fresh_active_snapshot_after(baseline)
+            observed_generation = int(
+                health[("adaptive_hybrid", "snapshot_generation_complete")]
+            )
+            acknowledgement["last_observed_snapshot_generation"] = observed_generation
+            observed_phase = health.get(("adaptive_hybrid", "evidence_phase"), "")
+            observed_request = int(
+                health.get(("adaptive_hybrid", "evidence_request_sequence"), "0")
+            )
+            if observed_phase == pre_submit_phase:
+                if observed_request != request_sequence:
+                    raise ValueError(
+                        "ADAPTIVE_HYBRID evidence acknowledgement retained a contradictory "
+                        "request identity"
+                    )
+                return False
+            if (
+                observed_phase == "evidence_clear" and observed_request != 0
+            ) or (
+                observed_phase != "evidence_clear"
+                and observed_request != request_sequence
+            ):
                 raise ValueError(
-                    "ADAPTIVE_HYBRID evidence acknowledgement retained a contradictory "
+                    "ADAPTIVE_HYBRID evidence acknowledgement advanced to a contradictory "
                     "request identity"
                 )
-            return False
-        if (
-            observed_phase == "evidence_clear" and observed_request != 0
-        ) or (
-            observed_phase != "evidence_clear"
-            and observed_request != request_sequence
-        ):
-            raise ValueError(
-                "ADAPTIVE_HYBRID evidence acknowledgement advanced to a contradictory "
-                "request identity"
+            if observed_phase not in permitted:
+                raise ValueError(
+                    "ADAPTIVE_HYBRID evidence acknowledgement advanced to an impossible "
+                    "phase ordering: "
+                    f"submitted_phase={phase} "
+                    f"pre_submit_phase={pre_submit_phase} "
+                    f"observed_phase={observed_phase}"
+                )
+            self._programme_event(
+                "firmware_evidence_acknowledgement_confirmed",
+                request_sequence=request_sequence,
+                phase=phase,
+                snapshot_generation=int(
+                    health[("adaptive_hybrid", "snapshot_generation_complete")]
+                ),
+                resulting_evidence_phase=observed_phase,
             )
-        if observed_phase not in permitted:
-            raise ValueError(
-                "ADAPTIVE_HYBRID evidence acknowledgement advanced to an impossible "
-                "phase ordering: "
-                f"submitted_phase={phase} "
-                f"pre_submit_phase={pre_submit_phase} "
-                f"observed_phase={observed_phase}"
-            )
-        self._programme_event(
-            "firmware_evidence_acknowledgement_confirmed",
-            request_sequence=request_sequence,
-            phase=phase,
-            snapshot_generation=int(
-                health[("adaptive_hybrid", "snapshot_generation_complete")]
-            ),
-            resulting_evidence_phase=observed_phase,
-        )
-        return True
+            return True
 
     def _prewrite_readiness(
         self, health: dict[tuple[str, str], str]
@@ -4106,121 +3948,135 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         if not capture_flag.exists():
             raise RuntimeError("capture is not marked in progress")
         started = time.monotonic()
-        last_lease = 0.0
         last_query = 0.0
         last_output_status_query = time.monotonic()
-        with AbortFifo(self.abort_fifo) as abort:
-            self._live_command_ack_required = True
-            publish_supervisor_ready(
-                self.run_dir,
-                self.manifest_path,
-                census_process_nonce=self._startup_census_process_nonce,
-            )
-            self._programme_event(
-                "live_supervisor_started",
-                abort_fifo=str(self.abort_fifo),
-                manifest_sha256=self.runtime_context.manifest_sha256,
-                bundle_sha256=self.runtime_context.bundle_sha256,
-                policy_sha256=self.runtime_context.policy_sha256,
-                wall_origin_utc=self.runtime_context.wall_origin_utc,
-            )
-            self._command("CONFIG?")
-            self._command("DUALCORE?")
-            self._command("DAC?")
-            while True:
-                now = time.monotonic()
-                if abort.poll():
-                    self._abort("independent_host_abort_fifo")
-                    return 3
-                if not capture_flag.exists():
-                    self._enter_host_verification_hold(
-                        RuntimeError("capture owner in-progress marker is absent"),
-                        source="capture_owner_observer",
-                    )
-                    time.sleep(0.2)
-                    continue
-                if self.duration_s is not None and now - started > self.duration_s:
-                    self._enter_host_verification_hold(
-                        RuntimeError("supervisor duration observer expired"),
-                        source="supervisor_duration_observer",
-                    )
-                    self.duration_s = None
-                try:
-                    if self.state.get("startup_census") is None:
-                        self._establish_startup_census()
-                        last_query = time.monotonic()
-                    else:
-                        self._consume_orchestration_review_hold()
-                    if (
-                        self._startup_census_admitted()
-                        and now - last_lease >= LEASE_PERIOD_S
-                    ):
-                        self._check_capture_transport_state()
-                        self._renew_lease()
-                        last_lease = now
-                    if now - last_query >= QUERY_PERIOD_S:
-                        current = self._current_health()
-                        generation = int(
-                            current.get(
-                                ("adaptive_hybrid", "snapshot_generation_complete"),
-                                "0",
-                            )
+        try:
+            with AbortFifo(self.abort_fifo) as abort:
+                self._wait_abort_fifo = abort
+                self._live_command_ack_required = True
+                publish_supervisor_ready(
+                    self.run_dir,
+                    self.manifest_path,
+                    census_process_nonce=self._startup_census_process_nonce,
+                )
+                self._programme_event(
+                    "live_supervisor_started",
+                    abort_fifo=str(self.abort_fifo),
+                    manifest_sha256=self.runtime_context.manifest_sha256,
+                    bundle_sha256=self.runtime_context.bundle_sha256,
+                    policy_sha256=self.runtime_context.policy_sha256,
+                    wall_origin_utc=self.runtime_context.wall_origin_utc,
+                )
+                while True:
+                    now = time.monotonic()
+                    if abort.poll():
+                        self._abort("independent_host_abort_fifo")
+                        return 3
+                    if not capture_flag.exists():
+                        self._enter_host_verification_hold(
+                            RuntimeError("capture owner in-progress marker is absent"),
+                            source="capture_owner_observer",
                         )
-                        self._fresh_active_snapshot_after(generation)
-                        last_query = time.monotonic()
-                    if (
-                        self.programme.forwarded_output_integration
-                        and now - last_output_status_query
-                        >= FORWARDED_OUTPUT_STATUS_PERIOD_S
-                    ):
-                        self._command("CONFIG?")
-                        last_output_status_query = now
-                    health = self._current_health()
-                    if not self._startup_census_admitted():
-                        # An unowned device remains observational.  Queries and
-                        # the explicit operator-abort FIFO are the only active
-                        # routes until a census proves current-run ownership.
                         time.sleep(0.2)
                         continue
-                    if not self._abort_on_authoritative_capture_discontinuity(
-                        health
-                    ):
-                        # Firmware fail-static remains independent.  Host-side
-                        # interpretation failures enter a durable no-authority
-                        # review hold and leave acquisition alive.
-                        self._check_fail_static_health(health)
-                        self._process_transactions()
+                    if self.duration_s is not None and now - started > self.duration_s:
+                        self._enter_host_verification_hold(
+                            RuntimeError("supervisor duration observer expired"),
+                            source="supervisor_duration_observer",
+                        )
+                        self.duration_s = None
+                    try:
+                        if self.state.get("startup_census") is None:
+                            if self.state.get("host_verification_hold") is None:
+                                # Static identity queries and the fresh ACTIVE
+                                # census are one guarded startup observation.
+                                # A transport or parser discrepancy must retain
+                                # the supervisor and abort ingress in a
+                                # no-authority hold, rather than killing the
+                                # only process able to adopt the runner hold.
+                                self._command("CONFIG?")
+                                self._command("DUALCORE?")
+                                self._command("DAC?")
+                                self._establish_startup_census()
+                                last_query = time.monotonic()
+                            else:
+                                self._consume_orchestration_review_hold()
+                        else:
+                            self._consume_orchestration_review_hold()
+                        if (
+                            self._startup_census_admitted()
+                            and (getattr(self, "_last_lease_monotonic_ns", None) is None
+                                 or time.monotonic_ns() - self._last_lease_monotonic_ns >= int(LEASE_PERIOD_S * 1_000_000_000))
+                        ):
+                            self._check_capture_transport_state()
+                            self._renew_lease()
+                        if now - last_query >= QUERY_PERIOD_S:
+                            current = self._current_health()
+                            generation = int(
+                                current.get(
+                                    ("adaptive_hybrid", "snapshot_generation_complete"),
+                                    "0",
+                                )
+                            )
+                            self._fresh_active_snapshot_after(generation)
+                            last_query = time.monotonic()
+                        if (
+                            self.programme.forwarded_output_integration
+                            and now - last_output_status_query
+                            >= FORWARDED_OUTPUT_STATUS_PERIOD_S
+                        ):
+                            self._command("CONFIG?")
+                            last_output_status_query = now
                         health = self._current_health()
+                        if not self._startup_census_admitted():
+                            # An unowned device remains observational.  Queries and
+                            # the explicit operator-abort FIFO are the only active
+                            # routes until a census proves current-run ownership.
+                            time.sleep(0.2)
+                            continue
                         if not self._abort_on_authoritative_capture_discontinuity(
                             health
                         ):
+                            # Firmware fail-static remains independent.  Host-side
+                            # interpretation failures enter a durable no-authority
+                            # review hold and leave acquisition alive.
                             self._check_fail_static_health(health)
-                            if self.state.get("host_verification_hold") is None:
-                                self._check_setup_transaction_timeout(
-                                    health, time.time()
-                                )
-                            self._check_prewrite_contract(health, now - started)
-                            self._maybe_qualify(health)
-                            self._maybe_finish(health, time.time())
-                            if self.state["terminal"] is None:
-                                self._maybe_start_or_arm(health)
-                except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
-                    self._enter_host_verification_hold(
-                        exc, source="live_supervisor_diagnostic_cycle"
-                    )
-                if self.state["terminal"] is not None:
-                    if not self.state["terminal_event_emitted"]:
-                        self._programme_event(
-                            "campaign_terminal", **self.state["terminal"]
+                            self._process_transactions()
+                            health = self._current_health()
+                            if not self._abort_on_authoritative_capture_discontinuity(
+                                health
+                            ):
+                                self._check_fail_static_health(health)
+                                if self.state.get("host_verification_hold") is None:
+                                    self._check_setup_transaction_timeout(
+                                        health, time.time()
+                                    )
+                                self._check_prewrite_contract(health, now - started)
+                                self._maybe_qualify(health)
+                                self._maybe_finish(health, time.time())
+                                if self.state["terminal"] is None:
+                                    self._maybe_start_or_arm(health)
+                    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                        self._enter_host_verification_hold(
+                            exc, source="live_supervisor_diagnostic_cycle"
                         )
-                        self.state["terminal_event_emitted"] = True
-                        self._save()
-                    return (
-                        0
-                        if self.state["terminal"]["result"] == "healthy_stop"
-                        else 2
-                    )
-                time.sleep(0.2)
+                    if self.state["terminal"] is not None:
+                        if not self.state["terminal_event_emitted"]:
+                            self._programme_event(
+                                "campaign_terminal", **self.state["terminal"]
+                            )
+                            self.state["terminal_event_emitted"] = True
+                            self._save()
+                        return (
+                            0
+                            if self.state["terminal"]["result"] == "healthy_stop"
+                            else 2
+                        )
+                    time.sleep(0.2)
+        except ExplicitSupervisorAbort:
+            return 3
+        finally:
+            self._wait_abort_fifo = None
 
 
 def prepare_validated_nonphysical_rehearsal_context(

@@ -170,19 +170,20 @@ def test_single_upload_record_binds_envelope_and_compile_identity(
     assert record["dac_value_write_attempts"] == 0
 
 
-def test_runner_durations_and_terminals_are_envelope_derived(tmp_path: Path) -> None:
+def test_runner_children_have_no_independent_lifetime_and_terminals_are_envelope_derived(
+    tmp_path: Path,
+) -> None:
     zero = envelope_for_purpose(INHIBITED_ZERO_WRITE)
     contingent = envelope_for_purpose(CONTINGENT_72_HOUR_HYBRID_CONTROL)
     capture = run_module._capture_command(
-        device="/dev/cu.usbmodem-test", run_dir=tmp_path, bench_attempt=zero
+        device="/dev/cu.usbmodem-test", run_dir=tmp_path
     )
     supervisor = run_module._supervisor_command(
         run_dir=tmp_path,
         build_identity="source:config",
-        bench_attempt=contingent,
     )
-    assert capture[capture.index("--duration-s") + 1] == "7380"
-    assert supervisor[supervisor.index("--duration-s") + 1] == "280920"
+    assert "--duration-s" not in capture
+    assert "--duration-s" not in supervisor
     assert run_module._terminal_expected(
         {
             "result": "healthy_stop",

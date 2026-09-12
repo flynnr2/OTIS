@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -200,7 +201,7 @@ def test_prior_host_hold_cannot_be_reclassified_as_fresh(tmp_path: Path) -> None
     assert "retained host_verification_hold is not pristine" in diagnostics
 
 
-def _retained_ack_fixture(
+def _setup_authority_and_retained_inflight_fixture(
     supervisor: AdaptiveHybridSupervisor,
     health: dict[tuple[str, str], str],
     monkeypatch: pytest.MonkeyPatch,
@@ -234,6 +235,8 @@ def _retained_ack_fixture(
                 "pre_submit_snapshot_generation": 11,
                 "pre_submit_evidence_phase": "request_pending",
                 "host_write_confirmed": True,
+                "causal_observation_owner_nonce": supervisor.state["startup_census_process_nonce"],
+                "causal_observation_deadline_monotonic_ns": time.monotonic_ns() + 30_000_000_000,
             },
         }
     )
@@ -343,28 +346,48 @@ def _retained_ack_fixture(
     )
 
 
-def test_exact_retained_ack_is_the_only_admitted_resume(
+def test_nonfresh_retained_transaction_is_observational_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     supervisor = _supervisor(tmp_path)
     health = _fresh_health()
-    _retained_ack_fixture(supervisor, health, monkeypatch)
+    _setup_authority_and_retained_inflight_fixture(supervisor, health, monkeypatch)
+    supervisor._identity_ready = lambda _health: True
 
-    exact, diagnostics = supervisor._retained_ack_resume_exact(health)
+    classification, admitted, diagnostics = supervisor._classify_startup_snapshot(
+        health
+    )
 
-    assert exact is True
-    assert diagnostics == []
+    assert classification == "transaction_inflight"
+    assert admitted is False
+    assert any("continuation is unsupported" in item for item in diagnostics)
+    for command in (
+        "ACTIVE LEASE 2",
+        "ACTIVE EVIDENCE 1 1",
+        "ACTIVE SETUP 1 1 1 1 1 0xA84D 1 " + "1" * 64,
+        "ACTIVE ARM 1 1 1",
+    ):
+        with pytest.raises(ValueError, match="startup census"):
+            supervisor._assert_command_admitted(command)
 
 
-@pytest.mark.parametrize("mutation", ["missing_manual", "unobserved_manual", "altered_authority"])
-def test_retained_ack_requires_exact_observed_setup_authority(
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ("missing_manual", False),
+        ("unobserved_manual", False),
+        ("altered_authority", "raises"),
+    ],
+)
+def test_setup_confirmation_requires_exact_observed_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     mutation: str,
+    expected: bool | str,
 ) -> None:
     supervisor = _supervisor(tmp_path)
     health = _fresh_health()
-    _retained_ack_fixture(supervisor, health, monkeypatch)
+    _setup_authority_and_retained_inflight_fixture(supervisor, health, monkeypatch)
     if mutation == "missing_manual":
         monkeypatch.setattr(supervisor_module, "_read_csv", lambda _path: [])
     elif mutation == "unobserved_manual":
@@ -375,39 +398,39 @@ def test_retained_ack_requires_exact_observed_setup_authority(
         value["request"]["requested_code"] += 1
         path.write_text(json.dumps(value) + "\n", encoding="utf-8")
 
-    exact, diagnostics = supervisor._retained_ack_resume_exact(health)
-
-    assert exact is False
-    assert any("retained setup authority" in item for item in diagnostics)
+    if expected == "raises":
+        with pytest.raises(ValueError, match="authority"):
+            supervisor._latch_setup_confirmation()
+    else:
+        assert supervisor._latch_setup_confirmation() is expected
 
 
 @pytest.mark.parametrize(
-    ("key", "value"),
+    ("key", "value", "classification"),
     [
-        ("state", "FAULT"),
-        ("fail_static", "true"),
-        ("acceptance_epoch", "2"),
+        ("state", "FAULT", "terminal_or_fault"),
+        ("fail_static", "true", "terminal_or_fault"),
+        ("acceptance_epoch", "2", "transaction_inflight"),
     ],
 )
-def test_faulted_or_source_changed_retained_ack_never_admits_resume(
+def test_faulted_or_source_changed_retained_state_never_admits_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     key: str,
     value: str,
+    classification: str,
 ) -> None:
     supervisor = _supervisor(tmp_path)
     health = _fresh_health()
-    _retained_ack_fixture(supervisor, health, monkeypatch)
+    _setup_authority_and_retained_inflight_fixture(supervisor, health, monkeypatch)
     health[("adaptive_hybrid", key)] = value
     supervisor._identity_ready = lambda _health: True
 
-    classification, admitted, _ = supervisor._classify_startup_snapshot(health)
+    observed, admitted, diagnostics = supervisor._classify_startup_snapshot(health)
 
-    if key in {"state", "fail_static"}:
-        assert classification == "terminal_or_fault"
-    else:
-        assert classification == "transaction_inflight"
+    assert observed == classification
     assert admitted is False
+    assert any("continuation is unsupported" in item for item in diagnostics)
 
 
 def test_pre_census_transaction_consumer_cannot_prepare_ack(tmp_path: Path) -> None:

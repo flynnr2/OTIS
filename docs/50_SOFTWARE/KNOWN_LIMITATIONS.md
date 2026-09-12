@@ -3,10 +3,12 @@
 Current HEAD has one fixed `adaptive_hybrid_regulation` image and no historical
 programme execution surface. The most important present limitations are:
 
-- the first PR #177 production-bundle PTY rehearsal on the older Mac failed
-  before supervisor readiness. Shared static configuration and process ownership
-  now pass a real-build production-bundle PTY rehearsal on the development Mac;
-  the older Mac's exact launch-context gate remains unverified;
+- PR #177's older-Mac startup failure and PR #178's progressing-rehearsal
+  cutoff exposed host scaffolding defects. The successor removes duplicated
+  lifetime, monitoring and finalization responsibilities; its local verification
+  is recorded in the [repair report](../60_EXPERIMENTS/CAUSAL_WAIT_REPAIR_2026_09_11.md).
+  Software simulation does not establish actual USB/bootloader permission or
+  physical firmware/plant behaviour on the older Mac;
 - the September consolidation repairs have native/host regressions but do not
   yet establish physical qualification of metadata-hold history preservation,
   pre-carrier queue ownership, or a changed reference-continuation policy;
@@ -43,9 +45,10 @@ programme execution surface. The most important present limitations are:
   now runs before carrier and pending-frame branches, but that does not enable
   autonomous steering or preserve full replay through a transport fault;
 - startup census observes current firmware before lease or control admission.
-  It admits a proven fresh start or the narrowly supported exact retained
-  acknowledgement continuation; arbitrary active-state campaign adoption is
-  not implemented. Unowned or incoherent state remains a review hold;
+  It admits a proven fresh start. A pending acknowledgement from a previous
+  supervisor process cannot reuse its monotonic deadline and remains a review
+  hold; automatic restart continuation and arbitrary active-state campaign
+  adoption are not implemented. Unowned or incoherent state remains observational;
 - runner review-hold publication and supervisor consumption are separate
   recorded facts. If retained storage fails, controller inhibition cannot be
   claimed solely because the runner requested it;

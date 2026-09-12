@@ -559,6 +559,7 @@ class CaptureDeviceRunner:
         self.normal_command_buffered_bytes_discarded = 0
         self.emergency_aborts_sent = 0
         self.emergency_abort_latched = False
+        self.emergency_abort_raw_frontier: dict[str, object] | None = None
         self.acquisition_frontier_observer_error: str | None = None
         self.capture_active = False
         self.serial_open = False
@@ -925,6 +926,15 @@ class CaptureDeviceRunner:
             "ACTIVE ABORT", serial_handle, raw_writer, priority=True
         )
         self.emergency_aborts_sent += 1
+        # This is a search frontier, not proof of marker persistence: a partial
+        # device line may defer the marker until its newline arrives.
+        raw_identity = os.fstat(raw_writer.handle.fileno())
+        self.emergency_abort_raw_frontier = {
+            "run_directory": str(self.current_run_dir),
+            "search_offset_bytes": raw_writer.handle.tell(),
+            "device": raw_identity.st_dev,
+            "inode": raw_identity.st_ino,
+        }
         _write_marker(raw_writer, "emergency_abort_sent")
         self._emit_status()
 
@@ -1001,6 +1011,7 @@ class CaptureDeviceRunner:
                 ),
                 "emergency_aborts_sent": self.emergency_aborts_sent,
                 "emergency_abort_latched": self.emergency_abort_latched,
+                "emergency_abort_raw_frontier": self.emergency_abort_raw_frontier,
                 "command_fifo_configured": (
                     self.current_command_fifo_configured
                 ),

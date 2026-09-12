@@ -14,6 +14,8 @@ from .acquisition_frontier import FRONTIER_PATH, FRONTIER_POLICY, FRONTIER_STATE
 from .adaptive_hybrid_bundle import validate_frozen_bundle
 from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
+    operational_rehearsal_timing,
+    OPERATIONAL_REHEARSAL_CHECKS,
     OPERATIONAL_REHEARSAL_SEAL_TYPE,
     programme_from_mapping,
 )
@@ -139,30 +141,6 @@ OPERATIONAL_REHEARSAL_SEAL_FIELDS = frozenset(
         "D10_semantics",
         "claim_boundary",
         "seal_sha256",
-    }
-)
-OPERATIONAL_REHEARSAL_CHECKS = frozenset(
-    {
-        "private_nonphysical_manifest_exact",
-        "process_command_transcript_matches_raw",
-        "supervisor_commands_match_capture_prefix",
-        "actual_capture_process_bound_to_closure",
-        "setup_command_bound_to_retained_authority",
-        "two_arm_envelopes_bound_to_supervisor_events",
-        "progressive_evidence_phases_exact",
-        "periodic_lease_and_snapshot_boundaries",
-        "stale_command_timeout_rejected",
-        "first_dependent_checkpoint_before_second_arm",
-        "setup_first_consumer_exact",
-        "metadata_hold_requalified_without_actuation",
-        "two_transactions_replayed",
-        "shared_current_analyzer_consumers_exact",
-        "normal_fifo_revoked_after_obstruction",
-        "priority_abort_preceded_source_close",
-        "same_owner_rotation_then_physical_close",
-        "read_only_monitor_observed_lifecycle",
-        "supervisor_terminal_is_operator_abort",
-        "host_events_durable",
     }
 )
 
@@ -415,6 +393,7 @@ def _validate_operational_rehearsal_manifest(
         "sole_serial_owner": True,
         "serial_owner_count": 1,
         "tool_bindings": bundle["host_tools"],
+        "rehearsal_timing": operational_rehearsal_timing(),
         "fifos": {
             "normal_command": "control/normal_commands.fifo",
             "emergency_abort": "control/emergency_abort.fifo",
@@ -580,7 +559,9 @@ def _snapshot_digest(snapshot: dict) -> str:
     return sha256(canonical).hexdigest()
 
 
-def _artifact_sources(run_dir: Path, manifest) -> dict[str, dict[str, object]]:
+def _artifact_sources(
+    run_dir: Path, manifest, *, allow_missing: bool = False,
+) -> dict[str, dict[str, object]]:
     sources: dict[str, dict[str, object]] = {
         manifest.path.relative_to(run_dir).as_posix(): {"role": "run_manifest"}
     }
@@ -601,7 +582,7 @@ def _artifact_sources(run_dir: Path, manifest) -> dict[str, dict[str, object]]:
         rel_path = _safe_relative_path(entry.get("path"))
         path = _artifact_path(run_dir, rel_path)
         if not path.is_file():
-            if entry.get("optional"):
+            if entry.get("optional") or allow_missing:
                 continue
             raise EvidenceError(f"required declared artifact is missing: {rel_path}")
         metadata: dict[str, object] = {"role": "declared_artifact"}
@@ -616,6 +597,8 @@ def _artifact_sources(run_dir: Path, manifest) -> dict[str, dict[str, object]]:
         rel_path = _safe_relative_path(entry)
         path = _artifact_path(run_dir, rel_path)
         if not path.is_file():
+            if allow_missing:
+                continue
             raise EvidenceError(
                 f"required declared evidence artifact is missing: {rel_path}"
             )
@@ -771,6 +754,30 @@ def create_evidence_snapshot(
     *,
     manifest: RunManifest | None = None,
 ) -> Path:
+    return _create_evidence_snapshot(
+        run_dir, allow_incomplete=allow_incomplete, manifest=manifest,
+        partial_inventory=False,
+    )
+
+
+def create_partial_evidence_snapshot(
+    run_dir: Path, *, manifest: RunManifest | None = None,
+) -> Path:
+    """Inventory retained diagnostic evidence without asserting completeness.
+
+    Missing required artifacts and unusable emitted provenance remain failures
+    of validate_evidence_snapshot; partial collection does not waive them.
+    """
+    return _create_evidence_snapshot(
+        run_dir, allow_incomplete=True, manifest=manifest,
+        partial_inventory=True,
+    )
+
+
+def _create_evidence_snapshot(
+    run_dir: Path, *, allow_incomplete: bool,
+    manifest: RunManifest | None, partial_inventory: bool,
+) -> Path:
     run_dir = run_dir.resolve()
     if (run_dir / CAPTURE_IN_PROGRESS_FLAG).exists():
         raise EvidenceError("capture is in progress; refusing to snapshot mutable evidence")
@@ -804,7 +811,9 @@ def create_evidence_snapshot(
         raise EvidenceError("template directories cannot be sealed as run evidence")
     artifacts = []
     for rel_path, metadata in sorted(
-        _artifact_sources(run_dir, selected_manifest).items()
+        _artifact_sources(
+            run_dir, selected_manifest, allow_missing=partial_inventory,
+        ).items()
     ):
         path = _artifact_path(run_dir, rel_path)
         artifacts.append(
@@ -819,13 +828,21 @@ def create_evidence_snapshot(
     snapshot = {
         "schema_version": EVIDENCE_SCHEMA_VERSION,
         "run_id": selected_manifest.run_id,
-        "run_state": "complete" if (run_dir / COMPLETE_MARKER).exists() else "partial",
+        "run_state": (
+            "complete" if not partial_inventory and (run_dir / COMPLETE_MARKER).exists()
+            else "partial"
+        ),
         "digest_algorithm": DIGEST_ALGORITHM,
         "artifacts": artifacts,
     }
-    firmware_build_provenance = _firmware_build_provenance(
-        run_dir, selected_manifest
-    )
+    try:
+        firmware_build_provenance = _firmware_build_provenance(run_dir, selected_manifest)
+    except EvidenceError:
+        if not partial_inventory:
+            raise
+        # The original health bytes stay inventoried. The unchanged validator
+        # reports missing/malformed provenance instead of accepting a substitute.
+        firmware_build_provenance = None
     if firmware_build_provenance is not None:
         snapshot["firmware_build_provenance"] = firmware_build_provenance
     snapshot["snapshot_digest"] = _snapshot_digest(snapshot)

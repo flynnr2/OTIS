@@ -22,6 +22,64 @@ RUNTIME_RUN_IDENTITY = "adaptive_hybrid_regulation:1"
 HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
 ORCHESTRATION_FAILURE = Path("reports/adaptive_hybrid_hybrid_orchestration_failure_v1.json")
 
+# Host diagnostic waiting bounds, independent of firmware counter-domain
+# actuation expiry and physical qualification duration.
+NORMAL_COMMAND_ACK_TIMEOUT_S = 3.0
+ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S = 30.0
+
+
+def operational_rehearsal_timing() -> dict[str, Any]:
+    """One finite budget owned by the private PTY coordinator.
+
+    A progress interval allows the periodic, pre-ACK and post-ACK causal
+    queries plus four normal writes (identity/setup/lease/ACK). These are
+    conservative sequential maxima, not a performance acceptance target.
+    Twelve one-shot facts bound the complete fixture; heartbeats add none.
+    """
+    progress_s = int(3 * ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S
+                     + 4 * NORMAL_COMMAND_ACK_TIMEOUT_S)
+    return {
+        "contract": "otis_private_rehearsal_timing_v1",
+        "clock_domain": "host_monotonic_ns",
+        "owner": "rehearsal_coordinator",
+        "capture_start_s": 10,
+        "support_start_s": 10,
+        "causal_progress_s": progress_s,
+        "maximum_progress_facts": 12,
+        "transaction_sequence_s": 12 * progress_s,
+        "stale_command_s": 5,
+        "abort_delivery_s": 8,
+        "rotation_s": 10,
+        "capture_close_s": 10,
+        "managed_child_duration_s": None,
+    }
+
+
+OPERATIONAL_REHEARSAL_CHECKS = frozenset(
+    {
+        "coordinator_timing_and_exact_progress_bound",
+        "private_nonphysical_manifest_exact",
+        "process_command_transcript_matches_raw",
+        "supervisor_commands_match_capture_prefix",
+        "actual_capture_process_bound_to_closure",
+        "setup_command_bound_to_retained_authority",
+        "two_arm_envelopes_bound_to_supervisor_events",
+        "progressive_evidence_phases_exact",
+        "periodic_lease_and_snapshot_boundaries",
+        "stale_command_timeout_rejected",
+        "first_dependent_checkpoint_before_second_arm",
+        "setup_first_consumer_exact",
+        "metadata_hold_requalified_without_actuation",
+        "two_transactions_replayed",
+        "shared_current_analyzer_consumers_exact",
+        "normal_fifo_revoked_after_obstruction",
+        "priority_abort_preceded_source_close",
+        "same_owner_rotation_then_physical_close",
+        "read_only_monitor_observed_lifecycle",
+        "supervisor_terminal_is_operator_abort",
+        "host_events_durable",
+    }
+)
 
 @dataclass(frozen=True)
 class AdaptiveHybridProgramme:

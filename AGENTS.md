@@ -176,6 +176,15 @@ predicates from one frozen contract or manifest wherever practical. Runners,
 supervisors, analyzers, recovery tools, and test harnesses must not invent
 conflicting operational semantics.
 
+For a single causal host operation, carry one fixed monotonic deadline through
+nested waits and retries. Unrelated snapshots, heartbeats and repeated
+observation of a written command cannot refresh it. Service explicit abort
+while waiting; renew only previously admitted ownership, and never insert
+another normal command while its predecessor's exact write acknowledgement is
+unresolved. Keep diagnostic host deadlines distinct from firmware counter-domain
+safety expiry. Managed rehearsal lifetimes belong to the coordinator; their
+budgets must include the complete legal operation and orderly closure.
+
 Derive harness relationships from that contract as well. Do not infer that
 counters, classifications, or flags are mutually exclusive merely because
 their names appear different. Exercise every legal overlap, repetition, and
