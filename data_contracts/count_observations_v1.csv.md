@@ -15,7 +15,7 @@ emits compact observations.
 |---|---|---|
 | `record_type` | enum | compact record tag; `CNT` |
 | `schema_version` | uint | schema revision; currently `1` |
-| `count_seq` | uint32 | strictly increasing closing-boundary sequence within a current capture segment; rollover is not admissible inside that segment |
+| `count_seq` | uint32 | closing `SNP.snapshot_sequence`; modulo-2^32 and qualified by the associated SNP capture session |
 | `channel_id` | uint16 | oscillator/count observation channel |
 | `gate_open_ticks` | uint64 | timestamp of gate/window open in `gate_domain` |
 | `gate_close_ticks` | uint64 | timestamp of gate/window close in `gate_domain` |
@@ -75,9 +75,19 @@ timestamp interval and nonzero count do not establish a complete physical
 aperture: `GATE_INCOMPLETE`, boundary overrun/order flags, snapshot failure,
 zero count, or saturation make the row ineligible. A sequence gap with no
 defensible opening timestamp produces `REF` plus `STS`, not a fabricated
-`CNT`. Its `count_seq` is the 32-bit closing-boundary sequence, so a lost
-boundary remains visible as a sequence gap. A current capture segment must end
-before that sequence rolls over.
+`CNT`. Its `count_seq` is the 32-bit closing `SNP.snapshot_sequence`, so a lost
+boundary remains visible as a sequence gap within one snapshot capture session.
+`UINT32_MAX -> 0` is continuous within a session. A snapshot-backend rearm opens
+a new session whose first snapshot is ordinal 0 and whose first possible clean
+`CNT` closes at ordinal 1.
+
+The CNT wire row has no capture-session field. A standalone
+`count_observations_v1.csv` validator therefore checks its shape, field values,
+domains, flags, and each gate's timestamp progression but cannot establish
+sequence or timestamp ordering between rows. Decision-bearing replay joins CNT
+rows to the unique adjacent same-session SNP/REF pair by closing ordinal and
+exact gate endpoints. That joined replay rejects duplicates, gaps, reordering,
+cross-session apertures, and ambiguous associations.
 
 See `docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md` for the full
 contract.
