@@ -73,3 +73,52 @@ reported preview gap, but the preceding preview row is absent from this
 supplement and the exact invocation cannot yet be established. Preserve the
 original criterion and raw values. The full closed package is requested for
 local replay; no hardware operation is needed for this investigation.
+
+## Full acquisition received and offline scope repair
+
+The complete closed-acquisition archive arrived with SHA-256
+`a1acca0b41c66d71e49a2aab59146524d555c06e618ef838781232268efdf9c7`
+(10,021,570 bytes). All 36 manifest payloads and the original package identity
+were verified locally. No acquisition, flash, reset or serial operation was
+repeated. The source archive and sealed package remain immutable.
+
+The EST file contains exactly ten selected 600-span estimates and 6,213
+60-span diagnostic estimates. The former all matched their APS sources in the
+original report; the old host incorrectly made the latter fail selected
+estimator replay solely because their estimator identity differed. Scope replay
+by the explicit estimator identity, retain diagnostic findings separately, and
+prevent diagnostic or unknown estimates from satisfying selected-source joins.
+Use a shared ordinal index for bounded source-window reconstruction rather than
+scanning every aperture for each overlapping diagnostic estimate.
+
+The CTL file has twelve rows. Rows with control sequence 0 and 2 reference
+selected estimates that do not exist; sequence 2 also carries the literal zero
+timestamp. The other ten rows match real selected EST identities and timestamps.
+This confirms unsupported preview publication, not a timestamp rollover defect.
+Remove the three producer emission sites without a successfully published
+selected EST (warmup, invalid interval and capture fault). Keep internal engine
+evaluation and validity withdrawal, and retain existing PPS/association fault
+records. The remaining selected-estimate path emits a truthful CTL source and
+coordinate. No generic timestamp exception or historical raw-value repair is
+introduced.
+
+The private operational device now emits a diagnostic EST before each selected
+EST, preserving their different source windows and eligibility. Native firmware
+regression covers absent previews at startup/fault/discontinuity and fresh
+selected evidence on recovery. The full archived capture is replayed separately
+with the corrected host; its original held/incomplete verdict and invalid CTL
+records are retained. This acquisition cannot be promoted to a pass by an
+offline repair.
+
+All 691 current tests passed in 89.14 seconds, including native preview
+publication and complete host process tests. The corrected external analysis
+replayed all ten selected and 6,213 diagnostic estimates exactly, with all 6,223
+EST sequence/identity checks passing. Raw D14/D8 and accepted-span replay also
+remain exact. The archived preview CSV still fails its original timestamp
+criterion, and the retained host hold still prevents a successful acquisition
+verdict. The corrected report is separate and linked to the unchanged source
+package; no historical row, hold or result was cleared.
+
+The next hardware decision remains one finite inhibited zero-write attempt,
+after the final fixed build, independent reproduction and candidate-bound
+operational rehearsals. This reviewed software result is not hardware authority.

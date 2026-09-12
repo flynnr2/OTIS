@@ -63,9 +63,22 @@ An ineligible decision has no proposed DAC code. An eligible decision may have
 a projection, but it remains non-actionable because physical authority belongs
 only to the adaptive-hybrid transaction path.
 
-The live firmware emits `EST` and `CTL` as one bounded telemetry pair. If the
-derived queue is full, the pair is dropped and counted without feeding the loss
-back into estimator state or changing raw capture/count truth.
+The live firmware emits `CTL` only after it has emitted the selected `EST`
+named by `est_input_ref`. The two records retain the same selected-estimate
+timestamp coordinate and time domain. Diagnostic-only `EST` records do not
+produce a `CTL`.
+
+Warmup transitions, capture faults, and source discontinuities can update the
+live controller's internal qualification state without a selected `EST`. Those
+events do not produce a `CTL`: a zero or service timestamp would not supply the
+missing estimator provenance. Capture and association diagnostics retain the
+fault and reason independently. Preview publication resumes only after fresh
+selected-estimator support is available.
+
+If the selected `EST` cannot be queued, no `CTL` is produced. A later `CTL`
+publication failure can leave the selected `EST` without a preview; the failure
+is counted without feeding the loss back into estimator state or changing raw
+capture/count truth.
 
 ## Stable initial reason codes
 

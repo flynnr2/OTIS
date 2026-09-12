@@ -144,6 +144,7 @@ def test_inhibited_wall_endpoint_closes_capture_and_analyzes_without_abort(
     assert analysis["measurement_replay"]["estimate_replay"] == {
         "applicability": "not_applicable_no_emitted_estimates",
         "emitted_count": 0,
+        "selected_sources_exact": True,
         "exact": True,
     }
 

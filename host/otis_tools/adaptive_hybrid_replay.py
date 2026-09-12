@@ -32,6 +32,9 @@ from .raw_measurement_replay import (
 )
 
 SERIALIZED_12_DECIMAL_HALF_UNIT = Decimal("0.0000000000005")
+DIAGNOSTIC_ESTIMATOR_ID = "accepted_reference_frequency_diagnostic_60s_overlap_v1"
+DIAGNOSTIC_ESTIMATOR_SAMPLE_COUNT = 60
+SELECTED_ESTIMATOR_SAMPLE_COUNT = 600
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
@@ -83,6 +86,104 @@ def _selected_frequency_estimator_sha256(manifest_value: dict[str, Any]) -> str:
         raise ValueError("frozen frequency-estimator identity is malformed") from error
     return frozen
 
+
+
+def _replay_frequency_estimate_row(
+    row: dict[str, str], *, expected_sample_count: int, expected_hash: str,
+    spans_by_identity: dict[tuple[int, int, int], list[dict[str, Any]]],
+) -> tuple[bool, dict[str, Any], dict[str, Any]]:
+    """Replay one bounded accepted-span frequency aperture."""
+
+    try:
+        session = _u32(row, "capture_session")
+        epoch = _u32(row, "source_acceptance_epoch")
+        opening = _u32(row, "source_opening_accepted_boundary_ordinal")
+        closing = _u32(row, "source_closing_accepted_boundary_ordinal")
+        sources: list[dict[str, Any]] = []
+        source_identity_exact = True
+        for offset in range(1, expected_sample_count + 1):
+            ordinal = (opening + offset) % _U32_MODULUS
+            candidates = spans_by_identity.get((session, epoch, ordinal), [])
+            if len(candidates) != 1:
+                source_identity_exact = False
+                continue
+            sources.append(candidates[0])
+        source_exact = (
+            source_identity_exact
+            and opening != closing
+            and (closing - opening) % _U32_MODULUS == expected_sample_count
+            and len(sources) == expected_sample_count
+            and row.get("source_accepted_spans_ref")
+                == accepted_window_ref(session, epoch, opening, closing)
+            and _u32(row, "source_opening_snapshot_sequence")
+                == sources[0]["opening_snapshot_sequence"]
+            and _u32(row, "source_closing_snapshot_sequence")
+                == sources[-1]["closing_snapshot_sequence"]
+            and _u32(row, "source_opening_reference_sequence")
+                == sources[0]["opening_reference_sequence"]
+            and _u32(row, "source_closing_reference_sequence")
+                == sources[-1]["closing_reference_sequence"]
+            and _u32(row, "estimator_timestamp_ticks")
+                == sources[-1]["closing_reference_timestamp_ticks"]
+        )
+        total = sum(span["counted_edges"] for span in sources) if source_exact else None
+        if total is None:
+            frequency_difference = error_difference = Decimal("Infinity")
+        else:
+            frequency_binary64 = float(total) / float(expected_sample_count)
+            error_binary64 = frequency_binary64 - 10_000_000.0
+            frequency_difference = abs(
+                Decimal(row["frequency_estimate_hz"])
+                - Decimal.from_float(frequency_binary64)
+            )
+            error_difference = abs(
+                Decimal(row["frequency_error_hz"])
+                - Decimal.from_float(error_binary64)
+            )
+        row_exact = (
+            source_exact
+            and row.get("time_domain") == _RAW_REFERENCE_DOMAIN
+            and int(row["accepted_sample_count"]) == expected_sample_count
+            and row["config_hash"] == expected_hash
+            and all(row.get(field) == "valid" for field in
+                    ("observation_validity", "reference_validity", "count_validity"))
+            and frequency_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
+            and error_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
+        )
+    except (KeyError, TypeError, ValueError, ArithmeticError):
+        session = epoch = opening = closing = 0
+        total = None
+        frequency_difference = error_difference = Decimal("Infinity")
+        source_exact = row_exact = False
+    summary = {
+        "estimate_id": row.get("estimate_id"),
+        "estimator_sha256": row.get("config_hash"),
+        "source_capture_session": session,
+        "source_acceptance_epoch": epoch,
+        "source_opening_accepted_boundary_ordinal": opening,
+        "source_closing_accepted_boundary_ordinal": closing,
+        "estimator_timestamp_ticks": (
+            int(row["estimator_timestamp_ticks"])
+            if row.get("estimator_timestamp_ticks", "").isdecimal() else None
+        ),
+        "time_domain": row.get("time_domain"),
+        "frequency_error_hz": row.get("frequency_error_hz"),
+        "accumulated_edge_error_counts": (
+            total - expected_sample_count * 10_000_000 if total is not None else None
+        ),
+        "source_exact": source_exact,
+        "pass": row_exact,
+    }
+    comparison = {
+        **summary, "total_counted_edges": total,
+        "absolute_frequency_difference_hz": (
+            None if frequency_difference.is_infinite() else float(frequency_difference)
+        ),
+        "absolute_error_difference_hz": (
+            None if error_difference.is_infinite() else float(error_difference)
+        ),
+    }
+    return row_exact, summary, comparison
 
 
 def _measurement_replay(
@@ -153,133 +254,131 @@ def _measurement_replay(
         current == (previous + 1) % _U32_MODULUS
         for previous, current in pairwise(estimate_sequences)
     )
-    spans_by_stream: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    spans_by_identity: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
     for span in verified_spans:
-        spans_by_stream.setdefault(
-            (span["capture_session"], span["acceptance_epoch"]), []
+        spans_by_identity.setdefault(
+            (span["capture_session"], span["acceptance_epoch"],
+             span["accepted_boundary_ordinal"]), []
         ).append(span)
     raw_measurement_exact = d14_channel_exact and span_exact
-    estimate_replay_exact = sequence_exact
-    identifiers: set[str] = set()
+    identifier_counts: dict[str, int] = {}
+    for row in estimates:
+        identifier = row.get("estimate_id", "")
+        identifier_counts[identifier] = identifier_counts.get(identifier, 0) + 1
+    identities_unique = all(count == 1 for count in identifier_counts.values())
+    estimate_stream_integrity_exact = sequence_exact and identities_unique
+    selected_estimate_replay_exact = True
+    diagnostic_estimate_replay_exact = True
     selected_windows: list[tuple[int, int, int, int]] = []
     comparisons: list[dict[str, Any]] = []
     selected_sources: list[dict[str, Any]] = []
+    diagnostic_errors: list[str] = []
+    diagnostic_error_count = 0
+    diagnostic_count = 0
+    unknown_estimator_versions: dict[str, int] = {}
     estimates_by_id: dict[str, dict[str, str]] = {}
     for row in estimates:
-        identifier = row["estimate_id"]
-        unique = identifier not in identifiers
-        identifiers.add(identifier)
-        estimates_by_id[identifier] = row
-        estimate_replay_exact &= unique
-        if row.get("estimator_version") != SELECTED_ESTIMATOR_ID:
-            estimate_replay_exact = False
+        identifier = row.get("estimate_id", "")
+        unique = identifier_counts.get(identifier) == 1
+        estimator_version = row.get("estimator_version", "")
+        if estimator_version not in {SELECTED_ESTIMATOR_ID, DIAGNOSTIC_ESTIMATOR_ID}:
+            unknown_estimator_versions[estimator_version] = (
+                unknown_estimator_versions.get(estimator_version, 0) + 1
+            )
             continue
-        try:
-            session = _u32(row, "capture_session")
-            epoch = _u32(row, "source_acceptance_epoch")
-            opening = _u32(row, "source_opening_accepted_boundary_ordinal")
-            closing = _u32(row, "source_closing_accepted_boundary_ordinal")
-            available = spans_by_stream.get((session, epoch), [])
-            sources = [span for span in available if
-                       0 < (span["accepted_boundary_ordinal"] - opening) % _U32_MODULUS <= 600]
-            sources.sort(key=lambda span: (span["accepted_boundary_ordinal"] - opening) % _U32_MODULUS)
-            source_exact = (
-                opening != closing
-                and (closing - opening) % _U32_MODULUS == 600
-                and len(sources) == 600
-                and [((span["accepted_boundary_ordinal"] - opening) % _U32_MODULUS)
-                     for span in sources] == list(range(1, 601))
-                and row.get("source_accepted_spans_ref")
-                    == accepted_window_ref(session, epoch, opening, closing)
-                and _u32(row, "source_opening_snapshot_sequence")
-                    == sources[0]["opening_snapshot_sequence"]
-                and _u32(row, "source_closing_snapshot_sequence")
-                    == sources[-1]["closing_snapshot_sequence"]
-                and _u32(row, "source_opening_reference_sequence")
-                    == sources[0]["opening_reference_sequence"]
-                and _u32(row, "source_closing_reference_sequence")
-                    == sources[-1]["closing_reference_sequence"]
-                and _u32(row, "estimator_timestamp_ticks")
-                    == sources[-1]["closing_reference_timestamp_ticks"]
+        sample_count = (
+            SELECTED_ESTIMATOR_SAMPLE_COUNT
+            if estimator_version == SELECTED_ESTIMATOR_ID
+            else DIAGNOSTIC_ESTIMATOR_SAMPLE_COUNT
+        )
+        row_exact, summary, comparison = _replay_frequency_estimate_row(
+            row, expected_sample_count=sample_count, expected_hash=expected_hash,
+            spans_by_identity=spans_by_identity,
+        )
+        row_exact &= unique
+        summary["pass"] = row_exact
+        comparison["pass"] = row_exact
+        if estimator_version == DIAGNOSTIC_ESTIMATOR_ID:
+            diagnostic_count += 1
+            zero_authority_exact = (
+                row.get("preview_eligibility") == "false"
+                and row.get("eligibility_reason_codes")
+                    == "diagnostic_non_authoritative"
             )
-            total = sum(span["counted_edges"] for span in sources) if source_exact else None
-            if total is None:
-                frequency_difference = error_difference = Decimal("Infinity")
-            else:
-                frequency_binary64 = float(total) / 600.0
-                error_binary64 = frequency_binary64 - 10_000_000.0
-                frequency_difference = abs(
-                    Decimal(row["frequency_estimate_hz"])
-                    - Decimal.from_float(frequency_binary64)
-                )
-                error_difference = abs(
-                    Decimal(row["frequency_error_hz"])
-                    - Decimal.from_float(error_binary64)
-                )
-            row_exact = (
-                unique and source_exact
-                and row.get("time_domain") == _RAW_REFERENCE_DOMAIN
-                and int(row["accepted_sample_count"]) == 600
-                and row["config_hash"] == expected_hash
-                and all(row.get(field) == "valid" for field in
-                        ("observation_validity", "reference_validity", "count_validity"))
-                and frequency_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
-                and error_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
-            )
-        except (KeyError, TypeError, ValueError, ArithmeticError):
-            session = epoch = opening = closing = 0
-            sources = []
-            total = None
-            frequency_difference = error_difference = Decimal("Infinity")
-            source_exact = row_exact = False
-        estimate_replay_exact &= row_exact
+            diagnostic_row_exact = row_exact and zero_authority_exact
+            diagnostic_estimate_replay_exact &= diagnostic_row_exact
+            if not diagnostic_row_exact:
+                diagnostic_error_count += 1
+                if len(diagnostic_errors) < 20:
+                    diagnostic_errors.append(
+                        f"EST {identifier or '?'} diagnostic source, numeric content, "
+                        "identity, or zero-authority declaration differs"
+                    )
+            continue
+        selected_estimate_replay_exact &= row_exact
+        session = summary["source_capture_session"]
+        epoch = summary["source_acceptance_epoch"]
+        opening = summary["source_opening_accepted_boundary_ordinal"]
+        closing = summary["source_closing_accepted_boundary_ordinal"]
         selected_windows.append((session, epoch, opening, closing))
-        summary = {
-            "estimate_id": identifier,
-            "estimator_sha256": row.get("config_hash"),
-            "source_capture_session": session,
-            "source_acceptance_epoch": epoch,
-            "source_opening_accepted_boundary_ordinal": opening,
-            "source_closing_accepted_boundary_ordinal": closing,
-            "estimator_timestamp_ticks": (
-                int(row["estimator_timestamp_ticks"])
-                if row.get("estimator_timestamp_ticks", "").isdecimal() else None
-            ),
-            "time_domain": row.get("time_domain"),
-            "frequency_error_hz": row.get("frequency_error_hz"),
-            "accumulated_edge_error_counts": (
-                total - 600 * 10_000_000 if total is not None else None
-            ),
-            "source_exact": source_exact,
-            "pass": row_exact,
-        }
         selected_sources.append(summary)
-        comparisons.append({
-            **summary, "total_counted_edges": total,
-            "absolute_frequency_difference_hz": (
-                None if frequency_difference.is_infinite() else float(frequency_difference)
-            ),
-            "absolute_error_difference_hz": (
-                None if error_difference.is_infinite() else float(error_difference)
-            ),
-        })
+        comparisons.append(comparison)
+        if row_exact:
+            estimates_by_id[identifier] = row
     nonoverlap = all(
         later[:2] != earlier[:2]
         or (later[2] - earlier[3]) % _U32_MODULUS < (1 << 31)
         for earlier, later in pairwise(selected_windows)
     )
-    estimate_replay_exact &= nonoverlap
-    exact = raw_measurement_exact and estimate_replay_exact
+    selected_estimate_replay_exact &= nonoverlap
+    known_estimator_versions_exact = not unknown_estimator_versions
+    exact = (
+        raw_measurement_exact
+        and estimate_stream_integrity_exact
+        and known_estimator_versions_exact
+        and selected_estimate_replay_exact
+    )
     return bool(exact), {
         "raw_measurement_exact": raw_measurement_exact,
         "estimate_replay": {
             "applicability": (
-                "emitted_estimates"
-                if estimates
-                else "not_applicable_no_emitted_estimates"
+                "emitted_selected_estimates"
+                if selected_windows
+                else ("not_applicable_no_emitted_selected_estimates"
+                      if estimates else "not_applicable_no_emitted_estimates")
             ),
+            "emitted_count": len(selected_windows),
+            "selected_sources_exact": selected_estimate_replay_exact,
+            # The analyzer consumes this Boolean, not the tuple return value.
+            # Preserve stream/identity checks while excluding diagnostic-local
+            # source and numeric findings from selected-estimator acceptance.
+            "exact": (selected_estimate_replay_exact
+                      and estimate_stream_integrity_exact
+                      and known_estimator_versions_exact),
+        },
+        "diagnostic_estimate_replay": {
+            "applicability": (
+                "emitted_zero_authority_diagnostics"
+                if diagnostic_count else "not_applicable_no_emitted_diagnostics"
+            ),
+            "estimator_version": DIAGNOSTIC_ESTIMATOR_ID,
+            "emitted_count": diagnostic_count,
+            "exact": diagnostic_estimate_replay_exact,
+            "errors": diagnostic_errors,
+            "error_count": diagnostic_error_count,
+            "authority": "none",
+            "enters_raw_or_selected_estimate_exactness": False,
+        },
+        "estimate_stream_integrity": {
             "emitted_count": len(estimates),
-            "exact": estimate_replay_exact,
+            "sequence_exact": sequence_exact,
+            "identities_unique": identities_unique,
+            "exact": estimate_stream_integrity_exact,
+        },
+        "known_estimator_versions": {
+            "exact": known_estimator_versions_exact,
+            "unknown_row_count": sum(unknown_estimator_versions.values()),
+            "unknown_versions": dict(sorted(unknown_estimator_versions.items())),
         },
         "estimate_sequence_exact": sequence_exact,
         "accepted_span_replay": span_report,
