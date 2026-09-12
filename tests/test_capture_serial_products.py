@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from host.otis_tools.capture_serial import CsvRecordSplitter, RECORD_CONTRACTS
+from host.otis_tools.record_splitter import CsvRecordSplitter, RECORD_CONTRACTS
 from host.otis_tools.contracts import CONTRACT_FIELDS, CONTRACT_SCHEMA_VERSIONS
 from host.otis_tools.firmware_host_contract import (
     RECORD_FIELD_WIRE_TYPES,

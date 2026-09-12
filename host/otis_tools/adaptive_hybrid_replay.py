@@ -3,26 +3,34 @@
 from __future__ import annotations
 
 import csv
+import json
+import math
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 from hashlib import sha256
-import json
-import math
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-
-from .raw_measurement_replay import (
-    SELECTED_ESTIMATOR_ID, _RAW_REFERENCE_DOMAIN, _U32_MODULUS,
-    _raw_count_replay, _u32,
-)
 from .accepted_span_replay import (
     POLICY_PATH as REFERENCE_ACCEPTANCE_POLICY_PATH,
+)
+from .accepted_span_replay import (
     accepted_window_ref,
     replay_accepted_spans,
 )
-from .authoritative_inputs import ValidatedAuthoritativeInputs, validate_authoritative_inputs
+from .authoritative_inputs import (
+    ValidatedAuthoritativeInputs,
+    validate_authoritative_inputs,
+)
+from .raw_measurement_replay import (
+    _RAW_REFERENCE_DOMAIN,
+    _U32_MODULUS,
+    SELECTED_ESTIMATOR_ID,
+    _u32,
+)
+
 SERIALIZED_12_DECIMAL_HALF_UNIT = Decimal("0.0000000000005")
 
 
@@ -82,7 +90,7 @@ def _measurement_replay(
     manifest_value: dict[str, Any],
     *, validated_inputs: ValidatedAuthoritativeInputs | None = None,
 ) -> tuple[bool, dict[str, Any], dict[str, dict[str, str]]]:
-    """Recompute selected estimates from retained accepted PPS spans."""
+    """Reconstruct raw accepted D14/D8 spans and verify every emitted estimate."""
 
     counts = _read_csv(_single_contract_path(manifest, "count_observations_v1"))
     snapshots = _read_csv(_single_contract_path(manifest, "pps_snapshots_v1"))
@@ -103,9 +111,9 @@ def _measurement_replay(
         row.get("record_type") == "REF" and row.get("channel_id") == "1"
         for row in references
     )
-    if not counts or not snapshots or not references or not spans or not estimates:
+    if not counts or not snapshots or not references or not spans:
         return False, {
-            "reason": "accepted D14/D8 measurement replay source is empty",
+            "reason": "accepted D14/D8 raw measurement replay source is empty",
             "D10": {"row_count": len(external_events), "channel_exact": d10_channel_exact,
                     "local_error": d10_local_error},
         }, {}
@@ -143,14 +151,15 @@ def _measurement_replay(
     estimate_sequences = [_u32(row, "estimate_seq") for row in estimates]
     sequence_exact = all(
         current == (previous + 1) % _U32_MODULUS
-        for previous, current in zip(estimate_sequences, estimate_sequences[1:])
+        for previous, current in pairwise(estimate_sequences)
     )
     spans_by_stream: dict[tuple[int, int], list[dict[str, Any]]] = {}
     for span in verified_spans:
         spans_by_stream.setdefault(
             (span["capture_session"], span["acceptance_epoch"]), []
         ).append(span)
-    exact = sequence_exact and d14_channel_exact and span_exact
+    raw_measurement_exact = d14_channel_exact and span_exact
+    estimate_replay_exact = sequence_exact
     identifiers: set[str] = set()
     selected_windows: list[tuple[int, int, int, int]] = []
     comparisons: list[dict[str, Any]] = []
@@ -161,8 +170,9 @@ def _measurement_replay(
         unique = identifier not in identifiers
         identifiers.add(identifier)
         estimates_by_id[identifier] = row
-        exact &= unique
+        estimate_replay_exact &= unique
         if row.get("estimator_version") != SELECTED_ESTIMATOR_ID:
+            estimate_replay_exact = False
             continue
         try:
             session = _u32(row, "capture_session")
@@ -222,7 +232,7 @@ def _measurement_replay(
             total = None
             frequency_difference = error_difference = Decimal("Infinity")
             source_exact = row_exact = False
-        exact &= row_exact
+        estimate_replay_exact &= row_exact
         selected_windows.append((session, epoch, opening, closing))
         summary = {
             "estimate_id": identifier,
@@ -253,13 +263,24 @@ def _measurement_replay(
                 None if error_difference.is_infinite() else float(error_difference)
             ),
         })
-    nonoverlap = bool(selected_windows) and all(
+    nonoverlap = all(
         later[:2] != earlier[:2]
         or (later[2] - earlier[3]) % _U32_MODULUS < (1 << 31)
-        for earlier, later in zip(selected_windows, selected_windows[1:])
+        for earlier, later in pairwise(selected_windows)
     )
-    exact &= nonoverlap
+    estimate_replay_exact &= nonoverlap
+    exact = raw_measurement_exact and estimate_replay_exact
     return bool(exact), {
+        "raw_measurement_exact": raw_measurement_exact,
+        "estimate_replay": {
+            "applicability": (
+                "emitted_estimates"
+                if estimates
+                else "not_applicable_no_emitted_estimates"
+            ),
+            "emitted_count": len(estimates),
+            "exact": estimate_replay_exact,
+        },
         "estimate_sequence_exact": sequence_exact,
         "accepted_span_replay": span_report,
         "acquisition_frontier": acquisition_report,
@@ -577,14 +598,14 @@ def _response_replay(
     return bool(exact), results
 
 
-def _capsules_exact(
+def replay_transaction_capsules(
     run_dir: Path, rows: list[dict[str, str]], events: list[dict[str, Any]],
     supervisor_state: dict[str, Any], *,
     permitted_unacknowledged_sequences: frozenset[int] = frozenset(),
-) -> tuple[bool, dict[str, str]]:
+) -> dict[str, Any]:
     expected_rows = [row for row in rows if row.get("event") != "manual_start"]
     hashes: dict[str, str] = {}
-    exact = True
+    errors: list[str] = []
     expected_paths: set[Path] = set()
     phase = {"request_created": 1, "request_accepted": 2, "application": 3, "application_fault": 3, "response": 4}
     acknowledgements = {
@@ -597,21 +618,24 @@ def _capsules_exact(
         expected_paths.add(relative)
         path = run_dir / relative
         if not path.is_file() or json.loads(path.read_text(encoding="utf-8")) != row:
-            exact = False
+            errors.append(f"ACT record {record}: missing or contradictory capsule {relative}")
             continue
         hashes[str(relative)] = sha256(path.read_bytes()).hexdigest()
         if ((record, phase[row["event"]]) in acknowledgements) != (record not in permitted_unacknowledged_sequences):
-            exact = False
+            errors.append(f"ACT record {record}: phase {phase[row['event']]} acknowledgement differs from retained record")
     actual = {
         path.relative_to(run_dir)
         for path in (run_dir / "reports").glob("step_*/record_*_*.json")
         if not path.name.endswith("_response_replay_attestation.json")
     }
-    exact &= actual == expected_paths
+    if actual != expected_paths:
+        errors.append(f"capsule inventory differs: missing={sorted(map(str, expected_paths - actual))}, extra={sorted(map(str, actual - expected_paths))}")
     expected_sequences = sorted(
         int(row["transaction_record_sequence"])
         for row in expected_rows
         if int(row["transaction_record_sequence"]) not in permitted_unacknowledged_sequences
     )
-    exact &= sorted(supervisor_state.get("acknowledged_record_sequences", [])) == expected_sequences
-    return bool(exact), hashes
+    observed_sequences = sorted(supervisor_state.get("acknowledged_record_sequences", []))
+    if observed_sequences != expected_sequences:
+        errors.append(f"owner acknowledged ACT frontier differs: expected={expected_sequences}, observed={observed_sequences}")
+    return {"exact": not errors, "capsule_sha256": hashes, "errors": errors}

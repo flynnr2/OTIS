@@ -1,31 +1,31 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
 import argparse
-from contextlib import ExitStack
 import csv
 import glob
-from hashlib import sha256
 import json
 import logging
 import os
 import signal
 import subprocess
 import tempfile
-import time
 import threading
-from typing import Callable
+import time
+from collections.abc import Callable
+from contextlib import ExitStack
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
+from pathlib import Path
 
-from .capture_serial import CsvRecordSplitter, _split_targets_from_manifest
-from .acquisition_frontier import AcquisitionFrontierTracker, FRONTIER_POLICY
+from .acquisition_frontier import FRONTIER_POLICY, AcquisitionFrontierTracker
 from .active_status_live_state import (
-    ActiveStatusLiveReducer,
     LIVE_STATE_PATH,
+    ActiveStatusLiveReducer,
 )
 from .contracts import CONTRACT_FIELDS
-from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path
+from .record_splitter import CsvRecordSplitter, split_targets
+from .run_loader import CAPTURE_IN_PROGRESS_FLAG, find_manifest_path, load_manifest
 from .run_paths import ensure_run_layout
 from .serial_commands import (
     CommandFifo,
@@ -33,23 +33,26 @@ from .serial_commands import (
     parse_timestamped_command_line,
 )
 
-
 LOGGER = logging.getLogger("otis.capture_device")
 HOST_MARKER_PREFIX = b"# OTIS_HOST"
 CAPTURE_STATE = Path("reports/capture_device_state.json")
 CAPTURE_STATE_HEARTBEAT_S = 5.0
-SEGMENT_REQUEST = Path("request.json")
-SEGMENT_CARRIER_STATE = Path("carrier_state.json")
-SEGMENT_RESPONSE_DIR = Path("responses")
-SEGMENT_TRANSITION_STAGE = "OTIS_ADAPTIVE_HYBRID_TRANSITION_SPOOL"
-SEGMENT_PROTOCOL_ID = "otis_same_owner_logical_segment_rotation_v1"
+SEGMENT_PROTOCOL_ID = "otis_capture_closure_v1"
 SEGMENT_CLOSURE = Path("reports/capture_segment_closure_v1.json")
+SERIAL_OWNER_PROBE_TIMEOUT_S = 2.0
 
 
 def _serial_owner_pids(device: str) -> set[int]:
-    result = subprocess.run(
-        ["lsof", "-t", device], text=True, capture_output=True, check=False
-    )
+    try:
+        result = subprocess.run(
+            ["lsof", "-t", device],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=SERIAL_OWNER_PROBE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("serial owner inspection timed out") from exc
     if result.returncode not in {0, 1}:
         raise ValueError(f"cannot inspect serial owners: {result.stderr.strip()}")
     return {
@@ -86,9 +89,6 @@ class CaptureDeviceConfig:
     status_interval_s: float = 60.0
     max_line_bytes: int = 65536
     duration_s: float | None = None
-    segment_control_dir: Path | None = None
-    segment_capability: str | None = None
-    intentional_detach_schedule: tuple[tuple[float, float], ...] = ()
 
 
 def _utc_now() -> str:
@@ -187,17 +187,19 @@ class ActiveStatusLivePublisher:
 
 
 class RawEvidenceWriter:
-    """Keep host annotations between complete device records.
+    """Retain every device byte immediately; place host markers between records.
 
-    Serial reads may end in the middle of a CSV record.  Holding only that
-    final partial record lets command/audit markers wait for its terminating
-    newline instead of being inserted into the device bytes.
+    An unterminated device record uses a byte count, not an in-memory copy.
+    Pending host annotations spill to a temporary file after 64 KiB, so broken
+    framing cannot defeat the parser's memory bound or erase received evidence.
     """
+
+    MARKER_MEMORY_LIMIT = 65536
 
     def __init__(self, handle) -> None:
         self.handle = handle
-        self.partial = bytearray()
-        self.pending_markers: list[bytes] = []
+        self.partial = 0
+        self.pending_markers = None
 
     def _ensure_line_boundary(self) -> None:
         if self.handle.tell() == 0:
@@ -209,41 +211,64 @@ class RawEvidenceWriter:
             self.handle.write(b"\n")
 
     def _write_pending_markers(self) -> None:
-        if not self.pending_markers:
+        if self.pending_markers is None:
             return
-        for marker in self.pending_markers:
-            self.handle.write(marker)
-        self.pending_markers.clear()
+        self.pending_markers.seek(0)
+        for block in iter(
+            lambda: self.pending_markers.read(self.MARKER_MEMORY_LIMIT), b""
+        ):
+            self.handle.write(block)
+        self.pending_markers.close()
+        self.pending_markers = None
 
     def write_device(self, data: bytes) -> None:
-        self.partial.extend(data)
-        while True:
-            try:
-                newline_index = self.partial.index(0x0A)
-            except ValueError:
-                break
-            end = newline_index + 1
-            self.handle.write(self.partial[:end])
-            del self.partial[:end]
-            self._write_pending_markers()
+        cursor = 0
+        while cursor < len(data):
+            newline = data.find(b"\n", cursor)
+            end = len(data) if newline < 0 else newline + 1
+            self.handle.write(data[cursor:end])
+            self.partial += end - cursor
+            cursor = end
+            if newline >= 0:
+                self.partial = 0
+                self._write_pending_markers()
         self.handle.flush()
 
     def write_marker(self, event: str, **fields: object) -> None:
         marker = _marker_bytes(event, **fields)
         if self.partial:
-            self.pending_markers.append(marker)
+            if self.pending_markers is None:
+                self.pending_markers = tempfile.SpooledTemporaryFile(  # noqa: SIM115 - closed by RawEvidenceWriter.
+                    max_size=self.MARKER_MEMORY_LIMIT, mode="w+b"
+                )
+            self.pending_markers.write(marker)
         else:
             self._ensure_line_boundary()
             self.handle.write(marker)
             self.handle.flush()
 
     def drop_partial(self) -> int:
-        dropped = len(self.partial)
-        self.partial.clear()
-        self._ensure_line_boundary()
+        # The framing consumer drops an incomplete record. Its original bytes
+        # remain in raw evidence; label the separator added for host annotations.
+        retained = self.partial
+        if retained:
+            self._ensure_line_boundary()
+            self.handle.write(
+                _marker_bytes(
+                    "raw_partial_record_retained",
+                    byte_count=retained,
+                    synthetic_terminating_lf=True,
+                )
+            )
+        self.partial = 0
         self._write_pending_markers()
         self.handle.flush()
-        return dropped
+        return retained
+
+    def close(self) -> None:
+        if self.pending_markers is not None:
+            self.pending_markers.close()
+            self.pending_markers = None
 
 
 def _write_marker(raw_writer: RawEvidenceWriter, event: str, **fields: object) -> None:
@@ -298,9 +323,8 @@ def _split_targets(run_dir: Path) -> tuple[dict[str, Path], dict[str, tuple[str,
     manifest_path = find_manifest_path(run_dir)
     if manifest_path is None:
         raise ValueError("capture requires an existing exact run manifest")
-    with manifest_path.open("r", encoding="utf-8") as handle:
-        manifest = json.load(handle)
-    return _split_targets_from_manifest(manifest, run_dir)
+    manifest = load_manifest(run_dir).data
+    return split_targets(manifest, run_dir)
 
 
 class LineFramer:
@@ -353,12 +377,12 @@ class LineFramer:
         return dropped
 
 
-class CaptureSegmentSink:
+class CaptureSink:
     """One logical evidence sink carried by an already-open serial owner."""
 
     def __init__(
         self,
-        runner: "CaptureDeviceRunner",
+        runner: CaptureDeviceRunner,
         *,
         run_dir: Path,
         command_fifo_path: Path | None,
@@ -375,6 +399,13 @@ class CaptureSegmentSink:
                 "refusing to reopen a logically or physically closed capture segment: "
                 f"{self.run_dir}"
             )
+        # Reserve this acquisition before opening any append stream or FIFO.
+        # A second worker must not alter evidence while serial exclusivity is
+        # still being checked. A stale reservation requires explicit review.
+        self.in_progress = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
+        with self.in_progress.open("x", encoding="utf-8") as reservation:
+            json.dump({"owner_pid": os.getpid(), "created_utc": _utc_now()}, reservation)
+            reservation.write("\n")
         self._stack = ExitStack()
         try:
             file_by_contract, file_by_record_type = _split_targets(self.run_dir)
@@ -399,16 +430,15 @@ class CaptureSegmentSink:
                 if emergency_fifo_path is not None
                 else None
             )
-            self.in_progress = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
-            self.in_progress.touch(exist_ok=True)
             self.raw_writer = RawEvidenceWriter(self.raw_handle)
+            self._stack.callback(self.raw_writer.close)
             self.active_status_live_publisher = ActiveStatusLivePublisher(
                 self.run_dir
             )
             manifest_path = find_manifest_path(self.run_dir)
             if manifest_path is None:
                 raise FileNotFoundError("capture segment has no manifest")
-            manifest_value = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest_value = load_manifest(self.run_dir).data
             self.acquisition_frontier_tracker = (
                 AcquisitionFrontierTracker(self.run_dir, manifest_value)
                 if manifest_value.get("acquisition_frontier") == FRONTIER_POLICY
@@ -448,11 +478,7 @@ class CaptureSegmentSink:
         self,
         *,
         generation: int,
-        next_run: str | None,
         physical_serial_open: bool,
-        logical_rotation: bool,
-        request_id: str | None = None,
-        serial_owner_check: dict[str, object] | None = None,
     ) -> None:
         if self.closed:
             return
@@ -474,9 +500,11 @@ class CaptureSegmentSink:
             emergency_abort_latched=self.runner.emergency_abort_latched,
             owner_pid=os.getpid(),
             transport_generation=generation,
-            logical_rotation=logical_rotation,
-            next_run=next_run,
         )
+        # The closure is the acquisition-completeness commit.  Flush and close
+        # every evidence stream before publishing it; retain the reservation if
+        # any earlier operation fails.
+        self._stack.close()
         manifest_path = find_manifest_path(self.run_dir)
         if manifest_path is None:
             raise FileNotFoundError("capture segment has no manifest to bind")
@@ -492,17 +520,10 @@ class CaptureSegmentSink:
                 "baud": self.runner.config.baud,
                 "owner_pid": os.getpid(),
                 "transport_generation": generation,
-                "closure_mode": (
-                    "same_owner_logical_rotation"
-                    if logical_rotation
-                    else "physical_serial_close"
-                ),
+                "closure_mode": "physical_serial_close",
                 "logical_segment_closed": True,
                 "physical_serial_open": physical_serial_open,
                 "serial_reopened": False,
-                "next_run": next_run,
-                "request_id": request_id,
-                "serial_owner_check": serial_owner_check,
                 "counters": {
                     "bytes_written": self.runner.bytes_written,
                     "lines_seen": self.runner.lines_seen,
@@ -517,16 +538,20 @@ class CaptureSegmentSink:
             },
         )
         self.in_progress.unlink(missing_ok=True)
-        self.runner._write_state(
-            run_dir=self.run_dir,
-            capture_active=False,
-            serial_open=physical_serial_open,
-            logical_segment_closed=True,
-            physical_serial_open=physical_serial_open,
-            transport_generation=generation,
-        )
-        self._stack.close()
         self.closed = True
+        try:
+            self.runner._write_state(
+                run_dir=self.run_dir,
+                capture_active=False,
+                serial_open=physical_serial_open,
+                logical_segment_closed=True,
+                physical_serial_open=physical_serial_open,
+                transport_generation=generation,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            # The closed streams, immutable closure, and removed reservation are
+            # authoritative.  This projection has no authority to reopen them.
+            _log_event(logging.WARNING, "final_capture_state_error", error=str(exc))
 
     def abandon_incomplete(self) -> None:
         """Close host resources while retaining the in-progress flag as evidence."""
@@ -571,11 +596,6 @@ class CaptureDeviceRunner:
         self.current_emergency_fifo_configured = (
             config.emergency_command_fifo is not None
         )
-        self.last_rotation_serial_owner_check: dict[str, object] | None = None
-        self.intentional_detach_count = 0
-        self.intentional_detach_gaps_ms: list[float] = []
-        self._first_serial_open_monotonic: float | None = None
-        self._intentional_detach_started_monotonic: float | None = None
 
     def request_stop(self, signum: int | None = None) -> None:
         if signum == signal.SIGINT and not self.graceful_stop_requested:
@@ -591,40 +611,6 @@ class CaptureDeviceRunner:
         serial_module = _load_serial_module()
         return serial_module.Serial
 
-    def _validate_intentional_detach_authority(self) -> None:
-        schedule = self.config.intentional_detach_schedule
-        if not schedule:
-            return
-        if any(
-            after_s <= 0.0 or detach_s <= 0.0 or detach_s >= 2.0
-            for after_s, detach_s in schedule
-        ):
-            raise ValueError(
-                "intentional detach schedule requires positive offsets and "
-                "detach intervals strictly below the 2 s transport horizon"
-            )
-        offsets = [item[0] for item in schedule]
-        if offsets != sorted(offsets) or len(set(offsets)) != len(offsets):
-            raise ValueError("intentional detach offsets must be unique and ordered")
-        manifest_path = self.current_run_dir / "run_manifest.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        declared = manifest.get("q1_real_io", {}).get(
-            "intentional_detach_schedule"
-        )
-        expected = [
-            {"after_first_open_s": after_s, "detached_s": detach_s}
-            for after_s, detach_s in schedule
-        ]
-        if (
-            manifest.get("actuation_authorized") is not False
-            or manifest.get("closed_loop_control") is not False
-            or declared != expected
-        ):
-            raise ValueError(
-                "intentional serial detach requires an exact Q1 no-actuation "
-                "manifest declaration"
-            )
-
     def _serial_exceptions(self) -> tuple[type[BaseException], ...]:
         if self.serial_factory is not None:
             return (OSError, EOFError)
@@ -636,8 +622,8 @@ class CaptureDeviceRunner:
         line: bytes,
         splitter: CsvRecordSplitter,
         raw_writer: RawEvidenceWriter,
-        active_status_live_publisher: "ActiveStatusLivePublisher | None" = None,
-        acquisition_frontier_tracker: "AcquisitionFrontierTracker | None" = None,
+        active_status_live_publisher: ActiveStatusLivePublisher | None = None,
+        acquisition_frontier_tracker: AcquisitionFrontierTracker | None = None,
     ) -> None:
         self.lines_seen += 1
         try:
@@ -771,8 +757,8 @@ class CaptureDeviceRunner:
         data: bytes,
         splitter: CsvRecordSplitter,
         raw_writer: RawEvidenceWriter,
-        active_status_live_publisher: "ActiveStatusLivePublisher | None" = None,
-        acquisition_frontier_tracker: "AcquisitionFrontierTracker | None" = None,
+        active_status_live_publisher: ActiveStatusLivePublisher | None = None,
+        acquisition_frontier_tracker: AcquisitionFrontierTracker | None = None,
         before_line_processing: Callable[[], None] | None = None,
     ) -> None:
         raw_writer.write_device(data)
@@ -889,7 +875,9 @@ class CaptureDeviceRunner:
             return
         raw_command = emergency_commands[0]
         try:
-            command = parse_serial_command(raw_command)
+            command, _created_monotonic_ns = parse_timestamped_command_line(
+                raw_command
+            )
         except ValueError as exc:
             _write_marker(
                 raw_writer,
@@ -978,6 +966,7 @@ class CaptureDeviceRunner:
             {
                 "schema_version": 1,
                 "updated_utc": _utc_now(),
+                "updated_monotonic_ns": time.monotonic_ns(),
                 "pid": os.getpid(),
                 "capture_active": effective_capture_active,
                 "serial_open": effective_serial_open,
@@ -1002,8 +991,6 @@ class CaptureDeviceRunner:
                 ),
                 "reconnect_count": self.reconnect_count,
                 "serial_exclusive_requested": self.serial_factory is None,
-                "intentional_detach_count": self.intentional_detach_count,
-                "intentional_detach_gaps_ms": self.intentional_detach_gaps_ms,
                 "commands_sent": self.commands_sent,
                 "commands_rejected": self.commands_rejected,
                 "normal_command_buffered_bytes_discarded": (
@@ -1027,274 +1014,8 @@ class CaptureDeviceRunner:
             },
         )
 
-    def _write_carrier_state(self, *, status: str) -> None:
-        if self.config.segment_control_dir is None:
-            return
-        _atomic_json(
-            self.config.segment_control_dir / SEGMENT_CARRIER_STATE,
-            {
-                "schema_version": 1,
-                "updated_utc": _utc_now(),
-                "pid": os.getpid(),
-                "status": status,
-                "device": self.config.device,
-                "baud": self.config.baud,
-                "serial_open": self.serial_open,
-                "current_run": str(self.current_run_dir),
-                "transport_generation": self.transport_generation,
-                "reconnect_count": self.reconnect_count,
-            },
-        )
-
-    def _reset_logical_segment_counters(self) -> None:
-        self.bytes_written = 0
-        self.lines_seen = 0
-        self.lines_parsed = 0
-        self.malformed_utf8 = 0
-        self.parser_errors = 0
-        self.commands_sent = 0
-        self.commands_rejected = 0
-        self.normal_command_buffered_bytes_discarded = 0
-        self.emergency_aborts_sent = 0
-        self.emergency_abort_latched = False
-
-    def _segment_response(self, request_id: str, **payload: object) -> None:
-        assert self.config.segment_control_dir is not None
-        _atomic_json(
-            self.config.segment_control_dir
-            / SEGMENT_RESPONSE_DIR
-            / f"{request_id}.json",
-            {"schema_version": 1, "request_id": request_id, "utc": _utc_now(), **payload},
-        )
-
-    def _verify_sole_serial_owner(self) -> dict[str, object]:
-        device = Path(self.config.device)
-        if not device.exists():
-            return {
-                "performed": False,
-                "reason": "device_path_not_present",
-                "owner_pids": [],
-            }
-        try:
-            result = subprocess.run(
-                ["lsof", "-t", "--", self.config.device],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=2.0,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise ValueError(f"cannot verify sole serial owner: {exc}") from exc
-        owners = sorted(
-            {
-                int(line)
-                for line in result.stdout.splitlines()
-                if line.strip().isdigit()
-            }
-        )
-        if owners != [os.getpid()]:
-            raise ValueError(
-                f"serial owner set is not the capture PID: owners={owners}"
-            )
-        return {"performed": True, "owner_pids": owners}
-
-    def _validate_segment_request(
-        self, request: dict[str, object]
-    ) -> tuple[str, Path, Path | None, Path | None]:
-        request_id = request.get("request_id")
-        if (
-            not isinstance(request_id, str)
-            or len(request_id) != 32
-            or any(character not in "0123456789abcdef" for character in request_id)
-        ):
-            raise ValueError("segment request_id must be exactly 32 lowercase hex characters")
-        if request.get("schema_version") != 1:
-            raise ValueError("segment request schema version mismatch")
-        if request.get("protocol") != SEGMENT_PROTOCOL_ID:
-            raise ValueError("segment rotation protocol mismatch")
-        if request.get("capability") != self.config.segment_capability:
-            raise ValueError("segment capability mismatch")
-        if int(request.get("expected_pid", -1)) != os.getpid():
-            raise ValueError("segment owner PID mismatch")
-        if int(request.get("expected_generation", -1)) != self.transport_generation:
-            raise ValueError("segment generation mismatch")
-        if Path(str(request.get("from_run", ""))).resolve() != self.current_run_dir:
-            raise ValueError("segment source run mismatch")
-        self.last_rotation_serial_owner_check = self._verify_sole_serial_owner()
-        target = Path(str(request.get("to_run", ""))).resolve()
-        if target == self.current_run_dir or not target.is_dir():
-            raise ValueError("segment target must be a distinct prepared directory")
-        manifest_path = target / "run_manifest.json"
-        if not manifest_path.is_file():
-            raise ValueError("segment target has no manifest")
-        if (target / CAPTURE_IN_PROGRESS_FLAG).exists():
-            raise ValueError("segment target already has an active capture flag")
-        if (target / CAPTURE_STATE).exists():
-            raise ValueError("segment target already has capture state")
-        raw_path = target / "raw/serial.log"
-        if raw_path.exists() and raw_path.stat().st_size:
-            raise ValueError("segment target raw evidence is not empty")
-        expected_manifest_sha = request.get("expected_manifest_sha256")
-        actual_manifest_sha = sha256(manifest_path.read_bytes()).hexdigest()
-        if expected_manifest_sha != actual_manifest_sha:
-            raise ValueError("segment target manifest hash mismatch")
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        files = manifest.get("files")
-        if not isinstance(files, list) or not files:
-            raise ValueError("segment target manifest has no file inventory")
-        for entry in files:
-            relative_value = entry.get("path") if isinstance(entry, dict) else None
-            if not isinstance(relative_value, str):
-                raise ValueError("segment target file inventory is malformed")
-            relative = Path(relative_value)
-            artifact = (target / relative).resolve()
-            try:
-                artifact.relative_to(target)
-            except ValueError:
-                raise ValueError("segment target artifact path escapes its run") from None
-            if relative.is_absolute() or artifact.exists():
-                raise ValueError("segment target already contains a declared artifact")
-        host = manifest.get("host", {})
-        if (
-            not isinstance(host, dict)
-            or host.get("serial_device") != self.config.device
-            or int(host.get("baud", -1)) != self.config.baud
-        ):
-            raise ValueError("segment target device or baud differs from carrier")
-        mode = str(request.get("mode", ""))
-        command_path: Path | None = None
-        emergency_path: Path | None = None
-        if mode == "transition":
-            if (
-                manifest.get("stage") != SEGMENT_TRANSITION_STAGE
-                or manifest.get("actionable") is not False
-                or manifest.get("actuation_authorized") is not False
-                or request.get("command_fifo") is not None
-                or request.get("emergency_command_fifo") is not None
-            ):
-                raise ValueError("transition segment is not exact no-authority drainage")
-        elif mode == "live":
-            from .adaptive_hybrid_activation import (
-                LIVE_STAGE,
-                validate_frozen_run_manifest,
-            )
-
-            validated = validate_frozen_run_manifest(manifest_path)
-            if validated.get("stage") != LIVE_STAGE:
-                raise ValueError("live segment is not a validated adaptive-hybrid manifest")
-            command_value = request.get("command_fifo")
-            emergency_value = request.get("emergency_command_fifo")
-            if not isinstance(command_value, str) or not isinstance(emergency_value, str):
-                raise ValueError("live segment requires both command FIFOs")
-            command_path = Path(command_value).resolve()
-            emergency_path = Path(emergency_value).resolve()
-            if command_path == emergency_path:
-                raise ValueError("live segment command FIFOs must be distinct")
-            for fifo in (command_path, emergency_path):
-                try:
-                    fifo.relative_to(target)
-                except ValueError:
-                    raise ValueError("live segment command FIFO escapes target run") from None
-        else:
-            raise ValueError("segment mode must be transition or live")
-        return request_id, target, command_path, emergency_path
-
-    def _poll_segment_rotation(
-        self, sink: CaptureSegmentSink
-    ) -> CaptureSegmentSink:
-        control_dir = self.config.segment_control_dir
-        if control_dir is None:
-            return sink
-        request_path = control_dir / SEGMENT_REQUEST
-        if not request_path.is_file():
-            return sink
-        # A rotation may close the old sink only between complete device
-        # records.  Defer request parsing, manifest checks, and the physical
-        # owner probe until that boundary; otherwise a pending request repeats
-        # expensive validation for every byte used to finish the current row.
-        if (
-            self.framer.buffer
-            or self.framer.discarding_oversize
-            or sink.raw_writer.partial
-        ):
-            return sink
-        try:
-            request = json.loads(request_path.read_text(encoding="utf-8"))
-            if not isinstance(request, dict):
-                raise ValueError("segment request must be a JSON object")
-            request_id, target, command_path, emergency_path = (
-                self._validate_segment_request(request)
-            )
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            request_id = "invalid"
-            try:
-                candidate = json.loads(request_path.read_text(encoding="utf-8"))
-                candidate_id = candidate.get("request_id") if isinstance(candidate, dict) else None
-                if (
-                    isinstance(candidate_id, str)
-                    and len(candidate_id) == 32
-                    and all(character in "0123456789abcdef" for character in candidate_id)
-                ):
-                    request_id = candidate_id
-            except (OSError, json.JSONDecodeError):
-                pass
-            self._segment_response(request_id, status="rejected", error=str(exc))
-            request_path.unlink(missing_ok=True)
-            return sink
-
-        new_sink: CaptureSegmentSink | None = None
-        try:
-            new_sink = CaptureSegmentSink(
-                self,
-                run_dir=target,
-                command_fifo_path=command_path,
-                emergency_fifo_path=emergency_path,
-            )
-            previous_run = self.current_run_dir
-            next_generation = self.transport_generation + 1
-            new_sink.start(
-                generation=next_generation, previous_run=str(previous_run)
-            )
-            sink.close(
-                generation=self.transport_generation,
-                next_run=str(target),
-                physical_serial_open=True,
-                logical_rotation=True,
-                request_id=request_id,
-                serial_owner_check=self.last_rotation_serial_owner_check,
-            )
-            self.transport_generation = next_generation
-            self.current_run_dir = target
-            self._reset_logical_segment_counters()
-            self.current_command_fifo_configured = command_path is not None
-            self.current_emergency_fifo_configured = emergency_path is not None
-            self.capture_active = True
-            self._write_state()
-            self._write_carrier_state(status="running")
-            self._segment_response(
-                request_id,
-                status="completed",
-                pid=os.getpid(),
-                from_run=str(previous_run),
-                to_run=str(target),
-                transport_generation=self.transport_generation,
-                serial_reopened=False,
-                reconnect_count=self.reconnect_count,
-            )
-            request_path.unlink(missing_ok=True)
-            return new_sink
-        except BaseException:
-            if new_sink is not None:
-                new_sink.abandon_incomplete()
-            raise
-
     def run(self) -> int:
-        self._validate_intentional_detach_authority()
-        if self.config.segment_control_dir is not None:
-            self.config.segment_control_dir.mkdir(parents=True, exist_ok=True)
-            if not self.config.segment_capability:
-                raise ValueError("segment control requires a non-empty capability")
-        sink = CaptureSegmentSink(
+        sink = CaptureSink(
             self,
             run_dir=self.current_run_dir,
             command_fifo_path=self.config.command_fifo,
@@ -1311,6 +1032,9 @@ class CaptureDeviceRunner:
             else None
         )
         duration_reached = False
+        clean_stop_reached = False
+        serial_close_error: Exception | None = None
+        transport_failure: BaseException | None = None
         try:
             sink.start(generation=self.transport_generation)
             raw_writer = sink.raw_writer
@@ -1318,11 +1042,9 @@ class CaptureDeviceRunner:
             command_fifo = sink.command_fifo
             emergency_fifo = sink.emergency_fifo
             self._emit_status()
-            self._write_carrier_state(status="opening")
             factory = self._serial_factory()
             serial_exceptions = self._serial_exceptions()
             try:
-                intentional_detach_index = 0
                 while not self.stop_event.is_set():
                     serial_handle = None
                     try:
@@ -1340,24 +1062,7 @@ class CaptureDeviceRunner:
                         )
                         _log_event(logging.INFO, "serial_opened", device=self.config.device, baud=self.config.baud)
                         self.serial_open = True
-                        opened_monotonic = time.monotonic()
-                        if self._first_serial_open_monotonic is None:
-                            self._first_serial_open_monotonic = opened_monotonic
-                        if self._intentional_detach_started_monotonic is not None:
-                            gap_ms = (
-                                opened_monotonic
-                                - self._intentional_detach_started_monotonic
-                            ) * 1000.0
-                            self.intentional_detach_gaps_ms.append(gap_ms)
-                            self._intentional_detach_started_monotonic = None
-                            _write_marker(
-                                raw_writer,
-                                "intentional_serial_reattached",
-                                detach_index=self.intentional_detach_count,
-                                gap_ms=round(gap_ms, 3),
-                            )
                         self._emit_status()
-                        self._write_carrier_state(status="running")
                         _write_marker(raw_writer, "serial_opened", device=self.config.device, baud=self.config.baud)
                         backoff = self.config.reconnect_initial_s
 
@@ -1369,24 +1074,12 @@ class CaptureDeviceRunner:
                                     serial_handle,
                                     raw_writer,
                                 )
-                            # After a planned-duration, graceful-signal, or
-                            # segment-rotation request, drain only the current
-                            # device record.
+                            # A planned or requested stop drains the current
+                            # device record before closing.
                             # Reading one byte at a time prevents a following
                             # record from being consumed before the capture
                             # can stop on the newline boundary.
-                            rotation_pending = (
-                                self.config.segment_control_dir is not None
-                                and (
-                                    self.config.segment_control_dir
-                                    / SEGMENT_REQUEST
-                                ).is_file()
-                            )
-                            drain_to_boundary = (
-                                duration_reached
-                                or self.graceful_stop_requested
-                                or rotation_pending
-                            )
+                            drain_to_boundary = duration_reached or self.graceful_stop_requested
                             read_size = 1 if drain_to_boundary else self.config.read_size
                             data = serial_handle.read(read_size)
                             if data:
@@ -1396,24 +1089,13 @@ class CaptureDeviceRunner:
                                     raw_writer,
                                     sink.active_status_live_publisher,
                                     sink.acquisition_frontier_tracker,
-                                    before_line_processing=lambda: self._poll_command_ingress(
+                                    before_line_processing=lambda serial_handle=serial_handle: self._poll_command_ingress(
                                         emergency_fifo,
                                         command_fifo,
                                         serial_handle,
                                         raw_writer,
                                     ),
                                 )
-                            # A prepared rotation is applied at this complete
-                            # device-record boundary before polling either old
-                            # command ingress.  The serial handle remains the
-                            # same object throughout.
-                            rotated_sink = self._poll_segment_rotation(sink)
-                            if rotated_sink is not sink:
-                                sink = rotated_sink
-                                raw_writer = sink.raw_writer
-                                splitter = sink.splitter
-                                command_fifo = sink.command_fifo
-                                emergency_fifo = sink.emergency_fifo
                             # Abort may arrive while the serial read or a
                             # downstream consumer is blocked.  Recheck the
                             # priority path at the final boundary before any
@@ -1425,34 +1107,6 @@ class CaptureDeviceRunner:
                                 raw_writer,
                             )
                             now = time.monotonic()
-                            schedule = self.config.intentional_detach_schedule
-                            if (
-                                intentional_detach_index < len(schedule)
-                                and self._first_serial_open_monotonic is not None
-                                and now - self._first_serial_open_monotonic
-                                >= schedule[intentional_detach_index][0]
-                                and not raw_writer.partial
-                                and not self.framer.buffer
-                                and not self.framer.discarding_oversize
-                            ):
-                                _, detach_s = schedule[intentional_detach_index]
-                                intentional_detach_index += 1
-                                self.intentional_detach_count += 1
-                                _write_marker(
-                                    raw_writer,
-                                    "intentional_serial_detach_started",
-                                    detach_index=self.intentional_detach_count,
-                                    planned_gap_ms=round(detach_s * 1000.0, 3),
-                                )
-                                self._intentional_detach_started_monotonic = (
-                                    time.monotonic()
-                                )
-                                serial_handle.close()
-                                self.serial_open = False
-                                self.reconnect_count += 1
-                                self._emit_status()
-                                self.sleep(detach_s)
-                                break
                             if capture_deadline is not None and now >= capture_deadline:
                                 duration_reached = True
                             if (
@@ -1488,6 +1142,7 @@ class CaptureDeviceRunner:
                                         raw_writer,
                                         "graceful_shutdown_complete",
                                     )
+                                clean_stop_reached = True
                                 self.stop_event.set()
                                 break
                             if now >= next_status:
@@ -1519,8 +1174,8 @@ class CaptureDeviceRunner:
                         self._emit_status()
                         if (
                             self.current_emergency_fifo_configured
-                            or self.config.segment_control_dir is not None
                         ):
+                            transport_failure = exc
                             self.emergency_abort_latched = True
                             if command_fifo is not None:
                                 command_fifo.close()
@@ -1543,34 +1198,45 @@ class CaptureDeviceRunner:
                             try:
                                 serial_handle.close()
                                 self.serial_open = False
-                            except Exception as exc:  # noqa: BLE001 - close failures are diagnostic only.
+                            except Exception as exc:  # noqa: BLE001 - retain the transport failure below.
+                                serial_close_error = exc
                                 _log_event(logging.WARNING, "serial_close_error", error=str(exc))
             finally:
-                dropped = self.framer.drop_partial()
-                raw_writer.drop_partial()
-                if dropped:
-                    _log_event(logging.WARNING, "partial_line_dropped", bytes=dropped, reason="shutdown")
-                    _write_marker(raw_writer, "partial_line_dropped", bytes=dropped, reason="shutdown")
-                self.capture_active = False
+                # The process exit releases the descriptor even when the
+                # backend's close method itself reports a failure.
                 self.serial_open = False
-                sink.close(
-                    generation=self.transport_generation,
-                    next_run=None,
-                    physical_serial_open=False,
-                    logical_rotation=False,
+            if serial_close_error is not None:
+                raise RuntimeError("serial close failed before orderly capture closure") from serial_close_error
+            if transport_failure is not None:
+                raise RuntimeError(
+                    "capture transport failed before orderly closure"
+                ) from transport_failure
+            if not clean_stop_reached:
+                raise RuntimeError(
+                    "capture stopped before an orderly device-record boundary"
                 )
-                self._write_carrier_state(status="stopped")
-        finally:
+            dropped = self.framer.drop_partial()
+            raw_writer.drop_partial()
+            if dropped:
+                _log_event(logging.WARNING, "partial_line_dropped", bytes=dropped, reason="shutdown")
+                _write_marker(raw_writer, "partial_line_dropped", bytes=dropped, reason="shutdown")
+            self.capture_active = False
+            self.serial_open = False
+            sink.close(
+                generation=self.transport_generation,
+                physical_serial_open=False,
+            )
+        except BaseException:
+            self.capture_active = False
+            self.serial_open = False
             if not sink.closed:
-                self.capture_active = False
-                self.serial_open = False
-                sink.close(
-                    generation=self.transport_generation,
-                    next_run=None,
-                    physical_serial_open=False,
-                    logical_rotation=False,
-                )
-                self._write_carrier_state(status="stopped")
+                # Cleanup must not replace the failure that made this capture
+                # incomplete. The retained reservation blocks finalization.
+                try:
+                    sink.abandon_incomplete()
+                except BaseException:  # noqa: BLE001,S110 - preserve original failure.
+                    pass
+            raise
         return 0
 
 
@@ -1619,28 +1285,6 @@ def build_parser() -> argparse.ArgumentParser:
             "and reject commands older than this positive bound."
         ),
     )
-    parser.add_argument(
-        "--segment-control-dir",
-        type=Path,
-        help=(
-            "Optional carrier control directory for same-PID logical segment "
-            "rotation without closing or reopening the serial device."
-        ),
-    )
-    parser.add_argument(
-        "--segment-capability",
-        help="Exact non-empty capability required by every segment rotation request.",
-    )
-    parser.add_argument(
-        "--intentional-detach",
-        action="append",
-        default=[],
-        metavar="AFTER_S:DETACH_MS",
-        help=(
-            "Q1-only no-actuation serial detach schedule; repeat for ordered "
-            "offsets after the first serial open."
-        ),
-    )
     return parser
 
 
@@ -1673,21 +1317,6 @@ def main() -> None:
         == args.command_fifo.absolute()
     ):
         parser.error("normal and emergency command FIFOs must be distinct")
-    if (args.segment_control_dir is None) != (args.segment_capability is None):
-        parser.error(
-            "--segment-control-dir and --segment-capability must be supplied together"
-        )
-    detach_schedule: list[tuple[float, float]] = []
-    for value in args.intentional_detach:
-        try:
-            after_text, detach_ms_text = value.split(":", 1)
-            after_s = float(after_text)
-            detach_s = float(detach_ms_text) / 1000.0
-        except (TypeError, ValueError):
-            parser.error(
-                "--intentional-detach must use AFTER_S:DETACH_MS numeric syntax"
-            )
-        detach_schedule.append((after_s, detach_s))
     log_path = args.run_dir / "reports/capture_device.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -1717,9 +1346,6 @@ def main() -> None:
         status_interval_s=args.status_interval,
         max_line_bytes=args.max_line_bytes,
         duration_s=args.duration_s,
-        segment_control_dir=args.segment_control_dir,
-        segment_capability=args.segment_capability,
-        intentional_detach_schedule=tuple(detach_schedule),
     )
     runner = CaptureDeviceRunner(config)
     signal.signal(signal.SIGINT, lambda signum, _frame: runner.request_stop(signum))

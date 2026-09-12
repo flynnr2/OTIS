@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
-from functools import lru_cache
 
 import pytest
 
 from host.otis_tools import adaptive_hybrid_replay as replay
 from host.otis_tools import raw_measurement_replay as raw
-from host.otis_tools.authoritative_inputs import collect_authoritative_inputs, validate_authoritative_inputs
 from host.otis_tools.accepted_span_replay import POLICY_PATH, accepted_window_ref
-
+from host.otis_tools.authoritative_inputs import (
+    collect_authoritative_inputs,
+    validate_authoritative_inputs,
+)
 
 MODULUS = 1 << 32
 
@@ -248,11 +250,11 @@ def test_declared_snapshot_overwrite_is_reconstructable_but_not_usable():
 
 
 def test_actual_operational_rehearsal_bootstrap_has_one_replayable_aperture():
-    from host.otis_tools.adaptive_hybrid_operational_rehearsal import DeterministicPtyInstrument
+    from tools.otis_rehearsal_device import DeterministicPtyInstrument
 
     instrument = object.__new__(DeterministicPtyInstrument)
     instrument.raw_interval_adjustments = {}
-    instrument.bundle = {"authoritative_inputs": measurement_manifest_value()["authoritative_inputs"]}
+    instrument.runtime = {"authoritative_inputs": measurement_manifest_value()["authoritative_inputs"]}
     instrument.reference_acceptance_binding = measurement_manifest_value()["reference_acceptance"]
     emitted = []
     instrument._emit_rows = lambda fields, rows: emitted.extend(rows)
@@ -418,3 +420,32 @@ def test_accepted_span_cannot_skip_an_earlier_in_window_candidate():
     assert not exact
     assert report["raw_count_replay"]["exact"]
     assert "at or after the acceptance window" in report["errors"][0]
+
+
+def test_raw_accepted_spans_replay_without_estimator_output(monkeypatch):
+    rows = raw_measurement_rows()
+    rows["estimates.csv"] = []
+
+    exact, report, estimates = run_measurement(monkeypatch, rows)
+
+    assert exact, report
+    assert report["raw_measurement_exact"] is True
+    assert report["accepted_span_replay"]["raw_count_replay"]["exact"] is True
+    assert report["estimate_replay"] == {
+        "applicability": "not_applicable_no_emitted_estimates",
+        "emitted_count": 0,
+        "exact": True,
+    }
+    assert report["selected_estimate_sources"] == []
+    assert estimates == {}
+
+
+def test_missing_raw_count_fails_even_without_estimator_output(monkeypatch):
+    rows = raw_measurement_rows()
+    rows["estimates.csv"] = []
+    del rows["counts.csv"][300]
+
+    exact, report, _ = run_measurement(monkeypatch, rows)
+
+    assert exact is False
+    assert report["accepted_span_replay"]["raw_count_replay"]["exact"] is False

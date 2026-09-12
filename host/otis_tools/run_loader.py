@@ -2,20 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
-
 
 CANONICAL_MANIFEST = "run_manifest.json"
 CAPTURE_IN_PROGRESS_FLAG = "capture_in_progress.flag"
-COMPLETE_MARKER = "COMPLETE"
-CURRENT_EVIDENCE_EPOCH = "OTIS_ADAPTIVE_HYBRID_EVIDENCE_EPOCH_1"
-CURRENT_STAGE = "OTIS_ADAPTIVE_HYBRID_REGULATION_LIVE"
-CURRENT_PROFILE_ID = "adaptive_hybrid_regulation"
-CURRENT_PROGRAMME_ID = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
-
-
 @dataclass(frozen=True)
 class RunManifest:
     root: Path
@@ -29,10 +21,6 @@ class RunManifest:
     @property
     def files(self) -> list[dict]:
         return list(self.data.get("files", []))
-
-    @property
-    def is_template(self) -> bool:
-        return bool(self.data.get("template", False))
 
     @property
     def stage(self) -> str | None:
@@ -103,48 +91,49 @@ class RunManifest:
         )
 
 
-@dataclass(frozen=True)
-class RunState:
-    capture_in_progress: bool
-    complete: bool
-
-
 def find_manifest_path(run_dir: Path) -> Path | None:
     path = run_dir / CANONICAL_MANIFEST
     return path if path.exists() else None
 
 
-def inspect_run_state(run_dir: Path) -> RunState:
-    return RunState(
-        capture_in_progress=(run_dir / CAPTURE_IN_PROGRESS_FLAG).exists(),
-        complete=(run_dir / COMPLETE_MARKER).exists(),
-    )
-
-
-def _require_current_identity(data: dict) -> None:
-    section = data.get("adaptive_hybrid")
-    if not isinstance(section, dict):
-        raise ValueError("manifest lacks adaptive_hybrid operating descriptor")
-    if (
-        data.get("evidence_epoch") != CURRENT_EVIDENCE_EPOCH
-        or data.get("stage") != CURRENT_STAGE
-        or data.get("programme_id") != CURRENT_PROGRAMME_ID
-        or data.get("image_identity") != CURRENT_PROFILE_ID
-        or section.get("profile_id") != CURRENT_PROFILE_ID
-    ):
-        raise ValueError("manifest does not satisfy the current adaptive-hybrid identity")
-
-
 def load_manifest(run_dir: Path) -> RunManifest:
-    manifest_path = find_manifest_path(run_dir)
-    if manifest_path is None:
-        raise FileNotFoundError(f"missing canonical {CANONICAL_MANIFEST} in {run_dir}")
-    data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if data.get("schema_version") != 1:
-        raise ValueError(f"unsupported manifest schema_version: {data.get('schema_version')!r}")
-    if not data.get("run_id"):
-        raise ValueError("manifest missing run_id")
-    if not isinstance(data.get("files"), list) or not data["files"]:
-        raise ValueError("manifest must list at least one data file")
-    _require_current_identity(data)
-    return RunManifest(root=run_dir, path=manifest_path, data=data)
+    """Load one run record and derive configuration from its retained specification.
+
+    A run record is provenance, not another copy of the configuration. Historical
+    formats are read using their recorded source revision rather than guessed.
+    """
+    from .run_spec import load_run_spec
+
+    root = run_dir.resolve()
+    manifest_path = root / CANONICAL_MANIFEST
+    record = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict):
+        raise ValueError("run record must be an object")
+    binding = record.get("run_spec")
+    if not isinstance(binding, dict) or not isinstance(binding.get("path"), str):
+        raise ValueError("run record has no retained run specification")
+    relative = Path(binding["path"])
+    spec_path = root / relative
+    if relative.is_absolute() or ".." in relative.parts or spec_path.is_symlink():
+        raise ValueError("run specification must be a retained relative regular file")
+    if root not in spec_path.resolve().parents:
+        raise ValueError("run specification escapes the acquisition")
+    spec = load_run_spec(spec_path)
+    data = spec.runtime_manifest(record)
+    files = data.get("files")
+    if not isinstance(files, list) or not files:
+        raise ValueError("run specification must declare observation files")
+    seen = set()
+    for item in files:
+        value = item.get("path") if isinstance(item, dict) else None
+        if not isinstance(value, str) or not value:
+            raise ValueError("malformed observation path")
+        relative = Path(value)
+        if (relative.is_absolute() or ".." in relative.parts
+                or relative.as_posix() != value or value in seen):
+            raise ValueError("observation paths must be unique and relative")
+        candidate = root / relative
+        if candidate.is_symlink() or root not in candidate.resolve().parents:
+            raise ValueError("observation path escapes the acquisition")
+        seen.add(value)
+    return RunManifest(root=root, path=manifest_path, data=data)

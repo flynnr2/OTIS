@@ -16,6 +16,9 @@ import pytest
 from host.otis_tools import adaptive_hybrid_replay as replay
 from host.otis_tools import adaptive_hybrid_supervisor as supervisor_module
 from host.otis_tools import capture_device as capture_module
+from tests.capture_fixtures import write_simulated_run
+from tests.runtime_fixtures import construct_simulated_supervisor
+from host.otis_tools.run_spec import _transaction_identities
 from host.otis_tools.acquisition_frontier import (
     FRONTIER_PATH,
     FRONTIER_POLICY,
@@ -50,7 +53,7 @@ def _manifest() -> dict[str, object]:
             "policy_sha256": binding["sha256"],
             "path": REFERENCE_ACCEPTANCE_POLICY_PATH,
         },
-        "transaction_identities": {"estimator_sha256": "a" * 64},
+        "transaction_identities": {"estimator_sha256": _transaction_identities(_FROZEN_INPUTS)["estimator_sha256"]},
         "channels": [
             {
                 "channel_id": 0,
@@ -159,7 +162,7 @@ def _estimate(first: int, last: int, ticks: int, identifier: str, *, sequence: i
         "source_closing_reference_sequence": str(last),
         "source_accepted_spans_ref": "live:APS:1:1:0:600",
         "estimator_version": replay.SELECTED_ESTIMATOR_ID,
-        "config_hash": "a" * 64, "observation_validity": "valid",
+        "config_hash": _transaction_identities(_FROZEN_INPUTS)["estimator_sha256"], "observation_validity": "valid",
         "reference_continuity": "true", "reference_validity": "valid",
         "count_validity": "valid", "count_continuity": "true",
         "diagnostic_health": "healthy",
@@ -211,10 +214,9 @@ def _wait(predicate, *, timeout: float = 8.0) -> None:
 def _capture(tmp_path: Path, chunks: list[bytes]) -> tuple[Path, dict[str, object], bytes]:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    manifest = _manifest()
-    (run_dir / "run_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     master, slave = pty.openpty()
     device = os.path.realpath(os.ttyname(slave))
+    manifest = write_simulated_run(run_dir, device)
     process = subprocess.Popen(
         [
             sys.executable, "-m", "host.otis_tools.capture_device", "--device", device,
@@ -234,7 +236,7 @@ def _capture(tmp_path: Path, chunks: list[bytes]) -> tuple[Path, dict[str, objec
         # bytes must already be durable at this boundary.
         _wait(lambda: (run_dir / "raw/serial.log").stat().st_size >= sum(map(len, chunks)))
     finally:
-        process.send_signal(signal.SIGTERM)
+        process.send_signal(signal.SIGINT)
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -411,17 +413,9 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
 
     monkeypatch.setattr(supervisor_module, "read_acquisition_readiness", observe_readiness)
 
-    setup = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
-    setup.run_dir = tmp_path
+    setup = construct_simulated_supervisor(tmp_path)
     setup.acquisition_manifest = manifest
-    setup.runtime_context = SimpleNamespace(
-        bench_attempt=None, authoritative_inputs=_FROZEN_INPUTS
-    )
-    setup.programme = SimpleNamespace(
-        controller_inhibit_acquisition_continues=False,
-        setup_code=0xAA00,
-    )
-    setup.state = {"host_verification_hold": None, "manual_start_sent": False}
+    setup.state.update(host_verification_hold=None, manual_start_sent=False)
     setup._startup_census_admitted = lambda: True
     setup._identity_ready = lambda _health: True
     setup._prewrite_readiness = lambda _health: SimpleNamespace(ready=True)
@@ -440,7 +434,25 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
         )
 
     setup._acquisition_authority_ready = observe_setup_gate
+    capture_health = {
+        **{("pps_gate", key): value for key, value in
+           supervisor_module._AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items()},
+        ("adaptive_hybrid", "reference_acceptance_state"): "tracking",
+        ("adaptive_hybrid", "accepted_anchor_current"): "true",
+        ("adaptive_hybrid", "reference_acceptance_policy_sha256"): "1" * 64,
+        ("pps_gate", "reference_acceptance_policy_sha256"): "1" * 64,
+        ("pps_gate", "accepted_anchor_timestamp_ticks"): "9000000",
+        (
+            supervisor_module.LIVE_FRONTIER_COMPONENT,
+            supervisor_module.LIVE_FRONTIER_TICKS_KEY,
+        ): "10000000",
+        (
+            supervisor_module.LIVE_FRONTIER_COMPONENT,
+            supervisor_module.LIVE_FRONTIER_DOMAIN_KEY,
+        ): "rp2040_monotonic_us32",
+    }
     setup._maybe_start_or_arm({
+        **capture_health,
         ("pps_gate", "snapshot_session"): "1",
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "reason"): "",
@@ -450,26 +462,16 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
     assert commands == []
     assert setup_gate_calls == [(1, None)]
 
-    arm = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
-    arm.run_dir = tmp_path
+    arm = setup
     arm.acquisition_manifest = manifest
-    arm.runtime_context = SimpleNamespace(
-        bench_attempt=None, authoritative_inputs=_FROZEN_INPUTS
-    )
-    arm.programme = SimpleNamespace(
-        controller_inhibit_acquisition_continues=False,
-        armable_hybrid_states={"HYBRID_TRACKING"},
-        authorized_maximum_applications=2,
-        setup_code=0xAA00,
-    )
-    arm.state = {
+    arm.state.update({
         "host_verification_hold": None,
         "manual_start_sent": True,
         "arm_pending": False,
         "setup_confirmed_utc": "2026-09-11T00:00:00Z",
-        "setup_confirmation": {"session_id": 1, "applied_code": 0xAA00, "dac_epoch": 1},
+        "setup_confirmation": {"session_id": 1, "applied_code": setup.programme.setup_code, "dac_epoch": 1},
         "initial_session_id": 1,
-    }
+    })
     arm._startup_census_admitted = lambda: True
     arm._identity_ready = lambda _health: True
     arm._close_response_horizon_if_required = lambda _health: False
@@ -488,8 +490,10 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
     arm._acquisition_authority_ready = observe_arm_gate
     monkeypatch.setattr(supervisor_module, "_read_csv", lambda _path: [{
         "est_input_ref": "unproved-estimate", "decision_id": "decision-1",
+        "preview_available": "true", "preview_eligibility": "true",
     }])
     arm._maybe_start_or_arm({
+        **capture_health,
         ("pps_gate", "snapshot_session"): "1",
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "reason"): "",
@@ -514,10 +518,7 @@ def test_observer_failure_after_ready_preserves_capture_and_blocks_authority(
     """A failed prospective observer cannot stop capture or reuse stale readiness."""
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    manifest = _manifest()
-    (run_dir / "run_manifest.json").write_text(
-        json.dumps(manifest), encoding="utf-8"
-    )
+    manifest = write_simulated_run(run_dir)
     runner = capture_module.CaptureDeviceRunner(
         capture_module.CaptureDeviceConfig(
             device="/dev/null", baud=115200, run_dir=run_dir
@@ -525,7 +526,7 @@ def test_observer_failure_after_ready_preserves_capture_and_blocks_authority(
     )
     runner.capture_active = True
     runner.serial_open = True
-    sink = capture_module.CaptureSegmentSink(
+    sink = capture_module.CaptureSink(
         runner,
         run_dir=run_dir,
         command_fifo_path=None,

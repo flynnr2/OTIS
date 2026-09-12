@@ -1,848 +1,117 @@
-"""Read-only authoritative progress snapshot for a ADAPTIVE_HYBRID live attempt.
+"""One-shot, read-only view of the two live owner snapshots.
 
-The monitor never opens the serial device and never submits a command.  It
-combines the capture-owner heartbeat, supervisor state, retained evidence
-freshness, and exact serial-owner set so unattended monitoring can distinguish
-process liveness from scientific progress.
+This module has no watch process, command path, hold authority, or retained
+state of its own. The capture worker and foreground experiment owner publish
+the facts; this projection only makes them convenient to inspect.
 """
-
 from __future__ import annotations
 
 import argparse
-import csv
-from datetime import datetime, timezone
-from hashlib import sha256
 import json
 import os
-import sys
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any
 
-from .adaptive_hybrid_activation import validate_frozen_run_manifest
-from .adaptive_hybrid_contract import (
-    AdaptiveHybridProgramme,
-    programme_from_mapping,
-)
-from .capture_device import _serial_owner_pids
-from .adaptive_hybrid_session import (
-    MONITOR_SAMPLES_PATH, MONITOR_STOP_PATH, _binding, publish_monitor_state,
-)
-from .contracts import (
-    ACTIVE_HYBRID_DECISION_V3_FIELDS,
-    ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
-    ACTIVE_TRANSACTION_V3_FIELDS,
-    ESTIMATE_V3_FIELDS,
-)
+from .adaptive_hybrid_transactions import SUPERVISOR_STATE
+from .capture_device import CAPTURE_STATE, _serial_owner_pids
+from .run_loader import load_manifest
 
-
-TOOL_ID = "adaptive_hybrid_hybrid_monitor_v1"
-CAPTURE_STATE = Path("reports/capture_device_state.json")
-SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
-HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
-HOST_CONTRACT_RECOVERY = Path(
-    "reports/adaptive_hybrid_host_contract_recovery_v1.json"
-)
-RAW_SERIAL = Path("raw/serial.log")
-ESTIMATES = Path("csv/estimates_v3.csv")
-ACTIVE = Path("csv/active_transactions_v3.csv")
-HYBRID = Path("csv/active_hybrid_decisions_v3.csv")
-CAPTURE_MAX_AGE_S = 15.0
-EVIDENCE_MAX_AGE_S = 15.0
-EXACT_LIFECYCLE_TIME_DOMAIN = "rp2040_monotonic_us64"
-PREWRITE_QUALIFICATION_DEADLINE_S = 660.0
-QUALIFIED_D14_ENDPOINT_CONTRACT = "qualified_D14_D8_aperture_count_v2"
-QUALIFIED_D14_MILESTONE_APERTURES = 21_600
-UINT32_MODULUS = 1 << 32
-UINT32_MAXIMUM_FORWARD_DELTA = (1 << 31) - 1
-TAIL_OBSERVATION_MAX_BYTES = 16 * 1024
-HEADER_MAX_BYTES = 8 * 1024
-
-
-def _diagnostic_review_hold(
-    *,
-    integrity_faults: list[str],
-    supervisor_hold: object,
-    orchestration_hold: object,
-) -> dict[str, Any] | None:
-    """Classify host-consumer discrepancies without granting terminal authority."""
-
-    retained_supervisor = (
-        supervisor_hold if isinstance(supervisor_hold, dict) else None
-    )
-    retained_orchestration = (
-        orchestration_hold if isinstance(orchestration_hold, dict) else None
-    )
-    if (
-        not integrity_faults
-        and retained_supervisor is None
-        and retained_orchestration is None
-    ):
-        return None
-    sources = set(integrity_faults)
-    for retained in (retained_supervisor, retained_orchestration):
-        if retained is not None:
-            source = retained.get("source", retained.get("error_type"))
-            if isinstance(source, str) and source:
-                sources.add(source)
-    return {
-        "contract": "otis_host_discrepancy_review_hold_v1",
-        "review_status": "operator_review_required",
-        "sources": sorted(sources),
-        "retained_supervisor_hold": retained_supervisor,
-        "retained_orchestration_hold": retained_orchestration,
-        "authority": {
-            "new_setup": False,
-            "new_arm": False,
-            "automatic_abort": False,
-            "automatic_teardown": False,
-            "failed_campaign": False,
-        },
-        "capture_policy": "retain_sole_serial_owner_and_healthy_capture",
-        "scientific_status": "unclassified_pending_operator_review",
-        "nonzero_exit_semantics": "attention_required_not_abort_authority",
-    }
-
-
-def _utc_now() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+TOOL_ID = "adaptive_hybrid_live_view_v1"
 
 
 def _read_object(path: Path) -> dict[str, Any] | None:
-    if not path.is_file():
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
         return None
-    value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"JSON root must be an object: {path}")
+        raise ValueError(f"runtime state root is not an object: {path}")
     return value
 
 
-def _resolved_orchestration_hold(
-    run_dir: Path,
-    *,
-    supervisor: object,
-    orchestration_hold: object,
-) -> dict[str, Any] | None:
-    """Recognize an exact reviewed recovery without erasing the old hold."""
-
-    if not isinstance(supervisor, dict) or not isinstance(orchestration_hold, dict):
-        return None
-    binding = supervisor.get("host_contract_recovery")
-    if (
-        not isinstance(binding, dict)
-        or supervisor.get("host_verification_hold") is not None
-        or binding.get("path") != str(HOST_CONTRACT_RECOVERY)
-    ):
-        return None
-    path = run_dir / HOST_CONTRACT_RECOVERY
-    recovery = _read_object(path)
-    if recovery is None:
-        raise ValueError("retained host-contract recovery report is absent")
-    observed_sha256 = sha256(path.read_bytes()).hexdigest()
-    if (
-        binding.get("sha256") != observed_sha256
-        or recovery.get("contract")
-        != "adaptive_hybrid_retained_host_contract_recovery_v1"
-        or recovery.get("apply_requested") is not True
-        or recovery.get("new_setup_or_ARM_issued_by_recovery") is not False
-        or recovery.get("reviewed_host_revision")
-        != binding.get("reviewed_host_revision")
-        or recovery.get("reviewed_host_source_sha256")
-        != binding.get("reviewed_host_source_sha256")
-        or supervisor.get("qualified_origin_estimate_id")
-        != recovery.get("qualified_origin", {}).get("estimate_id")
-    ):
-        raise ValueError("retained host-contract recovery binding differs")
-    return {
-        "disposition": "reviewed_and_superseded_by_retained_host_contract_recovery",
-        "original_orchestration_hold": orchestration_hold,
-        "recovery_report": str(HOST_CONTRACT_RECOVERY),
-        "recovery_report_sha256": observed_sha256,
-        "reviewed_host_revision": binding["reviewed_host_revision"],
-        "canonical_firmware_and_capture_evidence_unchanged": True,
-    }
-
-
-def _age_s(path: Path, *, now: float) -> float | None:
-    if not path.is_file():
-        return None
-    return max(0.0, now - path.stat().st_mtime)
-
-
-def _utc_epoch(value: object) -> float | None:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return None
-
-
-def _bounded_contract_tail(
-    path: Path,
-    fields: tuple[str, ...] | list[str],
-    *,
-    now: float,
-    expected: dict[str, str] | None = None,
-    summary_fields: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    """Observe one newline-complete CSV row without treating history as replayed."""
-
-    expected_fields = tuple(fields)
-    result: dict[str, Any] = {
-        "rows": None,
-        "latest": None,
-        "age_s": _age_s(path, now=now),
-        "observed_tail_only": True,
-        "bytes_observed": 0,
-        "mismatches": [],
-    }
-    if not path.is_file():
-        result["unavailable"] = True
-        result["mismatches"].append(f"retained CSV is missing: {path}")
-        return result
-    try:
-        with path.open("rb") as handle:
-            header = handle.readline(HEADER_MAX_BYTES + 1)
-            if len(header) > HEADER_MAX_BYTES or not header.endswith(b"\n"):
-                result["unavailable"] = True
-                result["mismatches"].append("retained CSV header is unavailable")
-                return result
-            size = handle.seek(0, os.SEEK_END)
-            tail_size = min(size, TAIL_OBSERVATION_MAX_BYTES)
-            handle.seek(size - tail_size)
-            tail = handle.read(tail_size)
-    except OSError as exc:
-        result["unavailable"] = True
-        result["mismatches"].append(f"retained CSV cannot be read: {exc}")
-        return result
-    result["bytes_observed"] = len(header) + len(tail)
-    try:
-        parsed_header = next(csv.reader([header.decode("utf-8").rstrip("\r\n")], strict=True))
-    except (UnicodeDecodeError, csv.Error, StopIteration) as exc:
-        result["unavailable"] = True
-        result["mismatches"].append(f"retained CSV header is malformed: {exc}")
-        return result
-    if tuple(parsed_header) != expected_fields:
-        result["unavailable"] = True
-        result["mismatches"].append("retained CSV header differs")
-        return result
-    completed = tail[:-1] if tail.endswith(b"\n") else tail[: tail.rfind(b"\n")]
-    if size == len(header) or completed == header.rstrip(b"\r\n"):
-        return result
-    if not completed:
-        return result
-    row_start = completed.rfind(b"\n") + 1
-    if size > tail_size and row_start == 0:
-        result["unavailable"] = True
-        result["mismatches"].append("latest complete CSV row exceeds bounded observation")
-        return result
-    try:
-        values = next(csv.reader([completed[row_start:].decode("utf-8").rstrip("\r")], strict=True))
-    except (UnicodeDecodeError, csv.Error, StopIteration) as exc:
-        result["unavailable"] = True
-        result["mismatches"].append(f"latest complete CSV row is malformed: {exc}")
-        return result
-    if len(values) != len(expected_fields):
-        result["unavailable"] = True
-        result["mismatches"].append("latest complete CSV row width differs")
-        return result
-    row = dict(zip(expected_fields, values, strict=True))
-    if expected is not None:
-        for field, value in expected.items():
-            if row.get(field) != value:
-                result["mismatches"].append(
-                    f"latest row {field} differs: {row.get(field)!r} != {value!r}"
-                )
-    result["latest"] = {
-        field: row.get(field, "") for field in (summary_fields or expected_fields)
-    }
-    result["observed_frontier_valid"] = not result["mismatches"]
-    return result
-
-
-def _exact_lifecycle_record_progress(run_dir: Path, *, now: float) -> dict[str, Any]:
-    transactions = _bounded_contract_tail(
-        run_dir / ACTIVE,
-        ACTIVE_TRANSACTION_V3_FIELDS,
-        now=now,
-        expected={"record_type": "ACT", "schema_version": "3",
-                  "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN},
-        summary_fields=("transaction_record_sequence", "event_timestamp_ticks", "time_domain"),
-    )
-    decisions = _bounded_contract_tail(
-        run_dir / HYBRID,
-        ACTIVE_HYBRID_DECISION_V3_FIELDS,
-        now=now,
-        expected={"record_type": "AHY", "schema_version": "3",
-                  "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN},
-        summary_fields=("hybrid_record_sequence", "decision_timestamp_ticks", "time_domain"),
-    )
-    mismatches = [*transactions["mismatches"], *decisions["mismatches"]]
-    return {
-        "required": True,
-        "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
-        "observation_scope": "latest newline-complete row per retained CSV; prior history is unobserved",
-        "ACT": transactions,
-        "AHY": decisions,
-        "exact_at_observed_frontier": not mismatches,
-        "mismatches": mismatches,
-    }
-
-
-def _maintenance_evidence_progress(
-    run_dir: Path,
-    *,
-    programme: AdaptiveHybridProgramme,
-    expected_build_identity: str,
-    now: float,
-) -> dict[str, Any]:
-    contract = programme.maintenance_record_contract
-    record_type = programme.maintenance_record_type
-    if contract != "active_hybrid_maintenance_v2" or record_type != "AHM":
-        raise ValueError("unsupported long-run maintenance evidence descriptor")
-    result = _bounded_contract_tail(
-        run_dir / "csv" / f"{contract}.csv",
-        ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
-        now=now,
-        expected={
-            "record_type": record_type,
-            "schema_version": "2",
-            "run_identity": programme.runtime_run_identity,
-            "build_identity": expected_build_identity,
-            "image_identity": programme.profile_id,
-            "policy_id": programme.policy_id,
-            "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
-        },
-        summary_fields=("maintenance_record_sequence", "event", "maintenance_state_after",
-                        "request_pending_after", "response_pending_after",
-                        "metadata_hold_after", "reason"),
-    )
-    return {"required": True, "contract": contract, "record_type": record_type,
-            "observation_scope": "latest newline-complete row only; prior history is unobserved",
-            **result}
-
-
-def _qualified_d14_aperture_progress(
-    supervisor: dict[str, Any] | None,
-    *,
-    programme: AdaptiveHybridProgramme,
-) -> dict[str, Any]:
-    """Project the retained ADAPTIVE_HYBRID qualification frontier without wall time."""
-
-    target = programme.qualified_d14_aperture_count
-    if target is None:
-        return {"required": False}
-    reserve = programme.correction_response_reserve_d14_apertures
-    if (
-        type(target) is not int
-        or target <= 0
-        or type(reserve) is not int
-        or not 0 < reserve < target
-    ):
-        raise ValueError("qualified D14 endpoint descriptor is malformed")
-    admission_close = target - reserve
-    result: dict[str, Any] = {
-        "required": True,
-        "endpoint_contract": QUALIFIED_D14_ENDPOINT_CONTRACT,
-        "progress_domain": "accepted_D14_D8_apertures",
-        "accepted_apertures": None,
-        "target_apertures": target,
-        "remaining_apertures": target,
-        "milestones": {
-            "interval_apertures": QUALIFIED_D14_MILESTONE_APERTURES,
-            "nominal_interval_s": QUALIFIED_D14_MILESTONE_APERTURES,
-            "nominal_interval_h": 6,
-            "completed_apertures": [],
-            "next_apertures": QUALIFIED_D14_MILESTONE_APERTURES,
-        },
-        "correction_admission": {
-            "close_apertures": admission_close,
-            "response_reserve_apertures": reserve,
-            "close_reached": False,
-            "closed_utc": (
-                None
-                if supervisor is None
-                else supervisor.get("response_horizon_closed_utc")
-            ),
-        },
-        "target_reached": False,
-        "reference_identity": {
-            "counter_domain": "uint32_modulo",
-            "origin": None,
-            "current": None,
-            "endpoint": None,
-        },
-        "state": "awaiting_qualified_origin",
-    }
-    if supervisor is None:
-        return result
-
-    acceptance_epoch = supervisor.get("qualified_acceptance_epoch_origin")
-    accepted_origin = supervisor.get("qualified_acceptance_ordinal_origin")
-    accepted_apertures = supervisor.get("qualified_d14_accepted_apertures")
-    accepted_current = supervisor.get("qualified_acceptance_ordinal_endpoint")
-    retained = (acceptance_epoch, accepted_origin, accepted_apertures, accepted_current)
-    if all(value is None for value in retained):
-        return result
-    if type(acceptance_epoch) is not int or acceptance_epoch <= 0:
-        raise ValueError("qualified acceptance epoch is malformed")
-    if type(accepted_origin) is not int or not 0 <= accepted_origin < UINT32_MODULUS:
-        raise ValueError("qualified accepted-boundary origin is malformed")
-
-    result["reference_identity"]["origin"] = {
-        "acceptance_epoch": acceptance_epoch,
-        "accepted_boundary_ordinal": accepted_origin,
-    }
-    result["reference_identity"]["endpoint"] = {
-        "acceptance_epoch": acceptance_epoch,
-        "accepted_boundary_ordinal": (accepted_origin + target) % UINT32_MODULUS,
-    }
-    if accepted_apertures is None and accepted_current is None:
-        result["state"] = "qualified_origin_established_awaiting_progress"
-        return result
-    if (
-        type(accepted_apertures) is not int
-        or not 0 <= accepted_apertures <= UINT32_MAXIMUM_FORWARD_DELTA
-    ):
-        raise ValueError("qualified accepted-aperture progress is malformed")
-    if type(accepted_current) is not int or not 0 <= accepted_current < UINT32_MODULUS:
-        raise ValueError("qualified current accepted boundary is malformed")
-    expected_current = (accepted_origin + accepted_apertures) % UINT32_MODULUS
-    if accepted_current != expected_current:
-        raise ValueError(
-            "qualified current accepted boundary differs from accepted-span progress"
-        )
-    completed_count = min(accepted_apertures, target) // (
-        QUALIFIED_D14_MILESTONE_APERTURES
-    )
-    completed = [
-        QUALIFIED_D14_MILESTONE_APERTURES * index
-        for index in range(1, completed_count + 1)
-    ]
-    next_milestone = (
-        None
-        if completed and completed[-1] >= target
-        else QUALIFIED_D14_MILESTONE_APERTURES * (completed_count + 1)
-    )
-    if next_milestone is not None and next_milestone > target:
-        next_milestone = target
-    admission_reached = accepted_apertures >= admission_close
-    closed_utc = supervisor.get("response_horizon_closed_utc")
-    if closed_utc is not None and not admission_reached:
-        raise ValueError(
-            "correction admission is recorded closed before its exact aperture boundary"
-        )
-
-    result.update(
-        {
-            "accepted_apertures": accepted_apertures,
-            "remaining_apertures": max(0, target - accepted_apertures),
-            "milestones": {
-                "interval_apertures": QUALIFIED_D14_MILESTONE_APERTURES,
-                "nominal_interval_s": QUALIFIED_D14_MILESTONE_APERTURES,
-                "nominal_interval_h": 6,
-                "completed_apertures": completed,
-                "next_apertures": next_milestone,
-            },
-            "correction_admission": {
-                "close_apertures": admission_close,
-                "response_reserve_apertures": reserve,
-                "close_reached": admission_reached,
-                "closed_utc": closed_utc,
-            },
-            "target_reached": accepted_apertures >= target,
-            "state": (
-                "qualified_target_reached"
-                if accepted_apertures >= target
-                else "correction_admission_closed"
-                if admission_reached
-                else "qualification_in_progress"
-            ),
-        }
-    )
-    result["reference_identity"]["current"] = {
-        "acceptance_epoch": acceptance_epoch,
-        "accepted_boundary_ordinal": accepted_current,
-    }
-    return result
-
-
-def _valid_header_without_rows(observation: object) -> bool:
-    """A capture-created contract file can be empty before SETUP."""
-
-    return (
-        isinstance(observation, dict)
-        and observation.get("latest") is None
-        and observation.get("unavailable") is not True
-        and observation.get("mismatches") == []
-    )
-
-
-def _awaiting_expected_evidence(
-    *,
-    exact_lifecycle: object,
-    maintenance: object,
-) -> bool:
-    return (
-        isinstance(exact_lifecycle, dict)
-        and isinstance(maintenance, dict)
-        and _valid_header_without_rows(exact_lifecycle.get("ACT"))
-        and _valid_header_without_rows(exact_lifecycle.get("AHY"))
-        and _valid_header_without_rows(maintenance)
-    )
-
-
 def _pid_alive(value: object) -> bool:
+    if type(value) is not int or value <= 0:
+        return False
     try:
-        pid = int(value)
-        os.kill(pid, 0)
-    except (OSError, TypeError, ValueError):
+        os.kill(value, 0)
+    except OSError:
         return False
     return True
 
 
-def snapshot(run_dir: Path, *, now: float | None = None) -> dict[str, Any]:
-    """Return one non-mutating snapshot of the decision-bearing live state."""
-
+def snapshot(run_dir: Path, *, now_monotonic_ns: int | None = None) -> dict[str, Any]:
+    """Project owner-published facts without deriving an authority verdict."""
     run_dir = run_dir.resolve()
-    manifest = validate_frozen_run_manifest(run_dir / "run_manifest.json")
-    return snapshot_validated(run_dir, manifest, now=now)
-
-
-def snapshot_validated(
-    run_dir: Path, manifest: dict[str, Any], *, now: float | None = None
-) -> dict[str, Any]:
-    """Evaluate changing evidence against this process's validated run context."""
-    run_dir = run_dir.resolve()
-    programme = programme_from_mapping(manifest)
-    now = time.time() if now is None else now
+    manifest = load_manifest(run_dir).data
     capture = _read_object(run_dir / CAPTURE_STATE)
     supervisor = _read_object(run_dir / SUPERVISOR_STATE)
-    orchestration_hold_error: str | None = None
-    try:
-        orchestration_hold = _read_object(run_dir / HOST_REVIEW_HOLD)
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        orchestration_hold_error = f"{type(exc).__name__}: {exc}"
-        orchestration_hold = {
-            "source": "orchestration_hold_parser",
-            "review_status": "operator_review_required",
-            "error": orchestration_hold_error,
-        }
-    resolved_orchestration_hold: dict[str, Any] | None = None
-    if orchestration_hold_error is None:
-        try:
-            resolved_orchestration_hold = _resolved_orchestration_hold(
-                run_dir,
-                supervisor=supervisor,
-                orchestration_hold=orchestration_hold,
-            )
-        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            orchestration_hold_error = f"{type(exc).__name__}: {exc}"
-        if resolved_orchestration_hold is not None:
-            orchestration_hold = None
-    terminal = None if supervisor is None else supervisor.get("terminal")
-    terminal_reached = isinstance(terminal, dict)
-    prewrite_readiness = (
-        None
-        if supervisor is None
-        else supervisor.get("latest_prewrite_readiness")
-    )
-    supervisor_started_epoch = _utc_epoch(
-        None if supervisor is None else supervisor.get("supervisor_started_utc")
-    )
-    prewrite_elapsed_s = (
-        None
-        if supervisor_started_epoch is None
-        else max(0.0, now - supervisor_started_epoch)
-    )
-    device = str(manifest["host"]["serial_device"])
-    owners = sorted(_serial_owner_pids(device))
+    now_ns = time.monotonic_ns() if now_monotonic_ns is None else now_monotonic_ns
     capture_pid = None if capture is None else capture.get("pid")
-    capture_age = _age_s(run_dir / CAPTURE_STATE, now=now)
-    raw_age = _age_s(run_dir / RAW_SERIAL, now=now)
-    integrity_faults: list[str] = []
-    if orchestration_hold_error is not None:
-        integrity_faults.append("orchestration_hold_unreadable")
-    exact_lifecycle: dict[str, Any] | None = None
-    maintenance: dict[str, Any] | None = None
-    try:
-        qualified_apertures = _qualified_d14_aperture_progress(
-            supervisor,
-            programme=programme,
-        )
-    except (TypeError, ValueError) as exc:
-        qualified_apertures = {
-            "required": True,
-            "endpoint_contract": QUALIFIED_D14_ENDPOINT_CONTRACT,
-            "unavailable": True,
-            "mismatches": [str(exc)],
-        }
-        integrity_faults.append("qualified_d14_aperture_progress_invalid")
-    if programme.integrated_long_run:
-        try:
-            exact_lifecycle = _exact_lifecycle_record_progress(run_dir, now=now)
-        except (OSError, TypeError, ValueError) as exc:
-            exact_lifecycle = {
-                "required": True,
-                "time_domain": EXACT_LIFECYCLE_TIME_DOMAIN,
-                "exact_at_observed_frontier": False,
-                "unavailable": True,
-                "mismatches": [str(exc)],
-            }
-        if exact_lifecycle.get("unavailable") is True:
-            integrity_faults.append("exact_lifecycle_records_unavailable")
-        elif exact_lifecycle["mismatches"]:
-            integrity_faults.append("exact_lifecycle_record_identity_mismatch")
-    if programme.persistent_maintenance_policy:
-        try:
-            maintenance = _maintenance_evidence_progress(
-                run_dir,
-                programme=programme,
-                expected_build_identity=str(manifest["firmware"]["build_identity"]),
-                now=now,
-            )
-        except (OSError, TypeError, ValueError) as exc:
-            maintenance = {
-                "required": True,
-                "unavailable": True,
-                "mismatches": [str(exc)],
-            }
-        # A valid header records absence of observations, not a missed device
-        # transition. The monitor must not infer emission order from host flags.
-        if maintenance.get("unavailable") is True:
-            integrity_faults.append("maintenance_evidence_unavailable")
-        elif maintenance["mismatches"]:
-            integrity_faults.append("maintenance_evidence_identity_mismatch")
-    if capture is None:
-        integrity_faults.append("capture_state_missing")
-    else:
-        if not terminal_reached and capture_age is not None and capture_age > CAPTURE_MAX_AGE_S:
-            integrity_faults.append("capture_state_stale")
-        if not terminal_reached and capture.get("capture_active") is not True:
-            integrity_faults.append("capture_inactive_before_terminal")
-        if not terminal_reached and capture.get("serial_open") is not True:
-            integrity_faults.append("serial_closed_before_terminal")
-        for field in (
-            "malformed_utf8",
-            "parser_errors",
-            "reconnect_count",
-            "commands_rejected",
-        ):
-            if int(capture.get(field, 0)) != 0:
-                integrity_faults.append(f"capture_{field}_nonzero")
-    if not terminal_reached:
-        if capture_pid is None or owners != [int(capture_pid)]:
-            integrity_faults.append("sole_serial_owner_mismatch")
-        if raw_age is None:
-            integrity_faults.append("raw_evidence_missing")
-        elif raw_age > EVIDENCE_MAX_AGE_S:
-            integrity_faults.append("raw_evidence_stale")
-        if (
-            programme.integrated_long_run
-            and isinstance(prewrite_readiness, dict)
-            and prewrite_readiness.get("ready") is False
-            and prewrite_elapsed_s is not None
-            and prewrite_elapsed_s
-            > PREWRITE_QUALIFICATION_DEADLINE_S
-        ):
-            integrity_faults.append("prewrite_qualification_deadline_expired")
-
-    estimates = _bounded_contract_tail(
-        run_dir / ESTIMATES,
-        ESTIMATE_V3_FIELDS,
-        now=now,
-        summary_fields=(
-            "estimate_id",
-            "estimator_timestamp_ticks",
-            "source_dac_ref",
-            "frequency_error_hz",
-        ),
+    updated_ns = None if capture is None else capture.get("updated_monotonic_ns")
+    age_ns = (
+        now_ns - updated_ns
+        if type(updated_ns) is int and 0 < updated_ns <= now_ns
+        else None
     )
-    transactions = _bounded_contract_tail(
-        run_dir / ACTIVE,
-        ACTIVE_TRANSACTION_V3_FIELDS,
-        now=now,
-        summary_fields=(
-            "transaction_record_sequence",
-            "event",
-            "request_sequence",
-            "active_state",
-            "response_class",
-        ),
-    )
-    hybrid = _bounded_contract_tail(
-        run_dir / HYBRID,
-        ACTIVE_HYBRID_DECISION_V3_FIELDS,
-        now=now,
-        summary_fields=(
-            "hybrid_record_sequence",
-            "decision_sequence",
-            "dac_epoch",
-            "state_after",
-            "phase_materially_influenced",
-            "requested_delta_codes",
-        ),
-    )
-    diagnostic_hold = _diagnostic_review_hold(
-        integrity_faults=integrity_faults,
-        supervisor_hold=(
-            None if supervisor is None else supervisor.get("host_verification_hold")
-        ),
-        orchestration_hold=orchestration_hold,
-    )
-    awaiting_expected_evidence = _awaiting_expected_evidence(
-        exact_lifecycle=exact_lifecycle,
-        maintenance=maintenance,
-    )
-    status = (
-        "review_required"
-        if diagnostic_hold is not None
-        else "terminal"
-        if terminal_reached
-        else "awaiting_expected_evidence"
-        if awaiting_expected_evidence
-        else "running"
+    host = manifest.get("host")
+    device = host.get("serial_device") if isinstance(host, dict) else None
+    owners: list[int] | None = None
+    if isinstance(device, str) and device:
+        owners = sorted(_serial_owner_pids(device))
+    terminal = None if supervisor is None else supervisor.get("terminal")
+    hold = None if supervisor is None else supervisor.get("host_verification_hold")
+    phase = (
+        "terminal" if isinstance(terminal, dict)
+        else "review_hold" if isinstance(hold, dict)
+        else "observing"
     )
     return {
         "schema_version": 1,
         "tool": TOOL_ID,
-        "observed_utc": _utc_now(),
-        "status": status,
-        "run_dir": str(run_dir),
-        "run_id": manifest["run_id"],
-        "bundle_sha256": manifest["bundle"]["bundle_sha256"],
-        "activation_sha256": manifest.get("activation", {}).get("activation_sha256"),
-        "terminal": terminal,
-        "integrity_faults": integrity_faults,
-        "diagnostic_review_hold": diagnostic_hold,
-        "diagnostic": None if diagnostic_hold is None else "; ".join(diagnostic_hold["sources"]),
-        "resolved_review_hold": resolved_orchestration_hold,
-        "monitoring": {
-            "maximum_poll_interval_s": 10,
-            "evidence_stale_after_s": EVIDENCE_MAX_AGE_S,
-            "prewrite_qualification_deadline_s": PREWRITE_QUALIFICATION_DEADLINE_S,
-        },
+        "run_directory": str(run_dir),
+        "phase": phase,
+        "monitor_command_authority": False,
+        "supervisor_control_authority": (
+            None if supervisor is None else supervisor.get("control_authority")
+        ),
         "capture": {
             "pid": capture_pid,
             "pid_alive": _pid_alive(capture_pid),
-            "state_age_s": capture_age,
-            "raw_evidence_age_s": raw_age,
+            "heartbeat_age_ns": age_ns,
+            "capture_active": None if capture is None else capture.get("capture_active"),
+            "serial_open": None if capture is None else capture.get("serial_open"),
             "serial_owner_pids": owners,
             "bytes_written": None if capture is None else capture.get("bytes_written"),
             "lines_parsed": None if capture is None else capture.get("lines_parsed"),
             "commands_sent": None if capture is None else capture.get("commands_sent"),
-            "emergency_aborts_sent": (
-                None if capture is None else capture.get("emergency_aborts_sent")
+            "emergency_abort_latched": (
+                None if capture is None else capture.get("emergency_abort_latched")
             ),
         },
-        "progress": {
-            "startup_census": (
-                None if supervisor is None else supervisor.get("startup_census")
-            ),
-            "startup_census_authority_admitted": (
-                False
-                if supervisor is None
-                else supervisor.get("startup_census_authority_admitted", False)
-            ),
-            "qualification_started_utc": (
-                None if supervisor is None else supervisor.get("qualification_started_utc")
-            ),
-            "supervisor_started_utc": (
-                None if supervisor is None else supervisor.get("supervisor_started_utc")
-            ),
-            "prewrite_elapsed_s": prewrite_elapsed_s,
-            "prewrite_contract_ready_utc": (
-                None
-                if supervisor is None
-                else supervisor.get("prewrite_contract_ready_utc")
-            ),
-            "prewrite_readiness": prewrite_readiness,
-            "qualified_origin_estimate_id": (
-                None if supervisor is None else supervisor.get("qualified_origin_estimate_id")
-            ),
-            "latest_hybrid_state": (
-                None if supervisor is None else supervisor.get("latest_hybrid_state")
-            ),
-            "first_phase_checkpoint_passed": (
-                False if supervisor is None else supervisor.get("first_phase_checkpoint_passed", False)
-            ),
-            "later_authority_released": (
-                False if supervisor is None else supervisor.get("later_authority_released", False)
-            ),
-            "phase_material_application_count": (
-                0 if supervisor is None else supervisor.get("phase_material_application_count", 0)
-            ),
-            "host_verification_hold": (
-                None if supervisor is None else supervisor.get("host_verification_hold")
-            ),
-            "estimates": estimates,
-            "active_transactions": transactions,
-            "active_hybrid_decisions": hybrid,
-            "qualified_d14_apertures": qualified_apertures,
-            "exact_lifecycle_records": exact_lifecycle,
-            "maintenance_evidence": maintenance,
-            "awaiting_expected_evidence": awaiting_expected_evidence,
+        "progress": None if supervisor is None else {
+            "startup_census": supervisor.get("startup_census"),
+            "qualified_origin_estimate_id": supervisor.get("qualified_origin_estimate_id"),
+            "qualified_d14_accepted_apertures": supervisor.get("qualified_d14_accepted_apertures"),
+            "qualified_acceptance_ordinal_endpoint": supervisor.get("qualified_acceptance_ordinal_endpoint"),
+            "latest_hybrid_state": supervisor.get("latest_hybrid_state"),
+            "response_count": supervisor.get("response_count"),
+            "host_verification_hold": hold,
+            "terminal": terminal,
         },
     }
-
-
-def run_monitor(
-    run_dir: Path, manifest: dict[str, Any], *, stop_path: Path | None = None,
-) -> int:
-    """Same observation-only worker for physical and validated private PTY runs."""
-    run_dir = run_dir.resolve()
-    stop_path = stop_path or run_dir / MONITOR_STOP_PATH
-    if stop_path.resolve() != run_dir / MONITOR_STOP_PATH:
-        raise ValueError("monitor stop path differs from this session")
-    binding = _binding(run_dir, run_dir / "run_manifest.json")
-    count = 0
-    path = run_dir / MONITOR_SAMPLES_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as output:
-        while not stop_path.exists():
-            try:
-                sample = snapshot_validated(run_dir, manifest)
-            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                sample = {
-                    "schema_version": 1, "tool": TOOL_ID,
-                    "observed_utc": _utc_now(), "status": "review_required",
-                    "run_dir": str(run_dir), "diagnostic": str(exc),
-                    "control_authority": False,
-                }
-            output.write(json.dumps(sample, sort_keys=True, allow_nan=False) + "\n")
-            output.flush()
-            os.fsync(output.fileno())
-            count += 1
-            publish_monitor_state(run_dir, binding, sample_count=count,
-                                  status=sample["status"], diagnostic=sample.get("diagnostic"))
-            time.sleep(1.0)
-    return 0
-
-
-def monitor_command(run_dir: Path) -> list[str]:
-    return [sys.executable, "-m", "host.otis_tools.adaptive_hybrid_monitor", str(run_dir), "--watch"]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
-    parser.add_argument("--watch", action="store_true")
     args = parser.parse_args(argv)
     try:
-        if args.watch:
-            manifest = validate_frozen_run_manifest(args.run_dir / "run_manifest.json")
-            return run_monitor(args.run_dir, manifest)
-        result = snapshot(args.run_dir)
-    except (FileNotFoundError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        value = snapshot(args.run_dir)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
-    print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
-    return 2 if result["status"] == "review_required" else 0
+    print(json.dumps(value, indent=2, sort_keys=True, allow_nan=False))
+    return 0
 
 
 if __name__ == "__main__":

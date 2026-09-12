@@ -9,13 +9,13 @@ to the firmware actuator owner.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
 import csv
 import json
 import os
 import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 
 from .contracts import CsvValidationContext, validate_csv
 
@@ -81,16 +81,6 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
        return list(csv.DictReader(handle))
 
 
-def _latest_health(path: Path) -> dict[tuple[str, str], str]:
-   latest: dict[tuple[str, str], str] = {}
-   for row in _read_csv(path):
-       if row.get("record_type") == "STS":
-           latest[(row.get("component", ""), row.get("status_key", ""))] = row.get(
-               "status_value", ""
-           )
-   return latest
-
-
 def validate_transaction_row(
    row: dict[str, str],
    spec: CampaignSpec,
@@ -137,18 +127,17 @@ def validate_transaction_row(
    if not abs(delta) <= cumulative_after <= spec.cumulative_limit:
        raise ValueError("cumulative-after budget is invalid")
 
-   if event in {"application", "response"}:
-       if (
-           int(row["applied_code"]) != requested
-           or row.get("i2c_ok") != "true"
-           or row.get("clamped") != "false"
-           or row.get("ambiguous") != "false"
-           or row.get("estimator_history_reset") != "true"
-           or int(row["application_sequence"]) != ordinal
-           or int(row["correction_count"]) != ordinal
-           or int(row["cumulative_movement_codes"]) != cumulative_after
-       ):
-           raise ValueError("application acknowledgement is not exact and unambiguous")
+   if event in {"application", "response"} and (
+       int(row["applied_code"]) != requested
+       or row.get("i2c_ok") != "true"
+       or row.get("clamped") != "false"
+       or row.get("ambiguous") != "false"
+       or row.get("estimator_history_reset") != "true"
+       or int(row["application_sequence"]) != ordinal
+       or int(row["correction_count"]) != ordinal
+       or int(row["cumulative_movement_codes"]) != cumulative_after
+   ):
+       raise ValueError("application acknowledgement is not exact and unambiguous")
 
 
 IMMUTABLE_REQUEST_FIELDS = (
@@ -294,31 +283,23 @@ class AdaptiveHybridTransactionSupervisor:
        *,
        run_dir: Path,
        command_fifo: Path,
-       abort_fifo: Path,
        spec: CampaignSpec,
        identities: dict[str, str],
        expected_build_identity: str,
-       allow_manual_start: bool,
-       allow_arm: bool,
-       duration_s: float | None,
+       control_authority_enabled: bool,
        emergency_command_fifo: Path | None = None,
        console_events: bool = False,
-       dual_core_transactions: bool = False,
-       observational_responses: bool = False,
    ) -> None:
        self.run_dir = run_dir
        self.command_fifo = command_fifo
-       self.abort_fifo = abort_fifo
        self.spec = spec
        self.identities = identities
        self.expected_build_identity = expected_build_identity
-       self.allow_manual_start = allow_manual_start
-       self.allow_arm = allow_arm
-       self.duration_s = duration_s
+       if type(control_authority_enabled) is not bool:
+           raise ValueError("control authority flag must be Boolean")
+       self.control_authority_enabled = control_authority_enabled
        self.emergency_command_fifo = emergency_command_fifo
        self.console_events = console_events
-       self.dual_core_transactions = dual_core_transactions
-       self.observational_responses = observational_responses
        self.state_path = run_dir / SUPERVISOR_STATE
        self.events_path = run_dir / SUPERVISOR_EVENTS
        self.state = self._load_state()
@@ -341,15 +322,7 @@ class AdaptiveHybridTransactionSupervisor:
            "terminal": None,
        }
 
-   def _prepare_evidence_acknowledgement(
-       self, row: dict[str, str], phase: int
-   ) -> dict[str, object]:
-       return {}
 
-   def _confirm_evidence_acknowledgement(
-       self, acknowledgement: dict[str, object]
-   ) -> bool:
-       return True
 
    def _save(self) -> None:
        _atomic_json(self.state_path, self.state)
@@ -370,47 +343,7 @@ class AdaptiveHybridTransactionSupervisor:
        send_command_to_fifo(self.command_fifo, command)
        self._event("command_submitted", command=command)
 
-   def _abort(self, reason: str) -> None:
-       from .serial_commands import send_command_to_fifo
 
-       try:
-           if self.emergency_command_fifo is not None:
-               send_command_to_fifo(
-                   self.emergency_command_fifo, "ACTIVE ABORT"
-               )
-               self._event(
-                   "emergency_device_abort_submitted",
-                   reason=reason,
-               )
-           else:
-               self._command("ACTIVE ABORT")
-       except (OSError, SystemExit, ValueError) as exc:
-           self._event("device_abort_submission_failed", reason=reason, error=str(exc))
-       self.state["terminal"] = {"result": "aborted", "reason": reason, "utc": _utc_now()}
-       self._save()
-
-   def _identity_ready(self, health: dict[tuple[str, str], str]) -> bool:
-       expected = {
-           "run_identity": self.spec.run_identity,
-           "build_identity": self.expected_build_identity,
-           "image_identity": self.spec.profile,
-           **self.identities,
-       }
-       for key, value in expected.items():
-           observed = health.get(("adaptive_hybrid", key))
-           if observed is None:
-               return False
-           if observed != value:
-               raise ValueError(f"live {key} mismatch: {observed!r} != {value!r}")
-       session = int(health.get(("adaptive_hybrid", "session_id"), "0"))
-       if session == 0:
-           return False
-       if self.state["initial_session_id"] is None:
-           self.state["initial_session_id"] = session
-           self._save()
-       elif session != self.state["initial_session_id"]:
-           raise ValueError("active snapshot session changed during the campaign")
-       return True
 
    def _preserve_and_acknowledge(self, row: dict[str, str], phase: int) -> bool:
        record_sequence = int(row["transaction_record_sequence"])
@@ -537,7 +470,7 @@ class AdaptiveHybridTransactionSupervisor:
            self.spec,
            self.identities,
            self.expected_build_identity,
-           dual_core=self.dual_core_transactions,
+           dual_core=True,
        )
        acknowledged = set(self.state["acknowledged_record_sequences"])
        observed_manual = set(self.state["observed_manual_record_sequences"])
@@ -585,8 +518,7 @@ class AdaptiveHybridTransactionSupervisor:
                )
                self.state["acknowledged_record_sequences"].sort()
                self.state["arm_pending"] = False
-               if self.dual_core_transactions:
-                   self.state["arm_sent_at_utc"] = None
+               self.state["arm_sent_at_utc"] = None
                self._save()
                self._event(
                    "private_request_withdrawn_on_gnss_metadata_hold",
@@ -595,36 +527,21 @@ class AdaptiveHybridTransactionSupervisor:
                    delta_codes=int(row["requested_delta_codes"]),
                )
                continue
-           phases = (
-               {
-                   "request_created": 1,
-                   "request_accepted": 2,
-                   "application": 3,
-                   "application_fault": 3,
-                   "response": 4,
-               }
-               if self.dual_core_transactions
-               else {
-                   "request_accepted": 1,
-                   "application": 2,
-                   "application_fault": 2,
-                   "response": 3,
-               }
-           )
+           phases = {
+               "request_created": 1,
+               "request_accepted": 2,
+               "application": 3,
+               "application_fault": 3,
+               "response": 4,
+           }
            phase = phases[event]
            if not self._preserve_and_acknowledge(row, phase):
                # Preserve strict record order.  A later row cannot be
                # released until firmware has consumed this exact phase.
                return
-           if event == "request_created" or (
-               event == "request_accepted" and not self.dual_core_transactions
-           ):
+           if event == "request_created":
                self._event(
-                   (
-                       "core1_request_released_after_durable_capsule"
-                       if self.dual_core_transactions
-                       else "automatic_request_released_after_durable_capsule"
-                   ),
+                   "core1_request_released_after_durable_capsule",
                    request_sequence=int(row["request_sequence"]),
                    requested_code=int(row["requested_code"]),
                    delta_codes=int(row["requested_delta_codes"]),
@@ -639,15 +556,10 @@ class AdaptiveHybridTransactionSupervisor:
                raise ValueError("single I2C application attempt failed")
            elif event == "application":
                self.state["arm_pending"] = False
-               if self.dual_core_transactions:
-                   self.state["arm_sent_at_utc"] = None
+               self.state["arm_sent_at_utc"] = None
                self._save()
                self._event(
-                   (
-                       "cross_core_application_confirmed"
-                       if self.dual_core_transactions
-                       else "automatic_application_confirmed"
-                   ),
+                   "cross_core_application_confirmed",
                    request_sequence=int(row["request_sequence"]),
                    applied_code=int(row["applied_code"]),
                    correction_count=int(row["correction_count"]),
@@ -657,19 +569,14 @@ class AdaptiveHybridTransactionSupervisor:
                classification = row["response_class"]
                correction_count = int(row["correction_count"])
                active_state = row["active_state"]
-               if self.dual_core_transactions:
-                   self.state["response_count"] += 1
+               self.state["response_count"] += 1
                self._event(
                    "response_classified",
                    request_sequence=int(row["request_sequence"]),
                    response_class=classification,
                    post_error_hz=float(row["post_error_hz"]),
                    observed_response_hz=float(row["observed_response_hz"]),
-                   **(
-                       {"response_count": self.state["response_count"]}
-                       if self.dual_core_transactions
-                       else {}
-                   ),
+                   response_count=self.state["response_count"],
                )
                if active_state == "OUT_OF_MODEL_HOLD":
                    self.state["terminal"] = {
@@ -678,9 +585,7 @@ class AdaptiveHybridTransactionSupervisor:
                        "response_class": classification,
                        "utc": _utc_now(),
                    }
-               elif self.observational_responses and classification != (
-                   "measurement_or_actuator_fault"
-               ):
+               elif classification != "measurement_or_actuator_fault":
                    self._event(
                        "response_retained_as_nonterminal_observation",
                        request_sequence=int(row["request_sequence"]),
