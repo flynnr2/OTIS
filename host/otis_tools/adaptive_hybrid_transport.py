@@ -197,12 +197,28 @@ class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
             self._wait_slice(NORMAL_COMMAND_ACK_POLL_S, deadline_ns=deadline_ns)
 
     def _check_capture_transport_state(self) -> dict[str, Any]:
+        """Read one fresh capture heartbeat from the current host boot."""
+
         path = self.run_dir / CAPTURE_TRANSPORT_STATE
         if not path.is_file():
             raise ValueError("capture transport state is missing")
         state = json.loads(path.read_text(encoding="utf-8"))
-        age_s = time.time() - _parse_utc_epoch(str(state["updated_utc"]))
-        if age_s < -1 or age_s > CAPTURE_TRANSPORT_STATE_MAX_AGE_S:
+        updated_monotonic_ns = state.get("updated_monotonic_ns")
+        if (
+            type(updated_monotonic_ns) is not int
+            or updated_monotonic_ns <= 0
+        ):
+            raise ValueError(
+                "capture transport state updated_monotonic_ns is malformed"
+            )
+        age_ns = time.monotonic_ns() - updated_monotonic_ns
+        if age_ns < 0:
+            raise ValueError("capture transport state is from the future")
+        maximum_age_ns = (
+            CAPTURE_TRANSPORT_STATE_MAX_AGE_S * 1_000_000_000
+        )
+        if age_ns > maximum_age_ns:
+            age_s = age_ns / 1_000_000_000
             raise ValueError(
                 f"capture transport state is stale: age_s={age_s:.3f}"
             )

@@ -237,3 +237,9 @@ operation requires an exact frozen bundle and explicit operator authority.
 Normal and abort transport remain separate, serial ownership remains singular,
 and an identity, health, timeout, or evidence discontinuity holds or fails
 static according to the fixed current contract.
+
+The capture owner's transport heartbeat records host monotonic nanoseconds as
+well as reporting UTC. Same-host transport freshness uses only the monotonic
+sample and the existing bounded age limit; missing or invalid samples are not
+replaced by wall-clock or file-modification-time estimates. These coordinates
+are local to the host boot and are not transferable acquisition timestamps.

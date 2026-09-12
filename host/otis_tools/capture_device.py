@@ -978,6 +978,7 @@ class CaptureDeviceRunner:
             {
                 "schema_version": 1,
                 "updated_utc": _utc_now(),
+                "updated_monotonic_ns": time.monotonic_ns(),
                 "pid": os.getpid(),
                 "capture_active": effective_capture_active,
                 "serial_open": effective_serial_open,

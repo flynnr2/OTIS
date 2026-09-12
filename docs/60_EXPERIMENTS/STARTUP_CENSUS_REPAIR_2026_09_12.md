@@ -61,3 +61,23 @@ rehearsal results are retained with the delivery, rather than inferred from
 these fixture results. Firmware source, configuration and toolchain inputs are
 unchanged; the current build contract nevertheless binds the corrected host
 revision into new binary provenance.
+
+A delayed-command rehearsal initially failed after its second transaction on
+`capture transport state is stale: age_s=143.601`; its total reported monotonic
+runtime was 103.55 seconds. The combined failure output is retained. Its
+ordinary pytest temporary package was subsequently cleaned up, so the source
+of that age discrepancy cannot be established. An isolated repeat with an
+explicit retained temporary directory passed in 114.26 seconds and proved
+that the admitted census contained no PPS entries. This does not erase or
+establish a cause for the original failure.
+
+Inspection identified a separate, definite weakness in that check: it compared
+wall UTC timestamps to decide same-host process freshness. The capture owner
+now publishes a host-monotonic timestamp and the transport consumer compares
+integer nanoseconds against the existing 15-second limit. UTC remains reporting
+metadata. There is no compatibility fallback, extra deadline or inferred healthy
+state when the timestamp is missing. A direct producer/consumer regression
+covers wall-clock jumps, stale, future and malformed monotonic observations.
+This change does not claim that every monitor or campaign wall-time diagnostic
+is insensitive to civil-clock adjustment, nor establish that such an adjustment
+caused the retained rehearsal failure.
