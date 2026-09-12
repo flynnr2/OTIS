@@ -12,6 +12,7 @@ REPO_ROOT = SCRIPT_PATH.parents[4]
 PYTHON = sys.executable
 
 FAST_TESTS = (
+    "tests/test_python_name_resolution.py",
     "tests/test_current_code_surface.py",
     "tests/test_current_profiles.py",
     "tests/test_firmware_build.py",
@@ -40,6 +41,7 @@ FAST_TESTS = (
 )
 
 CAMPAIGN_TESTS = FAST_TESTS + (
+    "tests/test_activation_preparation_path.py",
     "tests/test_abort_transport.py",
     "tests/test_capture_serial_products.py",
     "tests/test_evidence_finalization.py",
