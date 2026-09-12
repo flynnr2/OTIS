@@ -301,6 +301,7 @@ def _activation_unsigned(
     bundle_binding: dict[str, Any] | None = None,
     proposal_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    inputs = validate_authoritative_inputs(bundle.get("authoritative_inputs"))
     return {
         "schema_version": 1,
         "tool": TOOL_ID,

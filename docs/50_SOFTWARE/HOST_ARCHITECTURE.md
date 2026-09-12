@@ -93,6 +93,12 @@ and `REF` belongs to D14/channel 1.
 
 ## Operational path
 
+No-I/O preparation verification must execute activation creation and validation,
+run-manifest creation and its downstream consumer for both supported purposes.
+A validated rehearsal report alone does not establish that the physical entry
+preparation path runs. The release tests also reject undefined Python names in
+current host entrypoints and tools before hardware entry.
+
 ```text
 fixed firmware + policy + tools
               |
