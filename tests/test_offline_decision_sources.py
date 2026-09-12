@@ -30,6 +30,7 @@ def _source() -> dict[str, object]:
         "source_closing_accepted_boundary_ordinal": 701,
         "estimator_timestamp_ticks": 700_000_000,
         "time_domain": "rp2040_monotonic_us32",
+        "source_dac_epoch": 7,
         "frequency_error_hz": "0.001666666667",
         "accumulated_edge_error_counts": 1,
         "pass": True,
@@ -48,6 +49,7 @@ def _decision(**changes: str) -> dict[str, str]:
         "accumulated_edge_error_counts": "1",
         "decision_timestamp_ticks": "700000123",
         "time_domain": "rp2040_monotonic_us64",
+        "dac_epoch": "7",
     }
     row.update(changes)
     return row
@@ -92,6 +94,7 @@ def test_offline_decision_source_join_requires_exact_raw_selected_estimate(
         {"capture_session": "8"},
         {"source_acceptance_epoch": "3"},
         {"frequency_estimator_sha256": "b" * 64},
+        {"dac_epoch": "8"},
         {"frequency_error_hz": "0.001666666668"},
         {"accumulated_edge_error_counts": "2"},
     ],

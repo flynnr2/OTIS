@@ -36,3 +36,13 @@ diagnostic rows. Replay reports that separately from each estimator's semantic
 result. An unrecognized `estimator_version` is an explicit semantic
 contradiction rather than a selected source, and it cannot satisfy a selected
 estimate or active-decision reference.
+
+Replay also compares `frequency_observation_hz` with the same reconstructed
+binary64 frequency used by `frequency_estimate_hz`, at the fixed twelve-place
+serialization tolerance. `source_status_refs` names the current producer's
+`live:STS:pps_gate` namespace; it is not a unique status-generation reference
+and does not establish a causal status-snapshot join. `source_dac_ref` has the
+canonical form `live:DAC:<uint32 epoch>`. A selected estimate consumed by an
+AHY decision must name that decision's DAC epoch. Without such a consumer,
+replay validates the reference's representation but does not claim independent
+confirmation of the applied DAC code.

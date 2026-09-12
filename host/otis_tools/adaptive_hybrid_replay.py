@@ -99,6 +99,13 @@ def _replay_frequency_estimate_row(
         epoch = _u32(row, "source_acceptance_epoch")
         opening = _u32(row, "source_opening_accepted_boundary_ordinal")
         closing = _u32(row, "source_closing_accepted_boundary_ordinal")
+        source_dac_epoch_text = row["source_dac_ref"].removeprefix("live:DAC:")
+        source_dac_epoch = int(source_dac_epoch_text)
+        provenance_exact = (
+            row["source_status_refs"] == "live:STS:pps_gate"
+            and row["source_dac_ref"] == f"live:DAC:{source_dac_epoch}"
+            and 0 <= source_dac_epoch < _U32_MODULUS
+        )
         sources: list[dict[str, Any]] = []
         source_identity_exact = True
         for offset in range(1, expected_sample_count + 1):
@@ -128,10 +135,14 @@ def _replay_frequency_estimate_row(
         )
         total = sum(span["counted_edges"] for span in sources) if source_exact else None
         if total is None:
-            frequency_difference = error_difference = Decimal("Infinity")
+            observation_difference = frequency_difference = error_difference = Decimal("Infinity")
         else:
             frequency_binary64 = float(total) / float(expected_sample_count)
             error_binary64 = frequency_binary64 - 10_000_000.0
+            observation_difference = abs(
+                Decimal(row["frequency_observation_hz"])
+                - Decimal.from_float(frequency_binary64)
+            )
             frequency_difference = abs(
                 Decimal(row["frequency_estimate_hz"])
                 - Decimal.from_float(frequency_binary64)
@@ -142,18 +153,21 @@ def _replay_frequency_estimate_row(
             )
         row_exact = (
             source_exact
+            and provenance_exact
             and row.get("time_domain") == _RAW_REFERENCE_DOMAIN
             and int(row["accepted_sample_count"]) == expected_sample_count
             and row["config_hash"] == expected_hash
             and all(row.get(field) == "valid" for field in
                     ("observation_validity", "reference_validity", "count_validity"))
+            and observation_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
             and frequency_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
             and error_difference <= SERIALIZED_12_DECIMAL_HALF_UNIT
         )
     except (KeyError, TypeError, ValueError, ArithmeticError):
         session = epoch = opening = closing = 0
+        source_dac_epoch = None
         total = None
-        frequency_difference = error_difference = Decimal("Infinity")
+        observation_difference = frequency_difference = error_difference = Decimal("Infinity")
         source_exact = row_exact = False
     summary = {
         "estimate_id": row.get("estimate_id"),
@@ -167,6 +181,9 @@ def _replay_frequency_estimate_row(
             if row.get("estimator_timestamp_ticks", "").isdecimal() else None
         ),
         "time_domain": row.get("time_domain"),
+        "source_status_refs": row.get("source_status_refs"),
+        "source_dac_ref": row.get("source_dac_ref"),
+        "source_dac_epoch": source_dac_epoch,
         "frequency_error_hz": row.get("frequency_error_hz"),
         "accumulated_edge_error_counts": (
             total - expected_sample_count * 10_000_000 if total is not None else None
@@ -176,6 +193,9 @@ def _replay_frequency_estimate_row(
     }
     comparison = {
         **summary, "total_counted_edges": total,
+        "absolute_observation_difference_hz": (
+            None if observation_difference.is_infinite() else float(observation_difference)
+        ),
         "absolute_frequency_difference_hz": (
             None if frequency_difference.is_infinite() else float(frequency_difference)
         ),
@@ -442,6 +462,8 @@ def replay_active_decision_measurement_sources(
                     and source.get("pass") is True
                     and decision.get("frequency_estimator_sha256")
                     == source.get("estimator_sha256")
+                    and int(decision["dac_epoch"])
+                    == source.get("source_dac_epoch")
                     and Decimal(decision["frequency_error_hz"])
                     == Decimal(str(source["frequency_error_hz"]))
                     and int(decision["accumulated_edge_error_counts"])

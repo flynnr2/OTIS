@@ -92,3 +92,9 @@ Current reason-code families include `startup_warmup`,
 `current_code_outside_clamp`, `tight_deadband_evaluation_failed`,
 `preview_available`, `explicit_recovery_fresh_support`, and
 `operator_abort`.
+
+Offline analysis joins every retained preview to an exact selected estimate,
+checks their shared timestamp and domain, and verifies EST-before-CTL
+publication against the raw serial record order. A diagnostic EST or an absent
+selected EST cannot satisfy this reference. These checks form part of the
+existing CSV evidence verdict; an EST without a subsequent CTL remains legal.

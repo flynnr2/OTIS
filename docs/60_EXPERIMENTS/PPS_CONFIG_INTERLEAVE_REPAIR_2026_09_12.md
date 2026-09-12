@@ -122,3 +122,19 @@ package; no historical row, hold or result was cleared.
 The next hardware decision remains one finite inhibited zero-write attempt,
 after the final fixed build, independent reproduction and candidate-bound
 operational rehearsals. This reviewed software result is not hardware authority.
+
+## Final consumer review
+
+Adversarial review found that per-row CTL validation did not prove its selected
+EST reference or publication ordering. The analyzer now checks the reference,
+matching timestamp/domain and raw EST-before-CTL order as part of the existing
+CSV verdict. EST without CTL remains legal. Selected and diagnostic replay also
+check the serialized observation frequency and current provenance namespace;
+the AHY source join checks the selected EST's DAC epoch. These are corrections
+to evidence consumers, not new runtime owners or campaign stages.
+
+The fixed firmware build and independent reproduction passed with identical
+UF2, BIN and generated header, identical provenance and resource results. UF2
+SHA-256 is `2b357f0d76a578d7995479527e30bc32806a82b17f8ddabf7fd2991b3a602e19`.
+Program storage is 222,916 bytes; static RAM is 154,140 bytes with 108,004 bytes
+remaining under the current resource budget.
