@@ -20,7 +20,8 @@ payload. It preserves an analyzer failure as `review_required` with an
 is not an uninterrupted qualification pass. Capture completeness requires a
 validated current closure record bound to the exact run record and a closed
 serial connection. A passing analysis requires its full current report, matching
-source hashes, frozen analyzer identity, and successful checks; a small JSON
+source hashes, analyzer-file identity, complete frozen host-toolset identity, and
+successful checks; a small JSON
 object claiming success is insufficient. A physical entry retains the exact
 rehearsal receipt, including package and sealed boundary-report identities.
 
@@ -44,7 +45,9 @@ against the existing package instead of repeating capture or analysis.
 
 For a deterministic analyzer repair, preserve the old package, run
 `otis analyse RUN_DIR --output EXTERNAL_REPORT.json`, and retain the new report's
-source-package and tool identities. The source remains unchanged. A corrected
+source-package, analyzer, and complete host-toolset identities. Initial analysis
+requires the run's frozen toolset; corrected external analysis records the actual
+new toolset without changing the sealed source. The source remains unchanged. A corrected
 implementation may apply the original acceptance criterion; it may not redefine
 that criterion to fit observed evidence.
 

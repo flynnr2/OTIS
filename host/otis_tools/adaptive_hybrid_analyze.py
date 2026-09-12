@@ -46,14 +46,21 @@ from .authoritative_inputs import (
 )
 from .contracts import CsvValidationContext, validate_csv
 from .evidence_package import (
+    ANALYSIS_CONTRACT,
     ANALYSIS_REPORT,
+    ANALYZER_TOOL,
     PACKAGE_MANIFEST,
     PASSING_ANALYSIS_CHECKS,
     validate_package,
 )
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, RunManifest, load_manifest
+from .run_spec import (
+    current_host_toolset_sha256,
+    load_run_spec,
+    verify_current_host_toolset,
+)
 
-TOOL_ID = "adaptive_hybrid_analyze_v1"
+TOOL_ID = ANALYZER_TOOL
 SUPERVISOR_STATE = Path("reports/adaptive_hybrid_supervisor_state.json")
 SUPERVISOR_EVENTS = Path("reports/adaptive_hybrid_supervisor_events.jsonl")
 CAPTURE_CLOSURE = Path("reports/capture_segment_closure_v1.json")
@@ -512,10 +519,16 @@ def analyze(
         raise ValueError("adaptive-hybrid capture is still active")
     manifest = load_manifest(run_dir)
     manifest_value = manifest.data
+    run_spec = load_run_spec(run_dir / manifest_value["run_spec"]["path"])
     programme = programme_from_mapping(manifest_value)
     before_hashes = _source_hashes(manifest)
     # A later analysis of sealed evidence is a linked report outside the package.
-    sealed_source = validate_package(run_dir) if (run_dir / PACKAGE_MANIFEST).exists() else None
+    sealed_source = (
+        validate_package(run_dir) if (run_dir / PACKAGE_MANIFEST).exists() else None
+    )
+    if sealed_source is None:
+        verify_current_host_toolset(run_spec)
+    analysis_toolset_sha256 = current_host_toolset_sha256()
     destination = output_path.resolve() if output_path else run_dir / ANALYSIS_REPORT
     if sealed_source is not None and (destination == run_dir or run_dir in destination.parents):
         raise ValueError("sealed evidence is immutable; select an external analysis output")
@@ -702,10 +715,11 @@ def analyze(
         raise RuntimeError("source evidence changed during offline analysis")
     tool_hash = _sha256_file(Path(__file__))
     unsigned: dict[str, Any] = {
-        "schema_version": 1,
-        "contract": "otis_offline_analysis_v1",
+        "schema_version": 2,
+        "contract": ANALYSIS_CONTRACT,
         "tool": TOOL_ID,
         "tool_sha256": tool_hash,
+        "host_toolset_sha256": analysis_toolset_sha256,
         "created_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "run_id": manifest.run_id,
         "run_identity": spec.run_identity,

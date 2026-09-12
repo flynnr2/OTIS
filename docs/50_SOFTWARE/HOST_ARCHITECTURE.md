@@ -74,8 +74,10 @@ nanoseconds and cannot redefine instrument duration.
 
 `adaptive_hybrid_analyze` independently reconstructs D14/D8 measurements,
 accepted spans, phase-source associations, transactions, responses, and controller
-history. Raw D14/D8 replay is independent of whether a controller or estimator
-produced a record. An inhibited attachment can have valid measurements and no
+history. Phase replay follows the producer's two-stage qualification: an exact
+qualified RPH may feed an initializing PHE until the 600-point frequency support
+exists, while an invalid RPH requires an invalid PHE. Raw D14/D8 replay is
+independent of whether a controller or estimator produced a record. An inhibited attachment can have valid measurements and no
 control decisions; emitted estimates and decisions still require exact source
 bindings. D10 remains optional external-event evidence and cannot veto D14/D8
 validity or control. Evidence integrity and scientific outcome are separate.
@@ -89,7 +91,11 @@ review-required analysis or runtime failure returns nonzero with retained JSON;
 verification of a valid diagnostic package and a completed scientific non-pass
 can succeed.
 A subsequent analysis of sealed evidence writes a separate report linked to its
-source package. It never changes the old result or raw observations.
+source package. It never changes the old result or raw observations. Current
+analysis v2 reports retain both the analyzer-file hash and the complete host
+operational-toolset hash. Initial analysis requires the frozen toolset; a later
+external corrected analysis records its actual new toolset and the immutable
+source-package content hash.
 
 ## Engineering verification
 

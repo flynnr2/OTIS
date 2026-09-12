@@ -36,7 +36,7 @@ def _validate_analysis(value: object) -> bool:
         return value == {"status": "review_required", "outcome": "undetermined"}
     return (
         set(value) == {"status", "outcome", "path", "sha256"}
-        and value.get("path") == "reports/offline_analysis_v1.json"
+        and value.get("path") == "reports/offline_analysis_v2.json"
         and bool(_HEX64.fullmatch(str(value.get("sha256", ""))))
     )
 

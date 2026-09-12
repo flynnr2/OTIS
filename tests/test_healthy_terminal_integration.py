@@ -7,11 +7,14 @@ import os
 import pty
 import threading
 import time
+from copy import deepcopy
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
+from host.otis_tools import adaptive_hybrid_analyze as analyze_module
+from host.otis_tools import run_spec as run_spec_module
 from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
     INHIBITED_ZERO_WRITE,
@@ -30,15 +33,14 @@ from tools.rehearse_host import _capture_command, _utc_now
 
 
 def test_inhibited_wall_endpoint_closes_capture_and_analyzes_without_abort(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     """Accelerate only the wall deadline after the real raw origin is admitted."""
 
     run_dir = tmp_path / "healthy-inhibited"
     run_dir.mkdir()
-    spec = build_synthetic_spec(
-        monkeypatch, run_dir, purpose=INHIBITED_ZERO_WRITE
-    )
+    spec = build_synthetic_spec(monkeypatch, run_dir, purpose=INHIBITED_ZERO_WRITE)
     master, slave = pty.openpty()
     slave_open = True
     device = os.ttyname(slave)
@@ -55,7 +57,9 @@ def test_inhibited_wall_endpoint_closes_capture_and_analyzes_without_abort(
     )
     worker: threading.Thread | None = None
 
-    establish_origin = AdaptiveHybridSupervisor._maybe_establish_zero_write_aperture_origin
+    establish_origin = (
+        AdaptiveHybridSupervisor._maybe_establish_zero_write_aperture_origin
+    )
 
     def establish_origin_then_expire_wall(
         owner: AdaptiveHybridSupervisor,
@@ -130,15 +134,54 @@ def test_inhibited_wall_endpoint_closes_capture_and_analyzes_without_abort(
     assert packaged["capture"]["integrity"] == "complete"
     assert packaged["analysis"]["status"] == "passed"
     assert packaged["analysis"]["outcome"] == "diagnostic_complete"
-    analysis = json.loads(
-        (run_dir / "reports/offline_analysis_v1.json").read_text()
-    )
+    analysis = json.loads((run_dir / "reports/offline_analysis_v2.json").read_text())
+    assert analysis["schema_version"] == 2
+    assert analysis["contract"] == "otis_offline_analysis_v2"
+    assert analysis["tool"] == "adaptive_hybrid_analyze_v2"
+    assert analysis["host_toolset_sha256"] == spec.host_toolset_sha256
     assert set(analysis["checks"]) == PASSING_ANALYSIS_CHECKS
     assert analysis["checks"]["D14_D8_measurement_replay_exact"] is True
     assert analysis["measurement_replay"]["estimate_replay"] == {
         "applicability": "not_applicable_no_emitted_estimates",
         "emitted_count": 0,
         "exact": True,
+    }
+
+    source_before = {
+        path.relative_to(run_dir): path.read_bytes()
+        for path in run_dir.rglob("*")
+        if path.is_file()
+    }
+    changed_toolset = deepcopy(run_spec_module._host_toolset())
+    changed_entry = next(
+        item
+        for item in changed_toolset["entries"]
+        if item["path"] == "host/otis_tools/adaptive_hybrid_replay.py"
+    )
+    changed_entry["sha256"] = "f" * 64
+    changed_unsigned = {
+        key: value for key, value in changed_toolset.items() if key != "toolset_sha256"
+    }
+    changed_toolset["toolset_sha256"] = sha256(
+        json.dumps(
+            changed_unsigned,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    ).hexdigest()
+    repaired_toolset_sha256 = changed_toolset["toolset_sha256"]
+    monkeypatch.setattr(run_spec_module, "_host_toolset", lambda: changed_toolset)
+    external_path = tmp_path / "corrected-offline-analysis-v2.json"
+    _, corrected = analyze_module.analyze(run_dir, output_path=external_path)
+    assert (
+        corrected["source_package_content_sha256"] == packaged["package_content_sha256"]
+    )
+    assert corrected["host_toolset_sha256"] == repaired_toolset_sha256
+    assert source_before == {
+        path.relative_to(run_dir): path.read_bytes()
+        for path in run_dir.rglob("*")
+        if path.is_file()
     }
 
     # A report remains invalid if an omitted mandatory check is hidden by
@@ -151,7 +194,7 @@ def test_inhibited_wall_endpoint_closes_capture_and_analyzes_without_abort(
     analysis["analysis_sha256"] = sha256(
         json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    (run_dir / "reports/offline_analysis_v1.json").write_text(
+    (run_dir / "reports/offline_analysis_v2.json").write_text(
         json.dumps(analysis), encoding="utf-8"
     )
     with pytest.raises(ValueError, match="passing analysis report"):

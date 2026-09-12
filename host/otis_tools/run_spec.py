@@ -212,6 +212,12 @@ def _validate_host_toolset(value: object) -> dict[str, Any]:
     return json.loads(_canonical_bytes(value))
 
 
+def current_host_toolset_sha256() -> str:
+    """Return the identity of the complete current operational host toolset."""
+
+    return str(_host_toolset()["toolset_sha256"])
+
+
 def verify_current_host_toolset(spec: ValidatedRunSpec) -> None:
     expected = spec.document()["host"]["toolset"]
     if _host_toolset() != expected:

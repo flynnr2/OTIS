@@ -392,11 +392,22 @@ def replay_active_decision_measurement_sources(
     }
 
 
+_PHASE_ESTIMATOR_QUALIFICATION_BY_RPH = {
+    "epoch_open": frozenset({"initializing"}),
+    "qualified": frozenset({"initializing", "qualified"}),
+    "invalid": frozenset({"invalid"}),
+}
+
+
 def replay_phase_accepted_sources(manifest: Any) -> dict[str, Any]:
-    """Bind qualified RPH rows to APS and every PHE row to its exact RPH."""
+    """Bind RPH/PHE sources and the current producer qualification relation."""
 
     errors: list[str] = []
     joins: list[dict[str, Any]] = []
+    phase_rows: list[dict[str, str]] = []
+    outputs: list[dict[str, str]] = []
+    phase_index: dict[tuple[int, int], list[dict[str, str]]] = {}
+    output_index: dict[tuple[int, int], list[dict[str, str]]] = {}
     try:
         spans = _read_csv(_single_contract_path(manifest, "accepted_pps_spans_v1"))
         phase_rows = _read_csv(
@@ -412,7 +423,7 @@ def replay_phase_accepted_sources(manifest: Any) -> dict[str, Any]:
                 int(row["accepted_boundary_ordinal"]),
             )
             span_index.setdefault(key, []).append(row)
-        phase_index: dict[tuple[int, int], list[dict[str, str]]] = {}
+        phase_index = {}
         for row in phase_rows:
             key = (int(row["phase_epoch"]), int(row["observation_sequence"]))
             phase_index.setdefault(key, []).append(row)
@@ -442,10 +453,23 @@ def replay_phase_accepted_sources(manifest: Any) -> dict[str, Any]:
                           "phase_key": list(key), "exact": exact})
             if not exact:
                 errors.append(f"qualified RPH {key} lacks one exact APS source")
+        output_index = {}
+        for row in outputs:
+            key = (int(row["phase_epoch"]), int(row["observation_sequence"]))
+            output_index.setdefault(key, []).append(row)
+        for key, candidates in phase_index.items():
+            if len(candidates) != 1:
+                errors.append(f"RPH {key} identity is duplicated")
+        for key, candidates in output_index.items():
+            if len(candidates) != 1:
+                errors.append(f"PHE {key} identity is duplicated")
         for row in outputs:
             key = (int(row["phase_epoch"]), int(row["observation_sequence"]))
             candidates = phase_index.get(key, [])
-            source = candidates[0] if len(candidates) == 1 else None
+            output_candidates = output_index.get(key, [])
+            source = candidates[0] if (
+                len(candidates) == 1 and len(output_candidates) == 1
+            ) else None
             exact = (
                 source is not None
                 and row.get("source_relative_phase_observation")
@@ -457,19 +481,35 @@ def replay_phase_accepted_sources(manifest: Any) -> dict[str, Any]:
                     ("accepted_boundary_ordinal", "accepted_boundary_ordinal"),
                     ("raw_relative_phase_cycles", "relative_phase_cycles"),
                     ("raw_relative_phase_time_ns", "relative_phase_time_ns"),
-                    ("qualification_state", "qualification_state"),
                 ))
+                and row.get("qualification_state")
+                    in _PHASE_ESTIMATOR_QUALIFICATION_BY_RPH.get(
+                        source.get("qualification_state"), frozenset()
+                    )
             )
             joins.append({"kind": "PHE_to_RPH", "phase_key": list(key), "exact": exact})
             if not exact:
                 errors.append(f"PHE {key} lacks one exact RPH source")
     except (OSError, UnicodeError, csv.Error, KeyError, TypeError, ValueError) as error:
         errors.append(str(error))
+    paired_identity_count = sum(
+        len(candidates) == 1 and len(output_index.get(key, [])) == 1
+        for key, candidates in phase_index.items()
+    )
+    unpaired_rph_count = sum(
+        len(candidates) == 1 and key not in output_index
+        for key, candidates in phase_index.items()
+    )
     return {
         "exact": not errors,
+        "rph_row_count": len(phase_rows),
+        "phe_row_count": len(outputs),
+        "paired_identity_count": paired_identity_count,
+        "unpaired_rph_count": unpaired_rph_count,
         "joins": joins,
         "errors": errors[:20],
         "error_count": len(errors),
+        "scope": "RPH_to_APS_and_PHE_to_RPH_source_and_qualification_binding",
     }
 class ResponseClass(str, Enum):
     HEALTHY_DETECTED = "healthy_detected"
