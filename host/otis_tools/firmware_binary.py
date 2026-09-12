@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
-from pathlib import Path
 import re
 import struct
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
-
 
 UF2_MAGIC_START_0 = 0x0A324655
 UF2_MAGIC_START_1 = 0x9E5D5157
@@ -29,6 +28,8 @@ REQUIRED_MARKERS = {
     "d6_snapshot_topology": b"d6_d14_cumulative_snapshot",
     "gnss_metadata_hold": b"metadata_hold",
     "frequency_estimator": b"OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
+    "phase_estimator": b"OTIS_RELATIVE_PHASE_ESTIMATOR_V1",
+    "phase_raw_method": b"D14_ACCEPTED_SPAN_RELATIVE_PHASE_ACCUMULATOR_V1",
     "active_status_contract": b"adaptive_hybrid_active_status_snapshot_v2",
     "external_event_not_implemented": b"not_implemented",
 }
@@ -37,7 +38,7 @@ FORBIDDEN_MARKERS = {
     "runtime_forwarded_source_selection": b"runtime_forwarded_clock_source_selection",
     "nonzero_fractional_divider": b"fractional_divider_nonzero",
 }
-PROVENANCE_FORMAT = "otis_fixed_firmware_build_v1"
+PROVENANCE_FORMAT = "otis_fixed_firmware_build_v2"
 BUILDER_VERSION = 1
 
 
@@ -49,33 +50,43 @@ def _canonical_sha256(value: object) -> str:
     ).hexdigest()
 
 
-def _expected_provenance_values(provenance: object) -> dict[str, str]:
-    """Independently reconstruct every generated identity from the manifest."""
+def expected_provenance_values(provenance: object) -> dict[str, str]:
+    """Independently reconstruct every v2 generated firmware identity."""
 
-    if not isinstance(provenance, dict):
+    if not isinstance(provenance, dict) or provenance.get("schema_version") != 2:
         raise ValueError("firmware UF2 provenance is malformed")
     source = provenance.get("source")
-    authoritative = provenance.get("authoritative_inputs")
+    firmware_inputs = provenance.get("firmware_inputs")
     config = provenance.get("configuration")
     target = provenance.get("target")
     toolchain = provenance.get("toolchain")
     invocation = provenance.get("invocation")
     if not all(
         isinstance(value, dict)
-        for value in (source, authoritative, config, target, toolchain, invocation)
+        for value in (source, firmware_inputs, config, target, toolchain, invocation)
     ):
         raise ValueError("firmware UF2 provenance components are malformed")
-
+    input_unsigned = {
+        key: value for key, value in firmware_inputs.items() if key != "set_sha256"
+    }
+    if (
+        firmware_inputs.get("contract") != "otis_firmware_input_set_v1"
+        or firmware_inputs.get("set_sha256") != _canonical_sha256(input_unsigned)
+        or source.get("sha256") != firmware_inputs.get("set_sha256")
+    ):
+        raise ValueError("firmware UF2 input-set identity is not independently exact")
     config_unsigned = {key: value for key, value in config.items() if key != "sha256"}
     config_sha256 = config.get("sha256")
-    if config_sha256 != _canonical_sha256(config_unsigned):
+    if config.get("schema_version") != 2 or config_sha256 != _canonical_sha256(
+        config_unsigned
+    ):
         raise ValueError("firmware configuration identity is not independently exact")
     invocation_payload = {
         "builder_id": invocation.get("builder_id"),
         "builder_version": BUILDER_VERSION,
         "build_session_id": invocation.get("build_session_id"),
         "source": source,
-        "authoritative_inputs": authoritative,
+        "firmware_inputs": firmware_inputs,
         "configuration_sha256": config_sha256,
         "target": target,
         "toolchain": toolchain,
@@ -88,7 +99,9 @@ def _expected_provenance_values(provenance: object) -> dict[str, str]:
         phase_binding = profile_bindings["phase_estimator"]
         generated: dict[str, object] = {
             "OTIS_BUILD_PROVENANCE_FORMAT": PROVENANCE_FORMAT,
-            "OTIS_BUILD_GIT_COMMIT": source["git_commit"],
+            # Existing firmware field names remain stable; the v2 format defines
+            # this value as the latest commit affecting firmware input bytes.
+            "OTIS_BUILD_GIT_COMMIT": source["firmware_audit_revision"],
             "OTIS_BUILD_SOURCE_STATE": source["state"],
             "OTIS_BUILD_SOURCE_SHA256": source["sha256"],
             "OTIS_BUILD_CONFIG_SHA256": config_sha256,
@@ -98,22 +111,18 @@ def _expected_provenance_values(provenance: object) -> dict[str, str]:
             "OTIS_BUILD_BOARD_NAME": target["board_name"],
             "OTIS_BUILD_CORE_PROVIDER": target["core_provider"],
             "OTIS_BUILD_CORE_VERSION": target["core_version"],
-            "OTIS_BUILD_CORE_INSTALLED_SHA256": target[
-                "core_installed_sha256"
-            ],
+            "OTIS_BUILD_CORE_INSTALLED_SHA256": target["core_installed_sha256"],
             "OTIS_BUILD_TOOLCHAIN": f"{toolchain['name']}@{toolchain['version']}",
             "OTIS_BUILD_COMPILER": toolchain["compiler_identity"],
-            "OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256": toolchain[
-                "installed_sha256"
-            ],
+            "OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256": toolchain["installed_sha256"],
             "OTIS_BUILD_ARDUINO_CLI_VERSION": invocation["arduino_cli_version"],
             "OTIS_BUILD_INVOCATION_ID": invocation["id"],
-            "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_ID": config[
-                "contract_bindings"
-            ]["firmware_host"]["contract_id"],
-            "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_SHA256": config[
-                "contract_bindings"
-            ]["firmware_host"]["sha256"],
+            "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_ID": config["contract_bindings"][
+                "firmware_host"
+            ]["contract_id"],
+            "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_SHA256": config["contract_bindings"][
+                "firmware_host"
+            ]["sha256"],
             "OTIS_BUILD_FORWARDED_CLOCK_CONTRACT_ID": config[
                 "forwarded_clock_contract"
             ]["contract_id"],
@@ -125,9 +134,9 @@ def _expected_provenance_values(provenance: object) -> dict[str, str]:
             "OTIS_BUILD_SOURCE_IDENTITY_SHA256": _canonical_sha256(source),
             "OTIS_BUILD_TARGET_IDENTITY_SHA256": _canonical_sha256(target),
             "OTIS_BUILD_TOOLCHAIN_IDENTITY_SHA256": _canonical_sha256(toolchain),
-            "OTIS_BUILD_AUTHORITATIVE_INPUT_SET_SHA256": authoritative[
-                "set_sha256"
-            ],
+            # The established wire key now names the firmware-only input set;
+            # PROVENANCE_FORMAT v2 prevents interpretation as the retired global set.
+            "OTIS_BUILD_AUTHORITATIVE_INPUT_SET_SHA256": firmware_inputs["set_sha256"],
             "OTIS_BUILD_PROVENANCE_SHA256": _canonical_sha256(provenance),
         }
         macro_by_binding = {
@@ -142,8 +151,8 @@ def _expected_provenance_values(provenance: object) -> dict[str, str]:
     except (KeyError, TypeError) as error:
         raise ValueError("firmware UF2 provenance value is unavailable") from error
     string_values = {name: str(value) for name, value in generated.items()}
-    string_values["OTIS_BUILD_GENERATED_HEADER_IDENTITY_SHA256"] = (
-        _canonical_sha256(string_values)
+    string_values["OTIS_BUILD_GENERATED_HEADER_IDENTITY_SHA256"] = _canonical_sha256(
+        string_values
     )
     return string_values
 
@@ -190,49 +199,43 @@ def _uf2_payload(path: Path) -> tuple[bytes, int]:
 def verify_uf2(
     path: Path,
     *,
-    authoritative_summary: dict[str, Any],
+    firmware_inputs: dict[str, Any],
     provenance: dict[str, Any],
 ) -> dict[str, Any]:
     """Inspect actual UF2 payload bytes independently of builder assertions."""
 
     payload, block_count = _uf2_payload(path)
-    required = {
-        name: marker in payload for name, marker in REQUIRED_MARKERS.items()
-    }
+    required = {name: marker in payload for name, marker in REQUIRED_MARKERS.items()}
     missing = sorted(name for name, present in required.items() if not present)
     if missing:
         raise ValueError(
             "firmware UF2 omits independently required markers: " + ", ".join(missing)
         )
-    forbidden = {
-        name: marker in payload for name, marker in FORBIDDEN_MARKERS.items()
-    }
+    forbidden = {name: marker in payload for name, marker in FORBIDDEN_MARKERS.items()}
     present = sorted(name for name, found in forbidden.items() if found)
     if present:
         raise ValueError(
             "firmware UF2 contains independently forbidden markers: "
             + ", ".join(present)
         )
-    profile_hashes: dict[str, bool] = {}
-    profiles = authoritative_summary.get("profiles")
-    if not isinstance(profiles, list) or not profiles:
-        raise ValueError("firmware UF2 profile identity input is unavailable")
-    for binding in profiles:
-        if not isinstance(binding, dict):
-            raise ValueError("firmware UF2 profile identity input is malformed")
-        relative = binding.get("path")
-        digest = binding.get("sha256")
-        if not isinstance(relative, str) or not isinstance(digest, str):
-            raise ValueError("firmware UF2 profile identity input is malformed")
-        profile_hashes[relative] = digest.encode("ascii") in payload
-    missing_hashes = sorted(path for path, present in profile_hashes.items() if not present)
-    if missing_hashes:
-        raise ValueError(
-            "firmware UF2 omits frozen profile identities: " + ", ".join(missing_hashes)
-        )
+    profiles = (
+        firmware_inputs.get("entries") if isinstance(firmware_inputs, dict) else None
+    )
+    if not isinstance(profiles, list):
+        raise TypeError("firmware UF2 input identity is unavailable")
+    profile_hashes = {
+        str(binding["path"]): str(binding["sha256"]).encode("ascii") in payload
+        for binding in profiles
+        if isinstance(binding, dict)
+        and isinstance(binding.get("path"), str)
+        and str(binding["path"]).startswith("profiles/")
+        and isinstance(binding.get("sha256"), str)
+    }
+    if not profile_hashes or not all(profile_hashes.values()):
+        raise ValueError("firmware UF2 omits frozen profile identities")
     exact_provenance = {
         name.removeprefix("OTIS_BUILD_").lower(): value.encode("ascii") in payload
-        for name, value in _expected_provenance_values(provenance).items()
+        for name, value in expected_provenance_values(provenance).items()
     }
     missing_provenance = sorted(
         name for name, present in exact_provenance.items() if not present
@@ -246,7 +249,7 @@ def verify_uf2(
     if packets != {EXPECTED_GNSS_PACKET}:
         raise ValueError("firmware UF2 GNSS PMTK251 packet set differs")
     return {
-        "contract": "otis_host_verified_adaptive_hybrid_uf2_v1",
+        "contract": "otis_host_verified_adaptive_hybrid_uf2_v2",
         "status": "verified",
         "block_count": block_count,
         "required_markers": required,
@@ -254,4 +257,27 @@ def verify_uf2(
         "profile_sha256_markers": profile_hashes,
         "exact_provenance_markers": exact_provenance,
         "gnss_pmtk251_packets": [EXPECTED_GNSS_PACKET.decode("ascii")],
+    }
+
+
+def binary_contract_from_verification(verification: dict[str, Any]) -> dict[str, Any]:
+    if (
+        verification.get("contract") != "otis_host_verified_adaptive_hybrid_uf2_v2"
+        or verification.get("status") != "verified"
+    ):
+        raise ValueError("firmware verification report is malformed")
+    return {
+        "contract": "otis_adaptive_hybrid_firmware_binary_v1",
+        "status": "verified",
+        "required_markers": verification["required_markers"],
+        "exact_provenance_markers": verification["exact_provenance_markers"],
+        "forbidden_markers_present": verification["forbidden_markers_present"],
+        "gnss_pmtk251_packets": verification["gnss_pmtk251_packets"],
+        "authority": {
+            "reference": "D14",
+            "oscillator_count": "D8_GPIO20_GPIN0",
+            "d9_control_authority": False,
+            "d6_control_authority": False,
+            "d10_control_authority": False,
+        },
     }

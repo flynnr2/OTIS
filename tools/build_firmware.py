@@ -4,43 +4,48 @@
 from __future__ import annotations
 
 import argparse
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import re
 import secrets
 import shutil
 import subprocess
 import sys
 import tempfile
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from host.otis_tools.firmware_host_contract import (  # noqa: E402
+from host.otis_tools import firmware_binary
+from host.otis_tools.firmware_host_contract import (
     binding as firmware_host_contract_binding,
+)
+from host.otis_tools.firmware_host_contract import (
     verify_generated_cpp_header,
 )
-from tools.generate_reference_acceptance_policy import (  # noqa: E402
+from tools.generate_reference_acceptance_policy import (
     HEADER as ACCEPTANCE_POLICY_HEADER,
+)
+from tools.generate_reference_acceptance_policy import (
     POLICY as ACCEPTANCE_POLICY_PATH,
+)
+from tools.generate_reference_acceptance_policy import (
     render_header as render_acceptance_policy_header,
 )
 
-DEFAULT_MANIFEST = (
-    REPO_ROOT / "firmware" / "arduino" / "firmware_build_manifest.json"
-)
+DEFAULT_MANIFEST = REPO_ROOT / "firmware" / "arduino" / "firmware_build_manifest.json"
 SKETCH = REPO_ROOT / "firmware" / "arduino" / "otis_nano_rp2040_connect"
+BUILDER_PATH = Path(__file__).resolve()
 CONFIG_HEADER = SKETCH / "otis_config.h"
 GENERATED_HEADER_NAME = "otis_build_manifest.generated.h"
 IMAGE_ID = "adaptive_hybrid_regulation"
 FIRMWARE_VERSION = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
 BUILDER_VERSION = 1
-PROVENANCE_FORMAT = "otis_fixed_firmware_build_v1"
+PROVENANCE_FORMAT = "otis_fixed_firmware_build_v2"
 EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".h", ".map", ".uf2")
 FIRMWARE_SOURCE_SUFFIXES = (
     ".S",
@@ -67,9 +72,7 @@ DYNAMIC_MEMORY_USAGE_PATTERN = re.compile(
     r"Global variables use (\d+) bytes .* leaving (\d+) bytes for local "
     r"variables\. Maximum is (\d+) bytes\."
 )
-GNSS_BAUD_PACKET_PATTERN = re.compile(
-    rb"\$PMTK251,[0-9]+\*[0-9A-F]{2}\r\n"
-)
+GNSS_BAUD_PACKET_PATTERN = re.compile(rb"\$PMTK251,[0-9]+\*[0-9A-F]{2}\r\n")
 EXPECTED_GNSS_PACKET = b"$PMTK251,115200*1F\r\n"
 REQUIRED_IMAGE_MARKERS = {
     "firmware_version": FIRMWARE_VERSION.encode("ascii"),
@@ -88,9 +91,7 @@ REQUIRED_IMAGE_MARKERS = {
 }
 FORBIDDEN_IMAGE_MARKERS = {
     "qualified_forwarded_waveform_claim": b"qualified_10mhz_forwarded",
-    "runtime_forwarded_source_selection": (
-        b"runtime_forwarded_clock_source_selection"
-    ),
+    "runtime_forwarded_source_selection": (b"runtime_forwarded_clock_source_selection"),
     "nonzero_fractional_divider": b"fractional_divider_nonzero",
 }
 EXPECTED_PROFILE_BINDINGS = {
@@ -118,6 +119,7 @@ EXPECTED_CONTRACT_BINDINGS = {
 FIRMWARE_HOST_BINDING_HELPER = (
     REPO_ROOT / "host" / "otis_tools" / "firmware_host_contract.py"
 )
+FIRMWARE_BINARY_HELPER = REPO_ROOT / "host" / "otis_tools" / "firmware_binary.py"
 PROFILE_BINDING_MACROS = {
     "adaptive_policy": "OTIS_BUILD_ADAPTIVE_POLICY_SHA256",
     "frequency_estimator": "OTIS_BUILD_FREQUENCY_ESTIMATOR_SHA256",
@@ -126,7 +128,7 @@ PROFILE_BINDING_MACROS = {
     "response_policy": "OTIS_BUILD_RESPONSE_POLICY_SHA256",
 }
 ROOT_PROFILE = "profiles/discipline/adaptive_hybrid_regulation_v1.json"
-AUTHORITATIVE_INPUT_CONTRACT = "otis_adaptive_hybrid_authoritative_inputs_v2"
+FIRMWARE_INPUT_CONTRACT = "otis_firmware_input_set_v1"
 PROFILE_SCHEMA_BINDINGS = {
     ROOT_PROFILE: "schemas/adaptive_hybrid_regulation_v1.schema.json",
     "profiles/discipline/response_classification_v1.json": (
@@ -188,14 +190,10 @@ def _run(
             text=True,
         )
     except FileNotFoundError as exc:
-        raise BuildError(
-            f"required executable is unavailable: {arguments[0]}"
-        ) from exc
+        raise BuildError(f"required executable is unavailable: {arguments[0]}") from exc
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or "").strip()
-        raise BuildError(
-            f"command failed ({' '.join(arguments)}): {detail}"
-        ) from exc
+        raise BuildError(f"command failed ({' '.join(arguments)}): {detail}") from exc
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -218,14 +216,18 @@ def _bound_repository_file(relative: str) -> Path:
         or not relative_path.parts
         or any(part in {"", ".", ".."} for part in relative_path.parts)
     ):
-        raise BuildError(f"repository file binding is not a safe relative path: {relative!r}")
+        raise BuildError(
+            f"repository file binding is not a safe relative path: {relative!r}"
+        )
     path = REPO_ROOT / relative_path
     try:
         resolved = path.resolve(strict=True)
     except OSError as exc:
         raise BuildError(f"repository file binding is unavailable: {relative}") from exc
     if not resolved.is_relative_to(REPO_ROOT.resolve()) or resolved != path.absolute():
-        raise BuildError(f"repository file binding traverses a symbolic link: {relative}")
+        raise BuildError(
+            f"repository file binding traverses a symbolic link: {relative}"
+        )
     if not resolved.is_file():
         raise BuildError(f"repository file binding is not a regular file: {relative}")
     return resolved
@@ -234,7 +236,9 @@ def _bound_repository_file(relative: str) -> Path:
 def profile_binding_report(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     declared = manifest.get("profile_bindings")
     if declared != EXPECTED_PROFILE_BINDINGS:
-        raise BuildError("fixed manifest profile bindings differ from the five current profiles")
+        raise BuildError(
+            "fixed manifest profile bindings differ from the five current profiles"
+        )
     report: dict[str, dict[str, Any]] = {}
     profile_values: dict[str, dict[str, Any]] = {}
     for name, relative in EXPECTED_PROFILE_BINDINGS.items():
@@ -265,7 +269,9 @@ def profile_binding_report(manifest: dict[str, Any]) -> dict[str, dict[str, Any]
         "plant_model": EXPECTED_PROFILE_BINDINGS["plant_model"],
     }
     if profile_values["adaptive_policy"].get("bindings") != expected_root_bindings:
-        raise BuildError("adaptive policy does not bind the exact current profile closure")
+        raise BuildError(
+            "adaptive policy does not bind the exact current profile closure"
+        )
 
     phase_selection = profile_values["phase_estimator"].get("selection")
     if not isinstance(phase_selection, dict):
@@ -319,77 +325,12 @@ def _authoritative_entry(relative: str) -> tuple[dict[str, Any], dict[str, Any]]
     )
 
 
-def authoritative_input_report() -> dict[str, Any]:
-    """Bind the dynamic current profile closure and complete schema set."""
-
-    pending = [ROOT_PROFILE]
-    profiles: dict[str, dict[str, Any]] = {}
-    while pending:
-        relative = pending.pop(0)
-        if relative in profiles:
-            continue
-        entry, value = _authoritative_entry(relative)
-        profiles[relative] = entry
-        pending.extend(sorted(_profile_references(value) - profiles.keys()))
-    repository_profiles = {
-        path.relative_to(REPO_ROOT).as_posix()
-        for path in (REPO_ROOT / "profiles").rglob("*.json")
-        if path.is_file()
-    }
-    if set(profiles) != repository_profiles:
-        raise BuildError(
-            "repository profile set is not the exact transitive authoritative closure"
-        )
-    if set(profiles) != set(EXPECTED_PROFILE_BINDINGS.values()):
-        raise BuildError("authoritative profile set differs from the five current profiles")
-
-    schemas: list[dict[str, Any]] = []
-    for path in sorted((REPO_ROOT / "schemas").glob("*.schema.json")):
-        relative = path.relative_to(REPO_ROOT).as_posix()
-        entry, _ = _authoritative_entry(relative)
-        schemas.append(entry)
-    if not schemas:
-        raise BuildError("authoritative schema set is empty")
-    if not set(PROFILE_SCHEMA_BINDINGS).issubset(profiles):
-        raise BuildError("profile/schema bindings are outside the current profile closure")
-    schema_paths = {item["path"] for item in schemas}
-    if schema_paths != set(EXPECTED_SCHEMA_BINDINGS.values()):
-        raise BuildError("authoritative schema set differs from the seven current schemas")
-    if not set(PROFILE_SCHEMA_BINDINGS.values()).issubset(schema_paths):
-        raise BuildError("a current profile schema is unavailable")
-
-    unsigned: dict[str, Any] = {
-        "contract": AUTHORITATIVE_INPUT_CONTRACT,
-        "root_profile": ROOT_PROFILE,
-        "profiles": [profiles[path] for path in sorted(profiles)],
-        "schemas": schemas,
-        "contracts": [_authoritative_entry(EXPECTED_CONTRACT_BINDINGS["reference_acceptance"])[0]],
-        "profile_schema_bindings": dict(PROFILE_SCHEMA_BINDINGS),
-    }
-    return {
-        "contract": unsigned["contract"],
-        "root_profile": unsigned["root_profile"],
-        "profiles": [
-            {key: item[key] for key in ("path", "sha256", "size_bytes")}
-            for item in unsigned["profiles"]
-        ],
-        "schemas": [
-            {key: item[key] for key in ("path", "sha256", "size_bytes")}
-            for item in unsigned["schemas"]
-        ],
-        "profile_schema_bindings": unsigned["profile_schema_bindings"],
-        "contracts": [
-            {key: item[key] for key in ("path", "sha256", "size_bytes")}
-            for item in unsigned["contracts"]
-        ],
-        "set_sha256": _sha256_json(unsigned),
-    }
-
-
 def schema_binding_report(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     declared = manifest.get("schema_bindings")
     if declared != EXPECTED_SCHEMA_BINDINGS:
-        raise BuildError("fixed manifest schema bindings differ from the current schemas")
+        raise BuildError(
+            "fixed manifest schema bindings differ from the current schemas"
+        )
     report: dict[str, dict[str, Any]] = {}
     for name, relative in EXPECTED_SCHEMA_BINDINGS.items():
         path = _bound_repository_file(relative)
@@ -419,12 +360,18 @@ def contract_binding_report(manifest: dict[str, Any]) -> dict[str, dict[str, Any
     if current["path"] != EXPECTED_CONTRACT_BINDINGS["firmware_host"]:
         raise BuildError("firmware/host contract path differs")
     if ACCEPTANCE_POLICY_HEADER.read_text() != render_acceptance_policy_header():
-        raise BuildError("reference acceptance firmware policy differs from frozen JSON")
+        raise BuildError(
+            "reference acceptance firmware policy differs from frozen JSON"
+        )
     policy_bytes = ACCEPTANCE_POLICY_PATH.read_bytes()
-    return {"firmware_host": current, "reference_acceptance": {
-        "path": EXPECTED_CONTRACT_BINDINGS["reference_acceptance"],
-        "sha256": sha256(policy_bytes).hexdigest(), "size_bytes": len(policy_bytes),
-    }}
+    return {
+        "firmware_host": current,
+        "reference_acceptance": {
+            "path": EXPECTED_CONTRACT_BINDINGS["reference_acceptance"],
+            "sha256": sha256(policy_bytes).hexdigest(),
+            "size_bytes": len(policy_bytes),
+        },
+    }
 
 
 def load_manifest() -> dict[str, Any]:
@@ -443,9 +390,7 @@ def load_manifest() -> dict[str, Any]:
     if image.get("id") != IMAGE_ID:
         raise BuildError(f"fixed firmware image id must be {IMAGE_ID!r}")
     if image.get("firmware_version") != FIRMWARE_VERSION:
-        raise BuildError(
-            f"fixed firmware version must be {FIRMWARE_VERSION!r}"
-        )
+        raise BuildError(f"fixed firmware version must be {FIRMWARE_VERSION!r}")
     expected_external_event = {
         "pin": "D10",
         "channel": "CH0",
@@ -455,15 +400,17 @@ def load_manifest() -> dict[str, Any]:
         "terminal_authority": False,
     }
     capabilities = manifest.get("capabilities")
-    if not isinstance(capabilities, dict) or capabilities.get(
-        "external_event_capture"
-    ) != expected_external_event:
+    if (
+        not isinstance(capabilities, dict)
+        or capabilities.get("external_event_capture") != expected_external_event
+    ):
         raise BuildError(
             "fixed manifest must preserve D10/CH0 while explicitly denying "
             "an implemented or isolated external-event backend"
         )
     profile_binding_report(manifest)
-    schema_binding_report(manifest)
+    if manifest.get("schema_bindings") != EXPECTED_SCHEMA_BINDINGS:
+        raise BuildError("fixed manifest schema declarations differ")
     contract_binding_report(manifest)
     if manifest.get("forwarded_clock_contract") != EXPECTED_FORWARDED_CLOCK_CONTRACT:
         raise BuildError("fixed manifest forwarded-clock contract differs")
@@ -579,7 +526,10 @@ def verify_environment(
     fqbn_parts = str(target["fqbn"]).split(":", 3)
     checks = {
         "FQBN": (":".join(fqbn_parts[:3]), details.get("fqbn")),
-        "core provider": (target["core_provider"], details.get("package", {}).get("name")),
+        "core provider": (
+            target["core_provider"],
+            details.get("package", {}).get("name"),
+        ),
         "core architecture": (
             target["core_architecture"],
             details.get("platform", {}).get("architecture"),
@@ -683,21 +633,19 @@ def source_input_paths(
     manifest: dict[str, Any],
     *,
     sketch: Path = SKETCH,
-    builder_path: Path = Path(__file__).resolve(),
-    authoritative_inputs: dict[str, Any] | None = None,
+    builder_path: Path = BUILDER_PATH,
 ) -> tuple[Path, ...]:
-    """Return the exact repository files that can affect the firmware build."""
+    """Return only repository bytes that can change the compiled image."""
 
-    authoritative_inputs = authoritative_inputs or authoritative_input_report()
-    authoritative_paths = {
-        str(item["path"])
-        for group in ("profiles", "schemas", "contracts")
-        for item in authoritative_inputs[group]
+    del manifest  # The fixed manifest path itself is part of the byte closure.
+    semantic_paths = {
+        *(_bound_repository_file(path) for path in EXPECTED_PROFILE_BINDINGS.values()),
+        *(_bound_repository_file(path) for path in EXPECTED_CONTRACT_BINDINGS.values()),
     }
     return tuple(
         sorted(
             {
-                path
+                path.resolve()
                 for path in sketch.rglob("*")
                 if path.is_file()
                 and path.name != GENERATED_HEADER_NAME
@@ -707,130 +655,128 @@ def source_input_paths(
                 DEFAULT_MANIFEST.resolve(),
                 builder_path.resolve(),
                 FIRMWARE_HOST_BINDING_HELPER.resolve(),
+                FIRMWARE_BINARY_HELPER.resolve(),
                 (REPO_ROOT / "tools/generate_reference_acceptance_policy.py").resolve(),
-                _bound_repository_file(
-                    EXPECTED_CONTRACT_BINDINGS["firmware_host"]
-                ),
-                *(
-                    _bound_repository_file(relative)
-                    for relative in authoritative_paths
-                ),
+                *semantic_paths,
             },
-            key=lambda path: path.resolve().relative_to(REPO_ROOT).as_posix(),
+            key=lambda path: path.relative_to(REPO_ROOT).as_posix(),
         )
     )
 
 
 def operational_source_pathspecs(
-    *,
-    authoritative_inputs: dict[str, Any] | None = None,
+    manifest: dict[str, Any] | None = None,
 ) -> tuple[str, ...]:
-    """Return the Git scope whose cleanliness can affect firmware identity."""
+    """Return the exact Git paths whose bytes define the firmware image."""
 
-    authoritative_inputs = authoritative_inputs or authoritative_input_report()
-    authoritative_paths = {
-        str(item["path"])
-        for group in ("profiles", "schemas", "contracts")
-        for item in authoritative_inputs[group]
-    }
-    sketch_relative = SKETCH.relative_to(REPO_ROOT).as_posix()
-    positive = {
-        DEFAULT_MANIFEST.relative_to(REPO_ROOT).as_posix(),
-        Path(__file__).resolve().relative_to(REPO_ROOT).as_posix(),
-        FIRMWARE_HOST_BINDING_HELPER.relative_to(REPO_ROOT).as_posix(),
-        "tools/generate_reference_acceptance_policy.py",
-        EXPECTED_CONTRACT_BINDINGS["firmware_host"],
-        *authoritative_paths,
-        *(
-            f":(glob){sketch_relative}/**/*{suffix}"
-            for suffix in FIRMWARE_SOURCE_SUFFIXES
-        ),
-    }
-    return (
-        *sorted(positive),
-        f":(exclude){sketch_relative}/{GENERATED_HEADER_NAME}",
+    selected = manifest or load_manifest()
+    return tuple(
+        path.relative_to(REPO_ROOT).as_posix() for path in source_input_paths(selected)
     )
+
+
+def _input_binding(path: Path) -> dict[str, Any]:
+    data = path.read_bytes()
+    return {
+        "path": path.relative_to(REPO_ROOT).as_posix(),
+        "sha256": sha256(data).hexdigest(),
+        "size_bytes": len(data),
+    }
+
+
+def firmware_input_report(
+    manifest: dict[str, Any],
+    *,
+    sketch: Path = SKETCH,
+    builder_path: Path = BUILDER_PATH,
+) -> dict[str, Any]:
+    """Bind the exact path and byte inventory that can affect compilation."""
+
+    entries = [
+        _input_binding(path)
+        for path in source_input_paths(
+            manifest, sketch=sketch, builder_path=builder_path
+        )
+    ]
+    unsigned = {
+        "schema_version": 1,
+        "contract": FIRMWARE_INPUT_CONTRACT,
+        "entries": entries,
+    }
+    return {**unsigned, "set_sha256": _sha256_json(unsigned)}
 
 
 def source_input_hash(
     manifest: dict[str, Any],
     *,
     sketch: Path = SKETCH,
-    builder_path: Path = Path(__file__).resolve(),
-    authoritative_inputs: dict[str, Any] | None = None,
+    builder_path: Path = BUILDER_PATH,
 ) -> str:
-    authoritative_inputs = authoritative_inputs or authoritative_input_report()
-    paths = source_input_paths(
-        manifest,
-        sketch=sketch,
-        builder_path=builder_path,
-        authoritative_inputs=authoritative_inputs,
+    """Return the canonical identity of the exact firmware input inventory."""
+
+    return str(
+        firmware_input_report(manifest, sketch=sketch, builder_path=builder_path)[
+            "set_sha256"
+        ]
     )
-    digest = sha256()
-    for path in paths:
-        relative = path.resolve().relative_to(REPO_ROOT).as_posix().encode("utf-8")
-        data = path.read_bytes()
-        digest.update(len(relative).to_bytes(8, "big"))
-        digest.update(relative)
-        digest.update(len(data).to_bytes(8, "big"))
-        digest.update(data)
-    return digest.hexdigest()
 
 
 def _configuration_payload(
-    manifest: dict[str, Any], config_source_sha256: str,
+    manifest: dict[str, Any],
+    config_source_sha256: str,
     profile_bindings: dict[str, dict[str, Any]],
-    schema_bindings: dict[str, dict[str, Any]],
     contract_bindings: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "image_id": manifest["image"]["id"],
         "firmware_version": manifest["image"]["firmware_version"],
         "fqbn": manifest["target"]["fqbn"],
         "config_source_sha256": config_source_sha256,
         "profile_bindings": profile_bindings,
-        "schema_bindings": schema_bindings,
         "contract_bindings": contract_bindings,
         "forwarded_clock_contract": manifest["forwarded_clock_contract"],
     }
 
 
+def _git_firmware_audit_revision(
+    pathspecs: tuple[str, ...], *, repo_root: Path = REPO_ROOT
+) -> str:
+    """Return the latest commit that changed any firmware input path."""
+
+    if not pathspecs:
+        raise BuildError("firmware source path set is empty")
+    revision = _run(
+        ["git", "log", "-1", "--format=%H", "--", *pathspecs],
+        cwd=repo_root,
+    ).stdout.strip()
+    if not HEX40_PATTERN.fullmatch(revision):
+        raise BuildError("firmware input history has no exact audit revision")
+    return revision
+
+
 def capture_source_state(manifest: dict[str, Any]) -> dict[str, Any]:
-    """Capture byte identity and cleanliness of operational build inputs only."""
+    """Capture firmware-only identity, independent of unrelated host HEAD."""
 
     config_source_sha256 = sha256(CONFIG_HEADER.read_bytes()).hexdigest()
-    bindings = profile_binding_report(manifest)
-    schemas = schema_binding_report(manifest)
+    profiles = profile_binding_report(manifest)
     contracts = contract_binding_report(manifest)
-    authoritative_inputs = authoritative_input_report()
-    git_commit, source_state = _git_identity(
-        pathspecs=operational_source_pathspecs(
-            authoritative_inputs=authoritative_inputs
-        )
-    )
+    inputs = firmware_input_report(manifest)
+    pathspecs = operational_source_pathspecs(manifest)
+    _, source_state = _git_identity(pathspecs=pathspecs)
     configuration = _configuration_payload(
-        manifest, config_source_sha256, bindings, schemas, contracts
+        manifest, config_source_sha256, profiles, contracts
     )
     return {
-        "git_commit": git_commit,
+        "firmware_audit_revision": _git_firmware_audit_revision(pathspecs),
         "source_state": source_state,
-        "source_sha256": source_input_hash(
-            manifest, authoritative_inputs=authoritative_inputs
-        ),
+        "source_sha256": inputs["set_sha256"],
+        "firmware_inputs": inputs,
         "config_source_sha256": config_source_sha256,
         "config_sha256": _sha256_json(configuration),
-        "profile_bindings": bindings,
-        "schema_bindings": schemas,
+        "profile_bindings": profiles,
         "contract_bindings": contracts,
-        "authoritative_inputs": authoritative_inputs,
     }
-
-
-def _capture_source_state(manifest: dict[str, Any]) -> dict[str, Any]:
-    """Compatibility wrapper for existing in-repository callers."""
-
-    return capture_source_state(manifest)
 
 
 def repository_context_report() -> dict[str, Any]:
@@ -844,9 +790,7 @@ def repository_context_report() -> dict[str, Any]:
     }
 
 
-def _assert_source_unchanged(
-    expected: dict[str, Any], actual: dict[str, Any]
-) -> None:
+def _assert_source_unchanged(expected: dict[str, Any], actual: dict[str, Any]) -> None:
     changed = sorted(key for key in expected if expected[key] != actual.get(key))
     if changed:
         raise BuildError(
@@ -879,11 +823,10 @@ def build_provenance(
         manifest,
         source["config_source_sha256"],
         source["profile_bindings"],
-        source["schema_bindings"],
         source["contract_bindings"],
     )
     source_identity = {
-        "git_commit": source["git_commit"],
+        "firmware_audit_revision": source["firmware_audit_revision"],
         "state": source["source_state"],
         "sha256": source["source_sha256"],
     }
@@ -901,16 +844,16 @@ def build_provenance(
         "builder_version": BUILDER_VERSION,
         "build_session_id": build_session_id,
         "source": source_identity,
-        "authoritative_inputs": source["authoritative_inputs"],
+        "firmware_inputs": source["firmware_inputs"],
         "configuration_sha256": source["config_sha256"],
         "target": target_identity,
         "toolchain": toolchain_identity,
         "arduino_cli_version": environment["arduino_cli_version"],
     }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": source_identity,
-        "authoritative_inputs": source["authoritative_inputs"],
+        "firmware_inputs": source["firmware_inputs"],
         "configuration": {**configuration, "sha256": source["config_sha256"]},
         "target": target_identity,
         "toolchain": toolchain_identity,
@@ -924,64 +867,9 @@ def build_provenance(
 
 
 def generated_provenance_values(provenance: dict[str, Any]) -> dict[str, str]:
-    """Return the exact generated values whose digest is retained in flash."""
+    """Use the independent v2 provenance projection shared with UF2 audit."""
 
-    source = provenance["source"]
-    config = provenance["configuration"]
-    target = provenance["target"]
-    toolchain = provenance["toolchain"]
-    invocation = provenance["invocation"]
-    generated = {
-        "OTIS_BUILD_PROVENANCE_FORMAT": PROVENANCE_FORMAT,
-        "OTIS_BUILD_GIT_COMMIT": source["git_commit"],
-        "OTIS_BUILD_SOURCE_STATE": source["state"],
-        "OTIS_BUILD_SOURCE_SHA256": source["sha256"],
-        "OTIS_BUILD_CONFIG_SHA256": config["sha256"],
-        "OTIS_BUILD_IMAGE_ID": config["image_id"],
-        "OTIS_BUILD_FQBN": target["fqbn"],
-        "OTIS_BUILD_BOARD_ID": target["board_id"],
-        "OTIS_BUILD_BOARD_NAME": target["board_name"],
-        "OTIS_BUILD_CORE_PROVIDER": target["core_provider"],
-        "OTIS_BUILD_CORE_VERSION": target["core_version"],
-        "OTIS_BUILD_CORE_INSTALLED_SHA256": target["core_installed_sha256"],
-        "OTIS_BUILD_TOOLCHAIN": f"{toolchain['name']}@{toolchain['version']}",
-        "OTIS_BUILD_COMPILER": toolchain["compiler_identity"],
-        "OTIS_BUILD_TOOLCHAIN_INSTALLED_SHA256": toolchain["installed_sha256"],
-        "OTIS_BUILD_ARDUINO_CLI_VERSION": invocation["arduino_cli_version"],
-        "OTIS_BUILD_INVOCATION_ID": invocation["id"],
-        "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_ID": config[
-            "contract_bindings"
-        ]["firmware_host"]["contract_id"],
-        "OTIS_BUILD_FIRMWARE_HOST_CONTRACT_SHA256": config[
-            "contract_bindings"
-        ]["firmware_host"]["sha256"],
-        "OTIS_BUILD_FORWARDED_CLOCK_CONTRACT_ID": config[
-            "forwarded_clock_contract"
-        ]["contract_id"],
-        "OTIS_BUILD_FORWARDED_CLOCK_CONTRACT_SHA256": _sha256_json(
-            config["forwarded_clock_contract"]
-        ),
-        "OTIS_BUILD_PHASE_ESTIMATOR_ID": config["profile_bindings"][
-            "phase_estimator"
-        ]["profile_id"],
-        "OTIS_BUILD_PHASE_RAW_METHOD_ID": config["profile_bindings"][
-            "phase_estimator"
-        ]["raw_phase_method"],
-        "OTIS_BUILD_SOURCE_IDENTITY_SHA256": _sha256_json(source),
-        "OTIS_BUILD_TARGET_IDENTITY_SHA256": _sha256_json(target),
-        "OTIS_BUILD_TOOLCHAIN_IDENTITY_SHA256": _sha256_json(toolchain),
-        "OTIS_BUILD_AUTHORITATIVE_INPUT_SET_SHA256": provenance[
-            "authoritative_inputs"
-        ]["set_sha256"],
-        "OTIS_BUILD_PROVENANCE_SHA256": _sha256_json(provenance),
-    }
-    for binding_name, macro_name in PROFILE_BINDING_MACROS.items():
-        generated[macro_name] = config["profile_bindings"][binding_name]["sha256"]
-    string_values = {name: str(value) for name, value in generated.items()}
-    string_values["OTIS_BUILD_GENERATED_HEADER_IDENTITY_SHA256"] = _sha256_json(
-        string_values
-    )
-    return string_values
+    return firmware_binary.expected_provenance_values(provenance)
 
 
 def provenance_header(provenance: dict[str, Any]) -> str:
@@ -1105,19 +993,19 @@ def _resource_usage(build_output: str) -> dict[str, int]:
     return usage
 
 
-def _resource_report(
-    manifest: dict[str, Any], usage: dict[str, int]
-) -> dict[str, Any]:
+def _resource_report(manifest: dict[str, Any], usage: dict[str, int]) -> dict[str, Any]:
     budget = manifest["resource_budget"]
     if usage["dynamic_memory_total_bytes"] != budget["dynamic_memory_total_bytes"]:
         raise BuildError("firmware build reported an unexpected RAM total")
-    if usage["static_dynamic_memory_used_bytes"] > budget[
-        "static_dynamic_memory_max_bytes"
-    ]:
+    if (
+        usage["static_dynamic_memory_used_bytes"]
+        > budget["static_dynamic_memory_max_bytes"]
+    ):
         raise BuildError("static dynamic-memory maximum exceeded")
-    if usage["runtime_memory_available_bytes"] < budget[
-        "runtime_memory_reserve_min_bytes"
-    ]:
+    if (
+        usage["runtime_memory_available_bytes"]
+        < budget["runtime_memory_reserve_min_bytes"]
+    ):
         raise BuildError("runtime memory reserve is below minimum")
     return {
         "contract": "otis_firmware_resource_budget_v1",
@@ -1127,62 +1015,19 @@ def _resource_report(
     }
 
 
-def _binary_report(
-    artifacts_dir: Path, provenance: dict[str, Any]
-) -> dict[str, Any]:
-    binary_paths = sorted(artifacts_dir.glob("*.bin"))
-    if len(binary_paths) != 1:
-        raise BuildError("binary audit requires exactly one flashable BIN")
-    image = binary_paths[0].read_bytes()
-    dynamic_markers = {
-        f"profile_{name}_sha256": binding["sha256"].encode("ascii")
-        for name, binding in provenance["configuration"]["profile_bindings"].items()
-    }
-    dynamic_markers["forwarded_clock_contract_sha256"] = _sha256_json(
-        provenance["configuration"]["forwarded_clock_contract"]
-    ).encode("ascii")
-    dynamic_markers["firmware_host_contract_sha256"] = provenance[
-        "configuration"
-    ]["contract_bindings"]["firmware_host"]["sha256"].encode("ascii")
-    provenance_markers = {
-        name.removeprefix("OTIS_BUILD_").lower(): value.encode("ascii")
-        for name, value in generated_provenance_values(provenance).items()
-    }
-    required_markers = {
-        **REQUIRED_IMAGE_MARKERS,
-        **dynamic_markers,
-        **{f"provenance_{name}": value for name, value in provenance_markers.items()},
-    }
-    markers = {name: marker in image for name, marker in required_markers.items()}
-    missing = sorted(name for name, present in markers.items() if not present)
-    if missing:
-        raise BuildError(f"fixed firmware image omits required markers: {missing}")
-    forbidden = {
-        name: marker in image for name, marker in FORBIDDEN_IMAGE_MARKERS.items()
-    }
-    present = sorted(name for name, found in forbidden.items() if found)
-    if present:
-        raise BuildError(f"fixed firmware image contains forbidden markers: {present}")
-    actual_packets = set(GNSS_BAUD_PACKET_PATTERN.findall(image))
-    if actual_packets != {EXPECTED_GNSS_PACKET}:
-        raise BuildError("fixed firmware GNSS PMTK251 packet set differs")
-    return {
-        "contract": "otis_adaptive_hybrid_firmware_binary_v1",
-        "status": "verified",
-        "required_markers": markers,
-        "exact_provenance_markers": {
-            name: markers[f"provenance_{name}"] for name in provenance_markers
-        },
-        "forbidden_markers_present": forbidden,
-        "gnss_pmtk251_packets": [EXPECTED_GNSS_PACKET.decode("ascii")],
-        "authority": {
-            "reference": "D14",
-            "oscillator_count": "D8_GPIO20_GPIN0",
-            "d9_control_authority": False,
-            "d6_control_authority": False,
-            "d10_control_authority": False,
-        },
-    }
+def _binary_report(artifacts_dir: Path, provenance: dict[str, Any]) -> dict[str, Any]:
+    uf2_paths = sorted(artifacts_dir.glob("*.uf2"))
+    if len(uf2_paths) != 1:
+        raise BuildError("binary audit requires exactly one flashable UF2")
+    try:
+        verification = firmware_binary.verify_uf2(
+            uf2_paths[0],
+            firmware_inputs=provenance["firmware_inputs"],
+            provenance=provenance,
+        )
+        return firmware_binary.binary_contract_from_verification(verification)
+    except ValueError as error:
+        raise BuildError(str(error)) from error
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -1215,7 +1060,7 @@ def build_firmware(
         if path.is_file() and not path.is_symlink():
             path.unlink()
     environment = verify_environment(manifest, arduino_cli=arduino_cli)
-    source = _capture_source_state(manifest)
+    source = capture_source_state(manifest)
     provenance = build_provenance(
         manifest,
         environment,
@@ -1223,7 +1068,9 @@ def build_firmware(
         build_session_id if build_session_id is not None else secrets.token_hex(8),
     )
     generated_header_text = provenance_header(provenance)
-    with tempfile.TemporaryDirectory(prefix="temporary_sketch_", dir=output_dir) as root:
+    with tempfile.TemporaryDirectory(
+        prefix="temporary_sketch_", dir=output_dir
+    ) as root:
         temporary_sketch = Path(root) / SKETCH.name
         shutil.copytree(SKETCH, temporary_sketch)
         (temporary_sketch / GENERATED_HEADER_NAME).write_text(
@@ -1240,14 +1087,16 @@ def build_firmware(
             "--output-dir",
             str(artifacts_dir),
             "--build-property",
-            "compiler.cpp.extra_flags="
-            f"-DOTIS_BUILD_SESSION_ID=0x{provenance['invocation']['build_session_id']}ULL",
+            (
+                "compiler.cpp.extra_flags="
+                f"-DOTIS_BUILD_SESSION_ID=0x{provenance['invocation']['build_session_id']}ULL"
+            ),
             str(temporary_sketch),
         ]
         result = _run(command, check=False)
         combined = result.stdout + result.stderr
         (output_dir / "build.log").write_text(combined, encoding="utf-8")
-        _assert_source_unchanged(source, _capture_source_state(manifest))
+        _assert_source_unchanged(source, capture_source_state(manifest))
     if result.returncode != 0:
         raise BuildError(
             f"fixed firmware compile failed; see {(output_dir / 'build.log').resolve()}"
