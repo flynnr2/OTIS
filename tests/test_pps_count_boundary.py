@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import textwrap
 from pathlib import Path
-import re
 
 import pytest
-
 
 FIRMWARE = Path("firmware/arduino/otis_nano_rp2040_connect")
 HELPER = FIRMWARE / "otis_pps_count_boundary.h"
@@ -239,9 +238,6 @@ def test_pio_boundary_path_is_hardware_owned_and_reason_contract_is_explicit() -
     irq_source = (FIRMWARE / "otis_capture_irq.cpp").read_text(
         encoding="utf-8"
     )
-    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
     backend = (FIRMWARE / "otis_pps_snapshot_backend.cpp").read_text(
         encoding="utf-8"
     )
@@ -337,8 +333,9 @@ def test_resource_and_telemetry_contract_name_boundary_ownership() -> None:
     config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
 
     assert '"pps_reference_observer_irq"' in registry
-    assert '"pio_state_machine"' in sketch
-    assert '"pio_wait_cumulative_snapshot_dma_v1"' in sketch
+    count_source = (FIRMWARE / "otis_count_observation.cpp").read_text(encoding="utf-8")
+    assert '"pio_state_machine"' in count_source
+    assert '"pio_wait_cumulative_snapshot_dma_v1"' in count_source
     assert '"config_snapshot", "begin"' in sketch
     assert '"config_snapshot", "end"' in sketch
     assert sketch.count("emit_build_provenance_status();") == 2

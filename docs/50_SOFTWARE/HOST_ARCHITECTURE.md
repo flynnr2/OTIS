@@ -113,3 +113,19 @@ analysis, and package validation never invoke a compiler.
 See [HOST_REPLACEMENT](../10_REFERENCE_ARCHITECTURE/HOST_REPLACEMENT.md) for the
 cutover scope. The replacement introduces no standalone firmware steering mode,
 hardware port, D10 witness role, or change to the characterized DAC envelope.
+
+## Configuration responses during status publication
+
+Core 1 alone publishes the PPS and ACTIVE snapshot fields. Core 0 may insert
+configuration, environment or other status records between complete queued
+records, but cannot republish fields in those two namespaces. CONFIG requests
+timing configuration from core 1. This removes ambiguous membership at the
+producer instead of adding host nesting rules or accepting duplicate values.
+The strict reducer remains unchanged.
+
+The operational PTY rehearsal deliberately inserts a representative core-0
+configuration response inside both PPS and ACTIVE cohorts. A retained physical
+excerpt and a source-ownership regression cover the previously escaped duplicate
+PPS emission and the first downstream zero-write decision. The fixture tests
+record ordering and host consumption; it does not claim to execute the physical
+cross-core scheduler or validate electrical timing.

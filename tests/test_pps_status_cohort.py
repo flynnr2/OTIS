@@ -1,7 +1,9 @@
 """PPS status cohorts must not merge a partial publication with an old one."""
+
 from __future__ import annotations
 
 import csv
+import re
 from copy import deepcopy
 from io import StringIO
 from pathlib import Path
@@ -25,9 +27,25 @@ from host.otis_tools.capture_device import ActiveStatusLivePublisher
 from host.otis_tools.contracts import HEALTH_FIELDS
 from tests.runtime_fixtures import construct_simulated_supervisor
 
-FIXTURE = (
-    Path(__file__).parent
-    / "fixtures/startup_census_539ff6a/health_records.csv"
+FIXTURE = Path(__file__).parent / "fixtures/startup_census_539ff6a/health_records.csv"
+INTERLEAVE_FIXTURE = (
+    Path(__file__).parent / "fixtures/pps_config_interleave_0c2d8a0/health_records.csv"
+)
+FIRMWARE_SKETCH = (
+    Path(__file__).parents[1]
+    / "firmware/arduino/otis_nano_rp2040_connect/otis_nano_rp2040_connect.ino"
+)
+FIRMWARE_COUNT_SOURCE = (
+    Path(__file__).parents[1]
+    / "firmware/arduino/otis_nano_rp2040_connect/otis_count_observation.cpp"
+)
+CORE0_CONFIG_PPS_KEYS = frozenset(
+    {
+        "boundary_owner",
+        "aperture_backend",
+        "backend_qualified",
+        "boundary_ring_capacity",
+    }
 )
 ACTIVE_END = 699
 QUERY_NONCE = 1_312_243_200
@@ -43,6 +61,127 @@ def _fixture_rows() -> list[dict[str, str]]:
     return rows
 
 
+def _interleave_rows() -> list[dict[str, str]]:
+    with INTERLEAVE_FIXTURE.open(newline="", encoding="utf-8") as stream:
+        return list(csv.DictReader(stream))
+
+
+def _project_single_pps_writer(
+    rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Remove only the four Core 0 PPS records from the retained CONFIG block."""
+
+    projected: list[dict[str, str]] = []
+    in_config = False
+    for row in rows:
+        if (
+            row["component"] == "command"
+            and row["status_key"] == "config_snapshot"
+            and row["status_value"] == "begin"
+        ):
+            in_config = True
+        if not (
+            in_config
+            and row["component"] == "pps_gate"
+            and row["status_key"] in CORE0_CONFIG_PPS_KEYS
+        ):
+            projected.append(deepcopy(row))
+        if (
+            row["component"] == "command"
+            and row["status_key"] == "config_snapshot"
+            and row["status_value"] == "end"
+        ):
+            in_config = False
+    return projected
+
+
+def _resequence(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    ordered = deepcopy(rows)
+    anchor_ticks = int(
+        next(
+            row["status_value"]
+            for row in ordered
+            if row["component"] == "pps_gate"
+            and row["status_key"] == "accepted_anchor_timestamp_ticks"
+        )
+    )
+    for offset, row in enumerate(ordered):
+        row["status_seq"] = str(90_000 + offset)
+        row["timestamp_ticks"] = str(anchor_ticks + 2_000 * (offset + 1))
+    return ordered
+
+
+def _config_interleave_at(position: str) -> list[dict[str, str]]:
+    """Move the repaired CONFIG response across the two framed cohorts."""
+
+    repaired = _project_single_pps_writer(_interleave_rows())
+    pps_begin = next(
+        index
+        for index, row in enumerate(repaired)
+        if row["component"] == "pps_gate"
+        and row["status_key"] == "snapshot"
+        and row["status_value"] == "begin"
+    )
+    pps_end = next(
+        index
+        for index, row in enumerate(repaired)
+        if row["component"] == "pps_gate"
+        and row["status_key"] == "snapshot"
+        and row["status_value"] == "end"
+    )
+    config_begin = next(
+        index
+        for index, row in enumerate(repaired)
+        if row["component"] == "command"
+        and row["status_key"] == "config_snapshot"
+        and row["status_value"] == "begin"
+    )
+    config_ack = next(
+        index
+        for index, row in enumerate(repaired)
+        if row["component"] == "command"
+        and row["status_key"] == "timing_config_snapshot"
+    )
+    active_begin = next(
+        index
+        for index, row in enumerate(repaired)
+        if row["component"] == "adaptive_hybrid"
+        and row["status_key"] == "snapshot_generation_begin"
+    )
+    active_end = next(
+        index
+        for index, row in enumerate(repaired)
+        if row["component"] == "adaptive_hybrid"
+        and row["status_key"] == "snapshot_generation_complete"
+    )
+
+    config = repaired[config_begin : config_ack + 1]
+    without_config = repaired[:config_begin] + repaired[config_ack + 1 :]
+    pps = [row for row in without_config if pps_begin <= repaired.index(row) <= pps_end]
+    between = [
+        row for row in without_config if pps_end < repaired.index(row) < active_begin
+    ]
+    active = [
+        row
+        for row in without_config
+        if active_begin <= repaired.index(row) <= active_end
+    ]
+    if position == "before_pps":
+        ordered = [*config, *pps, *between, *active]
+    elif position == "within_pps":
+        return repaired
+    elif position == "after_pps":
+        ordered = [*pps, *config, *between, *active]
+    elif position == "within_active":
+        split = len(active) // 2
+        ordered = [*pps, *between, *active[:split], *config, *active[split:]]
+    elif position == "after_active":
+        ordered = [*pps, *between, *active, *config]
+    else:
+        raise AssertionError(f"unknown interleave position {position!r}")
+    return _resequence(ordered)
+
+
 def _line(row: dict[str, str]) -> str:
     stream = StringIO()
     writer = csv.DictWriter(stream, fieldnames=HEALTH_FIELDS)
@@ -50,11 +189,11 @@ def _line(row: dict[str, str]) -> str:
     return stream.getvalue().rstrip("\r\n")
 
 
-def _pps_rows(generation: int, *, sequence_base: int, anchor_ticks: int) -> list[dict[str, str]]:
+def _pps_rows(
+    generation: int, *, sequence_base: int, anchor_ticks: int
+) -> list[dict[str, str]]:
     source = [
-        deepcopy(row)
-        for row in _fixture_rows()
-        if row["component"] == "pps_gate"
+        deepcopy(row) for row in _fixture_rows() if row["component"] == "pps_gate"
     ]
     assert source and source[0]["status_key"] == "snapshot"
     assert source[-1]["status_key"] == "startup_inhibit_active"
@@ -97,13 +236,13 @@ def _publish(publisher: ActiveStatusLivePublisher, rows: list[dict[str, str]]) -
 
 
 def _health(publisher: ActiveStatusLivePublisher) -> dict[tuple[str, str], str]:
-    selection = read_live_health_state(
-        publisher.path, required_query_nonce=QUERY_NONCE
-    )
+    selection = read_live_health_state(publisher.path, required_query_nonce=QUERY_NONCE)
     return selection.health if selection.state == "complete" else {}
 
 
-def _supervisor(tmp_path: Path, health: dict[tuple[str, str], str]) -> AdaptiveHybridSupervisor:
+def _supervisor(
+    tmp_path: Path, health: dict[tuple[str, str], str]
+) -> AdaptiveHybridSupervisor:
     subject = construct_simulated_supervisor(tmp_path, purpose=INHIBITED_ZERO_WRITE)
     subject.spec = SimpleNamespace(
         campaign="adaptive_hybrid_regulation",
@@ -138,7 +277,9 @@ def test_partial_pps_generation_cannot_merge_old_tail_into_zero_write_authority(
     """Begin/end without required middle rows is non-authoritative."""
     publisher = ActiveStatusLivePublisher(tmp_path)
     _publish(publisher, _pps_rows(4, sequence_base=10_000, anchor_ticks=10_000_000))
-    _publish(publisher, _active_rows(2, sequence_base=20_000, frontier_ticks=11_000_000))
+    _publish(
+        publisher, _active_rows(2, sequence_base=20_000, frontier_ticks=11_000_000)
+    )
     healthy = _health(publisher)
     assert healthy
     assert not _authoritative_capture_health_faults(healthy)
@@ -168,7 +309,9 @@ def test_partial_pps_generation_cannot_merge_old_tail_into_zero_write_authority(
         }
     ]
     _publish(publisher, partial)
-    _publish(publisher, _active_rows(3, sequence_base=40_000, frontier_ticks=13_000_000))
+    _publish(
+        publisher, _active_rows(3, sequence_base=40_000, frontier_ticks=13_000_000)
+    )
     mixed = _health(publisher)
 
     assert mixed == {} or _authoritative_capture_health_faults(mixed)
@@ -181,7 +324,9 @@ def test_pps_cohort_releases_only_after_its_complete_generation(tmp_path: Path) 
     publisher = ActiveStatusLivePublisher(tmp_path)
     full = _pps_rows(5, sequence_base=30_000, anchor_ticks=12_000_000)
     end_index = next(
-        index for index, row in enumerate(full) if row["status_key"] == "snapshot" and row["status_value"] == "end"
+        index
+        for index, row in enumerate(full)
+        if row["status_key"] == "snapshot" and row["status_value"] == "end"
     )
     reducer = ActiveStatusLiveReducer()
     updates = [
@@ -193,7 +338,9 @@ def test_pps_cohort_releases_only_after_its_complete_generation(tmp_path: Path) 
     _publish(publisher, full[:end_index])
 
     _publish(publisher, full[end_index:])
-    _publish(publisher, _active_rows(3, sequence_base=50_000, frontier_ticks=13_100_000))
+    _publish(
+        publisher, _active_rows(3, sequence_base=50_000, frontier_ticks=13_100_000)
+    )
     health = _health(publisher)
     assert health
     assert not _authoritative_capture_health_faults(health)
@@ -232,3 +379,97 @@ def test_complete_pps_cohort_allows_existing_producer_tick_wrap_bound(
     subject = _supervisor(tmp_path / "supervisor", health)
     subject._maybe_establish_zero_write_aperture_origin(health)
     assert subject.state["qualification_started_utc"] is not None
+
+
+def test_retained_config_interleave_reproduces_duplicate_pps_key_hold() -> None:
+    rows = _interleave_rows()
+    assert rows[0]["status_seq"] == "82426"
+    assert rows[-1]["status_seq"] == "82611"
+
+    reducer = ActiveStatusLiveReducer()
+    updates = [update for row in rows if (update := reducer.observe(row)) is not None]
+
+    assert updates[-1]["state"] == "invalid"
+    assert updates[-1]["reason"] == "duplicate PPS snapshot key 'boundary_owner'"
+    assert updates[-1]["frontier_status_seq"] == 82466
+
+
+def test_core0_cannot_emit_into_timing_owned_status_cohorts() -> None:
+    sketch = FIRMWARE_SKETCH.read_text(encoding="utf-8")
+    direct_core0_cohort_emit = re.compile(
+        r"\bemit_status(?:_[a-z0-9]+)?\s*\(\s*"
+        r'"(?:pps_gate|adaptive_hybrid)"'
+    )
+    assert direct_core0_cohort_emit.search(sketch) is None
+
+    start = sketch.index(
+        "} else if (command.kind == OtisSerialCommandKind::ConfigQuery)"
+    )
+    end = sketch.index(
+        "} else if (command.kind == OtisSerialCommandKind::DualCoreQuery)",
+        start,
+    )
+    config_query = sketch[start:end]
+
+    assert "OtisRunControlKind::DiagnosticConfigQuery" in config_query
+    assert "queue_dual_core_active_control(" in config_query
+
+    count_source = FIRMWARE_COUNT_SOURCE.read_text(encoding="utf-8")
+    pps_start = count_source.index("void emit_pps_gate_status(")
+    pps_end = count_source.index("\nvoid emit_pps_gate_window_status(", pps_start)
+    framed_pps = count_source[pps_start:pps_end]
+    assert framed_pps.index('"snapshot", "begin"') < framed_pps.index(
+        '"snapshot_generation"'
+    )
+    for key in CORE0_CONFIG_PPS_KEYS:
+        assert f'"pps_gate", "{key}"' in framed_pps
+        assert framed_pps.index(f'"pps_gate", "{key}"') < framed_pps.index(
+            '"snapshot", "end"'
+        )
+
+
+@pytest.mark.parametrize(
+    "position",
+    [
+        "before_pps",
+        "within_pps",
+        "after_pps",
+        "within_active",
+        "after_active",
+    ],
+)
+def test_config_interleave_with_single_pps_writer_reaches_zero_write_endpoint(
+    tmp_path: Path,
+    position: str,
+) -> None:
+    rows = _config_interleave_at(position)
+    publisher = ActiveStatusLivePublisher(tmp_path / position)
+    _publish(publisher, rows)
+
+    selection = read_live_health_state(
+        publisher.path, required_query_nonce=1_731_280_765
+    )
+    assert selection.state == "complete"
+    assert selection.generation == 433
+    assert not _authoritative_capture_health_faults(selection.health)
+
+    subject = _supervisor(tmp_path / f"{position}_supervisor", selection.health)
+    subject._maybe_establish_zero_write_aperture_origin(selection.health)
+    assert subject.state["qualification_started_utc"] is not None
+    assert subject._inhibited_zero_write_terminal_ready(selection.health)
+
+
+def test_repaired_stream_still_rejects_a_true_pps_producer_duplicate() -> None:
+    rows = _project_single_pps_writer(_interleave_rows())
+    duplicate_index = next(
+        index
+        for index, row in enumerate(rows)
+        if row["component"] == "pps_gate" and row["status_key"] == "boundary_owner"
+    )
+    rows.insert(duplicate_index + 1, deepcopy(rows[duplicate_index]))
+
+    reducer = ActiveStatusLiveReducer()
+    updates = [update for row in rows if (update := reducer.observe(row)) is not None]
+
+    assert updates[-1]["state"] == "invalid"
+    assert updates[-1]["reason"] == "duplicate PPS snapshot key 'boundary_owner'"

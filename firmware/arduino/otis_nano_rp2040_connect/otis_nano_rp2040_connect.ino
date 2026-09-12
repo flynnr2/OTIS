@@ -3208,17 +3208,9 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
     emit_status("build", "tcxo_counter_backend", "d14_gated_d8_snapshot",
                 OTIS_SEVERITY_INFO,
                 OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-    emit_status("pps_gate", "boundary_owner", "pio_state_machine",
-                OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-    emit_status("pps_gate", "aperture_backend",
-                "pio_wait_cumulative_snapshot_dma_v1", OTIS_SEVERITY_INFO,
-                OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-    emit_status("pps_gate", "backend_qualified", "true",
-                OTIS_SEVERITY_INFO,
-                OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-    emit_status_u32("pps_gate", "boundary_ring_capacity",
-                    otis_pps_count_boundary_ring_capacity(),
-                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
+    // Core 1 owns PPS/ACTIVE status cohorts. CONFIG? can interrupt their
+    // serial drainage, so core 0 must not repeat fields in those namespaces.
+    // DiagnosticConfigQuery below requests timing configuration from its owner.
     emit_status_u32("capture", "counter_gate_period_us", kTcxoGatePeriodUs,
                     OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
     emit_h0_pin_status();

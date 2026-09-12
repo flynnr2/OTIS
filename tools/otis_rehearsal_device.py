@@ -1408,6 +1408,10 @@ class DeterministicPtyInstrument:
     def _pps_health(self) -> dict[tuple[str, str], str]:
         return {
             **{("pps_gate", key): "0" for key in _authoritative_capture_counters(self.programme)},
+            ("pps_gate", "boundary_owner"): "pio_state_machine",
+            ("pps_gate", "aperture_backend"): "pio_wait_cumulative_snapshot_dma_v1",
+            ("pps_gate", "backend_qualified"): "true",
+            ("pps_gate", "boundary_ring_capacity"): "127",
             ("pps_gate", "snapshot_session"): "1",
             ("pps_gate", "reference_acceptance_epoch"): "1",
             ("pps_gate", "reference_acceptance_last_loss_reason"): "none",
@@ -1426,6 +1430,26 @@ class DeterministicPtyInstrument:
             ("pps_gate", "association_state"): "clean",
         }
 
+    def _emit_config_reply(self) -> None:
+        # Representative core-0 CONFIG? records. Timing configuration belongs
+        # to core 1 and must not be copied into this independently emitted group.
+        self._emit_health_items([
+            (("command", "config_snapshot"), "begin"),
+            (("dual_core", "pre_carrier_records_discarded"), "0"),
+            (("build", "tcxo_counter_backend"), "d14_gated_d8_snapshot"),
+            (("command", "config_snapshot"), "end"),
+            (("command", "timing_config_snapshot"), "queued_to_core1"),
+        ])
+
+    def _emit_interleaved_status(self, items: list[tuple[tuple[str, str], str]]) -> None:
+        # Core-0 command replies can interrupt drainage of a core-1 cohort at
+        # complete-record boundaries. Force that legal order on every rehearsal
+        # snapshot instead of hoping a short PTY run happens to encounter it.
+        split = len(items) // 2
+        self._emit_health_items(items[:split])
+        self._emit_config_reply()
+        self._emit_health_items(items[split:])
+
     def _emit_pps_snapshot(self) -> None:
         self.pps_snapshot_generation += 1
         health = self._pps_health()
@@ -1438,7 +1462,7 @@ class DeterministicPtyInstrument:
             *((key, health[key]) for key in sorted(health)),
             (("pps_gate", "snapshot"), "end"),
         ]
-        self._emit_health_items(ordered)
+        self._emit_interleaved_status(ordered)
 
     def _emit_snapshot(self) -> None:
         with self._lock:
@@ -1459,9 +1483,9 @@ class DeterministicPtyInstrument:
                 *((key, active[key]) for key in ACTIVE_STATUS_KEYS),
                 (SNAPSHOT_COMPLETE_KEY, str(self.generation)),
             ]
-            self._emit_health_items(
+            self._emit_interleaved_status([
                 (("adaptive_hybrid", key), value) for key, value in ordered
-            )
+            ])
 
     def _emit_initial_observations(self) -> None:
         # The first SNP/REF is an anchor; only its adjacent successor produces
@@ -1802,6 +1826,8 @@ class DeterministicPtyInstrument:
     def _handle_command(self, command: str) -> None:
         self.commands.append(command)
         if command in {"CONFIG?", "DUALCORE?", "DAC?"}:
+            if command == "CONFIG?":
+                self._emit_config_reply()
             self._emit_nonactive_health()
             return
         if command.startswith("ACTIVE LEASE "):
