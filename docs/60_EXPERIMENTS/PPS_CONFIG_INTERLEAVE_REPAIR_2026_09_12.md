@@ -40,10 +40,15 @@ now forces CONFIG interleaving inside PPS and ACTIVE groups.
 
 ## Verification and next decision
 
-Verification results will be recorded after the affected build, regression and
-operational rehearsals complete. This changes firmware telemetry, so a fresh
-exact firmware build and candidate-bound rehearsal are required before the next
-physical entry. The next physical decision remains one inhibited zero-write
+The direct cohort regressions passed (13 tests), followed by all 682 current
+tests in 87.68 seconds. The affected pinned firmware build passed at repair
+revision `59ad01a`: 222,860 bytes program, 154,140 bytes static RAM and 108,004
+bytes remaining RAM. The isolated pinned core/toolchain matched the retained
+6.0.0/16.1.0 identities; the default system Arduino installation is different
+and was not used for the build. The expanded PTY path passed in the focused and
+full suites. Final image reproduction and candidate-bound public rehearsals
+remain to be completed after the independent offline findings below are
+resolved; this is not a bench-ready or physical qualification claim. The next physical decision remains one inhibited zero-write
 attempt; no further physical operation is authorized by this document.
 
 The retained offline report also fails a `control_previews_v1` timestamp
@@ -53,3 +58,18 @@ the preview and estimate files needed for exact replay. The full sealed
 inventory is 36 files / 71,422,436 bytes before compression. Receive the closed
 package and investigate offline before declaring another candidate bench-ready.
 Do not infer a hardware cause or weaken the frozen criteria from this report.
+
+Read-only source triage found that `adaptive_hybrid_replay.py` treats every
+non-selected estimator version as a failure. The firmware intentionally emits
+`accepted_reference_frequency_diagnostic_60s_overlap_v1` as zero-authority
+60-span diagnostic EST records alongside the selected 600-span estimator.
+All ten selected comparisons in this report pass; the aggregate over 6,223
+emitted estimates nevertheless fails. Original EST rows are still needed to
+exclude further defects and verify any corrected replay.
+
+The firmware capture-fault preview path supplies literal timestamp `0u` in
+`rp2040_monotonic_us32`. That is a concrete candidate explanation for the
+reported preview gap, but the preceding preview row is absent from this
+supplement and the exact invocation cannot yet be established. Preserve the
+original criterion and raw values. The full closed package is requested for
+local replay; no hardware operation is needed for this investigation.
