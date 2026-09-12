@@ -42,6 +42,7 @@ FAST_TESTS = (
 
 CAMPAIGN_TESTS = FAST_TESTS + (
     "tests/test_activation_preparation_path.py",
+    "tests/test_startup_census_capture_replay.py",
     "tests/test_abort_transport.py",
     "tests/test_capture_serial_products.py",
     "tests/test_evidence_finalization.py",

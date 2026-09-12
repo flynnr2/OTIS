@@ -440,7 +440,16 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
         )
 
     setup._acquisition_authority_ready = observe_setup_gate
+    capture_health = {
+        **{("pps_gate", key): value for key, value in
+           supervisor_module._AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items()},
+        ("adaptive_hybrid", "reference_acceptance_state"): "tracking",
+        ("adaptive_hybrid", "accepted_anchor_current"): "true",
+        ("adaptive_hybrid", "reference_acceptance_policy_sha256"): "1" * 64,
+        ("pps_gate", "reference_acceptance_policy_sha256"): "1" * 64,
+    }
     setup._maybe_start_or_arm({
+        **capture_health,
         ("pps_gate", "snapshot_session"): "1",
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "reason"): "",
@@ -490,6 +499,7 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
         "est_input_ref": "unproved-estimate", "decision_id": "decision-1",
     }])
     arm._maybe_start_or_arm({
+        **capture_health,
         ("pps_gate", "snapshot_session"): "1",
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "reason"): "",

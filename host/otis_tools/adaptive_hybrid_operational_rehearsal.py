@@ -2146,7 +2146,11 @@ class DeterministicPtyInstrument:
 
     def _emit_snapshot(self) -> None:
         with self._lock:
-            self._emit_health_map(self._pps_health())
+            # A solicited ACTIVE reply can precede the first periodic PPS
+            # diagnostics on real firmware. Exercise that startup order through
+            # the actual carrier, reducer and census, not an all-ready fixture.
+            if self.generation > 0:
+                self._emit_health_map(self._pps_health())
             self.generation += 1
             active = {
                 key: value

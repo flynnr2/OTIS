@@ -164,6 +164,25 @@ abort ingress; monitor initialization includes its first retained observation.
 These receipts prove service readiness only. The supervisor still discovers
 firmware state before admitting lease or control authority.
 
+The startup census uses one complete solicited ACTIVE generation to discover
+firmware identity, frozen reference policy, session and controller state. It
+does not require PPS diagnostics to have arrived or the reference to have
+finished acquisition. A pristine DISARMED census admits only the campaign's
+ownership boundary; SETUP/ARM and qualified-duration admission independently
+require reference, capture and retained-source evidence. Missing identity or a
+contradictory controller state still prevents admission. A frozen review hold
+cannot be cleared by a later snapshot or a replacement supervisor.
+
+PPS diagnostics and ACTIVE snapshots are independent publications. Their
+accepted boundary ordinals need not be equal. Each must report qualified
+reference state, with matching policy and session, before control admission.
+An origin is frozen only when the observations identify the same acceptance
+epoch; afterwards both epochs must remain at that retained origin. Qualified
+progress comes from PPS accepted ordinals and capture counters, not an assumed
+simultaneous join with ACTIVE. The first PTY rehearsal response deliberately
+precedes PPS diagnostics, exercising this distinction through the live reducer
+and supervisor.
+
 Startup phase records explain progress and failure location. A topology error
 retains its primary diagnostic and attempts diagnostic registration after safe
 closure; it cannot invent successful acquisition or a seal. Shared cleanup

@@ -111,6 +111,21 @@ def _write_rows(path: Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
+def _capture_health(session: int = 5) -> dict[tuple[str, str], str]:
+    # These authority tests start after independent reference qualification.
+    # Census identity alone no longer supplies that prerequisite implicitly.
+    return {
+        **{("pps_gate", key): value for key, value in
+           supervisor_module._AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items()},
+        ("adaptive_hybrid", "reference_acceptance_state"): "tracking",
+        ("adaptive_hybrid", "accepted_anchor_current"): "true",
+        ("adaptive_hybrid", "reference_acceptance_policy_sha256"): "1" * 64,
+        ("pps_gate", "reference_acceptance_policy_sha256"): "1" * 64,
+        ("pps_gate", "snapshot_session"): str(session),
+        ("adaptive_hybrid", "session_id"): str(session),
+    }
+
+
 def _zero_write_terminal_health(
     supervisor: supervisor_module.AdaptiveHybridSupervisor,
 ) -> dict[tuple[str, str], str]:
@@ -177,6 +192,7 @@ def _zero_write_terminal_health(
         {("pps_gate", key): str(value) for key, value in baseline.items()}
     )
     health[("adaptive_hybrid", "session_id")] = str(session_id)
+    health.update(_capture_health(session_id))
     for key in ("reference_acceptance_state", "accepted_anchor_current"):
         health[("adaptive_hybrid", key)] = health[("pps_gate", key)]
     return health
@@ -325,6 +341,7 @@ def test_one_application_setup_is_submitted_once(tmp_path: Path) -> None:
     supervisor._save = lambda: None
     supervisor._programme_event = lambda _event, **_fields: None
     health = {
+        **_capture_health(),
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "manual_start_confirmed"): "false",
         ("adaptive_hybrid", "session_id"): "5",
@@ -703,6 +720,7 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
         ],
     )
     health = {
+        **_capture_health(),
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "manual_start_confirmed"): "true",
         ("adaptive_hybrid", "hybrid_state"): "FREQUENCY_ACQUIRE",
@@ -766,6 +784,7 @@ def test_contingent_arm_waits_for_first_natural_opportunity(
     )
     monkeypatch.setattr(supervisor_module, "_read_csv", lambda _path: [])
     health = {
+        **_capture_health(),
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "manual_start_confirmed"): "true",
         ("adaptive_hybrid", "hybrid_state"): "PHASE_QUALIFY",
@@ -818,6 +837,7 @@ def test_contingent_arm_rejects_durable_nonpreview_decision(
         ],
     )
     health = {
+        **_capture_health(),
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "manual_start_confirmed"): "true",
         ("adaptive_hybrid", "hybrid_state"): "PHASE_QUALIFY",
@@ -870,6 +890,7 @@ def test_contingent_arm_coordinate_failure_does_not_publish_ghost_authority(
         ],
     )
     health = {
+        **_capture_health(),
         ("adaptive_hybrid", "state"): "DISARMED",
         ("adaptive_hybrid", "manual_start_confirmed"): "true",
         ("adaptive_hybrid", "hybrid_state"): "FREQUENCY_ACQUIRE",

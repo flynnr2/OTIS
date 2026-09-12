@@ -585,23 +585,27 @@ def _authoritative_capture_counters(
 def _authoritative_capture_health_faults(
     health: dict[tuple[str, str], str],
 ) -> list[str]:
+    # PPS diagnostics and solicited ACTIVE snapshots are separate publications.
+    # Their current ordinals need not match. Require each view to qualify on
+    # its own; session and policy bind the common reference. Epochs are checked
+    # against the retained qualification origin by the progress consumers.
+    # Qualified progress is measured from PPS ordinals and retained counters,
+    # never from equality with the latest independently emitted ACTIVE ordinal.
     faults: list[str] = []
     for key, expected in _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH.items():
         observed = health.get(("pps_gate", key))
         if observed != expected:
             faults.append(f"{key}:{observed!r}!={expected!r}")
-    for key in (
-        "reference_acceptance_policy_sha256", "reference_acceptance_state",
-        "accepted_boundary_ordinal", "accepted_anchor_current",
-    ):
-        pps = health.get(("pps_gate", key))
-        active = health.get(("adaptive_hybrid", key))
-        if pps != active:
-            faults.append(f"accepted_status_mismatch:{key}:{pps!r}!={active!r}")
-    if health.get(("pps_gate", "reference_acceptance_epoch")) != health.get(
-        ("adaptive_hybrid", "acceptance_epoch")
-    ):
-        faults.append("accepted_status_mismatch:acceptance_epoch")
+    for key in ("reference_acceptance_state", "accepted_anchor_current"):
+        expected = _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH[key]
+        observed = health.get(("adaptive_hybrid", key))
+        if observed != expected:
+            faults.append(f"adaptive_hybrid.{key}:{observed!r}!={expected!r}")
+    key = "reference_acceptance_policy_sha256"
+    pps = health.get(("pps_gate", key))
+    active = health.get(("adaptive_hybrid", key))
+    if pps is None or active is None or pps != active:
+        faults.append(f"accepted_status_mismatch:{key}:{pps!r}!={active!r}")
     if health.get(("pps_gate", "snapshot_session")) != health.get(
         ("adaptive_hybrid", "session_id")
     ):
@@ -1196,14 +1200,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _identity_ready(
         self, health: dict[tuple[str, str], str]
     ) -> bool:
-        return (
-            super()._identity_ready(health)
-            and health.get(("pps_gate", "reference_acceptance_policy_sha256"))
-                == self.reference_acceptance_policy_sha256
-            and health.get(("adaptive_hybrid", "reference_acceptance_policy_sha256"))
-                == self.reference_acceptance_policy_sha256
-            and not _authoritative_capture_health_faults(health)
-        )
+        """Discover instrument identity independently of reference acquisition."""
+        if not super()._identity_ready(health):
+            return False
+        policy = health.get(("adaptive_hybrid", "reference_acceptance_policy_sha256"))
+        if policy is None:
+            return False
+        if policy != self.reference_acceptance_policy_sha256:
+            raise ValueError("live reference acceptance policy differs from the frozen policy")
+        return True
 
     def _startup_census_admitted(self) -> bool:
         census = self.state.get("startup_census")
@@ -2493,6 +2498,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         if setup_established and not self._identity_ready(health):
             raise ValueError("ADAPTIVE_HYBRID exact runtime identity became unavailable")
         if setup_established:
+            capture_faults = _authoritative_capture_health_faults(health)
+            if capture_faults:
+                raise ValueError("ADAPTIVE_HYBRID reference qualification unavailable: "
+                                 + "; ".join(capture_faults))
             required_true = (
                 "capture_lease_live",
                 "setup_reference_eligible",
@@ -2774,7 +2783,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         ):
             self._maybe_establish_zero_write_aperture_origin(health)
             return
-        if self.state["setup_confirmed_utc"] is None or not self._identity_ready(health):
+        if (self.state["setup_confirmed_utc"] is None
+            or not self._identity_ready(health)
+            or _authoritative_capture_health_faults(health)):
             return
         if (
             not _truth(health, "manual_start_confirmed")
@@ -2803,8 +2814,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         qualified_frontier_raw_ticks: int | None = None
         qualified_frontier_extended_ticks: int | None = None
         if self.programme.integrated_long_run:
-            if _authoritative_capture_health_faults(health):
-                return
             try:
                 session_id = int(health[("pps_gate", "snapshot_session")])
                 frontier_ticks = int(
@@ -2875,10 +2884,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     ) from exc
                 if (
                     acceptance_epoch_origin <= 0
-                    or current_epoch != acceptance_epoch_origin
                     or not (0 <= accepted_origin < 1 << 32)
                 ):
                     raise ValueError("ADAPTIVE_HYBRID qualified D14 aperture origin is malformed")
+                if (current_epoch != acceptance_epoch_origin
+                    or health.get(("adaptive_hybrid", "acceptance_epoch"))
+                    != str(acceptance_epoch_origin)):
+                    # Independent observations may straddle reacquisition.
+                    # Do not freeze a qualified origin until they name its epoch.
+                    return
         else:
             current_uptime_lower_bound_ticks = (
                 current_uptime_s * RP2040_MONOTONIC_US_PER_SECOND
@@ -2955,6 +2969,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             or health.get(("adaptive_hybrid", "evidence_phase")) != "evidence_clear"
         ):
             return
+        if health.get(("pps_gate", "reference_acceptance_epoch")) != health.get(
+            ("adaptive_hybrid", "acceptance_epoch")
+        ):
+            return
         try:
             session_id = int(health[("pps_gate", "snapshot_session")])
             acceptance_epoch = int(
@@ -3020,6 +3038,12 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             faults.append(
                 f"capture_session_changed:{origin_session}->{current_session}"
             )
+        origin_epoch = self.state.get("qualified_acceptance_epoch_origin")
+        if origin_epoch is not None:
+            for component, key in (("pps_gate", "reference_acceptance_epoch"),
+                                   ("adaptive_hybrid", "acceptance_epoch")):
+                if health.get((component, key)) != str(origin_epoch):
+                    faults.append(f"{component}.{key}_differs_from_qualified_origin")
         baseline = self.state.get("qualified_authoritative_capture_baseline")
         if not isinstance(baseline, dict):
             baseline = {}
@@ -3302,7 +3326,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             and not self.state.get("arm_pending")
         ):
             return
-        if not self._identity_ready(health):
+        if (not self._identity_ready(health)
+            or _authoritative_capture_health_faults(health)):
             return
         state = health.get(("adaptive_hybrid", "state"), "")
         reason = health.get(("adaptive_hybrid", "reason"), "")
@@ -3563,6 +3588,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     ) -> bool:
         if (
             not self._identity_ready(health)
+            or _authoritative_capture_health_faults(health)
             or self.state["arm_pending"]
             or health.get(("adaptive_hybrid", "state")) != "DISARMED"
             or health.get(("adaptive_hybrid", "evidence_phase")) != "evidence_clear"

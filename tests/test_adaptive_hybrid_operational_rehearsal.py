@@ -204,6 +204,10 @@ def test_full_process_operational_rehearsal_reaches_registered_boundary(
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    state = json.loads((run_dir / "reports/adaptive_hybrid_supervisor_state.json").read_text())
+    census = state["startup_census"]
+    assert census["authority_admitted"] is True
+    assert not any(item["component"] == "pps_gate" for item in census["health"])
     assert report["status"] == "passed"
     assert report["required_boundaries"] == list(REQUIRED_BOUNDARIES)
     assert report["boundary_results"] == {
