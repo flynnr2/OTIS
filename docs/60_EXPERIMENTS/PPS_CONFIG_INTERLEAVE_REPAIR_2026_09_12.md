@@ -138,3 +138,19 @@ UF2, BIN and generated header, identical provenance and resource results. UF2
 SHA-256 is `2b357f0d76a578d7995479527e30bc32806a82b17f8ddabf7fd2991b3a602e19`.
 Program storage is 222,916 bytes; static RAM is 154,140 bytes with 108,004 bytes
 remaining under the current resource budget.
+
+Final release validation passed: **712 tests in 90.03 seconds**. Both frozen
+public operational-path rehearsals passed, including the repeated contingent
+transactions, normal-transport obstruction, independent abort delivery, closure,
+analysis and sealing. Both default entry receipt consumers passed. The retained
+acquisition's final external replay passes all ten selected and 6,213 diagnostic
+estimates; the new raw publication join identifies exactly the two original
+orphan previews while confirming the other ten. The original CSV timestamp
+error and held/incomplete outcome remain visible.
+
+The final changes do not modify the D14 acceptance tolerance, D8 counting, DAC
+limits or actuation policy. No physical operation occurred. The next gate is
+the already-planned two-hour inhibited zero-write attempt with this exact image
+and host toolset. Real device scheduling, USB and physical capture behavior
+remain live integration boundaries; these software results do not establish
+physical qualification or diagnose an electrical cause for historical anomalies.
