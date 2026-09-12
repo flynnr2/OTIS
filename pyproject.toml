@@ -5,12 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "otis"
 version = "0.0.0"
-description = "Open Timing Instrumentation System host tooling scaffold"
-requires-python = ">=3.9"
+description = "OTIS instrument capture, supervision, analysis and evidence tools"
+requires-python = ">=3.10"
 dependencies = [
   "jsonschema>=4.18,<5",
   "pyserial>=3.5",
 ]
+
+[project.scripts]
+otis = "host.otis_tools.__main__:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff==0.16.7"]
@@ -20,4 +23,4 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
-include = ["host", "host.*"]
+include = ["host", "host.*", "tools"]

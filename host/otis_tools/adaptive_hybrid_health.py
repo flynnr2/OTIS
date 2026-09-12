@@ -9,14 +9,14 @@ terminal decisions belong to the concrete supervisor.
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import secrets
 import tempfile
 import time
-from typing import Mapping
+from collections.abc import Mapping
+from hashlib import sha256
+from pathlib import Path
 
 from .active_status_live_state import LIVE_STATE_PATH, read_live_health_state
 from .adaptive_hybrid_contract import ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S
@@ -28,14 +28,11 @@ from .adaptive_hybrid_transactions import (
 )
 from .adaptive_hybrid_transport import (
     ControlSupervisorBase,
-    ControlTiming,
-    _parse_utc_epoch,
 )
 from .prewrite_readiness_contract import (
     PrewriteReadiness,
     evaluate_health_integrity,
 )
-
 
 SETUP_AUTHORITY_CONTRACT = "adaptive_hybrid_setup_authority_v1"
 SETUP_AUTHORITY_PATH = Path("reports/adaptive_hybrid_setup_authority_v1.json")
@@ -45,9 +42,7 @@ CONTROL_CSV = Path("csv/control_previews_v1.csv")
 DAC_CSV = Path("csv/dac_steps.csv")
 
 QUALIFICATION_DEADLINE_S = 5400
-CORRECTION_RESPONSE_RESERVE_S = 1800
 SELECTED_INTERVAL_S = 600
-DECISION_CADENCE_S = 1800
 ARM_PROGRESS_THRESHOLD = 520
 ARM_LIFETIME_S = 110
 PREWRITE_CONTRACT_STARTUP_GRACE_S = 30
@@ -112,38 +107,15 @@ class AdaptiveHybridSupervisorBase(ControlSupervisorBase):
         prewrite_contract_startup_grace_s: float = (
             PREWRITE_CONTRACT_STARTUP_GRACE_S
         ),
-        qualified_timeout_s: int,
         **kwargs: object,
     ) -> None:
-        allow_manual_start = kwargs.get("allow_manual_start")
-        allow_arm = kwargs.get("allow_arm")
-        if (
-            type(allow_manual_start) is not bool
-            or type(allow_arm) is not bool
-            or allow_manual_start != allow_arm
-        ):
-            raise ValueError(
-                "adaptive-hybrid live supervisor requires matched setup/ARM authority"
-            )
         if prewrite_contract_startup_grace_s <= 0:
             raise ValueError("pre-write startup grace must be positive")
-        if qualified_timeout_s <= CORRECTION_RESPONSE_RESERVE_S:
-            raise ValueError(
-                "qualified duration must exceed the correction-response reserve"
-            )
         super().__init__(**kwargs)
         self.prewrite_contract_startup_grace_s = float(
             prewrite_contract_startup_grace_s
         )
-        self.timing = ControlTiming(
-            selected_interval_s=SELECTED_INTERVAL_S,
-            decision_cadence_s=DECISION_CADENCE_S,
-            arm_progress_threshold=ARM_PROGRESS_THRESHOLD,
-            qualification_timeout_s=QUALIFICATION_DEADLINE_S,
-            qualified_timeout_s=qualified_timeout_s,
-            service_load_queries=0,
-            service_query_period_s=1.0,
-        )
+        self.arm_progress_threshold = ARM_PROGRESS_THRESHOLD
         self.state.setdefault("setup_confirmed_utc", None)
         self.state.setdefault("prewrite_contract_ready_utc", None)
         self.state.setdefault("latest_prewrite_readiness", None)
@@ -152,7 +124,6 @@ class AdaptiveHybridSupervisorBase(ControlSupervisorBase):
         self.state.setdefault("setup_authorization_sequence", 0)
         self.state.setdefault("setup_authority_path", None)
         self.state.setdefault("setup_requested_utc", None)
-        self.state.setdefault("response_horizon_closed_utc", None)
         self._save()
 
     def _check_prewrite_contract(
@@ -160,7 +131,7 @@ class AdaptiveHybridSupervisorBase(ControlSupervisorBase):
         health: dict[tuple[str, str], str],
         elapsed_monotonic_s: float,
     ) -> PrewriteReadiness | None:
-        if not self.allow_manual_start and not self.allow_arm:
+        if not self.control_authority_enabled:
             return None
         # After the one setup stimulus, the transaction and terminal gates own
         # the remaining run. The prewrite contract cannot authorize a retry.
@@ -259,14 +230,14 @@ class AdaptiveHybridSupervisorBase(ControlSupervisorBase):
             "one_shot_ordinal": 1,
             "configuration_identity": configuration_identity,
         }
-        return (
+        command = (
             "ACTIVE SETUP "
             f"{request['authorization_sequence']} "
             f"{request['status_generation']} {request['query_nonce']} "
             f"{request['expires_s']} {request['session_id']} "
-            f"0x{self.spec.start_code:04X} 1 {configuration_identity}",
-            request,
+            f"0x{self.spec.start_code:04X} 1 {configuration_identity}"
         )
+        return command, request
 
     def _retain_setup_authority(
         self,
@@ -293,21 +264,3 @@ class AdaptiveHybridSupervisorBase(ControlSupervisorBase):
         self.state["setup_authority_path"] = str(SETUP_AUTHORITY_PATH)
         self._save()
         return path
-
-    def _check_setup_transaction_timeout(
-        self,
-        health: dict[tuple[str, str], str],
-        now_epoch: float,
-    ) -> None:
-        if not self.state["manual_start_sent"]:
-            return
-        if health.get(("adaptive_hybrid", "manual_start_confirmed")) == "true":
-            return
-        requested = self.state.get("setup_requested_utc")
-        if not isinstance(requested, str) or not requested:
-            self._abort("setup_transaction_missing_host_timestamp")
-            return
-        if now_epoch - _parse_utc_epoch(requested) >= (
-            SETUP_AUTHORITY_LIFETIME_S + SETUP_RESULT_GRACE_S
-        ):
-            self._abort("setup_transaction_expired_without_observed_result")

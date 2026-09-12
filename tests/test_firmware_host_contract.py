@@ -19,7 +19,7 @@ from host.otis_tools.active_status_contract import (
 )
 from host.otis_tools.active_status_live_state import ActiveStatusLiveReducer
 from host.otis_tools.adaptive_hybrid_replay import ResponseClassifier
-from host.otis_tools.capture_serial import CsvRecordSplitter
+from host.otis_tools.record_splitter import CsvRecordSplitter
 from host.otis_tools.contracts import (
     CONTRACT_FIELDS,
     CsvValidationContext,

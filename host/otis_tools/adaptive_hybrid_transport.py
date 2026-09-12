@@ -1,25 +1,23 @@
-"""Current fail-static command and transport mechanics for active control.
-
-The capture process remains the sole serial owner. Supervisors use the normal
-command FIFO and the independent ABORT-only FIFO; this module contains only
-the mechanics shared by the current adaptive-hybrid control supervisors.
-"""
+"""Bounded command transport between the foreground owner and capture worker."""
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
 import json
 import time
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from .adaptive_hybrid_transactions import AdaptiveHybridTransactionSupervisor, LEASE_PERIOD_S, _read_csv, _utc_now
 from .adaptive_hybrid_contract import NORMAL_COMMAND_ACK_TIMEOUT_S
+from .adaptive_hybrid_transactions import (
+    LEASE_PERIOD_S,
+    AdaptiveHybridTransactionSupervisor,
+    _read_csv,
+    _utc_now,
+)
+from .run_spec import CAPTURE_CONFIG
 from .serial_commands import send_timestamped_command_to_fifo
-from .time_domains import unwrap_domain_ticks
-
 
 ESTIMATES_CSV = Path("csv/estimates_v3.csv")
 DAC_CSV = Path("csv/dac_steps.csv")
@@ -33,74 +31,71 @@ class ExplicitSupervisorAbort(BaseException):
     """Unwind a bounded wait after the explicit operator abort was submitted."""
 
 
-@dataclass(frozen=True)
-class ControlTiming:
-    selected_interval_s: int
-    decision_cadence_s: int
-    arm_progress_threshold: int
-    qualification_timeout_s: int
-    qualified_timeout_s: int
-    service_load_queries: int
-    service_query_period_s: float
-
-
 def _parse_utc_epoch(value: str) -> float:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
 
 
-def _latest_preview(path: Path) -> dict[str, str] | None:
-    rows = _read_csv(path)
-    return rows[-1] if rows else None
-
-
-def _next_selected_interval_is_cadence_eligible(
-    controls_path: Path,
-    estimates_path: Path,
+def read_capture_transport_state(
+    run_dir: Path,
     *,
-    selected_interval_s: int = 600,
-    decision_cadence_s: int = 1800,
-) -> bool:
-    """Conservatively predict whether an arm can be consumed next interval."""
-    del estimates_path
-    rows = _read_csv(controls_path)
-    if not rows:
-        return False
-    eligible = [row for row in rows if row.get("preview_available") == "true"]
-    if not eligible:
-        return True
-    try:
-        ticks, _ = unwrap_domain_ticks(
-            [int(row["decision_timestamp_ticks"]) for row in rows],
-            domain="rp2040_monotonic_us32",
+    expected_pid: int | None = None,
+    allow_priority_abort: bool = False,
+    require_clean: bool = True,
+    now_monotonic_ns: int | None = None,
+) -> dict[str, Any]:
+    """Validate one fresh snapshot from the sole capture worker."""
+    path = run_dir / CAPTURE_TRANSPORT_STATE
+    if not path.is_file():
+        raise ValueError("capture transport state is missing")
+    state = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(state, dict):
+        raise ValueError("capture transport state root is malformed")
+    if expected_pid is not None and state.get("pid") != expected_pid:
+        raise ValueError("capture transport state belongs to another process")
+    updated_ns = state.get("updated_monotonic_ns")
+    if type(updated_ns) is not int or updated_ns <= 0:
+        raise ValueError("capture transport state updated_monotonic_ns is malformed")
+    now_ns = time.monotonic_ns() if now_monotonic_ns is None else now_monotonic_ns
+    age_ns = now_ns - updated_ns
+    if age_ns < 0:
+        raise ValueError("capture transport state is from the future")
+    if age_ns > CAPTURE_TRANSPORT_STATE_MAX_AGE_S * 1_000_000_000:
+        raise ValueError(
+            f"capture transport state is stale: age_s={age_ns / 1_000_000_000:.3f}"
         )
-        eligible_index = max(
-            index
-            for index, row in enumerate(rows)
-            if row.get("preview_available") == "true"
-        )
-    except (KeyError, TypeError, ValueError):
-        return False
-    positive_spacings = [
-        later - earlier
-        for earlier, later in zip(ticks, ticks[1:])
-        if later > earlier
-    ]
-    conservative_spacing = min(
-        positive_spacings,
-        default=selected_interval_s * RP2040_MONOTONIC_US_PER_SECOND,
-    )
-    projected_next_s = (
-        ticks[-1] + conservative_spacing
-    ) // RP2040_MONOTONIC_US_PER_SECOND
-    last_eligible_s = ticks[eligible_index] // RP2040_MONOTONIC_US_PER_SECOND
-    return projected_next_s - last_eligible_s >= decision_cadence_s
-
+    exact = {
+        "capture_active": True,
+        "serial_open": True,
+        "command_fifo_configured": True,
+        "emergency_command_fifo_configured": True,
+        "state_heartbeat_interval_s": CAPTURE_CONFIG["status_interval_s"],
+        "normal_command_batch_limit": CAPTURE_CONFIG["normal_command_batch_limit"],
+        "normal_command_max_age_s": CAPTURE_CONFIG["normal_command_max_age_s"],
+        "write_timeout_s": CAPTURE_CONFIG["write_timeout_s"],
+    }
+    for key, expected in exact.items():
+        if state.get(key) != expected:
+            raise ValueError(
+                f"capture transport state mismatch: {key}={state.get(key)!r}, "
+                f"expected {expected!r}"
+            )
+    if require_clean:
+        for key in ("malformed_utf8", "parser_errors", "reconnect_count", "commands_rejected"):
+            if int(state.get(key, -1)) != 0:
+                raise ValueError(f"capture transport counter {key} is {state.get(key)!r}")
+    abort_latched = state.get("emergency_abort_latched")
+    aborts_sent = int(state.get("emergency_aborts_sent", -1))
+    if type(abort_latched) is not bool or aborts_sent not in {0, 1}:
+        raise ValueError("capture priority-abort state is malformed")
+    if not allow_priority_abort and (abort_latched or aborts_sent):
+        raise ValueError("capture priority-abort ingress is already latched")
+    return state
 
 class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
     """Shared current transport checks without retired campaign state modes."""
 
     def __init__(self, **kwargs: object) -> None:
-        super().__init__(dual_core_transactions=True, **kwargs)
+        super().__init__(**kwargs)
         self._last_arm_monotonic: float | None = None
         self._live_command_ack_required = False
         self._arm_progress_control_ref: str | None = None
@@ -137,10 +132,28 @@ class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
             raise TimeoutError("causal observation deadline expired")
 
     def _poll_wait_abort(self) -> None:
-        abort = getattr(self, "_wait_abort_fifo", None)
-        if abort is not None and abort.poll():
-            self._abort("independent_host_abort_fifo")
+        if (
+            not self._live_command_ack_required
+            or getattr(self, "expected_capture_pid", None) is None
+        ):
+            return
+        state = read_capture_transport_state(
+            self.run_dir,
+            expected_pid=getattr(self, "expected_capture_pid", None),
+            allow_priority_abort=True,
+            require_clean=False,
+        )
+        if (
+            state.get("emergency_abort_latched") is True
+            or int(state.get("emergency_aborts_sent", 0)) != 0
+        ):
+            self._observe_explicit_capture_abort(state)
             raise ExplicitSupervisorAbort()
+
+    def _observe_explicit_capture_abort(self, state: dict[str, Any]) -> None:
+        """Concrete owner records the externally submitted priority abort."""
+        del state
+        raise NotImplementedError
 
     def _wait_slice(self, seconds: float, *, allow_lease: bool = False,
                     deadline_ns: int | None = None) -> None:
@@ -196,59 +209,21 @@ class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
             # lease or another normal command into that counter frontier.
             self._wait_slice(NORMAL_COMMAND_ACK_POLL_S, deadline_ns=deadline_ns)
 
-    def _check_capture_transport_state(self) -> dict[str, Any]:
-        """Read one fresh capture heartbeat from the current host boot."""
-
-        path = self.run_dir / CAPTURE_TRANSPORT_STATE
-        if not path.is_file():
-            raise ValueError("capture transport state is missing")
-        state = json.loads(path.read_text(encoding="utf-8"))
-        updated_monotonic_ns = state.get("updated_monotonic_ns")
-        if (
-            type(updated_monotonic_ns) is not int
-            or updated_monotonic_ns <= 0
-        ):
-            raise ValueError(
-                "capture transport state updated_monotonic_ns is malformed"
-            )
-        age_ns = time.monotonic_ns() - updated_monotonic_ns
-        if age_ns < 0:
-            raise ValueError("capture transport state is from the future")
-        maximum_age_ns = (
-            CAPTURE_TRANSPORT_STATE_MAX_AGE_S * 1_000_000_000
+    def _read_capture_transport_state(self) -> dict[str, Any]:
+        return read_capture_transport_state(
+            self.run_dir,
+            expected_pid=getattr(self, "expected_capture_pid", None),
+            allow_priority_abort=True,
         )
-        if age_ns > maximum_age_ns:
-            age_s = age_ns / 1_000_000_000
-            raise ValueError(
-                f"capture transport state is stale: age_s={age_s:.3f}"
-            )
-        exact = {
-            "capture_active": True,
-            "serial_open": True,
-            "command_fifo_configured": True,
-            "emergency_command_fifo_configured": True,
-            "state_heartbeat_interval_s": 5.0,
-            "normal_command_batch_limit": 1,
-            "normal_command_max_age_s": 2.0,
-            "write_timeout_s": 1.0,
-        }
-        for key, expected in exact.items():
-            if state.get(key) != expected:
-                raise ValueError(
-                    "capture transport state mismatch: "
-                    f"{key}={state.get(key)!r}, expected {expected!r}"
-                )
-        for key in (
-            "malformed_utf8",
-            "parser_errors",
-            "reconnect_count",
-            "commands_rejected",
-            "emergency_aborts_sent",
+
+    def _check_capture_transport_state(self) -> dict[str, Any]:
+        state = self._read_capture_transport_state()
+        if (
+            state.get("emergency_abort_latched") is True
+            or int(state.get("emergency_aborts_sent", 0)) != 0
         ):
-            if int(state.get(key, -1)) != 0:
-                raise ValueError(
-                    f"capture transport counter {key} is {state.get(key)!r}"
-                )
+            self._observe_explicit_capture_abort(state)
+            raise ExplicitSupervisorAbort()
         return state
 
     def _arm_progress_epoch_ready(
@@ -261,7 +236,7 @@ class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
         if control_ref != self._arm_progress_control_ref:
             self._arm_progress_control_ref = control_ref
             self._arm_progress_reset_seen = False
-        if progress < self.timing.arm_progress_threshold:
+        if progress < self.arm_progress_threshold:
             self._arm_progress_reset_seen = True
         return self._arm_progress_reset_seen
 

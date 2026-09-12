@@ -1,17 +1,12 @@
 """Deterministic shared wait tests; no serial device or physical operations."""
 from __future__ import annotations
 
-import os
-from types import SimpleNamespace
-
 import pytest
 
 from host.otis_tools import adaptive_hybrid_health as health_module
-from host.otis_tools import adaptive_hybrid_supervisor as supervisor_module
 from host.otis_tools import adaptive_hybrid_transport as transport
-from host.otis_tools.abort_transport import AbortFifo, send_abort
 from host.otis_tools.active_status_live_state import LiveHealthState
-from host.otis_tools.adaptive_hybrid_contract import ADAPTIVE_HYBRID_PROGRAMME
+from tests.runtime_fixtures import construct_simulated_supervisor
 
 
 class Clock:
@@ -35,23 +30,18 @@ def clock(monkeypatch):
 
 
 def subject(tmp_path):
-    value = object.__new__(supervisor_module.AdaptiveHybridSupervisor)
-    value.run_dir = tmp_path
-    value.programme = ADAPTIVE_HYBRID_PROGRAMME
-    value.runtime_context = SimpleNamespace(bench_attempt=None)
-    value.command_fifo = tmp_path / "normal.fifo"
-    value.emergency_command_fifo = tmp_path / "emergency.fifo"
+    value = construct_simulated_supervisor(tmp_path)
     value.state = {
         "host_attach_query_nonce": 40, "active_snapshot_request_nonce": 40,
         "startup_census_process_nonce": 91, "lease_sequence": 1,
         "terminal": None, "terminal_static_code": None,
     }
     value._live_command_ack_required = True
-    value.duration_s = None
     value._startup_census_admitted = lambda: True
     value._save = lambda: None
     value._programme_event = lambda *_args, **_kwargs: None
     value._event = lambda *_args, **_kwargs: None
+    value._record_bench_application_before_acknowledgement = lambda *_args: {}
     return value
 
 
@@ -135,43 +125,6 @@ def test_prior_owner_deadline_is_not_compared_or_refreshed(tmp_path, clock):
     assert ack["causal_observation_deadline_monotonic_ns"] == 10**30
 
 
-@pytest.mark.parametrize("waiting_for", ["snapshot", "command_ack"])
-def test_explicit_abort_crosses_priority_fifo_during_wait(tmp_path, clock, monkeypatch, waiting_for):
-    value = subject(tmp_path)
-    normal_commands = []
-    monkeypatch.setattr(transport, "send_timestamped_command_to_fifo",
-                        lambda _path, command: normal_commands.append(command))
-    value._check_capture_transport_state = lambda: {"commands_sent": 0}
-    value._last_lease_monotonic_ns = 1
-    value._renew_lease = lambda: pytest.fail("no lease inside unresolved normal ACK")
-    os.mkfifo(value.emergency_command_fifo)
-    emergency = os.open(value.emergency_command_fifo, os.O_RDWR | os.O_NONBLOCK)
-    abort_path = tmp_path / "abort.fifo"
-    try:
-        with AbortFifo(abort_path) as abort:
-            value._wait_abort_fifo = abort
-            fired = []
-            def operator():
-                if not fired:
-                    send_abort(abort_path)
-                    fired.append(clock.ns)
-            clock.after_sleep = operator
-            with pytest.raises(transport.ExplicitSupervisorAbort):
-                if waiting_for == "command_ack":
-                    value._command("ACTIVE?")
-                else:
-                    # Exercise the actual hidden health-layer incomplete wait.
-                    monkeypatch.setattr(health_module, "read_live_health_state", lambda *_args, **_kwargs:
-                        LiveHealthState("in_progress", {}, 2, 1_000_000_000, "pending"))
-                    value._current_health(required_query_nonce=41)
-            assert os.read(emergency, 4096) == b"ACTIVE ABORT\n"
-            assert value.state["terminal"]["reason"] == "independent_host_abort_fifo"
-            assert clock.ns - 1_000_000_000 <= 20_000_000
-            assert normal_commands == (["ACTIVE?"] if waiting_for == "command_ack" else [])
-    finally:
-        os.close(emergency)
-
-
 @pytest.mark.parametrize("owned", [True, False])
 def test_snapshot_wait_renews_only_owned_lease_after_exact_command_ack(tmp_path, clock, monkeypatch, owned):
     value = subject(tmp_path)
@@ -212,9 +165,8 @@ def test_normal_command_wait_obeys_shorter_enclosing_budget_and_keeps_unresolved
                         lambda _path, command: commands.append(command))
     value._check_capture_transport_state = lambda: {"commands_sent": 0}
     start = clock.ns
-    with pytest.raises(TimeoutError):
-        with value._causal_observation(.2):
-            value._command("ACTIVE?")
+    with pytest.raises(TimeoutError), value._causal_observation(.2):
+        value._command("ACTIVE?")
     assert clock.ns == start + 200_000_000
     assert value._normal_command_ack_pending is True
     with pytest.raises(ValueError, match="unresolved"):
@@ -239,85 +191,6 @@ def test_evidence_command_inherits_its_retained_phase_budget(tmp_path, clock, mo
     assert commands == ["ACTIVE EVIDENCE 7 3"]
     assert value.state["inflight_evidence_acknowledgement"] is ack
     assert ack["host_write_confirmed"] is False
-
-
-def test_run_returns_operator_abort_when_initial_command_wait_is_interrupted(tmp_path, clock, monkeypatch):
-    value = subject(tmp_path)
-    (tmp_path / supervisor_module.CAPTURE_IN_PROGRESS_FLAG).touch()
-    value.abort_fifo = tmp_path / "abort.fifo"
-    value.manifest_path = tmp_path / "run_manifest.json"
-    value.manifest_path.write_text('{}\n')
-    value._startup_census_process_nonce = 91
-    value.runtime_context = SimpleNamespace(manifest_sha256="m", bundle_sha256="b", policy_sha256="p", wall_origin_utc="w")
-    value._startup_census_admitted = lambda: False
-    value._check_capture_transport_state = lambda: {"commands_sent": 0}
-    commands = []
-    monkeypatch.setattr(transport, "send_timestamped_command_to_fifo",
-                        lambda _path, command: commands.append(command))
-    os.mkfifo(value.emergency_command_fifo)
-    emergency = os.open(value.emergency_command_fifo, os.O_RDWR | os.O_NONBLOCK)
-    fired = []
-    def operator():
-        if not fired:
-            send_abort(value.abort_fifo)
-            fired.append(True)
-    clock.after_sleep = operator
-    try:
-        assert value.run() == 3
-        assert os.read(emergency, 4096) == b"ACTIVE ABORT\n"
-        assert commands == ["CONFIG?"]
-        assert value.state["terminal"]["result"] == "aborted"
-        assert (tmp_path / supervisor_module.CAPTURE_IN_PROGRESS_FLAG).is_file()
-        assert value._wait_abort_fifo is None
-    finally:
-        os.close(emergency)
-
-
-def test_initial_query_failure_enters_hold_without_losing_abort_ingress(
-    tmp_path, clock, monkeypatch
-):
-    value = subject(tmp_path)
-    (tmp_path / supervisor_module.CAPTURE_IN_PROGRESS_FLAG).touch()
-    value.abort_fifo = tmp_path / "abort.fifo"
-    value.manifest_path = tmp_path / "run_manifest.json"
-    value.manifest_path.write_text("{}\n")
-    value._startup_census_process_nonce = 91
-    value.runtime_context = SimpleNamespace(
-        manifest_sha256="m", bundle_sha256="b", policy_sha256="p",
-        wall_origin_utc="w",
-    )
-    value._startup_census_admitted = lambda: False
-    value._consume_orchestration_review_hold = lambda: False
-    attempted = []
-
-    def failed_query(command):
-        attempted.append(command)
-        raise OSError("injected initial query failure")
-
-    value._command = failed_query
-    os.mkfifo(value.emergency_command_fifo)
-    emergency = os.open(value.emergency_command_fifo, os.O_RDWR | os.O_NONBLOCK)
-    fired = []
-
-    def operator():
-        if not fired:
-            send_abort(value.abort_fifo)
-            fired.append(True)
-
-    clock.after_sleep = operator
-    try:
-        assert value.run() == 3
-        assert attempted == ["CONFIG?"]
-        assert os.read(emergency, 4096) == b"ACTIVE ABORT\n"
-        hold = value.state["host_verification_hold"]
-        assert hold["source"] == "live_supervisor_diagnostic_cycle"
-        assert hold["error"] == "injected initial query failure"
-        assert hold["new_authority"] is False
-        assert value.state.get("startup_census") is None
-        assert value.state["terminal"]["reason"] == "independent_host_abort_fifo"
-        assert (tmp_path / supervisor_module.CAPTURE_IN_PROGRESS_FLAG).is_file()
-    finally:
-        os.close(emergency)
 
 
 def test_new_incomplete_generations_do_not_extend_hidden_health_wait(tmp_path, clock, monkeypatch):

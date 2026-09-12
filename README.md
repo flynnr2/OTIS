@@ -13,7 +13,7 @@ Current HEAD contains one instrument programme and one buildable fixed
 firmware image: `adaptive_hybrid_regulation`, policy
 `OTIS_ADAPTIVE_HYBRID_REGULATION_V1`. The firmware configuration is not a
 selectable profile matrix. Run duration and experiment-specific stop conditions
-belong in the frozen run manifest, not in the product or policy identity.
+belong in the frozen run specification, not in the product or policy identity.
 
 The current physical-entry surface has two exact purposes: a diagnostic
 `inhibited_zero_write` acquisition and the sole authority-bearing
@@ -62,11 +62,18 @@ authority is
 its checked-in firmware projection must be regenerated with
 `tools/generate_firmware_host_contract.py` whenever that authority changes.
 
-The current host structural preflight is deliberately non-authorizing. Live
-activation requires an exact successful process/FIFO/command/acknowledgement/
-obstruction/abort/handoff/analysis/sealing rehearsal, an exact frozen bundle,
-and explicit operator authority. A successful build or structural preflight
-alone is not a claim that the programme is ready for bench entry.
+The host has five jobs: capture, supervise, monitor, analyse, and package.
+One foreground experiment owner and one capture worker handle the live path.
+Monitoring is read-only. Build and physical entry are explicit engineering
+operations; ordinary observation and offline work never compile or flash.
+
+Freeze one inert run specification, rehearse it through the actual host path,
+and use its receipt with the explicit operator instruction for physical entry.
+There is no bundle/proposal/activation copy chain or global registry gate.
+The [host architecture](docs/50_SOFTWARE/HOST_ARCHITECTURE.md) explains ownership;
+the [evidence lifecycle](docs/50_SOFTWARE/EVIDENCE_LIFECYCLE.md) explains portable
+closure and later analysis. Start with `python -m host.otis_tools --help` (or
+`otis --help` after installation).
 
 The current execution sequence is the
 [`OTIS consolidation programme`](docs/90_ROADMAP/OTIS_CONSOLIDATION_PROGRAMME.md):

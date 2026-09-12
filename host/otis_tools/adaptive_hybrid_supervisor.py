@@ -9,77 +9,35 @@ before the corresponding firmware evidence acknowledgement is released.
 
 from __future__ import annotations
 
-import argparse
-import csv
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from hashlib import sha256
 import json
-from pathlib import Path
+import os
 import secrets
 import time
+from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
-from .abort_transport import AbortFifo
 from .acquisition_frontier import read_acquisition_readiness
-from .adaptive_hybrid_evidence import (
-    IndependentReplayMismatch,
-    ResponseCheckpointRejected,
-)
-from .adaptive_hybrid_contract import (
-    AdaptiveHybridProgramme,
-    ADAPTIVE_HYBRID_PROGRAMME,
-    HOST_REVIEW_HOLD,
-    ORCHESTRATION_FAILURE,
-    programme_from_mapping,
-)
-from .adaptive_hybrid_contract import (
-    CAUSAL_STATE_CONTRACT_ID,
-    CAUSAL_STATE_SCHEMA_VERSION,
-    CONTINGENT_72_HOUR_HYBRID_CONTROL,
-    INHIBITED_ZERO_WRITE,
-    BenchAttemptEnvelope,
-    validate_bench_attempt_envelope,
-)
-from .adaptive_hybrid_policy import AdaptiveHybridPolicy, policy_from_mapping
-from .authoritative_inputs import (
-    ROOT_PROFILE,
-    ValidatedAuthoritativeInputs,
-    transaction_identities_from_bundle,
-    validate_authoritative_inputs,
-)
-from .adaptive_hybrid_session import publish_supervisor_ready
 from .active_status_live_state import (
     LIVE_FRONTIER_COMPONENT,
     LIVE_FRONTIER_DOMAIN_KEY,
     LIVE_FRONTIER_TICKS_KEY,
 )
-from .adaptive_hybrid_transport import (
-    ESTIMATES_CSV,
-    RP2040_MONOTONIC_US_PER_SECOND,
-    ControlSupervisorBase,
-    ExplicitSupervisorAbort,
-    _parse_utc_epoch,
+from .adaptive_hybrid_contract import (
+    ADAPTIVE_HYBRID_PROGRAMME,
+    CAUSAL_STATE_CONTRACT_ID,
+    CAUSAL_STATE_SCHEMA_VERSION,
+    CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    INHIBITED_ZERO_WRITE,
+    AdaptiveHybridProgramme,
+    BenchAttemptEnvelope,
+    programme_from_mapping,
+    validate_bench_attempt_envelope,
 )
-from .adaptive_hybrid_transactions import (
-    ACTIVE_CSV,
-    LEASE_PERIOD_S,
-    QUERY_PERIOD_S,
-    CampaignSpec,
-    _atomic_json,
-    _read_csv,
-    _utc_now,
-    validate_transaction_history,
-)
-from .contracts import CsvValidationContext, validate_csv
-from .capture_device import CAPTURE_STATE
-from .firmware_bindings import current_forwarded_clock_contract
-from .firmware_host_contract import bounded_modular_lag_matches
-from .prewrite_readiness_contract import (
-    GNSS_OPERATIONAL_PREWRITE_EXACT,
-    RAW_PPS_QUALIFICATION_DEADLINE_S,
-    PrewriteReadiness,
-    evaluate_prewrite_readiness as evaluate_setup_prewrite_readiness,
+from .adaptive_hybrid_evidence import (
+    IndependentReplayMismatch,
+    ResponseCheckpointRejected,
 )
 from .adaptive_hybrid_health import (
     ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S,
@@ -87,9 +45,7 @@ from .adaptive_hybrid_health import (
     ARM_LIFETIME_S,
     ARM_PROGRESS_THRESHOLD,
     CONTROL_CSV,
-    CORRECTION_RESPONSE_RESERVE_S,
     DAC_CSV,
-    DECISION_CADENCE_S,
     SELECTED_INTERVAL_S,
     SETUP_AUTHORITY_CONTRACT,
     SETUP_AUTHORITY_LIFETIME_S,
@@ -98,9 +54,42 @@ from .adaptive_hybrid_health import (
     AdaptiveHybridSupervisorBase,
     canonical_health,
 )
-from .run_loader import CAPTURE_IN_PROGRESS_FLAG
+from .adaptive_hybrid_policy import AdaptiveHybridPolicy, policy_from_mapping
+from .adaptive_hybrid_transactions import (
+    ACTIVE_CSV,
+    LEASE_PERIOD_S,
+    QUERY_PERIOD_S,
+    CampaignSpec,
+    _read_csv,
+    _utc_now,
+)
+from .adaptive_hybrid_transport import (
+    ESTIMATES_CSV,
+    RP2040_MONOTONIC_US_PER_SECOND,
+    ControlSupervisorBase,
+    ExplicitSupervisorAbort,
+    _parse_utc_epoch,
+)
+from .authoritative_inputs import (
+    ROOT_PROFILE,
+    ValidatedAuthoritativeInputs,
+    transaction_identities_from_manifest,
+    validate_authoritative_inputs,
+)
+from .capture_device import CAPTURE_STATE
+from .contracts import CsvValidationContext, validate_csv
+from .firmware_bindings import current_forwarded_clock_contract
+from .prewrite_readiness_contract import (
+    GNSS_OPERATIONAL_PREWRITE_EXACT,
+    RAW_PPS_QUALIFICATION_DEADLINE_S,
+    PrewriteReadiness,
+)
+from .prewrite_readiness_contract import (
+    evaluate_prewrite_readiness as evaluate_setup_prewrite_readiness,
+)
+from .run_loader import CAPTURE_IN_PROGRESS_FLAG, load_manifest
+from .serial_commands import send_timestamped_command_to_fifo
 from .time_domains import forward_progress
-
 
 FORWARDED_OUTPUT_STATUS_PERIOD_S = 60.0
 STARTUP_CENSUS_CONTRACT = "adaptive_hybrid_startup_census_v1"
@@ -308,44 +297,6 @@ ARMABLE_HYBRID_STATES = frozenset(
     {"FREQUENCY_ACQUIRE", "PHASE_QUALIFY", "HYBRID_TRACKING"}
 )
 
-# This object is deliberately unavailable through the physical supervisor CLI.
-# The private PTY producer may import it only after its own exact, nonphysical
-# manifest validator has succeeded.  A Boolean would make accidental bypass at
-# another call site too easy.
-_VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY = object()
-_NONPHYSICAL_REHEARSAL_STAGE = "OTIS_ADAPTIVE_HYBRID_OPERATIONAL_REHEARSAL_PTY"
-_NONPHYSICAL_REHEARSAL_MODE = (
-    "adaptive_hybrid_deterministic_process_topology_rehearsal_pty_v1"
-)
-_NONPHYSICAL_REHEARSAL_SCENARIO = (
-    "adaptive_hybrid_two_transaction_metadata_hold_abort_rotation_v1"
-)
-
-
-def _nonphysical_rehearsal_boundary_exact(
-    manifest: dict[str, Any], *, expected_stage: str
-) -> bool:
-    return (
-        manifest.get("stage") == expected_stage
-        and manifest.get("closed_loop_control") is False
-        and manifest.get("actuation_authorized") is False
-        and manifest.get("authority_effective") is False
-        and manifest.get("actionable") is False
-        and manifest.get("qualification_evidence") is False
-        and manifest.get("physical_actions_performed") == 0
-        and manifest.get("board") == "deterministic_pty_no_physical_hardware"
-        and manifest.get("capture_mode")
-        == "real_capture_device_process_over_pty"
-        and manifest.get("mode") == _NONPHYSICAL_REHEARSAL_MODE
-        and manifest.get("scenario") == _NONPHYSICAL_REHEARSAL_SCENARIO
-        and manifest.get("activation")
-        == {
-            "activation_sha256": "0" * 64,
-            "status": "rehearsal_no_physical_authority",
-        }
-    )
-
-
 def _sha256_identity(value: object, label: str) -> str:
     if not isinstance(value, str) or len(value) != 64:
         raise ValueError(f"ADAPTIVE_HYBRID manifest {label} is not a SHA-256 identity")
@@ -362,9 +313,9 @@ class AdaptiveHybridRuntimeContext:
     """One immutable, manifest-bound static configuration for a supervisor."""
 
     programme: AdaptiveHybridProgramme
-    bench_attempt: BenchAttemptEnvelope | None
+    bench_attempt: BenchAttemptEnvelope
     manifest_sha256: str
-    bundle_sha256: str
+    run_spec_sha256: str
     policy_sha256: str
     build_identity: str
     uf2_sha256: str
@@ -376,7 +327,6 @@ class AdaptiveHybridRuntimeContext:
     authoritative_inputs: ValidatedAuthoritativeInputs
     _manifest_json: str
     _transaction_identities: tuple[tuple[str, str], ...]
-    private_nonphysical_rehearsal: bool
 
     def manifest_document(self) -> dict[str, Any]:
         return json.loads(self._manifest_json)
@@ -412,7 +362,6 @@ def _profile_binding_sha256(
 def _prepare_runtime_context(
     manifest: dict[str, Any],
     *,
-    private_rehearsal_capability: object | None = None,
     authoritative_inputs: ValidatedAuthoritativeInputs | None = None,
 ) -> AdaptiveHybridRuntimeContext:
     """Validate and detach the one current static runtime configuration."""
@@ -424,28 +373,20 @@ def _prepare_runtime_context(
     if not isinstance(section, dict) or not isinstance(firmware, dict) or not isinstance(binding, dict):
         raise ValueError("adaptive-hybrid manifest envelope is malformed")
     raw_bench_attempt = manifest.get("bench_attempt")
-    if raw_bench_attempt is None:
-        if private_rehearsal_capability is not _VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY:
-            raise ValueError(
-                "adaptive-hybrid physical manifest lacks an exact bench-attempt envelope"
-            )
-        if not _nonphysical_rehearsal_boundary_exact(
-            manifest, expected_stage=programme.live_stage
-        ):
-            raise ValueError(
-                "private rehearsal capability was used outside the exact "
-                "zero-authority PTY boundary"
-            )
-        bench_attempt = None
-    else:
-        if private_rehearsal_capability is not None:
-            raise ValueError(
-                "private rehearsal capability cannot replace a physical "
-                "bench-attempt envelope"
-            )
-        if not isinstance(raw_bench_attempt, dict):
-            raise ValueError("adaptive-hybrid bench-attempt envelope is malformed")
-        bench_attempt = validate_bench_attempt_envelope(raw_bench_attempt)
+    if not isinstance(raw_bench_attempt, dict):
+        raise ValueError("adaptive-hybrid bench-attempt envelope is malformed")
+    bench_attempt = validate_bench_attempt_envelope(raw_bench_attempt)
+    execution_kind = manifest.get("execution_kind")
+    entry_authorization = manifest.get("entry_authorization")
+    authority = section.get("authority")
+    if (
+        execution_kind not in {"physical", "simulated"}
+        or not isinstance(authority, dict)
+        or authority.get("effective") is not True
+        or authority.get("physical_execution") is not (execution_kind == "physical")
+        or (execution_kind == "physical") != isinstance(entry_authorization, dict)
+    ):
+        raise ValueError("adaptive-hybrid execution authority boundary differs")
     inputs = authoritative_inputs
     if inputs is None:
         inputs = validate_authoritative_inputs(manifest.get("authoritative_inputs"))
@@ -474,12 +415,14 @@ def _prepare_runtime_context(
         or not isinstance(uf2, dict)
     ):
         raise ValueError("adaptive-hybrid manifest identity or policy differs")
-    identities = transaction_identities_from_bundle(manifest, inputs=inputs)
+    identities = transaction_identities_from_manifest(manifest, inputs=inputs)
     return AdaptiveHybridRuntimeContext(
         programme=programme,
         bench_attempt=bench_attempt,
         manifest_sha256=_sha256_identity(manifest.get("manifest_sha256"), "manifest_sha256"),
-        bundle_sha256=_sha256_identity(manifest.get("bundle", {}).get("bundle_sha256"), "bundle.bundle_sha256"),
+        run_spec_sha256=_sha256_identity(
+            manifest.get("run_spec", {}).get("sha256"), "run_spec.sha256"
+        ),
         policy_sha256=selected.policy_sha256,
         build_identity=build_identity,
         uf2_sha256=_sha256_identity(uf2.get("sha256"), "firmware.uf2.sha256"),
@@ -500,14 +443,13 @@ def _prepare_runtime_context(
             allow_nan=False,
         ),
         _transaction_identities=tuple(sorted(identities.items())),
-        private_nonphysical_rehearsal=(bench_attempt is None),
     )
 
 
 def prepare_runtime_context(
     manifest: dict[str, Any],
 ) -> AdaptiveHybridRuntimeContext:
-    """Prepare the physical supervisor's validated static configuration once."""
+    """Prepare one validated physical or PTY runtime configuration once."""
 
     return _prepare_runtime_context(manifest)
 
@@ -522,11 +464,7 @@ def runtime_spec(
             profile=programme.profile_id,
             run_identity=programme.runtime_run_identity,
             start_code=programme.setup_code,
-            correction_limit=(
-                programme.authorized_maximum_physical_applications
-                if context.bench_attempt is None
-                else context.bench_attempt.limits.automatic_application_limit
-            ),
+            correction_limit=context.bench_attempt.limits.automatic_application_limit,
             cumulative_limit=(
                 programme.authorized_maximum_cumulative_movement_codes
             ),
@@ -624,12 +562,17 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         **kwargs: object,
     ) -> None:
         requested_run_dir = kwargs.get("run_dir")
+        expected_capture_pid = kwargs.pop("expected_capture_pid", None)
+        if expected_capture_pid is not None and (
+            type(expected_capture_pid) is not int or expected_capture_pid <= 0
+        ):
+            raise ValueError("expected capture PID is malformed")
+        self.expected_capture_pid = expected_capture_pid
         if not isinstance(requested_run_dir, Path):
             raise ValueError("ADAPTIVE_HYBRID supervisor requires a run directory")
         self._retained_supervisor_state_at_start = (
             requested_run_dir / "reports/adaptive_hybrid_supervisor_state.json"
         ).is_file()
-        self._explicit_abort_submission = False
         self._startup_census_process_nonce = secrets.randbits(32) or 1
         if not isinstance(runtime_context, AdaptiveHybridRuntimeContext):
             raise ValueError("ADAPTIVE_HYBRID supervisor requires a validated runtime context")
@@ -637,8 +580,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             raise ValueError("ADAPTIVE_HYBRID static inputs must come from one runtime context")
         spec, identities = runtime_spec(runtime_context)
         self.programme = runtime_context.programme
-        limits = runtime_context.bench_attempt.limits if runtime_context.bench_attempt else None
-        if limits is not None and (
+        limits = runtime_context.bench_attempt.limits
+        if (
             spec.correction_limit != limits.automatic_application_limit
             or spec.start_code != self.programme.setup_code
         ):
@@ -646,11 +589,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 "ADAPTIVE_HYBRID supervisor spec differs from the bench-attempt envelope"
             )
         super().__init__(
-            allow_manual_start=(
-                True if limits is None else limits.setup_application_limit == 1
-            ),
-            allow_arm=(
-                True if limits is None else limits.arm_submission_limit > 0
+            control_authority_enabled=(
+                limits.setup_application_limit == 1
+                and limits.arm_submission_limit > 0
             ),
             # The installed profile deliberately inhibits D14/D8 control
             # eligibility for 600 s.  Prior physical adaptive-hybrid evidence first
@@ -660,42 +601,17 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             prewrite_contract_startup_grace_s=(
                 RAW_PPS_QUALIFICATION_DEADLINE_S
             ),
-            qualified_timeout_s=(
-                self.programme.qualified_duration_s
-                if runtime_context.bench_attempt is None
-                else int(
-                    runtime_context.bench_attempt.as_dict()["timing"][
-                        "absolute_wall_limit_s"
-                    ]
-                )
-            ),
-            observational_responses=(
-                self.programme.response_checkpoint_observational
-            ),
             spec=spec,
             identities=identities,
             expected_build_identity=runtime_context.build_identity,
             **kwargs,
         )
         self.manifest_path = manifest_path.resolve()
-        try:
-            acquisition_manifest = json.loads(
-                self.manifest_path.read_text(encoding="utf-8")
-            )
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError(
-                "ADAPTIVE_HYBRID acquisition manifest is unreadable"
-            ) from exc
-        retained_runtime_manifest = acquisition_manifest
-        if (
-            isinstance(acquisition_manifest, dict)
-            and runtime_context.private_nonphysical_rehearsal
-        ):
-            retained_runtime_manifest = {
-                **acquisition_manifest,
-                "stage": runtime_context.programme.live_stage,
-            }
-        if not runtime_context.matches_manifest(retained_runtime_manifest):
+        loaded_manifest = load_manifest(requested_run_dir)
+        if loaded_manifest.path.resolve() != self.manifest_path:
+            raise ValueError("supervisor did not receive the canonical run record")
+        acquisition_manifest = loaded_manifest.data
+        if not runtime_context.matches_manifest(acquisition_manifest):
             raise ValueError(
                 "ADAPTIVE_HYBRID acquisition manifest differs from the runtime context"
             )
@@ -710,6 +626,19 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             reference_acceptance["policy_sha256"]
         )
         self.runtime_context = runtime_context
+        owner_now_ns = time.monotonic_ns()
+        wall_elapsed_s = max(
+            0.0, time.time() - _parse_utc_epoch(runtime_context.wall_origin_utc)
+        )
+        wall_limit_s = int(
+            runtime_context.bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]
+        )
+        self._wall_deadline_monotonic_ns = owner_now_ns + int(
+            max(0.0, wall_limit_s - wall_elapsed_s) * 1_000_000_000
+        )
+        self._setup_requested_monotonic_ns: int | None = None
+        self._setup_confirmed_monotonic_ns: int | None = None
+        self._arm_sent_monotonic_ns: int | None = None
         self.phase_estimator_sha256 = runtime_context.phase_estimator_sha256
         self.natural_policy = runtime_context.policy
         self.natural_policy_document = runtime_context.policy_document()
@@ -720,23 +649,22 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "programme_id": self.programme.programme_id,
             "manifest_path": str(self.manifest_path),
             "manifest_sha256": runtime_context.manifest_sha256,
-            "bundle_sha256": runtime_context.bundle_sha256,
+            "run_spec_sha256": runtime_context.run_spec_sha256,
             "policy_sha256": runtime_context.policy_sha256,
             "build_identity": runtime_context.build_identity,
             "uf2_sha256": runtime_context.uf2_sha256,
             "runtime_run_identity": self.spec.run_identity,
             "wall_origin_utc": runtime_context.wall_origin_utc,
         }
-        if runtime_context.bench_attempt is not None:
-            exact_state.update(
-                {
-                    "bench_attempt": runtime_context.bench_attempt.as_dict(),
-                    "bench_attempt_purpose": runtime_context.bench_attempt.purpose,
-                    "bench_attempt_envelope_sha256": (
-                        runtime_context.bench_attempt.as_dict()["envelope_sha256"]
-                    ),
-                }
-            )
+        exact_state.update(
+            {
+                "bench_attempt": runtime_context.bench_attempt.as_dict(),
+                "bench_attempt_purpose": runtime_context.bench_attempt.purpose,
+                "bench_attempt_envelope_sha256": (
+                    runtime_context.bench_attempt.as_dict()["envelope_sha256"]
+                ),
+            }
+        )
         for key, value in exact_state.items():
             prior = self.state.get(key)
             if prior is not None and prior != value:
@@ -786,68 +714,67 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.state["startup_census_process_nonce"] = (
             self._startup_census_process_nonce
         )
-        if runtime_context.bench_attempt is not None:
-            initial_closed = bool(limits.authority_initially_closed)
-            initial_causal_state = {
-                "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
-                "contract": CAUSAL_STATE_CONTRACT_ID,
-                "durable_ACT_application_count": 0,
-                "firmware_correction_count": 0,
-                "authority_closed": initial_closed,
-                "closure": (
-                    {
-                        "trigger": "initial_contract_state",
-                        "bench_attempt_purpose": runtime_context.bench_attempt.purpose,
-                        "bench_attempt_envelope_sha256": (
-                            runtime_context.bench_attempt.as_dict()["envelope_sha256"]
-                        ),
-                    }
-                    if initial_closed
-                    else None
-                ),
-            }
-            retained_causal_state = self.state.get("bench_attempt_causal_state")
-            if retained_causal_state is None:
-                self.state["bench_attempt_causal_state"] = initial_causal_state
-            else:
-                self._validate_bench_attempt_causal_state(retained_causal_state)
-            self.state.setdefault(
-                "bench_attempt_arm_admission_closed", initial_closed
+        initial_closed = bool(limits.authority_initially_closed)
+        initial_causal_state = {
+            "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
+            "contract": CAUSAL_STATE_CONTRACT_ID,
+            "durable_ACT_application_count": 0,
+            "firmware_correction_count": 0,
+            "authority_closed": initial_closed,
+            "closure": (
+                {
+                    "trigger": "initial_contract_state",
+                    "bench_attempt_purpose": runtime_context.bench_attempt.purpose,
+                    "bench_attempt_envelope_sha256": (
+                        runtime_context.bench_attempt.as_dict()["envelope_sha256"]
+                    ),
+                }
+                if initial_closed
+                else None
+            ),
+        }
+        retained_causal_state = self.state.get("bench_attempt_causal_state")
+        if retained_causal_state is None:
+            self.state["bench_attempt_causal_state"] = initial_causal_state
+        else:
+            self._validate_bench_attempt_causal_state(retained_causal_state)
+        self.state.setdefault(
+            "bench_attempt_arm_admission_closed", initial_closed
+        )
+        self.state.setdefault("bench_attempt_arm_admission_closed_utc", None)
+        self.state.setdefault("bench_attempt_arm_admission_endpoint", None)
+        self.state.setdefault("bench_attempt_arm_submission_count", 0)
+        self.state.setdefault("bench_attempt_last_arm_opportunity", None)
+        self.state.setdefault("bench_attempt_arm_admissions", [])
+        arm_count = self.state.get("bench_attempt_arm_submission_count")
+        admission_closed = self.state.get(
+            "bench_attempt_arm_admission_closed"
+        )
+        if (
+            type(arm_count) is not int
+            or not 0 <= arm_count <= limits.arm_submission_limit
+            or type(admission_closed) is not bool
+            or (
+                self._bench_authority_closed()
+                and not admission_closed
             )
-            self.state.setdefault("bench_attempt_arm_admission_closed_utc", None)
-            self.state.setdefault("bench_attempt_arm_admission_endpoint", None)
-            self.state.setdefault("bench_attempt_arm_submission_count", 0)
-            self.state.setdefault("bench_attempt_last_arm_opportunity", None)
-            self.state.setdefault("bench_attempt_arm_admissions", [])
-            arm_count = self.state.get("bench_attempt_arm_submission_count")
-            admission_closed = self.state.get(
-                "bench_attempt_arm_admission_closed"
+        ):
+            raise ValueError(
+                "retained ARM authority differs from the bench-attempt envelope"
             )
-            if (
-                type(arm_count) is not int
-                or not 0 <= arm_count <= limits.arm_submission_limit
-                or type(admission_closed) is not bool
-                or (
-                    self._bench_authority_closed()
-                    and not admission_closed
-                )
-            ):
-                raise ValueError(
-                    "retained ARM authority differs from the bench-attempt envelope"
-                )
-            self._validate_bench_attempt_arm_admissions()
-            if (
-                runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE
-                and (
-                    self.state.get("manual_start_sent") is not False
-                    or self.state.get("arm_pending") is not False
-                    or self.state.get("authorization_sequence") != 0
-                    or self.state.get("bench_attempt_arm_submission_count") != 0
-                )
-            ):
-                raise ValueError(
-                    "inhibited zero-write retained state contains control authority"
-                )
+        self._validate_bench_attempt_arm_admissions()
+        if (
+            runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE
+            and (
+                self.state.get("manual_start_sent") is not False
+                or self.state.get("arm_pending") is not False
+                or self.state.get("authorization_sequence") != 0
+                or self.state.get("bench_attempt_arm_submission_count") != 0
+            )
+        ):
+            raise ValueError(
+                "inhibited zero-write retained state contains control authority"
+            )
         # The attachment nonce is immutable package identity. Runtime queries
         # rotate a separate nonce so a fresh file cannot masquerade as the
         # causally requested post-frontier snapshot.
@@ -857,12 +784,38 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         self._save()
 
+    def _save(self) -> None:
+        """Publish whether this owner can presently admit another control command."""
+        census = self.state.get("startup_census")
+        causal = self.state.get("bench_attempt_causal_state")
+        setup_pending = bool(
+            self.state.get("manual_start_sent")
+            and self.state.get("setup_confirmed_utc") is None
+        )
+        self.state["control_authority"] = bool(
+            getattr(self, "control_authority_enabled", False)
+            and isinstance(census, dict)
+            and self._startup_census_admitted()
+            and self.state.get("host_verification_hold") is None
+            and self.state.get("gnss_metadata_hold") is None
+            and self.state.get("terminal") is None
+            and self.state.get("controller_authority_inhibited_reason") is None
+            and self.state.get("arm_pending") is False
+            and self.state.get("inflight_evidence_acknowledgement") is None
+            and not getattr(self, "_normal_command_ack_pending", False)
+            and not setup_pending
+            and self.state.get("bench_attempt_arm_admission_closed") is False
+            and (
+                not isinstance(causal, dict)
+                or causal.get("authority_closed") is False
+            )
+        )
+        super()._save()
+
     def _validate_bench_attempt_arm_admissions(self) -> None:
         """Validate every durable host authorization decision on restart."""
 
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt is None:
-            return
         admissions = self.state.get("bench_attempt_arm_admissions")
         count = self.state.get("bench_attempt_arm_submission_count")
         expected_fields = {
@@ -929,10 +882,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
 
     def _validate_bench_attempt_causal_state(self, value: object) -> None:
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt is None:
-            raise ValueError(
-                "private nonphysical rehearsal cannot retain a physical causal state"
-            )
         if not isinstance(value, dict) or set(value) != {
             "schema_version",
             "contract",
@@ -1047,8 +996,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
 
     def _bench_authority_closed(self) -> bool:
-        if self.runtime_context.bench_attempt is None:
-            return False
         causal_state = self.state.get("bench_attempt_causal_state")
         self._validate_bench_attempt_causal_state(causal_state)
         return bool(causal_state["authority_closed"])
@@ -1061,8 +1008,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         """Persist each physical application frontier before phase-3 ACK."""
 
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt is None:
-            return {}
         if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
             raise ValueError(
                 "inhibited zero-write attempt observed an ACT application"
@@ -1171,6 +1116,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             self.state["bench_attempt_arm_admission_closed"] = True
             self.state["arm_pending"] = False
             self.state["arm_sent_at_utc"] = None
+            self._arm_sent_monotonic_ns = None
         self._save()
         # Event append is itself fsynced.  The phase-3 command is submitted by
         # the base transaction layer only after this method returns.
@@ -1201,8 +1147,29 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self, health: dict[tuple[str, str], str]
     ) -> bool:
         """Discover instrument identity independently of reference acquisition."""
-        if not super()._identity_ready(health):
+        expected = {
+            "run_identity": self.spec.run_identity,
+            "build_identity": self.expected_build_identity,
+            "image_identity": self.spec.profile,
+            **self.identities,
+        }
+        for key, value in expected.items():
+            observed = health.get(("adaptive_hybrid", key))
+            if observed is None:
+                return False
+            if observed != value:
+                raise ValueError(f"live {key} mismatch: {observed!r} != {value!r}")
+        try:
+            session = int(health.get(("adaptive_hybrid", "session_id"), "0"))
+        except (TypeError, ValueError):
             return False
+        if session == 0:
+            return False
+        if self.state["initial_session_id"] is None:
+            self.state["initial_session_id"] = session
+            self._save()
+        elif session != self.state["initial_session_id"]:
+            raise ValueError("active snapshot session changed during the campaign")
         policy = health.get(("adaptive_hybrid", "reference_acceptance_policy_sha256"))
         if policy is None:
             return False
@@ -1228,8 +1195,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
 
         if _startup_query_command(command):
             return
-        if command == "ACTIVE ABORT" and self._explicit_abort_submission:
-            return
         if not self._startup_census_admitted():
             raise ValueError(
                 "startup census has not admitted controller command authority"
@@ -1247,13 +1212,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 raise ValueError(
                     "evidence command lacks its exact retained pending acknowledgement"
                 )
-        if command.startswith("ACTIVE SETUP ") or command.startswith("ACTIVE ARM "):
-            if self._consume_orchestration_review_hold():
-                raise ValueError(
-                    "orchestration review hold inhibits new SETUP/ARM authority"
-                )
-            if self.state.get("host_verification_hold") is not None:
-                raise ValueError("host verification hold inhibits new SETUP/ARM authority")
+        if (
+            command.startswith(("ACTIVE SETUP ", "ACTIVE ARM "))
+            and self.state.get("host_verification_hold") is not None
+        ):
+            raise ValueError("host verification hold inhibits new SETUP/ARM authority")
 
     def _ack_observation_deadline(self, acknowledgement: dict[str, object]) -> int:
         owner = acknowledgement.get("causal_observation_owner_nonce")
@@ -1415,14 +1378,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
             generation = 0 if generation_text is None else int(generation_text)
             health = self._fresh_active_snapshot_after(generation)
-            orchestration_hold = self._consume_orchestration_review_hold()
             classification, admitted, diagnostics = self._classify_startup_snapshot(
                 health
             )
-            if orchestration_hold:
-                classification = "retained_review_hold"
-                admitted = False
-                diagnostics.append("retained orchestration review hold is present")
         except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
             classification = "incoherent"
             admitted = False
@@ -1550,16 +1508,14 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                         ),
                         "pre_submit_evidence_phase": expected_phase,
                     }
-                    if phase == 3 and self.runtime_context.bench_attempt is not None:
+                    if phase == 3:
                         preparation.update(
                             self._record_bench_application_before_acknowledgement(
                                 row, health
                             )
                         )
                     return preparation
-                if observed_phase == "evidence_clear" and observed_request == 0:
-                    pass
-                elif (
+                if observed_phase == "evidence_clear" and observed_request == 0 or (
                     observed_phase in stale_phases
                     and observed_request == request_sequence
                 ):
@@ -1679,12 +1635,11 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             self.state["active_snapshot_request_nonce"]
         ):
             mismatches.append("solicited post-attachment snapshot is absent")
-        if self.programme.forwarded_output_integration:
-            output_missing, output_mismatches = (
-                forwarded_output_integration_prewrite_evidence(health)
-            )
-            missing.extend(output_missing)
-            mismatches.extend(output_mismatches)
+        output_missing, output_mismatches = (
+            forwarded_output_integration_prewrite_evidence(health)
+        )
+        missing.extend(output_missing)
+        mismatches.extend(output_mismatches)
         return PrewriteReadiness(
             contract_id=(
                 f"{self.programme.key}_active_hybrid_prewrite_runtime_contract_v1"
@@ -1842,66 +1797,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                         f"{row.get(field)!r} != {value!r}"
                     )
 
-    def _consume_orchestration_review_hold(self) -> bool:
-        """Adopt runner discrepancies before any new host authority.
-
-        Presence is fail-closed: malformed or foreign markers cannot erase a
-        review request. Established ownership retains its existing lease and
-        independently verified pending-transaction policy; startup census must
-        establish ownership before granting either.
-        """
-        for relative in (HOST_REVIEW_HOLD, ORCHESTRATION_FAILURE):
-            path = self.run_dir / relative
-            marker_sha256 = None
-            try:
-                marker_bytes = path.read_bytes()
-                marker_sha256 = sha256(marker_bytes).hexdigest()
-                value = json.loads(marker_bytes.decode("utf-8"))
-            except FileNotFoundError:
-                continue
-            except (OSError, UnicodeError, ValueError) as exc:
-                detail = f"orchestration review marker is unreadable: {relative}: {exc}"
-            else:
-                expected_report = (
-                    "adaptive_hybrid_hybrid_host_review_hold_v1"
-                    if relative == HOST_REVIEW_HOLD
-                    else "adaptive_hybrid_hybrid_orchestration_failure_v1"
-                )
-                valid = (
-                    isinstance(value, dict)
-                    and type(value.get("schema_version")) is int
-                    and value["schema_version"] == 1
-                    and value.get("report_type") == expected_report
-                    and value.get("bundle_sha256") == self.runtime_context.bundle_sha256
-                    and isinstance(value.get("error"), str)
-                    and bool(value["error"])
-                    and (
-                        relative != HOST_REVIEW_HOLD
-                        or value.get("run_directory") == str(self.run_dir.resolve())
-                    )
-                )
-                detail = (
-                    f"runner retained orchestration review: {relative}: {value['error']}"
-                    if valid else
-                    f"orchestration review marker has malformed or contradictory identity: {relative}"
-                )
-            existing = self.state.get("host_verification_hold")
-            if (
-                not isinstance(existing, dict)
-                or existing.get("orchestration_marker") != str(relative)
-                or existing.get("orchestration_marker_sha256") != marker_sha256
-            ):
-                self._enter_host_verification_hold(
-                    ValueError(detail), source="runner_orchestration_review"
-                )
-                self.state["host_verification_hold"]["orchestration_marker"] = str(relative)
-                self.state["host_verification_hold"]["orchestration_marker_sha256"] = marker_sha256
-                self.state["host_verification_hold"]["orchestration_run_directory"] = str(self.run_dir.resolve())
-                self.state["host_verification_hold"]["orchestration_bundle_sha256"] = self.runtime_context.bundle_sha256
-                self._save()
-            return True
-        return False
-
     def _enter_host_verification_hold(
         self, error: Exception, *, source: str = "host_verifier"
     ) -> None:
@@ -1965,6 +1860,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self.state["host_verification_hold"] = hold
         self.state["arm_pending"] = False
         self.state["arm_sent_at_utc"] = None
+        self._arm_sent_monotonic_ns = None
         self._save()
         try:
             self._programme_event("host_verification_hold_entered", **hold)
@@ -2009,8 +1905,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
 
     def _validate_bench_transaction_prefix(self) -> None:
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt is None:
-            return
         rows = _read_csv(self.run_dir / ACTIVE_CSV)
         manual_count = sum(row.get("event") == "manual_start" for row in rows)
         application_count = sum(row.get("event") == "application" for row in rows)
@@ -2086,7 +1980,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         ) in {"inside_deadband", "limit_reached", "correction_limit_reached"}:
             self.state["terminal"] = None
             self._save()
-        if self.programme.sustained_regulation and self.state["terminal"] is None:
+        if self.state["terminal"] is None:
             responses = [
                 row
                 for row in _read_csv(self.run_dir / ACTIVE_CSV)
@@ -2337,6 +2231,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             raise ValueError("ADAPTIVE_HYBRID retained setup confirmation changed")
         if self.state.get("setup_confirmed_utc") is None:
             self.state["setup_confirmed_utc"] = _utc_now()
+            self._setup_confirmed_monotonic_ns = time.monotonic_ns()
             self.state["setup_confirmation"] = confirmation
             self.state["terminal_static_code"] = setup_code
             self._save()
@@ -2353,13 +2248,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _check_setup_transaction_timeout(
         self,
         health: dict[tuple[str, str], str],
-        now_epoch: float,
     ) -> None:
         """Turn physical setup-observation discrepancies into review holds."""
 
-        if self.runtime_context.bench_attempt is None:
-            super()._check_setup_transaction_timeout(health, now_epoch)
-            return
         if not self.state["manual_start_sent"]:
             return
         if self.runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE:
@@ -2370,15 +2261,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return
         if health.get(("adaptive_hybrid", "manual_start_confirmed")) == "true":
             return
-        requested = self.state.get("setup_requested_utc")
-        if not isinstance(requested, str) or not requested:
+        requested_ns = self._setup_requested_monotonic_ns
+        if type(requested_ns) is not int:
             self._enter_host_verification_hold(
-                ValueError("setup transaction lacks its host timestamp"),
+                ValueError("setup transaction lacks its owner-monotonic origin"),
                 source="setup_transaction_observer",
             )
             return
-        if now_epoch - _parse_utc_epoch(requested) >= (
-            SETUP_AUTHORITY_LIFETIME_S + SETUP_RESULT_GRACE_S
+        if time.monotonic_ns() - requested_ns >= int(
+            (SETUP_AUTHORITY_LIFETIME_S + SETUP_RESULT_GRACE_S) * 1_000_000_000
         ):
             self._enter_host_verification_hold(
                 TimeoutError("setup transaction expired without an observed result"),
@@ -2389,51 +2280,39 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self, health: dict[tuple[str, str], str]
     ) -> None:
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt is not None:
-            self._validate_bench_attempt_causal_state(
-                self.state.get("bench_attempt_causal_state")
+        self._validate_bench_attempt_causal_state(
+            self.state.get("bench_attempt_causal_state")
+        )
+        dac_write_count = len(_read_csv(self.run_dir / DAC_CSV))
+        if (
+            dac_write_count
+            > bench_attempt.limits.total_dac_value_write_limit
+            or (
+                bench_attempt.purpose == INHIBITED_ZERO_WRITE
+                and self.state.get("manual_start_sent") is not False
             )
-            dac_write_count = len(_read_csv(self.run_dir / DAC_CSV))
-            if (
-                dac_write_count
-                > bench_attempt.limits.total_dac_value_write_limit
-                or (
-                    bench_attempt.purpose == INHIBITED_ZERO_WRITE
-                    and self.state.get("manual_start_sent") is not False
-                )
-            ):
-                raise ValueError(
-                    "physical DAC evidence exceeds the bench-attempt envelope"
-                )
+        ):
+            raise ValueError(
+                "physical DAC evidence exceeds the bench-attempt envelope"
+            )
         # Preview streams remain zero-authority; the combined controller has a
         # separate explicit transaction boundary.
         hybrid_state = health.get(("adaptive_hybrid", "hybrid_state"))
         hybrid_reason = health.get(("adaptive_hybrid", "hybrid_reason"), "unknown")
         prospective_controller_inhibit = (
-            self.programme.response_checkpoint_observational
-            and hybrid_state == "FAIL_STATIC"
+            hybrid_state == "FAIL_STATIC"
             and hybrid_reason
             in {"prospective_repeated_alternation", "prospective_low_efficiency_path"}
         )
-        if (
-            prospective_controller_inhibit
-            and not self.programme.controller_inhibit_acquisition_continues
-        ):
-            self.state["arm_pending"] = False
-            self.state["arm_sent_at_utc"] = None
-            self._abort(hybrid_reason)
-            return
         metadata_hold_active = (
             health.get(("adaptive_hybrid", "state")) == "GNSS_METADATA_HOLD"
             and _truth(health, "gnss_metadata_hold_active")
         )
         platform_health = health
-        if (
-            prospective_controller_inhibit
-            and self.programme.controller_inhibit_acquisition_continues
-        ):
+        if prospective_controller_inhibit:
             self.state["arm_pending"] = False
             self.state["arm_sent_at_utc"] = None
+            self._arm_sent_monotonic_ns = None
             if self.state.get("controller_authority_inhibited_reason") is None:
                 self.state["controller_authority_inhibited_reason"] = hybrid_reason
                 self.state["controller_authority_inhibited_utc"] = _utc_now()
@@ -2452,26 +2331,16 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             platform_health = dict(health)
             platform_health[("adaptive_hybrid", "fail_static")] = "false"
         ControlSupervisorBase._check_fail_static_health(self, platform_health)
-        gnss_missing, gnss_mismatches = (
-            gnss_operational_runtime_invariant_errors(
-                health,
-                require_present=(
-                    self.programme.forwarded_output_integration
-                    and self.state["prewrite_contract_ready_utc"] is not None
-                ),
-            )
-            if self.programme.forwarded_output_integration
-            else ((), ())
+        gnss_missing, gnss_mismatches = gnss_operational_runtime_invariant_errors(
+            health,
+            require_present=self.state["prewrite_contract_ready_utc"] is not None,
         )
         if gnss_missing or gnss_mismatches:
             raise ValueError(
                 "integrated GNSS bootstrap/runtime invariant changed: "
                 + "; ".join((*gnss_missing, *gnss_mismatches))
             )
-        if (
-            self.programme.forwarded_output_integration
-            and self.state["prewrite_contract_ready_utc"] is not None
-        ):
+        if self.state["prewrite_contract_ready_utc"] is not None:
             output_missing, output_mismatches = (
                 forwarded_output_integration_prewrite_evidence(health)
             )
@@ -2523,10 +2392,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return
         if hybrid_state not in self.programme.hybrid_states:
             raise ValueError(f"unexpected ADAPTIVE_HYBRID hybrid state: {hybrid_state!r}")
-        if hybrid_state == "FAIL_STATIC" and not (
-            prospective_controller_inhibit
-            and self.programme.controller_inhibit_acquisition_continues
-        ):
+        if hybrid_state == "FAIL_STATIC" and not prospective_controller_inhibit:
             raise ValueError(f"ADAPTIVE_HYBRID firmware entered FAIL_STATIC: {hybrid_reason}")
 
         corrections = int(
@@ -2573,11 +2439,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         # The mutually exclusive partition is phase_material versus
         # frequency_only; each individual count must remain bounded by the
         # global correction count.
-        maximum_applications = (
-            self.programme.authorized_maximum_physical_applications
-            if bench_attempt is None
-            else bench_attempt.limits.automatic_application_limit
-        )
+        maximum_applications = bench_attempt.limits.automatic_application_limit
         if (
             corrections > maximum_applications
             or corrections > self.spec.correction_limit
@@ -2617,22 +2479,20 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             dirty = True
         if checkpoint and not self.state["first_phase_checkpoint_passed"]:
             self.state["first_phase_checkpoint_passed"] = True
-            if self.programme.response_checkpoint_observational:
-                self.state["first_phase_observation_checkpoint_exact"] = True
+            self.state["first_phase_observation_checkpoint_exact"] = True
             dirty = True
-        if hybrid_state == "HYBRID_TRACKING" and checkpoint:
-            if not self.state["later_authority_released"]:
-                self.state["later_authority_released"] = True
-                dirty = True
-                self._programme_event(
-                    (
-                        "first_phase_observation_checkpoint_release_observed"
-                        if self.programme.response_checkpoint_observational
-                        else "first_phase_checkpoint_release_observed"
-                    ),
-                    hybrid_state=hybrid_state,
-                    phase_material_application_count=material,
-                )
+        if (
+            hybrid_state == "HYBRID_TRACKING"
+            and checkpoint
+            and not self.state["later_authority_released"]
+        ):
+            self.state["later_authority_released"] = True
+            dirty = True
+            self._programme_event(
+                "first_phase_observation_checkpoint_release_observed",
+                hybrid_state=hybrid_state,
+                phase_material_application_count=material,
+            )
         if dirty:
             self._save()
 
@@ -2777,10 +2637,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         if self.state["qualification_started_utc"] is not None:
             return
         bench_attempt = self.runtime_context.bench_attempt
-        if (
-            bench_attempt is not None
-            and bench_attempt.purpose == INHIBITED_ZERO_WRITE
-        ):
+        if bench_attempt.purpose == INHIBITED_ZERO_WRITE:
             self._maybe_establish_zero_write_aperture_origin(health)
             return
         if (self.state["setup_confirmed_utc"] is None
@@ -2805,7 +2662,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             raise ValueError("ADAPTIVE_HYBRID qualified origin is not in rp2040_monotonic_us32")
         try:
             origin_ticks = int(estimate["estimator_timestamp_ticks"])
-            current_uptime_s = int(health[("adaptive_hybrid", "uptime_s")])
             session_id = int(health[("adaptive_hybrid", "session_id")])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("ADAPTIVE_HYBRID qualified origin device clock is malformed") from exc
@@ -2813,122 +2669,101 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         qualified_origin_extended_ticks: int | None = None
         qualified_frontier_raw_ticks: int | None = None
         qualified_frontier_extended_ticks: int | None = None
-        if self.programme.integrated_long_run:
+        try:
+            session_id = int(health[("pps_gate", "snapshot_session")])
+            frontier_ticks = int(
+                health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
+            )
+            frontier_domain = health[
+                (LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)
+            ]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "exact retained producer frontier is absent"
+            ) from exc
+        if frontier_domain != "rp2040_monotonic_us32":
+            raise ValueError(
+                "retained producer frontier domain differs"
+            )
+        forward = forward_progress(
+            origin_ticks,
+            frontier_ticks,
+            domain="rp2040_monotonic_us32",
+            allow_equal=True,
+        )
+        reverse = forward_progress(
+            frontier_ticks,
+            origin_ticks,
+            domain="rp2040_monotonic_us32",
+            allow_equal=True,
+        )
+        maximum_lead_ticks = (
+            QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
+            * RP2040_MONOTONIC_US_PER_SECOND
+        )
+        if forward.valid and forward.distance_ticks is not None and (
+            forward.distance_ticks <= maximum_lead_ticks
+        ):
+            qualified_origin_extended_ticks = origin_ticks
+            qualified_frontier_raw_ticks = frontier_ticks
+            qualified_frontier_extended_ticks = (
+                origin_ticks + forward.distance_ticks
+            )
+        elif reverse.valid and reverse.distance_ticks is not None and (
+            reverse.distance_ticks <= maximum_lead_ticks
+        ):
+            return
+        else:
+            raise ValueError("ADAPTIVE_HYBRID qualified origin device clock is incoherent")
+        authoritative_capture_baseline = {}
+        for key in _authoritative_capture_counters(self.programme):
             try:
-                session_id = int(health[("pps_gate", "snapshot_session")])
-                frontier_ticks = int(
-                    health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
+                value = int(health[("pps_gate", key)])
+            except (KeyError, TypeError, ValueError):
+                return
+            if value < 0:
+                return
+            authoritative_capture_baseline[key] = value
+        if self.programme.qualified_d14_aperture_count is not None:
+            try:
+                acceptance_epoch_origin = int(estimate["source_acceptance_epoch"])
+                accepted_origin = int(
+                    estimate["source_closing_accepted_boundary_ordinal"]
                 )
-                frontier_domain = health[
-                    (LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)
-                ]
+                current_epoch = int(
+                    health[("pps_gate", "reference_acceptance_epoch")]
+                )
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError(
-                    "exact retained producer frontier is absent"
+                    "ADAPTIVE_HYBRID qualified D14 aperture origin is unavailable"
                 ) from exc
-            if frontier_domain != "rp2040_monotonic_us32":
-                raise ValueError(
-                    "retained producer frontier domain differs"
-                )
-            forward = forward_progress(
-                origin_ticks,
-                frontier_ticks,
-                domain="rp2040_monotonic_us32",
-                allow_equal=True,
-            )
-            reverse = forward_progress(
-                frontier_ticks,
-                origin_ticks,
-                domain="rp2040_monotonic_us32",
-                allow_equal=True,
-            )
-            maximum_lead_ticks = (
-                QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
-                * RP2040_MONOTONIC_US_PER_SECOND
-            )
-            if forward.valid and forward.distance_ticks is not None and (
-                forward.distance_ticks <= maximum_lead_ticks
-            ):
-                qualified_origin_extended_ticks = origin_ticks
-                qualified_frontier_raw_ticks = frontier_ticks
-                qualified_frontier_extended_ticks = (
-                    origin_ticks + forward.distance_ticks
-                )
-            elif reverse.valid and reverse.distance_ticks is not None and (
-                reverse.distance_ticks <= maximum_lead_ticks
-            ):
-                return
-            else:
-                raise ValueError("ADAPTIVE_HYBRID qualified origin device clock is incoherent")
-            authoritative_capture_baseline = {}
-            for key in _authoritative_capture_counters(self.programme):
-                try:
-                    value = int(health[("pps_gate", key)])
-                except (KeyError, TypeError, ValueError):
-                    return
-                if value < 0:
-                    return
-                authoritative_capture_baseline[key] = value
-            if self.programme.qualified_d14_aperture_count is not None:
-                try:
-                    acceptance_epoch_origin = int(estimate["source_acceptance_epoch"])
-                    accepted_origin = int(
-                        estimate["source_closing_accepted_boundary_ordinal"]
-                    )
-                    current_epoch = int(
-                        health[("pps_gate", "reference_acceptance_epoch")]
-                    )
-                except (KeyError, TypeError, ValueError) as exc:
-                    raise ValueError(
-                        "ADAPTIVE_HYBRID qualified D14 aperture origin is unavailable"
-                    ) from exc
-                if (
-                    acceptance_epoch_origin <= 0
-                    or not (0 <= accepted_origin < 1 << 32)
-                ):
-                    raise ValueError("ADAPTIVE_HYBRID qualified D14 aperture origin is malformed")
-                if (current_epoch != acceptance_epoch_origin
-                    or health.get(("adaptive_hybrid", "acceptance_epoch"))
-                    != str(acceptance_epoch_origin)):
-                    # Independent observations may straddle reacquisition.
-                    # Do not freeze a qualified origin until they name its epoch.
-                    return
-        else:
-            current_uptime_lower_bound_ticks = (
-                current_uptime_s * RP2040_MONOTONIC_US_PER_SECOND
-            )
-            maximum_coherent_origin_ticks = (
-                current_uptime_s + QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S
-            ) * RP2040_MONOTONIC_US_PER_SECOND
             if (
-                origin_ticks <= 0
-                or session_id <= 0
-                or origin_ticks > maximum_coherent_origin_ticks
+                acceptance_epoch_origin <= 0
+                or not (0 <= accepted_origin < 1 << 32)
             ):
-                raise ValueError("ADAPTIVE_HYBRID qualified origin device clock is incoherent")
-            # The integer uptime value is a conservative lower bound.  Do not
-            # reject a legitimate exact estimator timestamp in its fractional
-            # second (or just after the last complete status snapshot); wait until
-            # a later snapshot's lower bound has actually reached it.
-            if origin_ticks > current_uptime_lower_bound_ticks:
+                raise ValueError("ADAPTIVE_HYBRID qualified D14 aperture origin is malformed")
+            if (current_epoch != acceptance_epoch_origin
+                or health.get(("adaptive_hybrid", "acceptance_epoch"))
+                != str(acceptance_epoch_origin)):
+                # Independent observations may straddle reacquisition.
+                # Do not freeze a qualified origin until they name its epoch.
                 return
         self.state["qualification_started_utc"] = _utc_now()
         self.state["qualified_origin_estimate_id"] = estimate["estimate_id"]
         self.state["qualified_origin_timestamp_ticks"] = origin_ticks
         self.state["qualified_origin_session_id"] = session_id
-        if self.programme.integrated_long_run:
-            self.state["qualified_origin_extended_timestamp_ticks"] = (
-                qualified_origin_extended_ticks
-            )
-            self.state["qualified_frontier_raw_ticks"] = (
-                qualified_frontier_raw_ticks
-            )
-            self.state["qualified_frontier_extended_ticks"] = (
-                qualified_frontier_extended_ticks
-            )
-            if self.programme.qualified_d14_aperture_count is not None:
-                self.state["qualified_acceptance_epoch_origin"] = acceptance_epoch_origin
-                self.state["qualified_acceptance_ordinal_origin"] = accepted_origin
+        self.state["qualified_origin_extended_timestamp_ticks"] = (
+            qualified_origin_extended_ticks
+        )
+        self.state["qualified_frontier_raw_ticks"] = (
+            qualified_frontier_raw_ticks
+        )
+        self.state["qualified_frontier_extended_ticks"] = (
+            qualified_frontier_extended_ticks
+        )
+        if self.programme.qualified_d14_aperture_count is not None:
+            self.state["qualified_acceptance_epoch_origin"] = acceptance_epoch_origin
+            self.state["qualified_acceptance_ordinal_origin"] = accepted_origin
         self.state["qualified_authoritative_capture_baseline"] = (
             authoritative_capture_baseline
         )
@@ -3018,8 +2853,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     ) -> bool:
         """Stop an integrated long run before post-discontinuity work."""
 
-        if not self.programme.integrated_long_run:
-            return False
         origin_session = self.state.get("qualified_origin_session_id")
         if origin_session is None:
             return False
@@ -3078,6 +2911,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
 
         self.state["arm_pending"] = False
         self.state["arm_sent_at_utc"] = None
+        self._arm_sent_monotonic_ns = None
         reason = (
             f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
             + ",".join(faults)
@@ -3118,64 +2952,51 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         try:
             current_session = int(
                 health[
-                    (
-                        "pps_gate"
-                        if self.programme.integrated_long_run
-                        else "adaptive_hybrid",
-                        "snapshot_session"
-                        if self.programme.integrated_long_run
-                        else "session_id",
-                    )
+                    ("pps_gate", "snapshot_session")
                 ]
             )
-            current_uptime_s = int(health[("adaptive_hybrid", "uptime_s")])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("ADAPTIVE_HYBRID current qualified device clock is malformed") from exc
         if current_session != origin_session:
             raise ValueError("ADAPTIVE_HYBRID capture session changed after qualified origin")
-        if self.programme.integrated_long_run:
-            try:
-                current_raw_ticks = int(
-                    health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
-                )
-                frontier_domain = health[
-                    (LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)
-                ]
-                origin_extended = int(
-                    self.state["qualified_origin_extended_timestamp_ticks"]
-                )
-                prior_raw_ticks = int(self.state["qualified_frontier_raw_ticks"])
-                prior_extended_ticks = int(
-                    self.state["qualified_frontier_extended_ticks"]
-                )
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(
-                    "exact retained qualified clock is incomplete"
-                ) from exc
-            if frontier_domain != "rp2040_monotonic_us32":
-                raise ValueError(
-                    "retained producer frontier domain differs"
-                )
-            progress = forward_progress(
-                prior_raw_ticks,
-                current_raw_ticks,
-                domain="rp2040_monotonic_us32",
-                allow_equal=True,
+        try:
+            current_raw_ticks = int(
+                health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
             )
-            if not progress.valid or progress.distance_ticks is None:
-                raise ValueError(
-                    "retained producer frontier moved backward"
-                )
-            current_extended = prior_extended_ticks + progress.distance_ticks
-            if current_extended != prior_extended_ticks:
-                self.state["qualified_frontier_raw_ticks"] = current_raw_ticks
-                self.state["qualified_frontier_extended_ticks"] = current_extended
-                self._save()
-            elapsed = current_extended - origin_extended
-            if elapsed < 0:
-                raise ValueError("ADAPTIVE_HYBRID device clock moved behind qualified origin")
-            return elapsed
-        elapsed = current_uptime_s * RP2040_MONOTONIC_US_PER_SECOND - origin
+            frontier_domain = health[
+                (LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)
+            ]
+            origin_extended = int(
+                self.state["qualified_origin_extended_timestamp_ticks"]
+            )
+            prior_raw_ticks = int(self.state["qualified_frontier_raw_ticks"])
+            prior_extended_ticks = int(
+                self.state["qualified_frontier_extended_ticks"]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "exact retained qualified clock is incomplete"
+            ) from exc
+        if frontier_domain != "rp2040_monotonic_us32":
+            raise ValueError(
+                "retained producer frontier domain differs"
+            )
+        progress = forward_progress(
+            prior_raw_ticks,
+            current_raw_ticks,
+            domain="rp2040_monotonic_us32",
+            allow_equal=True,
+        )
+        if not progress.valid or progress.distance_ticks is None:
+            raise ValueError(
+                "retained producer frontier moved backward"
+            )
+        current_extended = prior_extended_ticks + progress.distance_ticks
+        if current_extended != prior_extended_ticks:
+            self.state["qualified_frontier_raw_ticks"] = current_raw_ticks
+            self.state["qualified_frontier_extended_ticks"] = current_extended
+            self._save()
+        elapsed = current_extended - origin_extended
         if elapsed < 0:
             raise ValueError("ADAPTIVE_HYBRID device clock moved behind qualified origin")
         return elapsed
@@ -3226,8 +3047,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         """Close new ARM admission in the exact accepted-aperture domain."""
 
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt is None:
-            return False
         if self._bench_authority_closed():
             if not self.state.get("bench_attempt_arm_admission_closed"):
                 self.state["bench_attempt_arm_admission_closed"] = True
@@ -3243,10 +3062,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         if aperture_progress is None or aperture_progress < deadline:
             return False
-        if not self._close_response_horizon_if_required(health):
-            raise ValueError(
-                "long-run bench admission deadline differs from programme response horizon"
-            )
         self.state["bench_attempt_arm_admission_closed"] = True
         self.state["bench_attempt_arm_admission_closed_utc"] = _utc_now()
         self.state["bench_attempt_arm_admission_endpoint"] = aperture_progress
@@ -3262,53 +3077,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         return True
 
-    def _close_response_horizon_if_required(
-        self, health: dict[tuple[str, str], str]
-    ) -> bool:
-        if self.programme.qualified_d14_aperture_count is not None:
-            aperture_progress = self._qualified_d14_apertures(health)
-            reserve = self.programme.correction_response_reserve_d14_apertures
-            if aperture_progress is None or reserve is None:
-                return False
-            if aperture_progress < self.programme.qualified_d14_aperture_count - reserve:
-                return False
-            if self.state["response_horizon_closed_utc"] is None:
-                self.state["response_horizon_closed_utc"] = _utc_now()
-                self._save()
-                self._programme_event(
-                    "correction_admission_closed_for_response_horizon",
-                    accepted_d14_d8_apertures=aperture_progress,
-                    required_response_reserve_d14_apertures=reserve,
-                    endpoint_contract="qualified_D14_D8_aperture_count_v2",
-                )
-            return True
-        elapsed_ticks = self._qualified_elapsed_ticks(health)
-        if elapsed_ticks is None:
-            return False
-        admission_ticks = (
-            self.programme.qualified_duration_s
-            - self.programme.correction_response_reserve_s
-        ) * RP2040_MONOTONIC_US_PER_SECOND
-        if elapsed_ticks < admission_ticks:
-            return False
-        if self.state["response_horizon_closed_utc"] is None:
-            self.state["response_horizon_closed_utc"] = _utc_now()
-            self._save()
-            self._programme_event(
-                "correction_admission_closed_for_response_horizon",
-                elapsed_qualified_device_ticks=elapsed_ticks,
-                time_domain="rp2040_monotonic_us32",
-                remaining_qualified_s=max(
-                    0,
-                    self.programme.qualified_duration_s
-                    - elapsed_ticks // RP2040_MONOTONIC_US_PER_SECOND,
-                ),
-                required_response_reserve_s=(
-                    self.programme.correction_response_reserve_s
-                ),
-            )
-        return True
-
     def _maybe_start_or_arm(
         self,
         health: dict[tuple[str, str], str],
@@ -3318,11 +3086,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         if self.state.get("host_verification_hold") is not None:
             return
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt is not None and self._bench_authority_closed():
+        if self._bench_authority_closed():
             return
         if (
-            bench_attempt is not None
-            and self.state.get("bench_attempt_arm_admission_closed")
+            self.state.get("bench_attempt_arm_admission_closed")
             and not self.state.get("arm_pending")
         ):
             return
@@ -3332,8 +3099,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         state = health.get(("adaptive_hybrid", "state"), "")
         reason = health.get(("adaptive_hybrid", "reason"), "")
         controller_inhibit = (
-            self.programme.controller_inhibit_acquisition_continues
-            and state == "FAULT"
+            state == "FAULT"
             and reason
             in {
                 "prospective_repeated_alternation",
@@ -3372,6 +3138,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             self._command(command)
             self.state["manual_start_sent"] = True
             self.state["setup_requested_utc"] = _utc_now()
+            self._setup_requested_monotonic_ns = time.monotonic_ns()
             self._save()
             self._programme_event(
                 "exact_setup_requested",
@@ -3406,30 +3173,26 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return
 
         if self.state["arm_pending"] and state == "DISARMED":
-            sent_at = self.state.get("arm_sent_at_utc")
-            age = (
-                time.time() - _parse_utc_epoch(sent_at)
-                if isinstance(sent_at, str) and sent_at
-                else 0.0
-            )
-            if age > 15.0:
+            sent_ns = self._arm_sent_monotonic_ns
+            if (
+                type(sent_ns) is int
+                and time.monotonic_ns() - sent_ns > 15_000_000_000
+            ):
                 self.state["arm_pending"] = False
                 self.state["arm_sent_at_utc"] = None
+                self._arm_sent_monotonic_ns = None
                 self._save()
                 self._programme_event(
                     "unused_zero_delta_arm_consumed_without_write"
                 )
         if not manual_confirmed or self.state["arm_pending"]:
             return
-        if bench_attempt is not None:
-            if self._close_bench_arm_admission_if_required(health):
-                return
-        elif self._close_response_horizon_if_required(health):
+        if self._close_bench_arm_admission_if_required(health):
             return
 
-        hybrid_state = health.get(("adaptive_hybrid", "hybrid_state"), "")
         # FIRST_PHASE_TRANSACTION stays unarmed until firmware has durably
         # recorded the response checkpoint and observed tight reacquisition.
+        hybrid_state = health.get(("adaptive_hybrid", "hybrid_state"), "")
         if hybrid_state not in self.programme.armable_hybrid_states:
             return
         if hybrid_state == "HYBRID_TRACKING" and not _truth(
@@ -3439,11 +3202,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         correction_count = int(
             health.get(("adaptive_hybrid", "correction_count"), "0")
         )
-        correction_limit = (
-            self.programme.authorized_maximum_applications
-            if bench_attempt is None
-            else bench_attempt.limits.automatic_application_limit
-        )
+        correction_limit = bench_attempt.limits.automatic_application_limit
         if correction_count >= correction_limit:
             return
         progress = int(
@@ -3451,7 +3210,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         preview_rows = _read_csv(self.run_dir / CONTROL_CSV)
         preview = preview_rows[-1] if preview_rows else None
-        if bench_attempt is not None and (
+        if (
             preview is None
             or preview.get("preview_available") != "true"
             or preview.get("preview_eligibility") != "true"
@@ -3467,26 +3226,25 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         opportunity = None
         if preview is not None:
             opportunity = preview.get("decision_id") or preview.get("control_seq")
-        if bench_attempt is not None:
-            arm_count = self.state.get("bench_attempt_arm_submission_count")
-            if type(arm_count) is not int:
-                raise ValueError("bench-attempt ARM submission count is malformed")
-            if arm_count >= bench_attempt.limits.arm_submission_limit:
-                self.state["bench_attempt_arm_admission_closed"] = True
-                self.state["bench_attempt_arm_admission_closed_utc"] = _utc_now()
-                self._save()
-                self._programme_event(
-                    "bench_attempt_arm_submission_limit_reached",
-                    arm_submission_count=arm_count,
-                    new_ARM_authority=False,
-                )
-                return
-            if opportunity is None:
-                raise ValueError(
-                    "bench-attempt ARM lacks a distinct natural-correction opportunity"
-                )
-            if opportunity == self.state.get("bench_attempt_last_arm_opportunity"):
-                return
+        arm_count = self.state.get("bench_attempt_arm_submission_count")
+        if type(arm_count) is not int:
+            raise ValueError("bench-attempt ARM submission count is malformed")
+        if arm_count >= bench_attempt.limits.arm_submission_limit:
+            self.state["bench_attempt_arm_admission_closed"] = True
+            self.state["bench_attempt_arm_admission_closed_utc"] = _utc_now()
+            self._save()
+            self._programme_event(
+                "bench_attempt_arm_submission_limit_reached",
+                arm_submission_count=arm_count,
+                new_ARM_authority=False,
+            )
+            return
+        if opportunity is None:
+            raise ValueError(
+                "bench-attempt ARM lacks a distinct natural-correction opportunity"
+            )
+        if opportunity == self.state.get("bench_attempt_last_arm_opportunity"):
+            return
         # ADAPTIVE_HYBRID must arm the next fresh selected-estimate epoch even when the
         # The frequency-only preview is available every 600 seconds.
         # The hybrid firmware owns the 1800-second *applied* cadence and
@@ -3523,47 +3281,47 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         nonce = secrets.randbits(32) or 1
         expiry = uptime + ARM_LIFETIME_S
         arm_sent_at_utc = _utc_now()
+        arm_sent_monotonic_ns = time.monotonic_ns()
         admission: dict[str, object] | None = None
-        if bench_attempt is not None:
-            aperture_coordinate = self._qualified_d14_apertures(health)
-            if aperture_coordinate is None:
-                raise ValueError("bench-attempt ARM lacks an accepted-aperture coordinate")
-            admission = {
-                "authorization_sequence": sequence,
-                "arm_nonce": nonce,
-                "expiry_s": expiry,
-                "authorizing_snapshot_generation": int(
-                    health[("adaptive_hybrid", "snapshot_generation_complete")]
-                ),
-                "authorizing_query_nonce": int(
-                    health[("adaptive_hybrid", "query_nonce")]
-                ),
-                "accepted_D14_D8_apertures": aperture_coordinate,
-                "admission_deadline_delta": (
-                    bench_attempt.limits.automatic_application_admission_deadline_apertures
-                ),
-                "natural_opportunity": str(opportunity),
-                "admitted_utc": arm_sent_at_utc,
-            }
-            admissions = self.state["bench_attempt_arm_admissions"]
-            if not isinstance(admissions, list):
-                raise ValueError("bench-attempt ARM admissions are malformed")
-            # Validate retained state and all inputs before publishing any new
-            # authorization state.  A host-side coordinate/parser failure must
-            # leave no ghost ARM sequence or pending transaction behind.
-            self._validate_bench_attempt_arm_admissions()
+        aperture_coordinate = self._qualified_d14_apertures(health)
+        if aperture_coordinate is None:
+            raise ValueError("bench-attempt ARM lacks an accepted-aperture coordinate")
+        admission = {
+            "authorization_sequence": sequence,
+            "arm_nonce": nonce,
+            "expiry_s": expiry,
+            "authorizing_snapshot_generation": int(
+                health[("adaptive_hybrid", "snapshot_generation_complete")]
+            ),
+            "authorizing_query_nonce": int(
+                health[("adaptive_hybrid", "query_nonce")]
+            ),
+            "accepted_D14_D8_apertures": aperture_coordinate,
+            "admission_deadline_delta": (
+                bench_attempt.limits.automatic_application_admission_deadline_apertures
+            ),
+            "natural_opportunity": str(opportunity),
+            "admitted_utc": arm_sent_at_utc,
+        }
+        admissions = self.state["bench_attempt_arm_admissions"]
+        if not isinstance(admissions, list):
+            raise ValueError("bench-attempt ARM admissions are malformed")
+        # Validate retained state and all inputs before publishing any new
+        # authorization state.  A host-side coordinate/parser failure must
+        # leave no ghost ARM sequence or pending transaction behind.
+        self._validate_bench_attempt_arm_admissions()
 
         self.state["authorization_sequence"] = sequence
         self.state["arm_pending"] = True
         self.state["arm_sent_at_utc"] = arm_sent_at_utc
-        if bench_attempt is not None:
-            assert admission is not None
-            admissions = self.state["bench_attempt_arm_admissions"]
-            assert isinstance(admissions, list)
-            admissions.append(admission)
-            self.state["bench_attempt_arm_submission_count"] = arm_count + 1
-            self.state["bench_attempt_last_arm_opportunity"] = opportunity
-            self._validate_bench_attempt_arm_admissions()
+        self._arm_sent_monotonic_ns = arm_sent_monotonic_ns
+        assert admission is not None
+        admissions = self.state["bench_attempt_arm_admissions"]
+        assert isinstance(admissions, list)
+        admissions.append(admission)
+        self.state["bench_attempt_arm_submission_count"] = arm_count + 1
+        self.state["bench_attempt_last_arm_opportunity"] = opportunity
+        self._validate_bench_attempt_arm_admissions()
         self._save()
         self._command(f"ACTIVE ARM {sequence} {nonce} {expiry}")
         self._programme_event(
@@ -3572,15 +3330,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             expiry_s=expiry,
             selected_interval_count=progress,
             hybrid_state=hybrid_state,
-            **(
-                {
-                    "bench_attempt_arm_submission_count": arm_count + 1,
-                    "bench_attempt_natural_opportunity": opportunity,
-                    "bench_attempt_admission": admission,
-                }
-                if bench_attempt is not None
-                else {}
-            ),
+            bench_attempt_arm_submission_count=arm_count + 1,
+            bench_attempt_natural_opportunity=opportunity,
+            bench_attempt_admission=admission,
         )
 
     def _healthy_terminal_ready(
@@ -3618,8 +3370,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
 
         bench_attempt = self.runtime_context.bench_attempt
         if (
-            bench_attempt is None
-            or bench_attempt.purpose != INHIBITED_ZERO_WRITE
+            bench_attempt.purpose != INHIBITED_ZERO_WRITE
             or not self._identity_ready(health)
             or _authoritative_capture_health_faults(health)
         ):
@@ -3710,22 +3461,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _set_healthy_endpoint(
         self, health: dict[tuple[str, str], str], *, endpoint: str
     ) -> None:
-        material = int(
-            health.get(
-                ("adaptive_hybrid", "phase_material_application_count"), "0"
-            )
-        )
-        checkpoint = _truth(health, "first_phase_checkpoint_passed")
-        if self.programme.response_checkpoint_observational:
-            preliminary = "pending_offline_scientific_analysis"
-        elif material == 0:
-            preliminary = "phase_influence_not_exercised"
-        elif material < self.programme.minimum_natural_phase_material_applications:
-            preliminary = "first_phase_transaction_passed_sustained_result_incomplete"
-        elif not checkpoint:
-            preliminary = "hybrid_response_wrong_or_frequency_not_reacquired"
-        else:
-            preliminary = "pending_offline_scientific_analysis"
+        preliminary = "pending_offline_scientific_analysis"
         self.state["terminal"] = {
             "result": "healthy_stop",
             "reason": endpoint,
@@ -3738,24 +3474,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _maybe_finish_bench_attempt(
         self,
         health: dict[tuple[str, str], str],
-        now_epoch: float,
+        now_monotonic_ns: int,
     ) -> bool:
         """Apply only the terminal horizons frozen in the bench envelope."""
 
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt is None:
-            return False
         document = bench_attempt.as_dict()
-        timing = document["timing"]
         terminals = document["terminal_semantics"]
         progress = self._qualified_d14_apertures(health)
-        wall_origin = self.state.get("wall_origin_utc")
-        wall_reached = bool(
-            isinstance(wall_origin, str)
-            and wall_origin
-            and now_epoch - _parse_utc_epoch(wall_origin)
-            >= int(timing["absolute_wall_limit_s"])
-        )
+        wall_reached = now_monotonic_ns >= self._wall_deadline_monotonic_ns
         if bench_attempt.purpose == INHIBITED_ZERO_WRITE:
             if (
                 progress is not None
@@ -3782,32 +3509,22 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _maybe_finish(
         self,
         health: dict[tuple[str, str], str],
-        now_epoch: float,
+        now_monotonic_ns: int,
     ) -> None:
         if self.state["terminal"] is not None:
             return
-        hybrid_state = health.get(("adaptive_hybrid", "hybrid_state"), "")
-        if (
-            hybrid_state == "PHASE_DEGRADED_FREQUENCY_ONLY"
-            and not self.programme.response_checkpoint_observational
-        ):
-            self._abort("phase_channel_degraded_frequency_control_retained")
-            return
-
-        if self._maybe_finish_bench_attempt(health, now_epoch):
+        if self._maybe_finish_bench_attempt(health, now_monotonic_ns):
             return
 
         qualification_deadline_s = self.programme.qualification_deadline_s
-        setup_confirmed_utc = self.state.get("setup_confirmed_utc")
+        setup_confirmed_ns = self._setup_confirmed_monotonic_ns
         if (
             qualification_deadline_s is not None
-            and isinstance(setup_confirmed_utc, str)
-            and setup_confirmed_utc
+            and type(setup_confirmed_ns) is int
             and self.state.get("qualification_started_utc") is None
         ):
-            if (
-                now_epoch - _parse_utc_epoch(setup_confirmed_utc)
-                >= qualification_deadline_s
+            if now_monotonic_ns - setup_confirmed_ns >= int(
+                qualification_deadline_s * 1_000_000_000
             ):
                 reason = f"{self.programme.key}_qualification_deadline_expired"
                 self._enter_host_verification_hold(
@@ -3833,8 +3550,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 and qualified_elapsed_ticks >= qualified_target_ticks
             )
         if (
-            self.programme.integrated_long_run
-            and self.programme.qualified_d14_aperture_count is None
+            self.programme.qualified_d14_aperture_count is None
             and endpoint_reached
             and self.state.get("qualified_endpoint_extended_timestamp_ticks")
             is None
@@ -3871,13 +3587,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
             return
 
-        wall_origin = self.state.get("wall_origin_utc")
-        if (
-            isinstance(wall_origin, str)
-            and wall_origin
-            and now_epoch - _parse_utc_epoch(wall_origin)
-            >= self.programme.authorized_absolute_wall_limit_s
-        ):
+        if now_monotonic_ns >= self._wall_deadline_monotonic_ns:
             if self._healthy_terminal_ready(health):
                 self.state["terminal"] = {
                     "result": "nonpass",
@@ -3901,17 +3611,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     ValueError(reason), source="wall_endpoint_observer"
                 )
 
-    def _abort(self, reason: str) -> None:
-        self._explicit_abort_submission = reason == "independent_host_abort_fifo"
-        try:
-            super()._abort(reason)
-        finally:
-            self._explicit_abort_submission = False
-        terminal = self.state["terminal"]
-        if reason == "independent_host_abort_fifo":
+    def _record_abort_terminal(self, reason: str) -> None:
+        terminal: dict[str, object] = {
+            "result": "aborted",
+            "reason": reason,
+            "utc": _utc_now(),
+        }
+        if reason == "independent_emergency_abort_fifo":
             terminal["primary_decision"] = _programme_terminal_decision(
-                self.programme,
-                "_operator_abort",
+                self.programme, "_operator_abort"
             )
         elif reason in {
             "phase_channel_degraded_frequency_control_retained",
@@ -3925,8 +3633,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             f"{self.programme.key}_D14_D8_authority_or_capture_fault:"
         ):
             terminal["primary_decision"] = _programme_terminal_decision(
-                self.programme,
-                "_D14_D8_authority_or_capture_fault",
+                self.programme, "_D14_D8_authority_or_capture_fault"
             )
         elif "D9" in reason or "forwarded_clock_output" in reason:
             terminal["primary_decision"] = _programme_terminal_decision(
@@ -3938,8 +3645,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
         elif reason.startswith(f"{self.programme.key}_live_supervisor_fault:"):
             terminal["primary_decision"] = _programme_terminal_decision(
-                self.programme,
-                "_identity_or_evidence_fault",
+                self.programme, "_identity_or_evidence_fault"
             )
         elif reason in {
             "prospective_repeated_alternation",
@@ -3950,15 +3656,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             )
         elif "absolute_wall_endpoint" in reason or reason.startswith(
             f"{self.programme.key}_wall_endpoint"
-        ):
+        ) or reason.endswith("_qualification_deadline_expired"):
             terminal["primary_decision"] = _programme_terminal_decision(
-                self.programme,
-                "_right_censored_incomplete",
-            )
-        elif reason.endswith("_qualification_deadline_expired"):
-            terminal["primary_decision"] = _programme_terminal_decision(
-                self.programme,
-                "_right_censored_incomplete",
+                self.programme, "_right_censored_incomplete"
             )
         else:
             terminal["primary_decision"] = _programme_terminal_decision(
@@ -3967,259 +3667,139 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         static_code = self.state.get("terminal_static_code")
         if isinstance(static_code, int):
             terminal["last_confirmed_code"] = static_code
+        self.state["terminal"] = terminal
         self._save()
 
+    def _abort(self, reason: str) -> None:
+        """Submit one priority abort directly to capture, then retain its reason."""
+        try:
+            send_timestamped_command_to_fifo(
+                self.emergency_command_fifo, "ACTIVE ABORT"
+            )
+            self._event("emergency_device_abort_submitted", reason=reason)
+        except (OSError, SystemExit, ValueError) as exc:
+            self._event(
+                "device_abort_submission_failed", reason=reason, error=str(exc)
+            )
+        self._record_abort_terminal(reason)
+
+    def _observe_explicit_capture_abort(self, state: dict[str, Any]) -> None:
+        """Adopt a direct external priority abort without sending it again."""
+        if self.state.get("terminal") is not None:
+            return
+        self._event(
+            "external_priority_abort_observed",
+            emergency_aborts_sent=int(state.get("emergency_aborts_sent", 0)),
+        )
+        self._record_abort_terminal("independent_emergency_abort_fifo")
+
+    def _emit_terminal_once(self) -> None:
+        terminal = self.state.get("terminal")
+        if isinstance(terminal, dict) and not self.state["terminal_event_emitted"]:
+            self._programme_event("campaign_terminal", **terminal)
+            self.state["terminal_event_emitted"] = True
+            self._save()
+
     def run(self) -> int:
+        """Run the decision owner in the foreground process."""
         capture_flag = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
         if not capture_flag.exists():
             raise RuntimeError("capture is not marked in progress")
         started = time.monotonic()
         last_query = 0.0
-        last_output_status_query = time.monotonic()
+        last_output_status_query = started
+        self._live_command_ack_required = True
+        self.state["runtime_owner"] = {
+            "pid": os.getpid(),
+            "started_monotonic_ns": time.monotonic_ns(),
+            "execution": "foreground",
+            "priority_abort_ingress": str(self.emergency_command_fifo),
+        }
+        self._save()
+        self._programme_event(
+            "live_supervisor_started",
+            emergency_abort_fifo=str(self.emergency_command_fifo),
+            manifest_sha256=self.runtime_context.manifest_sha256,
+            run_spec_sha256=self.runtime_context.run_spec_sha256,
+            policy_sha256=self.runtime_context.policy_sha256,
+            wall_origin_utc=self.runtime_context.wall_origin_utc,
+        )
         try:
-            with AbortFifo(self.abort_fifo) as abort:
-                self._wait_abort_fifo = abort
-                self._live_command_ack_required = True
-                publish_supervisor_ready(
-                    self.run_dir,
-                    self.manifest_path,
-                    census_process_nonce=self._startup_census_process_nonce,
-                )
-                self._programme_event(
-                    "live_supervisor_started",
-                    abort_fifo=str(self.abort_fifo),
-                    manifest_sha256=self.runtime_context.manifest_sha256,
-                    bundle_sha256=self.runtime_context.bundle_sha256,
-                    policy_sha256=self.runtime_context.policy_sha256,
-                    wall_origin_utc=self.runtime_context.wall_origin_utc,
-                )
-                while True:
-                    now = time.monotonic()
-                    if abort.poll():
-                        self._abort("independent_host_abort_fifo")
-                        return 3
-                    if not capture_flag.exists():
-                        self._enter_host_verification_hold(
-                            RuntimeError("capture owner in-progress marker is absent"),
-                            source="capture_owner_observer",
+            while True:
+                self._poll_wait_abort()
+                now = time.monotonic()
+                if not capture_flag.exists():
+                    self._enter_host_verification_hold(
+                        RuntimeError("capture owner in-progress marker is absent"),
+                        source="capture_owner_observer",
+                    )
+                    time.sleep(0.2)
+                    continue
+                try:
+                    if (
+                        self.state.get("startup_census") is None
+                        and self.state.get("host_verification_hold") is None
+                    ):
+                        self._command("CONFIG?")
+                        self._command("DUALCORE?")
+                        self._command("DAC?")
+                        self._establish_startup_census()
+                        last_query = time.monotonic()
+                    if (
+                        self._startup_census_admitted()
+                        and (
+                            getattr(self, "_last_lease_monotonic_ns", None) is None
+                            or time.monotonic_ns() - self._last_lease_monotonic_ns
+                            >= int(LEASE_PERIOD_S * 1_000_000_000)
                         )
+                    ):
+                        self._check_capture_transport_state()
+                        self._renew_lease()
+                    if now - last_query >= QUERY_PERIOD_S:
+                        current = self._current_health()
+                        generation = int(
+                            current.get(
+                                ("adaptive_hybrid", "snapshot_generation_complete"),
+                                "0",
+                            )
+                        )
+                        self._fresh_active_snapshot_after(generation)
+                        last_query = time.monotonic()
+                    if now - last_output_status_query >= FORWARDED_OUTPUT_STATUS_PERIOD_S:
+                        self._command("CONFIG?")
+                        last_output_status_query = now
+                    health = self._current_health()
+                    if not self._startup_census_admitted():
                         time.sleep(0.2)
                         continue
-                    if self.duration_s is not None and now - started > self.duration_s:
-                        self._enter_host_verification_hold(
-                            RuntimeError("supervisor duration observer expired"),
-                            source="supervisor_duration_observer",
-                        )
-                        self.duration_s = None
-                    try:
-                        if self.state.get("startup_census") is None:
-                            if self.state.get("host_verification_hold") is None:
-                                # Static identity queries and the fresh ACTIVE
-                                # census are one guarded startup observation.
-                                # A transport or parser discrepancy must retain
-                                # the supervisor and abort ingress in a
-                                # no-authority hold, rather than killing the
-                                # only process able to adopt the runner hold.
-                                self._command("CONFIG?")
-                                self._command("DUALCORE?")
-                                self._command("DAC?")
-                                self._establish_startup_census()
-                                last_query = time.monotonic()
-                            else:
-                                self._consume_orchestration_review_hold()
-                        else:
-                            self._consume_orchestration_review_hold()
-                        if (
-                            self._startup_census_admitted()
-                            and (getattr(self, "_last_lease_monotonic_ns", None) is None
-                                 or time.monotonic_ns() - self._last_lease_monotonic_ns >= int(LEASE_PERIOD_S * 1_000_000_000))
-                        ):
-                            self._check_capture_transport_state()
-                            self._renew_lease()
-                        if now - last_query >= QUERY_PERIOD_S:
-                            current = self._current_health()
-                            generation = int(
-                                current.get(
-                                    ("adaptive_hybrid", "snapshot_generation_complete"),
-                                    "0",
-                                )
-                            )
-                            self._fresh_active_snapshot_after(generation)
-                            last_query = time.monotonic()
-                        if (
-                            self.programme.forwarded_output_integration
-                            and now - last_output_status_query
-                            >= FORWARDED_OUTPUT_STATUS_PERIOD_S
-                        ):
-                            self._command("CONFIG?")
-                            last_output_status_query = now
+                    if not self._abort_on_authoritative_capture_discontinuity(health):
+                        self._check_fail_static_health(health)
+                        self._process_transactions()
                         health = self._current_health()
-                        if not self._startup_census_admitted():
-                            # An unowned device remains observational.  Queries and
-                            # the explicit operator-abort FIFO are the only active
-                            # routes until a census proves current-run ownership.
-                            time.sleep(0.2)
-                            continue
-                        if not self._abort_on_authoritative_capture_discontinuity(
-                            health
-                        ):
-                            # Firmware fail-static remains independent.  Host-side
-                            # interpretation failures enter a durable no-authority
-                            # review hold and leave acquisition alive.
+                        if not self._abort_on_authoritative_capture_discontinuity(health):
                             self._check_fail_static_health(health)
-                            self._process_transactions()
-                            health = self._current_health()
-                            if not self._abort_on_authoritative_capture_discontinuity(
-                                health
-                            ):
-                                self._check_fail_static_health(health)
-                                if self.state.get("host_verification_hold") is None:
-                                    self._check_setup_transaction_timeout(
-                                        health, time.time()
-                                    )
-                                self._check_prewrite_contract(health, now - started)
-                                self._maybe_qualify(health)
-                                self._maybe_finish(health, time.time())
-                                if self.state["terminal"] is None:
-                                    self._maybe_start_or_arm(health)
-                    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
-                        self._enter_host_verification_hold(
-                            exc, source="live_supervisor_diagnostic_cycle"
-                        )
-                    if self.state["terminal"] is not None:
-                        if not self.state["terminal_event_emitted"]:
-                            self._programme_event(
-                                "campaign_terminal", **self.state["terminal"]
-                            )
-                            self.state["terminal_event_emitted"] = True
-                            self._save()
-                        return (
-                            0
-                            if self.state["terminal"]["result"] == "healthy_stop"
-                            else 2
-                        )
-                    time.sleep(0.2)
+                            if self.state.get("host_verification_hold") is None:
+                                self._check_setup_transaction_timeout(health)
+                            self._check_prewrite_contract(health, now - started)
+                            self._maybe_qualify(health)
+                            self._maybe_finish(health, time.monotonic_ns())
+                            if self.state["terminal"] is None:
+                                self._maybe_start_or_arm(health)
+                except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                    self._enter_host_verification_hold(
+                        exc, source="live_supervisor_diagnostic_cycle"
+                    )
+                if self.state["terminal"] is not None:
+                    self._emit_terminal_once()
+                    return (
+                        0
+                        if self.state["terminal"]["result"] == "healthy_stop"
+                        else 2
+                    )
+                time.sleep(0.2)
         except ExplicitSupervisorAbort:
+            self._emit_terminal_once()
             return 3
-        finally:
-            self._wait_abort_fifo = None
-
-
-def prepare_validated_nonphysical_rehearsal_context(
-    validated_manifest: dict[str, Any],
-    *,
-    authoritative_inputs: ValidatedAuthoritativeInputs | None = None,
-) -> AdaptiveHybridRuntimeContext:
-    """Prepare one exact zero-authority PTY runtime configuration."""
-
-    programme = programme_from_mapping(validated_manifest)
-    if not _nonphysical_rehearsal_boundary_exact(
-        validated_manifest, expected_stage=_NONPHYSICAL_REHEARSAL_STAGE
-    ):
-        raise ValueError(
-            "validated PTY rehearsal manifest differs from its private "
-            "zero-authority boundary"
-        )
-    live_envelope = {**validated_manifest, "stage": programme.live_stage}
-    return _prepare_runtime_context(
-        live_envelope,
-        private_rehearsal_capability=(
-            _VALIDATED_NONPHYSICAL_REHEARSAL_CAPABILITY
-        ),
-        authoritative_inputs=authoritative_inputs,
-    )
-
-
-def create_validated_nonphysical_rehearsal_supervisor(
-    *,
-    runtime_context: AdaptiveHybridRuntimeContext,
-    validated_manifest: dict[str, Any],
-    manifest_path: Path,
-    run_dir: Path,
-    command_fifo: Path,
-    emergency_command_fifo: Path,
-    abort_fifo: Path,
-    expected_build_identity: str,
-    duration_s: float | None = None,
-    console_events: bool = False,
-) -> AdaptiveHybridSupervisor:
-    """Construct the private PTY worker after its producer-only validator.
-
-    The capability is injected here and has no physical CLI route.  The
-    runtime context independently rechecks the zero-authority markers so an
-    ordinary live manifest cannot be smuggled through this factory.
-    """
-
-    if not isinstance(runtime_context, AdaptiveHybridRuntimeContext):
-        raise ValueError("PTY supervisor requires a validated runtime context")
-    programme = programme_from_mapping(validated_manifest)
-    if not _nonphysical_rehearsal_boundary_exact(
-        validated_manifest, expected_stage=_NONPHYSICAL_REHEARSAL_STAGE
-    ):
-        raise ValueError(
-            "validated PTY rehearsal manifest differs from its private "
-            "zero-authority boundary"
-        )
-    live_envelope = {**validated_manifest, "stage": programme.live_stage}
-    build_identity = _manifest_build_identity(live_envelope)
-    if (
-        not runtime_context.private_nonphysical_rehearsal
-        or not runtime_context.matches_manifest(live_envelope)
-        or expected_build_identity != build_identity
-        or runtime_context.build_identity != build_identity
-    ):
-        raise ValueError(
-            "runtime context differs from the validated PTY rehearsal manifest"
-        )
-    return AdaptiveHybridSupervisor(
-        runtime_context=runtime_context,
-        manifest_path=manifest_path,
-        run_dir=run_dir,
-        command_fifo=command_fifo,
-        emergency_command_fifo=emergency_command_fifo,
-        abort_fifo=abort_fifo,
-        duration_s=duration_s,
-        console_events=console_events,
-    )
-
-
-def create_supervisor(
-    *,
-    manifest_path: Path,
-    run_dir: Path,
-    command_fifo: Path,
-    emergency_command_fifo: Path,
-    abort_fifo: Path,
-    expected_build_identity: str,
-    duration_s: float | None = None,
-    console_events: bool = False,
-) -> AdaptiveHybridSupervisor:
-    from .adaptive_hybrid_activation import validate_frozen_run_manifest
-
-    # The physical runner performs the current deterministic firmware
-    # reproduction before authority reservation and hardware entry.  Startup
-    # consumes only the immutable run-local closure so capture is never held
-    # open while the same firmware is compiled again.
-    manifest = validate_frozen_run_manifest(manifest_path)
-    runtime_context = prepare_runtime_context(manifest)
-    build_identity = _manifest_build_identity(manifest)
-    if (
-        expected_build_identity != build_identity
-        or runtime_context.build_identity != build_identity
-        or not runtime_context.matches_manifest(manifest)
-    ):
-        raise ValueError("requested build identity differs from the ADAPTIVE_HYBRID manifest")
-    return AdaptiveHybridSupervisor(
-        runtime_context=runtime_context,
-        manifest_path=manifest_path,
-        run_dir=run_dir,
-        command_fifo=command_fifo,
-        emergency_command_fifo=emergency_command_fifo,
-        abort_fifo=abort_fifo,
-        duration_s=duration_s,
-        console_events=console_events,
-    )
-
 
 def _manifest_build_identity(manifest: dict[str, Any]) -> str:
     firmware = manifest.get("firmware", {})
@@ -4232,52 +3812,3 @@ def _manifest_build_identity(manifest: dict[str, Any]) -> str:
         if isinstance(source, str) and isinstance(configuration, str):
             return f"{source}:{configuration}"
     raise ValueError("ADAPTIVE_HYBRID run manifest lacks exact firmware build identity")
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--command-fifo", type=Path, required=True)
-    parser.add_argument("--emergency-command-fifo", type=Path, required=True)
-    parser.add_argument("--abort-fifo", type=Path, required=True)
-    parser.add_argument("--expected-build-identity", required=True)
-    parser.add_argument("--duration-s", type=float)
-    parser.add_argument("--console-events", action="store_true")
-    args = parser.parse_args(argv)
-
-    try:
-        fifo_paths = {
-            args.command_fifo.absolute(),
-            args.emergency_command_fifo.absolute(),
-            args.abort_fifo.absolute(),
-        }
-        if (
-            len(fifo_paths) != 3
-            or args.manifest.resolve()
-            != (args.run_dir / "run_manifest.json").resolve()
-        ):
-            parser.error("manifest, FIFOs, run directory, or build identity differs")
-        supervisor = create_supervisor(
-            manifest_path=args.manifest,
-            run_dir=args.run_dir,
-            command_fifo=args.command_fifo,
-            emergency_command_fifo=args.emergency_command_fifo,
-            abort_fifo=args.abort_fifo,
-            expected_build_identity=args.expected_build_identity,
-            duration_s=args.duration_s,
-            console_events=args.console_events,
-        )
-        return supervisor.run()
-    except (OSError, RuntimeError, SystemExit, TimeoutError, ValueError) as exc:
-        if "supervisor" in locals():
-            supervisor._programme_event("live_supervisor_fault", error=str(exc))
-            supervisor._enter_host_verification_hold(
-                exc, source="live_supervisor_outer_boundary"
-            )
-            return 2
-        parser.error(str(exc))
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

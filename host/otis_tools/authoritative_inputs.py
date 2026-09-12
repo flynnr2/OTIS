@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from functools import lru_cache
 from hashlib import sha256
-import json
 from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROOT_PROFILE = "profiles/discipline/adaptive_hybrid_regulation_v1.json"
@@ -374,7 +373,7 @@ def validate_authoritative_inputs(value: object) -> ValidatedAuthoritativeInputs
     return ValidatedAuthoritativeInputs(value)
 
 
-def transaction_identities_from_bundle(
+def transaction_identities_from_manifest(
     bundle: dict[str, Any], *, inputs: ValidatedAuthoritativeInputs | None = None,
 ) -> dict[str, str]:
     if inputs is None:

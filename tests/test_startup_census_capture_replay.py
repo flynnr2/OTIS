@@ -13,6 +13,7 @@ from host.otis_tools.adaptive_hybrid_contract import (
 )
 from host.otis_tools.adaptive_hybrid_supervisor import AdaptiveHybridSupervisor
 from host.otis_tools.capture_device import ActiveStatusLivePublisher
+from tests.runtime_fixtures import construct_simulated_supervisor
 
 FIXTURE = (
     Path(__file__).parent / "fixtures" / "startup_census_539ff6a"
@@ -79,15 +80,10 @@ def _supervisor(
     *,
     zero_write: bool = True,
 ) -> AdaptiveHybridSupervisor:
-    supervisor = object.__new__(AdaptiveHybridSupervisor)
-    supervisor.run_dir = tmp_path
-    supervisor.programme = ADAPTIVE_HYBRID_PROGRAMME
-    supervisor.runtime_context = SimpleNamespace(
-        bench_attempt=(
-            SimpleNamespace(purpose=INHIBITED_ZERO_WRITE)
-            if zero_write
-            else None
-        )
+    if not zero_write:
+        raise ValueError("capture replay uses the current zero-write envelope")
+    supervisor = construct_simulated_supervisor(
+        tmp_path, purpose=INHIBITED_ZERO_WRITE
     )
     supervisor.spec = SimpleNamespace(
         campaign="adaptive_hybrid_regulation",
@@ -113,7 +109,7 @@ def _supervisor(
     ]
     supervisor._retained_supervisor_state_at_start = False
     supervisor._explicit_abort_submission = False
-    supervisor.state = {
+    supervisor.state.update({
         "manual_start_sent": False,
         "arm_pending": False,
         "authorization_sequence": 0,
@@ -141,10 +137,9 @@ def _supervisor(
         "qualified_acceptance_epoch_origin": None,
         "qualified_acceptance_ordinal_origin": None,
         "qualified_authoritative_capture_baseline": None,
-    }
+    })
     supervisor._save = lambda: None
     supervisor._programme_event = lambda *_args, **_kwargs: None
-    supervisor._consume_orchestration_review_hold = lambda: False
     return supervisor
 
 
@@ -207,7 +202,6 @@ def test_startup_census_replays_first_active_before_pps_and_qualifies_later(
     # Census admission is observational. Missing/acquiring PPS evidence and a
     # firmware REFERENCE_HOLD all stop the actual setup/ARM consumer before it
     # can evaluate prewrite readiness or submit an ACTIVE command.
-    census_supervisor.runtime_context = SimpleNamespace(bench_attempt=None)
     census_supervisor._prewrite_readiness = (
         lambda _health: pytest.fail("PPS-gated state reached prewrite")
     )
@@ -224,9 +218,6 @@ def test_startup_census_replays_first_active_before_pps_and_qualifies_later(
 
     # PPS arrives after census. The first qualification consumer can now
     # establish the zero-write aperture origin without adding setup authority.
-    census_supervisor.runtime_context = SimpleNamespace(
-        bench_attempt=SimpleNamespace(purpose=INHIBITED_ZERO_WRITE)
-    )
     _publish(
         census_publisher,
         records,

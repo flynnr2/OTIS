@@ -19,7 +19,7 @@ from host.otis_tools.adaptive_hybrid_policy import (
     AdaptiveHybridPhasePriorityController,
     load_policy,
 )
-from host.otis_tools.capture_serial import CsvRecordSplitter
+from host.otis_tools.record_splitter import CsvRecordSplitter
 from host.otis_tools.contracts import CsvValidationContext, validate_csv
 
 

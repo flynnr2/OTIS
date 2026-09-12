@@ -128,3 +128,14 @@ def test_offline_decision_source_join_allows_unused_estimates_and_zero_ahy(
     assert result["selected_source_count"] == 1
     assert result["consumed_selected_source_count"] == 0
     assert result["unconsumed_selected_source_count"] == 1
+
+
+def test_offline_decision_source_join_rejects_orphan_decision_without_estimate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _replay(monkeypatch, [_decision()], [])
+
+    assert result["exact"] is False
+    assert result["selected_source_count"] == 0
+    assert result["joins"][0]["estimate_id"] is None
+    assert result["errors"] == ["AHY 11 has no unique exact selected EST source"]

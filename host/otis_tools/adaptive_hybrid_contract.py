@@ -1,85 +1,28 @@
 """Single operating descriptor for the OTIS adaptive hybrid regulator.
 
 The descriptor contains the finite run envelope and exact identities shared by
-bundle creation, capture, supervision, replay, analysis, and sealing.  It is
+specification, capture, supervision, replay, analysis, and packaging.  It is
 deliberately a single value: changing duration or authority requires a new run
-manifest, not another product branch.
+specification, not another product branch.
 """
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
-import json
-from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
-
+from typing import Any
 
 PROGRAMME_ID = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
 PROFILE_ID = "adaptive_hybrid_regulation"
 RUNTIME_RUN_IDENTITY = "adaptive_hybrid_regulation:1"
-HOST_REVIEW_HOLD = Path("reports/adaptive_hybrid_hybrid_host_review_hold_v1.json")
-ORCHESTRATION_FAILURE = Path("reports/adaptive_hybrid_hybrid_orchestration_failure_v1.json")
-
 # Host diagnostic waiting bounds, independent of firmware counter-domain
 # actuation expiry and physical qualification duration.
 NORMAL_COMMAND_ACK_TIMEOUT_S = 3.0
 ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S = 30.0
 
-
-def operational_rehearsal_timing() -> dict[str, Any]:
-    """One finite budget owned by the private PTY coordinator.
-
-    A progress interval allows the periodic, pre-ACK and post-ACK causal
-    queries plus four normal writes (identity/setup/lease/ACK). These are
-    conservative sequential maxima, not a performance acceptance target.
-    Twelve one-shot facts bound the complete fixture; heartbeats add none.
-    """
-    progress_s = int(3 * ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S
-                     + 4 * NORMAL_COMMAND_ACK_TIMEOUT_S)
-    return {
-        "contract": "otis_private_rehearsal_timing_v1",
-        "clock_domain": "host_monotonic_ns",
-        "owner": "rehearsal_coordinator",
-        "capture_start_s": 10,
-        "support_start_s": 10,
-        "causal_progress_s": progress_s,
-        "maximum_progress_facts": 12,
-        "transaction_sequence_s": 12 * progress_s,
-        "stale_command_s": 5,
-        "abort_delivery_s": 8,
-        "rotation_s": 10,
-        "capture_close_s": 10,
-        "managed_child_duration_s": None,
-    }
-
-
-OPERATIONAL_REHEARSAL_CHECKS = frozenset(
-    {
-        "coordinator_timing_and_exact_progress_bound",
-        "private_nonphysical_manifest_exact",
-        "process_command_transcript_matches_raw",
-        "supervisor_commands_match_capture_prefix",
-        "actual_capture_process_bound_to_closure",
-        "setup_command_bound_to_retained_authority",
-        "two_arm_envelopes_bound_to_supervisor_events",
-        "progressive_evidence_phases_exact",
-        "periodic_lease_and_snapshot_boundaries",
-        "stale_command_timeout_rejected",
-        "first_dependent_checkpoint_before_second_arm",
-        "setup_first_consumer_exact",
-        "metadata_hold_requalified_without_actuation",
-        "two_transactions_replayed",
-        "shared_current_analyzer_consumers_exact",
-        "normal_fifo_revoked_after_obstruction",
-        "priority_abort_preceded_source_close",
-        "same_owner_rotation_then_physical_close",
-        "read_only_monitor_observed_lifecycle",
-        "supervisor_terminal_is_operator_abort",
-        "host_events_durable",
-    }
-)
 
 @dataclass(frozen=True)
 class AdaptiveHybridProgramme:
@@ -102,26 +45,12 @@ class AdaptiveHybridProgramme:
     qualified_duration_s: int = 259_200
     absolute_wall_limit_s: int = 280_800
     minimum_natural_phase_material_applications: int = 0
-    bundle_id: str = "adaptive_hybrid_regulation_bundle_v1"
-    activation_id: str = "adaptive_hybrid_regulation_activation_v1"
-    run_bundle_path: Path = Path("adaptive_hybrid_exact_bundle_v1.json")
-    run_proposal_path: Path = Path("adaptive_hybrid_authority_proposal_v1.json")
-    run_activation_path: Path = Path("adaptive_hybrid_live_activation_v1.json")
-    physical_seal_path: Path = Path(
-        "reports/adaptive_hybrid_physical_seal_v1.json"
-    )
     correction_response_reserve_s: int = 1_500
     qualified_d14_aperture_count: int = 259_200
     correction_response_reserve_d14_apertures: int = 1_511
     maintenance_record_type: str = "AHM"
     maintenance_record_contract: str = "active_hybrid_maintenance_v2"
     qualification_deadline_s: int = 5_400
-    response_checkpoint_observational: bool = True
-    sustained_regulation: bool = True
-    forwarded_output_integration: bool = True
-    integrated_long_run: bool = True
-    persistent_maintenance_policy: bool = True
-    controller_inhibit_acquisition_continues: bool = True
 
     @property
     def key(self) -> str:
@@ -208,27 +137,6 @@ class AdaptiveHybridProgramme:
 
 
 ADAPTIVE_HYBRID_PROGRAMME = AdaptiveHybridProgramme()
-
-ADAPTIVE_HYBRID_STRUCTURAL_PREFLIGHT_COVERAGE = (
-    "deterministic_controller_transaction",
-    "GNSS_hold_causal_requalification_model",
-    "D10_optional_event_control_projection",
-)
-
-OPERATIONAL_REHEARSAL_SEAL_TYPE = (
-    "adaptive_hybrid_operational_rehearsal_seal_v1"
-)
-OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES = (
-    "continuous_capture_and_exact_frozen_identity_consumption",
-    "actual_capture_and_supervisor_process_topology",
-    "setup_arm_and_evidence_ack_through_first_dependent_decision",
-    "timeout_periodic_and_repeated_transaction_boundaries",
-    "normal_command_transport_obstruction",
-    "independent_priority_abort_submission_and_delivery_before_capture_close",
-    "atomic_serial_owner_handoff_without_ownerless_interval",
-    "clean_stop_shared_current_analyzer_consumers_snapshot_rehearsal_seal_and_successful_registration",
-)
-
 
 # Closed current bench-attempt envelopes live beside the sole programme
 # descriptor.  They constrain individual bench entries; they do not add an
@@ -536,88 +444,6 @@ def validate_bench_attempt_envelope(
     ):
         raise ValueError("bench-attempt envelope is not the exact current contract")
     return expected
-
-
-def operational_rehearsal_authorization_contract(
-    *,
-    bundle: dict[str, Any],
-    proposal: dict[str, Any],
-    programme: AdaptiveHybridProgramme = ADAPTIVE_HYBRID_PROGRAMME,
-) -> dict[str, Any]:
-    """Return the exact host-rehearsal activation-input contract."""
-
-    firmware = bundle.get("firmware")
-    policy = bundle.get("policy")
-    authoritative_inputs = bundle.get("authoritative_inputs")
-    host_tools = bundle.get("host_tools")
-    if not all(
-        isinstance(value, dict)
-        for value in (firmware, policy, authoritative_inputs, host_tools)
-    ):
-        raise ValueError("rehearsal authorization inputs are incomplete")
-    required_tools = {
-        "capture_device",
-        "acquisition_frontier",
-        "raw_measurement_replay",
-        "adaptive_hybrid_operational_rehearsal",
-        "adaptive_hybrid_supervisor",
-        "adaptive_hybrid_run",
-        "adaptive_hybrid_analyze",
-        "evidence",
-        "evidence_finalization",
-        "evidence_index",
-    }
-    if not required_tools.issubset(host_tools):
-        raise ValueError("rehearsal authorization host-tool closure is incomplete")
-    return {
-        "schema_version": 1,
-        "seal_type": OPERATIONAL_REHEARSAL_SEAL_TYPE,
-        "report_kind": "operational_path_rehearsal",
-        "status": "passed",
-        "identity": {
-            "programme_id": programme.programme_id,
-            "run_identity": programme.runtime_run_identity,
-            "image_identity": programme.profile_id,
-            "bundle_sha256": bundle.get("bundle_sha256"),
-            "proposal_sha256": proposal.get("proposal_sha256"),
-            "source_revision": firmware.get("source_revision"),
-            "build_identity": firmware.get("build_identity"),
-            "uf2_sha256": (
-                firmware.get("uf2", {}).get("sha256")
-                if isinstance(firmware.get("uf2"), dict)
-                else None
-            ),
-            "policy_sha256": policy.get("policy_sha256"),
-            "authoritative_input_set_sha256": authoritative_inputs.get(
-                "set_sha256"
-            ),
-        },
-        "required_boundaries": list(OPERATIONAL_REHEARSAL_REQUIRED_BOUNDARIES),
-        "required_evidence": {
-            "immutable_complete_acquisition_snapshot": True,
-            "shared_current_analyzer_consumers_exact": True,
-            "successful_rehearsal_registration": True,
-            "exact_tool_bindings": {
-                name: host_tools[name] for name in sorted(required_tools)
-            },
-            "raw_evidence_and_frozen_criteria_unchanged_during_analysis": True,
-        },
-        "host_discrepancy_semantics": {
-            "review_required_hold": True,
-            "new_setup_or_arm": False,
-            "automatic_abort_or_teardown": False,
-            "failed_campaign_authority": False,
-        },
-        "claim_boundary": {
-            "authorizes_activation_input_only": True,
-            "is_not_physical_plant_qualification": True,
-            "grants_no_retry_extension_or_restoration": True,
-            "physical_actions_performed": 0,
-        },
-        "producer_requirement": (
-            "current_bundle_bound_real_io_rehearsal_producer_and_independent_seal"
-        ),
-    }
 
 
 def programme_from_mapping(value: Mapping[str, Any]) -> AdaptiveHybridProgramme:

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from host.otis_tools import capture_device as capture
-from host.otis_tools.adaptive_hybrid_run import _AbortConsumptionObserver
+from host.otis_tools.live_run import _AbortDeliveryObserver
 from host.otis_tools.contracts import HEALTH_FIELDS
 from test_adaptive_hybrid_status_contract import _snapshot
 
@@ -49,7 +49,7 @@ def test_capture_frontier_to_post_abort_snapshot_skips_large_history_and_partial
         assert sent == ["ACTIVE ABORT"]
         state = json.loads((tmp_path / capture.CAPTURE_STATE).read_text())
         assert state["emergency_abort_raw_frontier"]["search_offset_bytes"] == origin
-        observer = _AbortConsumptionObserver(tmp_path)
+        observer = _AbortDeliveryObserver(tmp_path)
         assert observer.observe(state) is None  # receipt does not prove queued marker delivery
         assert observer.offset == origin
         wire = _wire()
@@ -72,7 +72,7 @@ def test_complete_snapshot_before_send_marker_is_never_abort_evidence(tmp_path):
     raw.parent.mkdir()
     raw.write_bytes(_wire())
     state = {"emergency_abort_raw_frontier": _frontier(raw)}
-    observer = _AbortConsumptionObserver(tmp_path)
+    observer = _AbortDeliveryObserver(tmp_path)
     assert observer.observe(state) is None
     with raw.open("ab") as output:
         output.write(b'# OTIS_HOST {"event":"emergency_abort_sent"}\n')
@@ -89,7 +89,7 @@ def test_abort_cursor_rejects_unknown_or_changed_raw_frontier(tmp_path, mutation
     raw.write_bytes(b"ignored\n")
     frontier = _frontier(raw)
     state = {"emergency_abort_raw_frontier": frontier}
-    observer = _AbortConsumptionObserver(tmp_path)
+    observer = _AbortDeliveryObserver(tmp_path)
     assert observer.observe(state) is None
     if mutation == "other_run": frontier["run_directory"] = str(tmp_path / "other")
     elif mutation == "negative": frontier["search_offset_bytes"] = -1
@@ -106,9 +106,9 @@ def test_abort_cursor_rejects_unknown_or_changed_raw_frontier(tmp_path, mutation
 def test_each_poll_has_bounded_input_and_oversized_line_is_rejected(tmp_path):
     raw = tmp_path / "raw/serial.log"
     raw.parent.mkdir()
-    raw.write_bytes(b"X" * (_AbortConsumptionObserver.READ_BYTES * 3))
+    raw.write_bytes(b"X" * (_AbortDeliveryObserver.READ_BYTES * 3))
     state = {"emergency_abort_raw_frontier": _frontier(raw)}
-    observer = _AbortConsumptionObserver(tmp_path)
+    observer = _AbortDeliveryObserver(tmp_path)
     assert observer.observe(state) is None
     assert observer.offset == observer.READ_BYTES
     with pytest.raises(ValueError, match="line exceeds"):
@@ -121,7 +121,7 @@ def test_malformed_or_duplicate_send_marker_cannot_replace_retained_evidence(tmp
     raw = tmp_path / "raw/serial.log"
     raw.parent.mkdir()
     raw.write_bytes(b'# OTIS_HOST {"event":"emergency_abort_sent"}\n# OTIS_HOST ' + payload + b"\n")
-    observer = _AbortConsumptionObserver(tmp_path)
+    observer = _AbortDeliveryObserver(tmp_path)
     state = {"emergency_abort_raw_frontier": _frontier(raw)}
     with pytest.raises(ValueError):
         observer.observe(state)
@@ -133,7 +133,7 @@ def test_newer_incomplete_generation_cannot_be_erased_by_older_complete_snapshot
     raw.write_bytes(b'# OTIS_HOST {"event":"emergency_abort_sent"}\n'
                     + _wire(20).split(b"\n", 1)[0] + b"\n" + _wire(19))
     state = {"emergency_abort_raw_frontier": _frontier(raw)}
-    observer = _AbortConsumptionObserver(tmp_path)
+    observer = _AbortDeliveryObserver(tmp_path)
     assert observer.observe(state) is None
     with raw.open("ab") as handle:
         handle.write(_wire(21))
@@ -148,5 +148,5 @@ def test_replacement_before_first_observation_cannot_impersonate_capture_file(tm
     replacement = raw.with_suffix(".replacement")
     replacement.write_bytes(raw.read_bytes())
     replacement.replace(raw)
-    with pytest.raises(ValueError, match="capture's open file"):
-        _AbortConsumptionObserver(tmp_path).observe(state)
+    with pytest.raises(ValueError, match="capture's raw file"):
+        _AbortDeliveryObserver(tmp_path).observe(state)

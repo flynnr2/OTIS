@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from host.otis_tools.capture_serial import CsvRecordSplitter, RECORD_CONTRACTS
+from host.otis_tools.record_splitter import CsvRecordSplitter, RECORD_CONTRACTS
 from host.otis_tools.contracts import (
     ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
     CsvValidationContext,

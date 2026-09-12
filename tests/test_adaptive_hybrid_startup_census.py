@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import time
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,52 +12,39 @@ from host.otis_tools import adaptive_hybrid_supervisor as supervisor_module
 from host.otis_tools.adaptive_hybrid_contract import ADAPTIVE_HYBRID_PROGRAMME
 from host.otis_tools.adaptive_hybrid_supervisor import AdaptiveHybridSupervisor
 from host.otis_tools.adaptive_hybrid_transport import ControlSupervisorBase
+from tests.runtime_fixtures import construct_simulated_supervisor
 
 
 def _supervisor(tmp_path: Path) -> AdaptiveHybridSupervisor:
-    supervisor = object.__new__(AdaptiveHybridSupervisor)
-    supervisor.run_dir = tmp_path
-    supervisor.programme = ADAPTIVE_HYBRID_PROGRAMME
-    supervisor.runtime_context = SimpleNamespace(bench_attempt=None)
-    supervisor.spec = SimpleNamespace(
-        campaign="adaptive_hybrid_regulation",
-        run_identity="run",
-        profile="adaptive_hybrid_regulation",
-        start_code=ADAPTIVE_HYBRID_PROGRAMME.setup_code,
-        correction_limit=ADAPTIVE_HYBRID_PROGRAMME.maximum_applications,
-        cumulative_limit=ADAPTIVE_HYBRID_PROGRAMME.maximum_cumulative_movement_codes,
-    )
-    supervisor.identities = {}
-    supervisor.expected_build_identity = "source:" + "1" * 64
-    supervisor.dual_core_transactions = True
+    supervisor = construct_simulated_supervisor(tmp_path)
     supervisor._retained_supervisor_state_at_start = False
-    supervisor._explicit_abort_submission = False
-    supervisor.state = {
-        "manual_start_sent": False,
-        "arm_pending": False,
-        "authorization_sequence": 0,
-        "lease_sequence": 0,
-        "setup_confirmed_utc": None,
-        "setup_confirmation": None,
-        "setup_authority_path": None,
-        "setup_requested_utc": None,
-        "terminal": None,
-        "terminal_static_code": None,
-        "inflight_evidence_acknowledgement": None,
-        "acknowledged_record_sequences": [],
-        "observed_manual_record_sequences": [],
-        "initial_session_id": 7,
-        "host_verification_hold": None,
-        "host_attach_query_nonce": 40,
-        "active_snapshot_request_nonce": 40,
-        "startup_census": None,
-        "startup_census_history": [],
-        "startup_census_authority_admitted": False,
-        "startup_census_process_nonce": 91,
-    }
+    supervisor.state.update(
+        {
+            "manual_start_sent": False,
+            "arm_pending": False,
+            "authorization_sequence": 0,
+            "lease_sequence": 0,
+            "setup_confirmed_utc": None,
+            "setup_confirmation": None,
+            "setup_authority_path": None,
+            "setup_requested_utc": None,
+            "terminal": None,
+            "terminal_static_code": None,
+            "inflight_evidence_acknowledgement": None,
+            "acknowledged_record_sequences": [],
+            "observed_manual_record_sequences": [],
+            "initial_session_id": 7,
+            "host_verification_hold": None,
+            "host_attach_query_nonce": 40,
+            "active_snapshot_request_nonce": 40,
+            "startup_census": None,
+            "startup_census_history": [],
+            "startup_census_authority_admitted": False,
+            "startup_census_process_nonce": 91,
+        }
+    )
     supervisor._save = lambda: None
     supervisor._programme_event = lambda *_args, **_kwargs: None
-    supervisor._consume_orchestration_review_hold = lambda: False
     return supervisor
 
 
@@ -336,9 +323,6 @@ def _setup_authority_and_retained_inflight_fixture(
         lambda *_args, **_kwargs: SimpleNamespace(errors=[]),
     )
     monkeypatch.setattr(supervisor_module, "_read_csv", lambda _path: [manual_row, row])
-    monkeypatch.setattr(
-        supervisor_module, "validate_transaction_history", lambda *_args, **_kwargs: None
-    )
     monkeypatch.setattr(
         supervisor_module,
         "evaluate_setup_prewrite_readiness",

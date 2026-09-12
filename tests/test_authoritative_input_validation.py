@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from hashlib import sha256
-import json
 
 import pytest
 from jsonschema.exceptions import SchemaError
@@ -95,15 +95,15 @@ def test_transaction_consumer_rejects_context_for_different_payload():
     context = inputs.validate_authoritative_inputs(raw)
     raw["profiles"][0]["content"] += " "
     with pytest.raises(ValueError, match="differ"):
-        inputs.transaction_identities_from_bundle({"authoritative_inputs": raw}, inputs=context)
+        inputs.transaction_identities_from_manifest({"authoritative_inputs": raw}, inputs=context)
 
 
 def test_transaction_policy_identity_comes_from_frozen_policy():
     context = inputs.validate_authoritative_inputs(inputs.collect_authoritative_inputs())
     expected = context.binding(inputs.ROOT_PROFILE)["sha256"]
     bundle = {"authoritative_inputs": context.as_dict(), "policy": {"policy_sha256": expected}}
-    identities = inputs.transaction_identities_from_bundle(bundle, inputs=context)
+    identities = inputs.transaction_identities_from_manifest(bundle, inputs=context)
     assert identities["active_policy_sha256"] == identities["numerical_policy_sha256"] == expected
     bundle["policy"]["policy_sha256"] = "f" * 64
     with pytest.raises(ValueError, match="policy identity differs"):
-        inputs.transaction_identities_from_bundle(bundle, inputs=context)
+        inputs.transaction_identities_from_manifest(bundle, inputs=context)

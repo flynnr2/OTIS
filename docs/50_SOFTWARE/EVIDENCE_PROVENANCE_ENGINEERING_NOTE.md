@@ -1,119 +1,70 @@
-# Evidence and Provenance Engineering Note
+# Evidence and provenance engineering note
 
-## Decision
+The immutable `run_spec.json` binds firmware, host tools, scientific contracts,
+policy and campaign limits. The small `run_manifest.json` binds that exact
+retained specification to one acquisition. Neither file is a scientific verdict.
+The raw stream preserves the device's build and session declarations; analysis
+checks their relationship to the declared experiment.
 
-OTIS completed runs can now be sealed by a deterministic, versioned
-`evidence_manifest.json`. This closes the gap between a run manifest saying
-which artifacts should exist and an auditable record of the exact bytes that
-were observed.
+## Firmware identity
 
-Run sealing remains host-side and does not change capture ordering, analysis,
-or control. Firmware now emits build-generated identity rows, and sealing binds
-their exact source/configuration hashes, Git state, FQBN/board, core, compiler,
-toolchain, image, and invocation identity into the canonical snapshot. Raw
-evidence remains untouched. The frozen bundle copies and hashes the exact
-current policy, estimator, model, and run-manifest bytes so later repository
-edits cannot silently change replay context.
+The fixed builder remains `tools/build_firmware.py`. Provenance version 2 binds
+only inputs that can affect firmware bytes: firmware sources, configuration,
+build definitions and provenance-generation code, together with the pinned
+compiler and functional installed toolchain. The firmware audit revision is the
+latest revision touching those inputs. Repository-wide revision and working-tree
+state are separate context, not the binary identity. Uncommitted firmware inputs
+remain a build error. A host-only or documentation commit does not require a new
+firmware image.
 
-Qualification firmware is produced only by `tools/build_firmware.py` from the
-canonical `firmware/arduino/firmware_build_manifest.json`. The builder verifies
-pinned Arduino CLI/core/toolchain identities, hashes the functional installed
-core and toolchain, hashes all sketch/build-definition inputs, and compiles a
-disposable sketch copy with a one-use generated provenance header. It rechecks
-Git/source/configuration and installed-tool identities after compilation and
-artifact hashing, then removes transient source/header bytes. A fresh builder
-session identity binds the generated header to the compiler invocation. The
-firmware has no fallback commit, board, configuration, alternate manifest, or
-profile selector.
+The wire macro `OTIS_BUILD_GIT_COMMIT` carries that firmware audit revision;
+`OTIS_BUILD_AUTHORITATIVE_INPUT_SET_SHA256` carries the firmware input-set hash.
+These existing wire names do not mean that every host file is a firmware input.
+The host toolset has its own exact content identity in the run specification.
 
-Firmware `source_state` describes only the operational input set whose exact
-bytes can affect the image: sketch sources, fixed manifest and builder,
-firmware/host binding helper and contract, profiles, and schemas. Repository-
-wide clean/dirty state is retained separately as non-authoritative build
-context. A documentation-only or otherwise unrelated working-tree edit must
-not change the firmware binary, its invocation identity, or deterministic
-reproduction verdict. An uncommitted change to any operational input remains a
-hard authorization failure even though its current bytes have an exact hash.
+The builder hashes installed functional code and tools, excluding package-manager
+metadata, Finder metadata and generated Python caches. It compiles with a
+session-bound generated header, verifies the resulting binary and resource use,
+and checks inputs again after compilation. Independent reproduction retains the
+recorded build session and verifies identical bytes. It is an explicit release
+check, not a compiler invoked during ordinary acquisition.
 
-Installed-tree hashes deliberately exclude package-manager metadata
-(`installed.json`), Finder metadata, and generated Python bytecode caches.
-Those files are not release inputs and vary with installation/runtime context;
-all functional source, library, executable, and symlink bytes remain covered.
+A delivered build can live at a different absolute path. Physical entry validates
+its actual files against the frozen semantic artifact identity and uploads the
+validated delivered UF2. Recorded historical paths remain provenance strings;
+they do not direct offline readers to another machine's filesystem.
 
-There is no Arduino IDE provenance escape path on current HEAD. Bench and
-qualification binaries use the same fixed builder and canonical manifest.
+## Closed evidence
 
-Multi-session captures require the same preservation rule. A reset or reconnect
-may define a later authoritative session, but the original raw capture remains
-immutable. Any session-scoped derived product must identify the source run,
-source hashes, BOOT/session boundary, original sequence ranges, and selection
-rule. It must not rewrite, splice, renumber, or present a filtered derivative
-as the original capture. A disturbed pre-BOOT session may therefore coexist
-with a successful later engineering session without erasing either fact.
+`evidence_package_v1.json` inventories the package's regular files by relative
+path, size and SHA-256. It binds the retained spec and run record. The closure
+record must identify those exact manifest bytes and confirm that capture closed
+and serial is no longer open before capture is classified as complete. A missing
+closure is partial evidence, not an inferred success. Active capture cannot be
+sealed.
 
-## Storage boundary
+Analysis and scientific outcome remain separate from byte integrity. A failed
+analyzer produces a retained diagnostic; packaging may preserve that evidence
+without calling the experiment a pass. Once sealed, subsequent analysis writes
+outside the source package and records its source content identity. A location
+registry is optional and cannot alter either result.
 
-Sealing evidence does not make a run a Git artifact. The repository
-`.gitignore` remains authoritative at all times, and the complete `runs/` tree
-is intentionally ignored. Run directories are locally stored evidence and
-must not be force-added or otherwise smuggled past ignore rules. This keeps raw
-captures, generated reports, and sealed packages from bloating repository
-history.
+Digests establish integrity relative to a trusted copy, not authorship. Package
+validation rejects changed or uncovered files, symbolic links, unsafe paths and
+unknown special files. Declared inert runtime FIFOs are explicitly recorded as
+omitted; transfer never recreates command endpoints. Historical package formats
+use the reader at their recorded revision, without compatibility machinery in
+the current acquisition path.
 
-References to `runs/...` elsewhere in the documentation are local provenance
-references. They may resolve on the bench workstation that retains the
-evidence, but they are not expected to resolve in a fresh clone. The operator
-is responsible for retaining and backing up important run directories together
-with their snapshot digests.
+## Storage and promotion
 
-Promotion from a run means committing a compact, reviewed result outside
-`runs/`, such as a result note, plant model, schema, contract, or purpose-built
-small test fixture. It does not mean committing the source run directory.
+Raw acquisitions and generated packages remain outside Git. `.gitignore` is the
+storage boundary; do not force-add evidence. Keep the bench original and verify
+transferred bytes against the sender's digest before independent analysis.
 
-## Determinism and evidence preservation
-
-- SHA-256 is computed over file bytes in bounded chunks.
-- Artifact paths are normalized, run-relative, unique, and sorted.
-- The overall snapshot digest uses canonical JSON and contains no wall-clock or
-  filesystem metadata.
-- Symbolic links and paths escaping the run directory are rejected.
-- Active captures cannot be sealed.
-- Existing snapshots cannot be overwritten.
-- Validators recompute both artifact and canonical snapshot digests.
-- Newly added raw or declared evidence is reported as uncovered rather than
-  silently ignored.
-
-## Current compatibility boundary
-
-Current non-template packages require the current manifest, current CSV
-contracts, the complete fixed-build provenance banner, and an immutable
-snapshot. Missing or mismatched identity is a hard validation failure. Current
-HEAD does not accept an older layout, infer an absent snapshot, or translate a
-retired firmware identity. Historical packages remain evidence, but their
-recorded Git revision supplies their reader and validation rules.
-
-## Risk assessment
-
-| Risk | Assessment and mitigation |
-|---|---|
-| SHA-256 proves integrity, not authorship | The snapshot is tamper-evident only relative to a trusted copy of its digest. Signing and external transparency logs remain out of scope. |
-| A partial run may need preservation | Default sealing requires `COMPLETE`; `--allow-incomplete` is explicit and still refuses active capture. |
-| Repository policy or model changes break replay | The frozen bundle and run manifest bind the exact policy, estimator, and model bytes. |
-| Derived reports legitimately change | They are excluded unless explicitly declared by the run manifest. Primary evidence remains bound. |
-| Additional evidence may appear after sealing | Validation fails for uncovered evidence-bearing files, requiring a new immutable snapshot/run rather than mutation. |
-| A malicious caller can replay a generated session binding | The binding prevents accidental stale-header/raw builds, but it is deliberately unsigned and not secret. A caller that reconstructs the matching invocation remains outside the trust boundary; signing and isolated builders remain future work. |
-
-## Plant-model promotion handoff
-
-Before using a run for plant-model promotion:
-
-1. stop capture and create `COMPLETE`;
-2. populate known manifest provenance rather than inventing missing values;
-3. run `.venv/bin/python -m host.otis_tools.evidence RUN_DIR`;
-4. run `.venv/bin/python -m host.otis_tools.adaptive_hybrid_analyze RUN_DIR`;
-5. retain and back up the local run directory and snapshot digest together;
-6. promote only reviewed, compact outputs to tracked paths outside `runs/`.
-
-This establishes byte-exact inputs for later plant-model reproduction without
-making any claim about calibration quality, reference authority, or control
-eligibility.
+For a closed run, `python -m host.otis_tools package RUN_DIR` performs analysis
+and sealing. `python -m host.otis_tools verify RUN_DIR` checks the resulting
+package. A later analysis uses `analyse RUN_DIR --output EXTERNAL_REPORT`.
+Promote only reviewed compact results, contracts, plant models or deliberately
+small fixtures to tracked paths. Sealing alone establishes no calibration,
+reference-quality or control-eligibility claim.
