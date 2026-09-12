@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
@@ -10,10 +11,12 @@ import pytest
 from host.otis_tools import adaptive_hybrid_replay as replay
 from host.otis_tools import raw_measurement_replay as raw
 from host.otis_tools.accepted_span_replay import POLICY_PATH, accepted_window_ref
+from host.otis_tools.adaptive_hybrid_analyze import _validate_manifest_csvs
 from host.otis_tools.authoritative_inputs import (
     collect_authoritative_inputs,
     validate_authoritative_inputs,
 )
+from host.otis_tools.contracts import CONTRACT_FIELDS
 
 MODULUS = 1 << 32
 
@@ -230,6 +233,138 @@ def test_new_session_reanchors_and_estimate_uses_its_exact_closing_identity(monk
     exact, report, _ = run_measurement(monkeypatch, later)
     assert exact, report
     assert report["accepted_span_replay"]["raw_count_replay"]["interval_count"] == 603
+
+
+def test_analyzer_accepts_session_reset_and_in_session_count_sequence_wrap(
+    tmp_path: Path,
+):
+    earlier = raw_measurement_rows(
+        [10_000_000] * 5,
+        first_sequence=MODULUS - 3,
+    )
+    # The first new-session CNT is more than half a monotonic-us32 period
+    # after the previous CNT. Two retained REF-only observations preserve
+    # unambiguous D14 chronology across the D8-local absence.
+    later = raw_measurement_rows(first_ticks=2_152_000_000)
+    for index, row in enumerate(later["snapshots.csv"]):
+        row.update(session="2", reference_sequence=str(index + 5))
+    for index, row in enumerate(later["ref.csv"]):
+        row["event_seq"] = str(index + 1008)
+    bridge_references = []
+    for event_seq, ticks in ((1006, 1_000_000_000), (1007, 2_000_000_000)):
+        row = deepcopy(earlier["ref.csv"][-1])
+        row.update(event_seq=str(event_seq), timestamp_ticks=str(ticks))
+        bridge_references.append(row)
+    later["spans.csv"] = earlier["spans.csv"] + accepted_rows(
+        later["snapshots.csv"], later["counts.csv"]
+    )
+    later["estimates.csv"] = []
+    later["snapshots.csv"] = earlier["snapshots.csv"] + later["snapshots.csv"]
+    later["ref.csv"] = (
+        earlier["ref.csv"] + bridge_references + later["ref.csv"]
+    )
+    later["counts.csv"] = earlier["counts.csv"] + later["counts.csv"]
+
+    files = [
+        {"contract": contract, "path": filename}
+        for contract, filename in (
+            ("count_observations_v1", "counts.csv"),
+            ("pps_snapshots_v1", "snapshots.csv"),
+            ("accepted_pps_spans_v1", "spans.csv"),
+            ("estimates_v3", "estimates.csv"),
+        )
+    ]
+    files.extend(
+        {
+            "contract": "raw_events_v1",
+            "record_type": record_type,
+            "path": filename,
+        }
+        for record_type, filename in (("REF", "ref.csv"), ("EVT", "evt.csv"))
+    )
+    contract_by_filename = {
+        "counts.csv": "count_observations_v1",
+        "snapshots.csv": "pps_snapshots_v1",
+        "spans.csv": "accepted_pps_spans_v1",
+        "estimates.csv": "estimates_v3",
+        "ref.csv": "raw_events_v1",
+        "evt.csv": "raw_events_v1",
+    }
+    for filename, rows in later.items():
+        path = tmp_path / filename
+        fieldnames = CONTRACT_FIELDS[contract_by_filename[filename]]
+        with path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+    manifest = SimpleNamespace(
+        root=tmp_path,
+        files=files,
+        known_channels=frozenset({0, 1, 2}),
+        known_domains=frozenset({"rp2040_monotonic_us32"}),
+    )
+
+    assert [
+        int(row["count_seq"]) for row in later["counts.csv"][:6]
+    ] == [MODULUS - 2, MODULUS - 1, 0, 1, 2, 1]
+
+    csv_results = _validate_manifest_csvs(
+        manifest,
+        expected_policy_sha256=measurement_manifest_value()[
+            "reference_acceptance"
+        ]["policy_sha256"],
+    )
+    assert all(result["exact"] for result in csv_results.values()), csv_results
+    exact, report, _ = replay._measurement_replay(
+        manifest, measurement_manifest_value()
+    )
+    assert exact, report
+    assert report["accepted_span_replay"]["raw_count_replay"][
+        "interval_count"
+    ] == 605
+
+    # A standalone CNT file cannot classify this corruption. The joined replay
+    # must still reject it using same-session SNP identity and exact endpoints.
+    later["counts.csv"][1]["count_seq"] = later["counts.csv"][0]["count_seq"]
+    counts_path = tmp_path / "counts.csv"
+    with counts_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=CONTRACT_FIELDS["count_observations_v1"]
+        )
+        writer.writeheader()
+        writer.writerows(later["counts.csv"])
+    assert _validate_manifest_csvs(
+        manifest,
+        expected_policy_sha256=measurement_manifest_value()[
+            "reference_acceptance"
+        ]["policy_sha256"],
+    )["count_observations_v1"]["exact"] is True
+    exact, report, _ = replay._measurement_replay(
+        manifest, measurement_manifest_value()
+    )
+    assert not exact
+    assert not report["accepted_span_replay"]["raw_count_replay"]["exact"]
+
+    # Per-row gate semantics remain a standalone CSV responsibility.
+    later["counts.csv"][0]["gate_close_ticks"] = later["counts.csv"][0][
+        "gate_open_ticks"
+    ]
+    with counts_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CONTRACT_FIELDS[
+            "count_observations_v1"
+        ])
+        writer.writeheader()
+        writer.writerows(later["counts.csv"])
+    count_validation = _validate_manifest_csvs(
+        manifest,
+        expected_policy_sha256=measurement_manifest_value()[
+            "reference_acceptance"
+        ]["policy_sha256"],
+    )["count_observations_v1"]
+    assert count_validation["exact"] is False
+    assert any(
+        "gate progression" in error for error in count_validation["errors"]
+    )
 
 
 @pytest.mark.parametrize("filename", ["counts.csv", "ref.csv"])

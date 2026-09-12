@@ -948,9 +948,12 @@ def _check_sequence(contract: str, row: dict[str, str], row_number: int, previou
     field_name = SEQUENCE_FIELDS[contract]
     current = _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
     # Snapshot ordinals restart at zero when the firmware opens a new capture
-    # session, and wrap modulo 2^32 inside a sufficiently long session.  The
-    # reconstruction layer validates adjacency using both session and ordinal.
+    # session, and wrap modulo 2^32 inside a sufficiently long session. CNT
+    # carries the closing snapshot ordinal but has no session field, so its CSV
+    # alone cannot distinguish either case from reordering. The reconstruction
+    # layer validates SNP/CNT adjacency using session, ordinal and endpoints.
     if contract in {
+        "count_observations_v1",
         "pps_snapshots_v1",
         "forwarded_monitor_snapshots_v1",
         "accepted_pps_spans_v1",
@@ -2966,14 +2969,19 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                     parsed_timestamps[field_name] = int(row.get(field_name, ""), 10)
                 except (TypeError, ValueError):
                     continue
-            _check_timestamp_monotonicity(
-                context.contract,
-                parsed_timestamps,
-                row_count,
-                previous_timestamps,
-                errors,
-                domain=domain,
-            )
+            # CNT has no capture-session field. Its sparse inter-row timestamps
+            # cannot distinguish a legal session reset or long D8 outage from
+            # reordering. Intra-row gate progression is checked above; joined
+            # SNP/REF/CNT replay owns causal inter-row ordering.
+            if context.contract != "count_observations_v1":
+                _check_timestamp_monotonicity(
+                    context.contract,
+                    parsed_timestamps,
+                    row_count,
+                    previous_timestamps,
+                    errors,
+                    domain=domain,
+                )
             _check_channel(context, row, row_count, errors)
             if "flags" in expected_fields:
                 _check_flags(row, row_count, errors)

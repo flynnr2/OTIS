@@ -46,7 +46,8 @@ then supplies them in later observations. Separate cases retain identity and
 session rejection, missing-reference control inhibition, acquisition handling
 and independently advancing ordinals.
 
-The running bench instance is unchanged. Its immutable rejected census cannot
+At the time of the repair, the running bench instance was unchanged. Its
+immutable rejected census cannot
 be retroactively admitted by this repair. Capture remains the responsibility
 of the bench instance; closing it requires explicit operator direction. Any
 subsequent physical attempt needs the corrected frozen host bundle and its
@@ -81,3 +82,56 @@ covers wall-clock jumps, stale, future and malformed monotonic observations.
 This change does not claim that every monitor or campaign wall-time diagnostic
 is insensitive to civil-clock adjustment, nor establish that such an adjustment
 caused the retained rehearsal failure.
+
+
+## Subsequent operator closure and historical disposition
+
+The operator-authorized attempt is now closed. Capture recorded one
+`emergency_abort_sent` at `2026-09-12T10:39:35Z`; retained firmware records show
+`queued_to_core1`, `abort_accepted_on_core1`, and a complete ABORTED/fail-static
+snapshot. Capture closed at `2026-09-12T10:40:34Z` and exited 0. The bench Mac
+reported that all three processes exited and OS inspection found no serial
+owner. No new serial query was used to establish that result. No DAC application
+was recorded, and the applied code remains explicitly unknown, not assumed zero.
+
+The main checkout had changed while capture was active. Its original runner's
+post-close missing-module failure was preserved; shutdown and finalization used
+a separate clean checkout at the original `539ff6a`. The frozen analyzer's
+review-required seal and append-only registration were completed without
+repeating acquisition. This is direct evidence for keeping the running checkout
+immutable through closure, including its offline finalization dependencies.
+
+The supplementary archive
+`shutdown-supplement-539ff6a-20260912T112946Z.tar.gz` was received on the
+development Mac and independently verified: 198,403 bytes, SHA-256
+`4ec1ad29d62da5356922d949460a05413530af0a7bdaa181f85cc3bf71403042`,
+21 matching manifest entries plus the manifest itself. The raw and health
+excerpts, closure, retained states, and shutdown log corroborate the disposition.
+The full acquisition was not copied or re-certified with current tools.
+
+The historical analyzer retained one CSV error at row 3920: `count_seq`
+3922 to 1. Its D14/D8 reconstruction independently reported exact source
+association and arithmetic across the capture sessions. Current-source review
+found a CSV validator that incorrectly required a globally increasing CNT
+sequence even though the fixed producer uses the closing snapshot ordinal,
+which restarts after a new capture-session anchor. That is a reproducible
+software-contract mismatch; it does not establish a hardware defect.
+
+The old firmware also recorded one recovered `ref_without_snapshot` association
+loss at reference 3923 and a new capture session. This is a diagnosis from the
+historical software, not independent proof of an electrical or oscillator fault.
+Its physical cause is unestablished. Do not turn this historical label into a
+new hardware qualification prerequisite or reinterpret the old run as a pass.
+The next decision is a fresh inhibited entry with the corrected, rehearsed
+current host and its fixed firmware image.
+
+The current CNT repair removes the standalone CSV's inter-row sequence and
+sparse-timestamp comparisons. The existing required SNP/REF/CNT replay already
+owns session-qualified adjacency, exact endpoints, duplicates, and ordering.
+Per-row domains, numeric bounds, flags, and gate progression remain checked.
+A file-backed regression exercises both analyzer CSV validation and actual
+measurement replay across ordinal wrap, a later 2-to-1 session restart, and a
+long CNT gap with intervening REF chronology. Corrupt source identity still
+fails replay, and an invalid gate still fails the CSV check. The full current
+suite passed: **674 tests in 95.23 seconds**. Firmware, wire schemas, and the
+historical acquisition/seal are unchanged.
