@@ -124,3 +124,18 @@ out-of-order status is not clean evidence.
 Offline tools may derive findings from status and canonical records, but those
 findings cannot erase or rewrite the original rows and have no independent
 timing or control authority.
+
+### Status producer ownership
+
+Core 1 owns the `pps_gate` and `adaptive_hybrid` live snapshot namespaces.
+Core 0 serializes their queued records but does not independently publish
+copies of their fields. A core-0 `CONFIG?` response may interleave with either
+cohort between complete serial records; it requests timing configuration with
+`DiagnosticConfigQuery` instead of repeating PPS fields. The PPS snapshot
+continues to publish boundary owner, aperture backend, backend qualification,
+and boundary-ring capacity from the timing owner.
+
+An interleaved record from another component does not become a PPS or ACTIVE
+snapshot member. A duplicate key within either owned snapshot remains invalid,
+even when both values match. There is no last-value-wins or special CONFIG
+exception in the host reducer. The wire schema and timing meanings are unchanged.
