@@ -865,8 +865,6 @@ def _validate_rehearsal_receipt(
         "host_toolset_sha256",
         "campaign_envelope_sha256",
         "package",
-        "required_boundaries",
-        "boundary_results",
         "boundaries",
         "receipt_sha256",
     }
@@ -892,8 +890,6 @@ def _validate_rehearsal_receipt(
         != document["host"]["toolset"]["toolset_sha256"]
         or receipt.get("campaign_envelope_sha256")
         != campaign["bench_attempt"]["envelope_sha256"]
-        or receipt.get("required_boundaries") != required
-        or receipt.get("boundary_results") != {name: True for name in required}
         or not isinstance(package, dict)
         or set(package) != {"path", "package_content_sha256"}
         or not _HEX64.fullmatch(str(package.get("package_content_sha256", "")))
@@ -917,8 +913,12 @@ def _validate_rehearsal_receipt(
     if (
         not isinstance(run_manifest, dict)
         or run_manifest.get("run_spec", {}).get("sha256") != spec.sha256
+        or run_manifest.get("execution_kind") != "simulated"
+        or run_manifest.get("entry_authorization") is not None
     ):
-        raise ValueError("rehearsal package does not bind the exact run specification")
+        raise ValueError(
+            "rehearsal package is not a simulated run of the exact run specification"
+        )
     analysis = validated.get("analysis")
     capture = validated.get("capture")
     if (

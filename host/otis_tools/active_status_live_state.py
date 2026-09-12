@@ -7,10 +7,10 @@ active-status generation can never masquerade as a stable control-plane view.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
 
 from .active_status_contract import (
     ACTIVE_STATUS_COMPONENT,
@@ -26,7 +26,6 @@ from .firmware_host_contract import (
     active_status_value_error,
 )
 
-
 LIVE_STATE_CONTRACT = "adaptive_hybrid_status_live_state_v1"
 LIVE_STATE_PATH = Path("reports/adaptive_hybrid_status_live_state_v1.json")
 LIVE_STATE_SCHEMA_VERSION = 1
@@ -35,6 +34,9 @@ LIVE_FRONTIER_COMPONENT = "active_status_live_state"
 LIVE_FRONTIER_TICKS_KEY = "frontier_timestamp_ticks"
 LIVE_FRONTIER_DOMAIN_KEY = "frontier_status_domain"
 HEALTH_SCHEMA_VERSION = str(RECORD_SCHEMA_VERSIONS["health_v1"])
+PPS_GATE_COMPONENT = "pps_gate"
+PPS_SNAPSHOT_KEY = "snapshot"
+PPS_SNAPSHOT_GENERATION_KEY = "snapshot_generation"
 
 
 def _positive_int(value: object) -> int | None:
@@ -76,6 +78,9 @@ class ActiveStatusLiveReducer:
         self.current_active: dict[str, dict[str, str]] = {}
         self.newest_started_generation = 0
         self.newest_complete_generation = 0
+        self.current_pps_generation: int | None = None
+        self.current_pps: dict[str, dict[str, str]] = {}
+        self.newest_pps_generation = 0
         self.invalid_reason: str | None = None
 
     def _frontier(self, row: Mapping[str, str]) -> dict[str, object]:
@@ -129,11 +134,72 @@ class ActiveStatusLiveReducer:
             )
         component = row.get("component", "")
         key = canonical_active_status_key(row.get("status_key", ""))
+        if self.invalid_reason is not None:
+            return None
+        if component == PPS_GATE_COMPONENT:
+            value = str(row.get("status_value", ""))
+            if key == PPS_SNAPSHOT_KEY and value == "begin":
+                if self.current_pps_generation is not None:
+                    return self._invalidate(
+                        row,
+                        "PPS snapshot began before the prior generation completed",
+                    )
+                self.current_pps_generation = 0
+                self.current_pps = {key: _record(row)}
+                return self._state(
+                    "in_progress", row, reason="pps_snapshot_generation_started"
+                )
+            if self.current_pps_generation is None:
+                # Periodic PPS event statuses are useful evidence, but only the
+                # explicitly framed status snapshot can update live authority.
+                return None
+            if key == PPS_SNAPSHOT_GENERATION_KEY:
+                generation = _positive_int(value)
+                if generation is None:
+                    return self._invalidate(
+                        row, "PPS snapshot generation is not positive"
+                    )
+                if generation <= self.newest_pps_generation:
+                    return self._invalidate(
+                        row,
+                        "PPS snapshot generation did not increase monotonically: "
+                        f"{generation} <= {self.newest_pps_generation}",
+                    )
+                self.current_pps_generation = generation
+            elif key == PPS_SNAPSHOT_KEY:
+                if value != "end":
+                    return self._invalidate(row, "PPS snapshot marker is invalid")
+                if self.current_pps_generation == 0:
+                    return self._invalidate(
+                        row, "PPS snapshot ended before its generation"
+                    )
+                self.current_pps[key] = _record(row)
+                self.latest_nonactive = {
+                    identity: record
+                    for identity, record in self.latest_nonactive.items()
+                    if identity[0] != PPS_GATE_COMPONENT
+                }
+                self.latest_nonactive.update(
+                    {
+                        (PPS_GATE_COMPONENT, status_key): record
+                        for status_key, record in self.current_pps.items()
+                    }
+                )
+                self.newest_pps_generation = self.current_pps_generation
+                self.current_pps_generation = None
+                self.current_pps = {}
+                # The PPS cohort becomes authoritative only when the next
+                # complete ACTIVE snapshot supplies its producer frontier.
+                return None
+            if key in self.current_pps:
+                return self._invalidate(
+                    row, f"duplicate PPS snapshot key {key!r}"
+                )
+            self.current_pps[key] = _record(row)
+            return None
         if component != ACTIVE_STATUS_COMPONENT:
             if component and key:
                 self.latest_nonactive[(component, key)] = _record(row)
-            return None
-        if self.invalid_reason is not None:
             return None
 
         if key == SNAPSHOT_BEGIN_KEY:
@@ -218,6 +284,10 @@ class ActiveStatusLiveReducer:
 
         generation = self.current_generation
         self.newest_complete_generation = generation
+        if self.current_pps_generation is not None:
+            self.current_generation = None
+            self.current_active = {}
+            return None
         records = [
             *self.latest_nonactive.values(),
             *self.current_active.values(),

@@ -44,14 +44,16 @@ def test_capture_frontier_to_post_abort_snapshot_skips_large_history_and_partial
         handle.write(b"\n")
         handle.flush()
         writer = capture.RawEvidenceWriter(handle)
-        writer.write_device(b"unrelated partial device line")
+        partial_device_line = b"unrelated partial device line"
+        writer.write_device(partial_device_line)
+        retained_frontier = origin + len(partial_device_line)
         runner._poll_emergency_command(fifo, None, object(), writer)
         assert sent == ["ACTIVE ABORT"]
         state = json.loads((tmp_path / capture.CAPTURE_STATE).read_text())
-        assert state["emergency_abort_raw_frontier"]["search_offset_bytes"] == origin
+        assert state["emergency_abort_raw_frontier"]["search_offset_bytes"] == retained_frontier
         observer = _AbortDeliveryObserver(tmp_path)
         assert observer.observe(state) is None  # receipt does not prove queued marker delivery
-        assert observer.offset == origin
+        assert observer.offset == retained_frontier
         wire = _wire()
         writer.write_device(b"\n" + wire[:-5])
         assert observer.observe(state) is None  # incomplete complete-generation record

@@ -133,8 +133,6 @@ def _receipt(spec: run_spec.ValidatedRunSpec, package_path: Path) -> dict:
             "envelope_sha256"
         ],
         "package": {"path": str(package_path), "package_content_sha256": "8" * 64},
-        "required_boundaries": required,
-        "boundary_results": {name: True for name in required},
         "boundaries": {
             "path": run_spec.REHEARSAL_BOUNDARY_REPORT,
             "sha256": boundary_sha256,
@@ -172,7 +170,11 @@ def test_entry_requires_sealed_exact_rehearsal_and_is_consumed_before_record(
         observed_packages.append(path)
         return {
             "package_content_sha256": "8" * 64,
-            "run_manifest": {"run_spec": {"sha256": spec.sha256}},
+            "run_manifest": {
+                "run_spec": {"sha256": spec.sha256},
+                "execution_kind": "simulated",
+                "entry_authorization": None,
+            },
             "capture": {"integrity": "complete"},
             "analysis": {"status": "passed", "outcome": "interrupted_incomplete"},
             "inventory": [
@@ -216,6 +218,41 @@ def test_entry_requires_sealed_exact_rehearsal_and_is_consumed_before_record(
         consumed.record_authorization(spec)
 
 
+def test_rehearsal_receipt_rejects_a_physical_package(
+    monkeypatch, tmp_path: Path
+) -> None:
+    spec = build_synthetic_spec(
+        monkeypatch, tmp_path, purpose=CONTINGENT_72_HOUR_HYBRID_CONTROL
+    )
+    receipt = _receipt(spec, tmp_path / "rehearsal")
+    artifact = validate_frozen_firmware_artifact(spec.firmware)
+    monkeypatch.setattr(run_spec, "verify_current_host_toolset", lambda _spec: None)
+    monkeypatch.setattr(run_spec, "load_firmware_artifact", lambda _path: artifact)
+    monkeypatch.setattr(
+        evidence_package,
+        "validate_package",
+        lambda _path: {
+            "package_content_sha256": "8" * 64,
+            "run_manifest": {
+                "run_spec": {"sha256": spec.sha256},
+                "execution_kind": "physical",
+                "entry_authorization": {
+                    "rehearsal_receipt_sha256": "1" * 64,
+                    "operator_instruction_ref": "operator",
+                    "attempt_reason": "not a rehearsal",
+                },
+            },
+        },
+    )
+    with pytest.raises(ValueError, match="not a simulated run"):
+        run_spec.authorize_entry(
+            spec,
+            rehearsal_receipt=receipt,
+            operator_instruction_ref="operator",
+            attempt_reason="attempt",
+        )
+
+
 def test_rehearsal_receipt_rejects_package_or_boundary_substitution(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -245,11 +282,31 @@ def test_rehearsal_receipt_rejects_package_or_boundary_substitution(
             attempt_reason="attempt",
         )
 
+    monkeypatch.setattr(
+        evidence_package,
+        "validate_package",
+        lambda _path: {
+            "package_content_sha256": "8" * 64,
+            "run_manifest": {
+                "run_spec": {"sha256": spec.sha256},
+                "execution_kind": "simulated",
+                "entry_authorization": None,
+            },
+            "capture": {"integrity": "complete"},
+            "analysis": {"status": "passed", "outcome": "interrupted_incomplete"},
+            "inventory": [
+                {
+                    "path": run_spec.REHEARSAL_BOUNDARY_REPORT,
+                    "sha256": receipt["boundaries"]["sha256"],
+                }
+            ],
+        },
+    )
     changed = deepcopy(receipt)
-    changed["boundary_results"][run_spec.required_rehearsal_boundaries(spec)[0]] = False
+    changed["boundaries"]["sha256"] = "7" * 64
     unsigned = {key: value for key, value in changed.items() if key != "receipt_sha256"}
     changed["receipt_sha256"] = canonical_sha256(unsigned)
-    with pytest.raises(ValueError, match="does not prove"):
+    with pytest.raises(ValueError, match="boundary report"):
         run_spec.authorize_entry(
             spec,
             rehearsal_receipt=changed,
@@ -274,7 +331,11 @@ def test_entry_rejects_boundary_report_not_matching_sealed_inventory(
         "validate_package",
         lambda _path: {
             "package_content_sha256": "8" * 64,
-            "run_manifest": {"run_spec": {"sha256": spec.sha256}},
+            "run_manifest": {
+                "run_spec": {"sha256": spec.sha256},
+                "execution_kind": "simulated",
+                "entry_authorization": None,
+            },
             "capture": {"integrity": "complete"},
             "analysis": {"status": "passed", "outcome": "interrupted_incomplete"},
             "inventory": [
@@ -293,6 +354,24 @@ def test_entry_rejects_boundary_report_not_matching_sealed_inventory(
             operator_instruction_ref="operator",
             attempt_reason="attempt",
         )
+
+
+def test_firmware_artifact_rejects_symlink_inputs(tmp_path: Path) -> None:
+    from host.otis_tools import firmware_artifact
+
+    target = tmp_path / "artifact.bin"
+    target.write_bytes(b"exact bytes")
+    linked_artifact = tmp_path / "linked.bin"
+    linked_artifact.symlink_to(target)
+    with pytest.raises(ValueError, match="not a regular file"):
+        firmware_artifact._file_binding(linked_artifact)
+
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    linked_manifest = tmp_path / "linked-manifest.json"
+    linked_manifest.symlink_to(manifest)
+    with pytest.raises(ValueError, match="manifest must be a regular file"):
+        firmware_artifact.load_firmware_artifact(linked_manifest)
 
 
 def test_frozen_firmware_document_rejects_source_or_configuration_contradiction(

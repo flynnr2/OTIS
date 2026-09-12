@@ -21,6 +21,7 @@ from host.otis_tools.live_run import run_experiment
 from host.otis_tools.offline import finish_run
 from host.otis_tools.run_spec import (
     REHEARSAL_RECEIPT_CONTRACT,
+    _validate_rehearsal_receipt,
     create_run_record,
     load_run_spec,
     required_rehearsal_boundaries,
@@ -259,15 +260,20 @@ def _receipt(spec: Any, package: dict[str, Any], output: Path, boundary_results:
         "firmware_binary_sha256": artifact["uf2"]["sha256"],
         "host_toolset_sha256": document["host"]["toolset"]["toolset_sha256"],
         "campaign_envelope_sha256": document["campaign"]["bench_attempt"]["envelope_sha256"],
-        "package": {"path": package["package"], "package_content_sha256": package["package_content_sha256"]},
-        "required_boundaries": list(boundary_results),
-        "boundary_results": boundary_results,
+        "package": {
+            "path": package["package_directory"],
+            "package_content_sha256": package["package_content_sha256"],
+        },
         "boundaries": {
             "path": "reports/rehearsal_boundaries_v1.json",
             "sha256": sha256(boundaries_path.read_bytes()).hexdigest(),
         },
     }
     receipt = {**unsigned, "receipt_sha256": sha256(_canonical(unsigned)).hexdigest()}
+    # Receipt construction and validation share the default portable package
+    # location.  Do this before publishing the external receipt so a producer
+    # cannot emit a location that its consumer cannot resolve.
+    _validate_rehearsal_receipt(spec, receipt)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x", encoding="utf-8") as stream:
         json.dump(receipt, stream, sort_keys=True, indent=2)

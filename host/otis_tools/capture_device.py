@@ -39,12 +39,20 @@ CAPTURE_STATE = Path("reports/capture_device_state.json")
 CAPTURE_STATE_HEARTBEAT_S = 5.0
 SEGMENT_PROTOCOL_ID = "otis_capture_closure_v1"
 SEGMENT_CLOSURE = Path("reports/capture_segment_closure_v1.json")
+SERIAL_OWNER_PROBE_TIMEOUT_S = 2.0
 
 
 def _serial_owner_pids(device: str) -> set[int]:
-    result = subprocess.run(
-        ["lsof", "-t", device], text=True, capture_output=True, check=False
-    )
+    try:
+        result = subprocess.run(
+            ["lsof", "-t", device],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=SERIAL_OWNER_PROBE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("serial owner inspection timed out") from exc
     if result.returncode not in {0, 1}:
         raise ValueError(f"cannot inspect serial owners: {result.stderr.strip()}")
     return {
@@ -179,17 +187,19 @@ class ActiveStatusLivePublisher:
 
 
 class RawEvidenceWriter:
-    """Keep host annotations between complete device records.
+    """Retain every device byte immediately; place host markers between records.
 
-    Serial reads may end in the middle of a CSV record.  Holding only that
-    final partial record lets command/audit markers wait for its terminating
-    newline instead of being inserted into the device bytes.
+    An unterminated device record uses a byte count, not an in-memory copy.
+    Pending host annotations spill to a temporary file after 64 KiB, so broken
+    framing cannot defeat the parser's memory bound or erase received evidence.
     """
+
+    MARKER_MEMORY_LIMIT = 65536
 
     def __init__(self, handle) -> None:
         self.handle = handle
-        self.partial = bytearray()
-        self.pending_markers: list[bytes] = []
+        self.partial = 0
+        self.pending_markers = None
 
     def _ensure_line_boundary(self) -> None:
         if self.handle.tell() == 0:
@@ -201,41 +211,64 @@ class RawEvidenceWriter:
             self.handle.write(b"\n")
 
     def _write_pending_markers(self) -> None:
-        if not self.pending_markers:
+        if self.pending_markers is None:
             return
-        for marker in self.pending_markers:
-            self.handle.write(marker)
-        self.pending_markers.clear()
+        self.pending_markers.seek(0)
+        for block in iter(
+            lambda: self.pending_markers.read(self.MARKER_MEMORY_LIMIT), b""
+        ):
+            self.handle.write(block)
+        self.pending_markers.close()
+        self.pending_markers = None
 
     def write_device(self, data: bytes) -> None:
-        self.partial.extend(data)
-        while True:
-            try:
-                newline_index = self.partial.index(0x0A)
-            except ValueError:
-                break
-            end = newline_index + 1
-            self.handle.write(self.partial[:end])
-            del self.partial[:end]
-            self._write_pending_markers()
+        cursor = 0
+        while cursor < len(data):
+            newline = data.find(b"\n", cursor)
+            end = len(data) if newline < 0 else newline + 1
+            self.handle.write(data[cursor:end])
+            self.partial += end - cursor
+            cursor = end
+            if newline >= 0:
+                self.partial = 0
+                self._write_pending_markers()
         self.handle.flush()
 
     def write_marker(self, event: str, **fields: object) -> None:
         marker = _marker_bytes(event, **fields)
         if self.partial:
-            self.pending_markers.append(marker)
+            if self.pending_markers is None:
+                self.pending_markers = tempfile.SpooledTemporaryFile(  # noqa: SIM115 - closed by RawEvidenceWriter.
+                    max_size=self.MARKER_MEMORY_LIMIT, mode="w+b"
+                )
+            self.pending_markers.write(marker)
         else:
             self._ensure_line_boundary()
             self.handle.write(marker)
             self.handle.flush()
 
     def drop_partial(self) -> int:
-        dropped = len(self.partial)
-        self.partial.clear()
-        self._ensure_line_boundary()
+        # The framing consumer drops an incomplete record. Its original bytes
+        # remain in raw evidence; label the separator added for host annotations.
+        retained = self.partial
+        if retained:
+            self._ensure_line_boundary()
+            self.handle.write(
+                _marker_bytes(
+                    "raw_partial_record_retained",
+                    byte_count=retained,
+                    synthetic_terminating_lf=True,
+                )
+            )
+        self.partial = 0
         self._write_pending_markers()
         self.handle.flush()
-        return dropped
+        return retained
+
+    def close(self) -> None:
+        if self.pending_markers is not None:
+            self.pending_markers.close()
+            self.pending_markers = None
 
 
 def _write_marker(raw_writer: RawEvidenceWriter, event: str, **fields: object) -> None:
@@ -366,6 +399,13 @@ class CaptureSink:
                 "refusing to reopen a logically or physically closed capture segment: "
                 f"{self.run_dir}"
             )
+        # Reserve this acquisition before opening any append stream or FIFO.
+        # A second worker must not alter evidence while serial exclusivity is
+        # still being checked. A stale reservation requires explicit review.
+        self.in_progress = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
+        with self.in_progress.open("x", encoding="utf-8") as reservation:
+            json.dump({"owner_pid": os.getpid(), "created_utc": _utc_now()}, reservation)
+            reservation.write("\n")
         self._stack = ExitStack()
         try:
             file_by_contract, file_by_record_type = _split_targets(self.run_dir)
@@ -390,9 +430,8 @@ class CaptureSink:
                 if emergency_fifo_path is not None
                 else None
             )
-            self.in_progress = self.run_dir / CAPTURE_IN_PROGRESS_FLAG
-            self.in_progress.touch(exist_ok=True)
             self.raw_writer = RawEvidenceWriter(self.raw_handle)
+            self._stack.callback(self.raw_writer.close)
             self.active_status_live_publisher = ActiveStatusLivePublisher(
                 self.run_dir
             )
@@ -462,6 +501,10 @@ class CaptureSink:
             owner_pid=os.getpid(),
             transport_generation=generation,
         )
+        # The closure is the acquisition-completeness commit.  Flush and close
+        # every evidence stream before publishing it; retain the reservation if
+        # any earlier operation fails.
+        self._stack.close()
         manifest_path = find_manifest_path(self.run_dir)
         if manifest_path is None:
             raise FileNotFoundError("capture segment has no manifest to bind")
@@ -495,16 +538,20 @@ class CaptureSink:
             },
         )
         self.in_progress.unlink(missing_ok=True)
-        self.runner._write_state(
-            run_dir=self.run_dir,
-            capture_active=False,
-            serial_open=physical_serial_open,
-            logical_segment_closed=True,
-            physical_serial_open=physical_serial_open,
-            transport_generation=generation,
-        )
-        self._stack.close()
         self.closed = True
+        try:
+            self.runner._write_state(
+                run_dir=self.run_dir,
+                capture_active=False,
+                serial_open=physical_serial_open,
+                logical_segment_closed=True,
+                physical_serial_open=physical_serial_open,
+                transport_generation=generation,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            # The closed streams, immutable closure, and removed reservation are
+            # authoritative.  This projection has no authority to reopen them.
+            _log_event(logging.WARNING, "final_capture_state_error", error=str(exc))
 
     def abandon_incomplete(self) -> None:
         """Close host resources while retaining the in-progress flag as evidence."""
@@ -828,7 +875,9 @@ class CaptureDeviceRunner:
             return
         raw_command = emergency_commands[0]
         try:
-            command = parse_serial_command(raw_command)
+            command, _created_monotonic_ns = parse_timestamped_command_line(
+                raw_command
+            )
         except ValueError as exc:
             _write_marker(
                 raw_writer,
@@ -983,6 +1032,9 @@ class CaptureDeviceRunner:
             else None
         )
         duration_reached = False
+        clean_stop_reached = False
+        serial_close_error: Exception | None = None
+        transport_failure: BaseException | None = None
         try:
             sink.start(generation=self.transport_generation)
             raw_writer = sink.raw_writer
@@ -1037,7 +1089,7 @@ class CaptureDeviceRunner:
                                     raw_writer,
                                     sink.active_status_live_publisher,
                                     sink.acquisition_frontier_tracker,
-                                    before_line_processing=lambda: self._poll_command_ingress(
+                                    before_line_processing=lambda serial_handle=serial_handle: self._poll_command_ingress(
                                         emergency_fifo,
                                         command_fifo,
                                         serial_handle,
@@ -1090,6 +1142,7 @@ class CaptureDeviceRunner:
                                         raw_writer,
                                         "graceful_shutdown_complete",
                                     )
+                                clean_stop_reached = True
                                 self.stop_event.set()
                                 break
                             if now >= next_status:
@@ -1122,6 +1175,7 @@ class CaptureDeviceRunner:
                         if (
                             self.current_emergency_fifo_configured
                         ):
+                            transport_failure = exc
                             self.emergency_abort_latched = True
                             if command_fifo is not None:
                                 command_fifo.close()
@@ -1144,28 +1198,45 @@ class CaptureDeviceRunner:
                             try:
                                 serial_handle.close()
                                 self.serial_open = False
-                            except Exception as exc:  # noqa: BLE001 - close failures are diagnostic only.
+                            except Exception as exc:  # noqa: BLE001 - retain the transport failure below.
+                                serial_close_error = exc
                                 _log_event(logging.WARNING, "serial_close_error", error=str(exc))
             finally:
-                dropped = self.framer.drop_partial()
-                raw_writer.drop_partial()
-                if dropped:
-                    _log_event(logging.WARNING, "partial_line_dropped", bytes=dropped, reason="shutdown")
-                    _write_marker(raw_writer, "partial_line_dropped", bytes=dropped, reason="shutdown")
-                self.capture_active = False
+                # The process exit releases the descriptor even when the
+                # backend's close method itself reports a failure.
                 self.serial_open = False
-                sink.close(
-                    generation=self.transport_generation,
-                    physical_serial_open=False,
+            if serial_close_error is not None:
+                raise RuntimeError("serial close failed before orderly capture closure") from serial_close_error
+            if transport_failure is not None:
+                raise RuntimeError(
+                    "capture transport failed before orderly closure"
+                ) from transport_failure
+            if not clean_stop_reached:
+                raise RuntimeError(
+                    "capture stopped before an orderly device-record boundary"
                 )
-        finally:
+            dropped = self.framer.drop_partial()
+            raw_writer.drop_partial()
+            if dropped:
+                _log_event(logging.WARNING, "partial_line_dropped", bytes=dropped, reason="shutdown")
+                _write_marker(raw_writer, "partial_line_dropped", bytes=dropped, reason="shutdown")
+            self.capture_active = False
+            self.serial_open = False
+            sink.close(
+                generation=self.transport_generation,
+                physical_serial_open=False,
+            )
+        except BaseException:
+            self.capture_active = False
+            self.serial_open = False
             if not sink.closed:
-                self.capture_active = False
-                self.serial_open = False
-                sink.close(
-                    generation=self.transport_generation,
-                    physical_serial_open=False,
-                )
+                # Cleanup must not replace the failure that made this capture
+                # incomplete. The retained reservation blocks finalization.
+                try:
+                    sink.abandon_incomplete()
+                except BaseException:  # noqa: BLE001,S110 - preserve original failure.
+                    pass
+            raise
         return 0
 
 

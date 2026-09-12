@@ -45,7 +45,12 @@ from .authoritative_inputs import (
     validate_authoritative_inputs,
 )
 from .contracts import CsvValidationContext, validate_csv
-from .evidence_package import ANALYSIS_REPORT, PACKAGE_MANIFEST, validate_package
+from .evidence_package import (
+    ANALYSIS_REPORT,
+    PACKAGE_MANIFEST,
+    PASSING_ANALYSIS_CHECKS,
+    validate_package,
+)
 from .run_loader import CAPTURE_IN_PROGRESS_FLAG, RunManifest, load_manifest
 
 TOOL_ID = "adaptive_hybrid_analyze_v1"
@@ -686,6 +691,8 @@ def analyze(
     checks["scientific_outcome_determined"] = (
         scientific_outcome != "undetermined"
     )
+    if set(checks) != PASSING_ANALYSIS_CHECKS:
+        raise RuntimeError("offline analyzer check contract differs")
     passed = all(checks.values())
     evidence_integrity = "passed" if passed else "review_required"
     if not passed:

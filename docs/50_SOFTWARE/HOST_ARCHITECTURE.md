@@ -7,8 +7,12 @@ semantics, reference acceptance, and bounded actuator behaviour.
 ## Live ownership
 
 `live_run.run_experiment` is the foreground experiment owner. It launches one
-`capture_device` worker and runs the supervisor in the foreground. Capture owns
-serial, drains it continuously, retains the raw stream, and publishes observations.
+`capture_device` worker and runs the supervisor in the foreground. Capture exclusively reserves the run directory before opening evidence files.
+It owns serial, drains it continuously, retains the raw stream, and publishes
+observations. Raw bytes are written immediately, including unterminated input;
+queued host markers spill to disk instead of growing without bound. On an
+interrupted partial record, an explicit host marker identifies the synthetic
+line delimiter used to separate the retained tail from subsequent markers.
 The supervisor consumes those observations and owns discovery, authority,
 transactions, qualification, holds, and terminal decisions. It never opens serial.
 
@@ -18,7 +22,10 @@ cannot change the experiment. Published state identifies missing observations as
 unknown, not healthy.
 
 Capture has two bounded command inputs: normal commands and direct priority
-abort. The latter remains available when normal commands are obstructed. Abort
+abort. The latter remains available when normal commands are obstructed. Both inputs
+are serviced by the capture worker: this does not promise delivery through a
+blocked operating-system serial or storage call. Firmware fail-static behaviour
+is the independent bound in that case. Abort
 submission, capture transmission, and the subsequent firmware snapshot are
 separate facts. The owner confirms delivery before capture closure. A local host
 failure enters a review hold; it does not manufacture abort permission.
@@ -45,11 +52,19 @@ Physical entry is an explicit engineering operation in `bench_entry`. It checks
 the frozen spec, actual firmware/tool bytes, exact rehearsal receipt, operator
 instruction, board identity, and absence of an existing serial owner. Upload is
 optional and explicit; when requested it occurs once and retains full output.
+Before physical I/O, entry retains the exact validated specification and
+rehearsal receipt. A single diagnostic record records each entry phase and its
+failure without retrying. Upload uses a hashed, run-local read-only copy of the
+selected UF2, insulating it from changes to a build or cloud delivery path.
 The runtime itself never flashes, resets, restores a DAC value, or guesses the
 firmware's initial state.
 
 Startup discovery accepts a complete coherent identity snapshot before reference
-qualification. Independent ACTIVE and PPS publications need not be simultaneous.
+qualification. Independent ACTIVE and PPS publications need not be simultaneous. PPS fields
+are staged between the existing firmware begin/end markers and replaced as one
+cohort; omitted fields never inherit values from an older snapshot. The existing
+producer-clock coherence bound prevents fresh ACTIVE traffic from refreshing
+historical PPS evidence, including across the declared counter rollover.
 SETUP, ARM, and scientific progress require the appropriate fresh causal evidence;
 late or missing telemetry cannot grant authority. Qualification advances in the
 declared exact accepted-aperture domain. Host service deadlines use monotonic
@@ -69,6 +84,10 @@ validity or control. Evidence integrity and scientific outcome are separate.
 and asks `evidence_package` to seal the closed acquisition. Packaging inventories
 relative regular-file paths and hashes. `evidence_registry` optionally records
 locations; registration failure cannot alter the package or scientific result.
+CLI exit status distinguishes failed operations from scientific outcomes. A
+review-required analysis or runtime failure returns nonzero with retained JSON;
+verification of a valid diagnostic package and a completed scientific non-pass
+can succeed.
 A subsequent analysis of sealed evidence writes a separate report linked to its
 source package. It never changes the old result or raw observations.
 

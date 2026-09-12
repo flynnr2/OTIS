@@ -74,6 +74,17 @@ def main(argv: list[str] | None = None) -> int:
                        firmware_manifest_path=args.firmware_manifest,
                        rehearsal_package_path=args.rehearsal_package)
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
+    # A scientifically useful non-pass can be an operational success. Conversely,
+    # emitting diagnostic JSON must not report a failed operation as shell success.
+    if args.command == "analyse":
+        return 0 if result["status"] == "passed" else 2
+    if args.command == "package" or args.command == "run" and "evidence" in result:
+        evidence = result if args.command == "package" else result["evidence"]
+        registration = evidence.get("registration") or {}
+        if evidence["analysis"]["status"] != "passed" or registration.get("status") == "failed":
+            return 2
+    if args.command == "run" and result.get("status") != "terminal":
+        return 2
     return 0
 
 

@@ -22,7 +22,7 @@ def _run(root: Path) -> Path:
     write_simulated_run(run)
     for relative, value in {
         "config/frozen.json": {"profile": "test"},
-        "raw/capture.log": "raw\n",
+        "raw/serial.log": "raw\n",
         "control/commands.jsonl": "{}\n",
     }.items():
         path = run / relative
@@ -31,15 +31,47 @@ def _run(root: Path) -> Path:
     (run / "reports/capture_segment_closure_v1.json").parent.mkdir(
         parents=True, exist_ok=True
     )
+    counters = {
+        "bytes_written": 4,
+        "lines_seen": 1,
+        "lines_parsed": 0,
+        "malformed_utf8": 0,
+        "parser_errors": 0,
+        "reconnect_count": 0,
+        "commands_sent": 0,
+        "commands_rejected": 0,
+        "emergency_aborts_sent": 0,
+    }
+    marker = {
+        "event": "capture_stopped",
+        "utc": "2026-09-12T10:02:00Z",
+        **counters,
+        "normal_command_buffered_bytes_discarded": 0,
+        "emergency_abort_latched": False,
+        "owner_pid": 42,
+        "transport_generation": 1,
+    }
+    with (run / "raw/serial.log").open("a", encoding="utf-8") as stream:
+        stream.write("# OTIS_HOST " + json.dumps(marker, sort_keys=True) + "\n")
     (run / "reports/capture_segment_closure_v1.json").write_text(
         json.dumps(
             {
-                "historical_run": "/old/run",
+                "schema_version": 1,
+                "protocol": "otis_capture_closure_v1",
+                "closed_utc": "2026-09-12T10:02:00Z",
+                "run": "/old/run",
                 "logical_segment_closed": True,
                 "physical_serial_open": False,
                 "run_manifest_sha256": sha256(
                     (run / "run_manifest.json").read_bytes()
                 ).hexdigest(),
+                "device": "/dev/ttys999",
+                "baud": 115200,
+                "owner_pid": 42,
+                "transport_generation": 1,
+                "closure_mode": "physical_serial_close",
+                "serial_reopened": False,
+                "counters": counters,
             }
         )
     )
@@ -48,13 +80,13 @@ def _run(root: Path) -> Path:
 
 def test_seal_relocates_and_binds_every_regular_payload(tmp_path):
     run = _run(tmp_path)
-    seal_package(run, analysis={"status": "passed", "outcome": "qualified_complete"})
+    seal_package(run, analysis={"status": "review_required", "outcome": "undetermined"})
     package = validate_package(run)
     assert package["capture"]["integrity"] == "complete"
-    assert package["analysis"]["status"] == "passed"
+    assert package["analysis"]["status"] == "review_required"
     assert {entry["path"] for entry in package["inventory"]} >= {
         "run_manifest.json",
-        "raw/capture.log",
+        "raw/serial.log",
         ANALYSIS_REPORT.as_posix(),
     }
     moved = tmp_path / "elsewhere" / "run"
@@ -105,6 +137,24 @@ def test_special_payload_is_rejected(tmp_path):
         seal_package(run)
 
 
+def test_symlinked_package_manifest_is_rejected(tmp_path):
+    run = _run(tmp_path)
+    seal = seal_package(run)
+    external = tmp_path / "external-package-manifest.json"
+    seal.rename(external)
+    seal.symlink_to(external)
+    with pytest.raises(ValueError, match="retained regular file"):
+        validate_package(run)
+
+
+def test_minimal_passing_analysis_cannot_become_package_pass(tmp_path):
+    run = _run(tmp_path)
+    with pytest.raises(ValueError, match="passing analysis report"):
+        seal_package(
+            run, analysis={"status": "passed", "outcome": "qualified_complete"}
+        )
+
+
 def test_closure_requires_explicit_closed_serial_and_manifest_bindings(tmp_path):
     run = _run(tmp_path)
     closure = run / "reports/capture_segment_closure_v1.json"
@@ -117,6 +167,14 @@ def test_closure_requires_explicit_closed_serial_and_manifest_bindings(tmp_path)
             }
         )
     )
+    seal_package(run)
+    assert validate_package(run)["capture"]["integrity"] == "partial"
+
+
+def test_complete_closure_requires_final_producer_marker(tmp_path):
+    run = _run(tmp_path)
+    with (run / "raw/serial.log").open("a", encoding="utf-8") as stream:
+        stream.write("late unclosed bytes\n")
     seal_package(run)
     assert validate_package(run)["capture"]["integrity"] == "partial"
 
@@ -175,6 +233,31 @@ def test_lock_nonfinite_and_run_spec_substitution_are_rejected(tmp_path):
                     "capture_integrity": "complete",
                     "analysis": {},
                     "locations": [],
+                }
+            },
+        },
+        {
+            "contract": "otis_evidence_registry_v1",
+            "packages": {
+                "a" * 64: {
+                    "package_content_sha256": "a" * 64,
+                    "capture_integrity": "complete",
+                    "analysis": {"status": "passed", "outcome": float("nan")},
+                    "locations": [],
+                }
+            },
+        },
+        {
+            "contract": "otis_evidence_registry_v1",
+            "packages": {
+                "a" * 64: {
+                    "package_content_sha256": "a" * 64,
+                    "capture_integrity": "complete",
+                    "analysis": {
+                        "status": "review_required",
+                        "outcome": "undetermined",
+                    },
+                    "locations": [[]],
                 }
             },
         },

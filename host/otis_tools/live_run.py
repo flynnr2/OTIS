@@ -1,4 +1,5 @@
 """Two-process OTIS runtime: foreground experiment owner plus capture worker."""
+
 from __future__ import annotations
 
 import csv
@@ -81,7 +82,9 @@ class _AbortDeliveryObserver:
                 for key in ("device", "inode")
             )
         ):
-            raise ValueError("capture abort frontier is malformed or belongs to another run")
+            raise ValueError(
+                "capture abort frontier is malformed or belongs to another run"
+            )
         if self.frontier is None:
             self.frontier = dict(frontier)
             self.offset = frontier["search_offset_bytes"]
@@ -91,7 +94,8 @@ class _AbortDeliveryObserver:
         with (self.run_dir / RAW_SERIAL).open("rb") as handle:
             metadata = os.fstat(handle.fileno())
             if (metadata.st_dev, metadata.st_ino) != (
-                frontier["device"], frontier["inode"]
+                frontier["device"],
+                frontier["inode"],
             ):
                 raise ValueError("abort frontier differs from capture's raw file")
             if self.offset > metadata.st_size:
@@ -106,7 +110,7 @@ class _AbortDeliveryObserver:
         for line in lines:
             text = line.decode("utf-8", errors="strict")
             if text.startswith(HOST_MARKER_PREFIX):
-                marker = json.loads(text[len(HOST_MARKER_PREFIX):])
+                marker = json.loads(text[len(HOST_MARKER_PREFIX) :])
                 if not isinstance(marker, dict):
                     raise ValueError("post-abort host marker is malformed")
                 if marker.get("event") == "emergency_abort_sent":
@@ -132,16 +136,38 @@ class _AbortDeliveryObserver:
             if len(self.rows) > len(ACTIVE_STATUS_WIRE_KEYS):
                 raise ValueError("post-abort snapshot exceeds its declared bound")
         snapshots, newest_started = complete_active_status_snapshots(self.rows)
-        if (
-            not snapshots
-            or int(snapshots[-1]["snapshot_generation_complete"])
-            != max(newest_started, self.highest_started_generation)
+        if not snapshots or int(snapshots[-1]["snapshot_generation_complete"]) != max(
+            newest_started, self.highest_started_generation
         ):
             return None
-        return {
-            ("adaptive_hybrid", key): value
-            for key, value in snapshots[-1].items()
-        }
+        return {("adaptive_hybrid", key): value for key, value in snapshots[-1].items()}
+
+
+def _abort_delivery_confirmed(
+    observer: _AbortDeliveryObserver,
+    state: dict[str, Any],
+    terminal: dict[str, Any],
+) -> bool:
+    if not (
+        state.get("emergency_abort_latched") is True
+        and int(state.get("emergency_aborts_sent", 0)) == 1
+    ):
+        return False
+    health = observer.observe(state)
+    if health is None or not (
+        health.get(("adaptive_hybrid", "state")) == "ABORTED"
+        and health.get(("adaptive_hybrid", "fail_static")) == "true"
+        and health.get(("adaptive_hybrid", "evidence_pending")) == "false"
+        and health.get(("adaptive_hybrid", "evidence_phase")) == "evidence_clear"
+        and health.get(("adaptive_hybrid", "evidence_request_sequence")) == "0"
+    ):
+        return False
+    static_code = terminal.get("last_confirmed_code")
+    return static_code is None or (
+        health.get(("adaptive_hybrid", "confirmed_applied_code_known")) == "true"
+        and int(health.get(("adaptive_hybrid", "confirmed_applied_code"), "-1"), 0)
+        == static_code
+    )
 
 
 def wait_for_abort_delivery(
@@ -159,46 +185,51 @@ def wait_for_abort_delivery(
             ABORT_DELIVERY_TIMEOUT_S * 1_000_000_000
         )
     observer = _AbortDeliveryObserver(run_dir)
+    last_observation_error: Exception | None = None
     while time.monotonic_ns() < deadline_ns:
-        state = read_capture_transport_state(
-            run_dir,
-            expected_pid=expected_capture_pid,
-            allow_priority_abort=True,
-            require_clean=False,
-        )
-        if (
-            state.get("emergency_abort_latched") is True
-            and int(state.get("emergency_aborts_sent", 0)) == 1
-        ):
-            health = observer.observe(state)
-            if health is not None and (
-                health.get(("adaptive_hybrid", "state")) == "ABORTED"
-                and health.get(("adaptive_hybrid", "fail_static")) == "true"
-                and health.get(("adaptive_hybrid", "evidence_pending")) == "false"
-                and health.get(("adaptive_hybrid", "evidence_phase")) == "evidence_clear"
-                and health.get(("adaptive_hybrid", "evidence_request_sequence")) == "0"
-            ):
-                static_code = terminal.get("last_confirmed_code")
-                if static_code is None or (
-                    health.get(("adaptive_hybrid", "confirmed_applied_code_known"))
-                    == "true"
-                    and int(
-                        health.get(("adaptive_hybrid", "confirmed_applied_code"), "-1"),
-                        0,
-                    )
-                    == static_code
-                ):
-                    return
+        try:
+            state = read_capture_transport_state(
+                run_dir,
+                expected_pid=expected_capture_pid,
+                allow_priority_abort=True,
+                require_clean=False,
+            )
+            if _abort_delivery_confirmed(observer, state, terminal):
+                return
+            last_observation_error = None
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            last_observation_error = exc
         remaining_ns = deadline_ns - time.monotonic_ns()
         if remaining_ns > 0:
             time.sleep(min(0.1, remaining_ns / 1_000_000_000))
-    raise TimeoutError("priority abort delivery was not confirmed before its deadline")
+    detail = (
+        ""
+        if last_observation_error is None
+        else f"; last observation error: {last_observation_error}"
+    )
+    raise TimeoutError(
+        "priority abort delivery was not confirmed before its deadline" + detail
+    )
 
 
-def _default_capture_command(device: str, run_dir: Path, manifest: dict[str, Any]) -> list[str]:
+def _submit_priority_abort(run_dir: Path) -> tuple[int | None, RuntimeError | None]:
+    """Submit one nonblocking abort and retain its fixed delivery deadline."""
+    deadline_ns = time.monotonic_ns() + int(ABORT_DELIVERY_TIMEOUT_S * 1_000_000_000)
+    try:
+        send_timestamped_command_to_fifo(run_dir / EMERGENCY_FIFO, "ACTIVE ABORT")
+    except (OSError, SystemExit, ValueError, KeyboardInterrupt) as exc:
+        return None, RuntimeError(f"priority abort submission failed: {exc}")
+    return deadline_ns, None
+
+
+def _default_capture_command(
+    device: str, run_dir: Path, manifest: dict[str, Any]
+) -> list[str]:
     host = manifest.get("host")
     if not isinstance(host, dict) or host.get("serial_device") != device:
-        raise ValueError("runtime manifest serial device differs from requested attachment")
+        raise ValueError(
+            "runtime manifest serial device differs from requested attachment"
+        )
     baud = host.get("baud")
     capture = host.get("capture")
     if type(baud) is not int or baud <= 0:
@@ -217,31 +248,47 @@ def _default_capture_command(device: str, run_dir: Path, manifest: dict[str, Any
             raise ValueError(f"runtime manifest capture {key} is malformed")
     return [
         sys.executable,
-        "-m", "host.otis_tools.capture_device",
-        "--device", device,
-        "--baud", str(baud),
-        "--run-dir", str(run_dir),
-        "--status-interval", str(capture["status_interval_s"]),
-        "--command-fifo", str(run_dir / NORMAL_FIFO),
-        "--emergency-command-fifo", str(run_dir / EMERGENCY_FIFO),
-        "--write-timeout-s", str(capture["write_timeout_s"]),
-        "--normal-command-max-age-s", str(capture["normal_command_max_age_s"]),
+        "-m",
+        "host.otis_tools.capture_device",
+        "--device",
+        device,
+        "--baud",
+        str(baud),
+        "--run-dir",
+        str(run_dir),
+        "--status-interval",
+        str(capture["status_interval_s"]),
+        "--command-fifo",
+        str(run_dir / NORMAL_FIFO),
+        "--emergency-command-fifo",
+        str(run_dir / EMERGENCY_FIFO),
+        "--write-timeout-s",
+        str(capture["write_timeout_s"]),
+        "--normal-command-max-age-s",
+        str(capture["normal_command_max_age_s"]),
     ]
 
 
-def _wait_capture_ready(run_dir: Path, capture: subprocess.Popen[str], device: str) -> None:
+def _wait_capture_ready(
+    run_dir: Path, capture: subprocess.Popen[str], device: str
+) -> None:
     from .capture_device import _serial_owner_pids
 
     deadline_ns = time.monotonic_ns() + int(CAPTURE_START_TIMEOUT_S * 1_000_000_000)
     last_error: Exception | None = None
     while time.monotonic_ns() < deadline_ns:
         if capture.poll() is not None:
-            raise RuntimeError(f"capture worker exited before readiness: {capture.returncode}")
+            raise RuntimeError(
+                f"capture worker exited before readiness: {capture.returncode}"
+            )
         try:
             read_capture_transport_state(run_dir, expected_pid=capture.pid)
             if _serial_owner_pids(device) != {capture.pid}:
                 raise RuntimeError("capture worker is not the sole serial owner")
-            if not (run_dir / NORMAL_FIFO).is_fifo() or not (run_dir / EMERGENCY_FIFO).is_fifo():
+            if (
+                not (run_dir / NORMAL_FIFO).is_fifo()
+                or not (run_dir / EMERGENCY_FIFO).is_fifo()
+            ):
                 raise RuntimeError("capture command ingress is incomplete")
             return
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
@@ -261,7 +308,6 @@ def _close_capture(capture: subprocess.Popen[str]) -> int:
         return capture.wait(timeout=5.0)
 
 
-
 def _retain_foreground_review_hold(
     *,
     run_dir: Path,
@@ -269,109 +315,186 @@ def _retain_foreground_review_hold(
     capture: subprocess.Popen[str],
     supervisor: AdaptiveHybridSupervisor | None,
     error: Exception,
+    abort_delivery_deadline_ns: int | None = None,
 ) -> dict[str, Any]:
-    """Keep the foreground owner alive until explicit abort or capture death."""
+    """Keep the foreground owner alive until confirmed abort or capture death."""
     state_path = run_dir / SUPERVISOR_STATE
-    if supervisor is not None:
-        try:
-            supervisor._enter_host_verification_hold(error, source="foreground_owner")
-        except (OSError, RuntimeError, TypeError, ValueError) as hold_error:
-            error = RuntimeError(f"{error}; hold publication failed: {hold_error}")
-            supervisor = None
-    if supervisor is None:
+
+    def publish_diagnostic(diagnostic: Exception, *, source: str) -> None:
+        nonlocal supervisor
+        if supervisor is not None:
+            try:
+                supervisor._enter_host_verification_hold(diagnostic, source=source)
+                return
+            except KeyboardInterrupt:
+                diagnostic = RuntimeError(
+                    f"{diagnostic}; hold publication was interrupted"
+                )
+                supervisor = None
+            except (OSError, RuntimeError, TypeError, ValueError) as hold_error:
+                diagnostic = RuntimeError(
+                    f"{diagnostic}; hold publication failed: {hold_error}"
+                )
+                supervisor = None
         try:
             retained = json.loads(state_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, json.JSONDecodeError):
+        except (
+            FileNotFoundError,
+            OSError,
+            json.JSONDecodeError,
+            KeyboardInterrupt,
+        ):
             retained = {"schema_version": 1, "terminal": None}
         if not isinstance(retained, dict):
             retained = {"schema_version": 1, "terminal": None}
-        retained.update({
-            "runtime_owner": {
-                "pid": os.getpid(),
-                "started_monotonic_ns": time.monotonic_ns(),
-                "execution": "foreground_review_hold",
-                "priority_abort_ingress": str(run_dir / EMERGENCY_FIFO),
-            },
-            "serial_device": device,
-            "control_authority": False,
-            "host_verification_hold": {
-                "source": "foreground_owner_construction",
-                "error_type": type(error).__name__,
-                "error": str(error),
-                "new_authority": False,
-                "capture_and_serial_owner_retained": True,
-            },
-        })
-        _atomic_json(state_path, retained)
+        existing = retained.get("host_verification_hold")
+        occurrence = (
+            int(existing.get("occurrence_count", 0)) + 1
+            if isinstance(existing, dict)
+            else 1
+        )
+        retained.update(
+            {
+                "runtime_owner": {
+                    "pid": os.getpid(),
+                    "started_monotonic_ns": time.monotonic_ns(),
+                    "execution": "foreground_review_hold",
+                    "priority_abort_ingress": str(run_dir / EMERGENCY_FIFO),
+                },
+                "serial_device": device,
+                "control_authority": False,
+                "host_verification_hold": {
+                    "source": source,
+                    "error_type": type(diagnostic).__name__,
+                    "error": str(diagnostic),
+                    "last_source": source,
+                    "last_error": str(diagnostic),
+                    "occurrence_count": occurrence,
+                    "new_authority": False,
+                    "capture_and_serial_owner_retained": True,
+                },
+            }
+        )
+        try:
+            _atomic_json(state_path, retained)
+        except (OSError, KeyboardInterrupt):
+            # Keep owning capture even when the diagnostic projection is faulty.
+            pass
 
+    observer = _AbortDeliveryObserver(run_dir)
+    terminal: dict[str, Any] | None = None
+    delivery_failure_reported = False
+    observer_error: str | None = None
+
+    def handle_interrupt() -> None:
+        nonlocal abort_delivery_deadline_ns, delivery_failure_reported
+        if abort_delivery_deadline_ns is not None:
+            return
+        deadline_ns, submission_error = _submit_priority_abort(run_dir)
+        if submission_error is not None:
+            publish_diagnostic(submission_error, source="priority_abort_submission")
+            return
+        abort_delivery_deadline_ns = deadline_ns
+        delivery_failure_reported = False
+
+    publish_diagnostic(error, source="foreground_owner")
     while capture.poll() is None:
         try:
-            state = read_capture_transport_state(
-                run_dir,
-                expected_pid=capture.pid,
-                allow_priority_abort=True,
-                require_clean=False,
-            )
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            time.sleep(0.1)
-            continue
-        if not (
-            state.get("emergency_abort_latched") is True
-            or int(state.get("emergency_aborts_sent", 0)) != 0
-        ):
+            state: dict[str, Any] | None = None
             try:
-                time.sleep(0.1)
-            except KeyboardInterrupt:
-                send_timestamped_command_to_fifo(
-                    run_dir / EMERGENCY_FIFO, "ACTIVE ABORT"
+                state = read_capture_transport_state(
+                    run_dir,
+                    expected_pid=capture.pid,
+                    allow_priority_abort=True,
+                    require_clean=False,
                 )
-            continue
-
-        if supervisor is not None:
-            supervisor._observe_explicit_capture_abort(state)
-            terminal = supervisor.state["terminal"]
-            supervisor._emit_terminal_once()
-        else:
-            terminal = {
-                "result": "aborted",
-                "reason": "independent_emergency_abort_fifo",
-                "primary_decision": "operator_abort",
-            }
-            try:
-                retained = json.loads(state_path.read_text(encoding="utf-8"))
-            except (FileNotFoundError, OSError, json.JSONDecodeError):
-                retained = {"schema_version": 1}
-            if not isinstance(retained, dict):
-                retained = {"schema_version": 1}
-            retained["terminal"] = terminal
-            try:
-                _atomic_json(state_path, retained)
-            except OSError:
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
                 pass
-        delivery_error: str | None = None
-        try:
-            wait_for_abort_delivery(
-                run_dir, terminal, expected_capture_pid=capture.pid
-            )
-        except (OSError, TimeoutError, TypeError, ValueError) as exc:
-            delivery_error = str(exc)
-        capture_exit = _close_capture(capture)
-        status = (
-            "abort_delivery_failed"
-            if delivery_error is not None
-            else "terminal" if capture_exit == 0
-            else "capture_closure_failed"
-        )
-        return {
-            "status": status,
-            "terminal": terminal,
-            "run_directory": str(run_dir),
-            "capture_pid": capture.pid,
-            "capture_exit": capture_exit,
-            "supervisor_exit": 3,
-            "abort_delivery_error": delivery_error,
-            "process_topology_count": 2,
-        }
+
+            confirmed = False
+            if state is not None and (
+                state.get("emergency_abort_latched") is True
+                or int(state.get("emergency_aborts_sent", 0)) != 0
+            ):
+                if abort_delivery_deadline_ns is None:
+                    abort_delivery_deadline_ns = time.monotonic_ns() + int(
+                        ABORT_DELIVERY_TIMEOUT_S * 1_000_000_000
+                    )
+                try:
+                    if terminal is None:
+                        if supervisor is not None:
+                            supervisor._observe_explicit_capture_abort(state)
+                            terminal = supervisor.state["terminal"]
+                            supervisor._emit_terminal_once()
+                        else:
+                            terminal = {
+                                "result": "aborted",
+                                "reason": "independent_emergency_abort_fifo",
+                                "primary_decision": "operator_abort",
+                            }
+                            try:
+                                retained = json.loads(
+                                    state_path.read_text(encoding="utf-8")
+                                )
+                            except (
+                                FileNotFoundError,
+                                OSError,
+                                json.JSONDecodeError,
+                            ):
+                                retained = {"schema_version": 1}
+                            if not isinstance(retained, dict):
+                                retained = {"schema_version": 1}
+                            retained["terminal"] = terminal
+                            _atomic_json(state_path, retained)
+                    confirmed = _abort_delivery_confirmed(observer, state, terminal)
+                    observer_error = None
+                except Exception as exc:  # noqa: BLE001 - a verifier cannot release ownership.
+                    signature = f"{type(exc).__name__}: {exc}"
+                    if signature != observer_error:
+                        publish_diagnostic(
+                            exc, source="priority_abort_delivery_observer"
+                        )
+                        observer_error = signature
+
+            if confirmed:
+                try:
+                    capture_exit = _close_capture(capture)
+                except Exception as exc:  # noqa: BLE001 - retain owner after close failure.
+                    signature = f"{type(exc).__name__}: {exc}"
+                    if signature != observer_error:
+                        publish_diagnostic(exc, source="priority_abort_capture_closure")
+                        observer_error = signature
+                else:
+                    return {
+                        "status": (
+                            "terminal"
+                            if capture_exit == 0
+                            else "capture_closure_failed"
+                        ),
+                        "terminal": terminal,
+                        "run_directory": str(run_dir),
+                        "capture_pid": capture.pid,
+                        "capture_exit": capture_exit,
+                        "supervisor_exit": 3,
+                        "abort_delivery_error": None,
+                        "process_topology_count": 2,
+                    }
+
+            if (
+                abort_delivery_deadline_ns is not None
+                and time.monotonic_ns() >= abort_delivery_deadline_ns
+                and not delivery_failure_reported
+            ):
+                delivery_failure_reported = True
+                publish_diagnostic(
+                    TimeoutError(
+                        "priority abort delivery was not confirmed before its deadline"
+                    ),
+                    source="priority_abort_delivery",
+                )
+            time.sleep(0.1)
+        except KeyboardInterrupt:
+            handle_interrupt()
 
     return {
         "status": "pending_review_capture_ended",
@@ -380,8 +503,14 @@ def _retain_foreground_review_hold(
         "capture_exit": capture.poll(),
         "error_type": type(error).__name__,
         "error": str(error),
+        "abort_delivery_error": (
+            "priority abort delivery was not confirmed before its deadline"
+            if delivery_failure_reported
+            else None
+        ),
         "process_topology_count": 2,
     }
+
 
 def run_experiment(
     *,
@@ -406,7 +535,9 @@ def run_experiment(
         )
     if not physical:
         if capture_command is None:
-            raise ValueError("simulated runtime requires a caller-supplied PTY capture command")
+            raise ValueError(
+                "simulated runtime requires a caller-supplied PTY capture command"
+            )
         canonical_device = os.path.realpath(device)
         if (
             canonical_device != device
@@ -418,7 +549,9 @@ def run_experiment(
     runtime_context = prepare_runtime_context(manifest)
     expected_capture_command = _default_capture_command(device, run_dir, manifest)
     if capture_command is not None and capture_command != expected_capture_command:
-        raise ValueError("simulated capture command differs from the manifest-bound worker")
+        raise ValueError(
+            "simulated capture command differs from the manifest-bound worker"
+        )
     run_spec = manifest.get("run_spec")
     if not isinstance(run_spec, dict) or not isinstance(run_spec.get("path"), str):
         raise ValueError("runtime manifest has no retained run specification")
@@ -436,6 +569,7 @@ def run_experiment(
     )
     cleanup: Callable[[], None] | None = None
     supervisor: AdaptiveHybridSupervisor | None = None
+    abort_delivery_deadline_ns: int | None = None
     try:
         _wait_capture_ready(run_dir, capture, device)
         supervisor = AdaptiveHybridSupervisor(
@@ -459,8 +593,15 @@ def run_experiment(
         terminal = supervisor.state.get("terminal")
         if not isinstance(terminal, dict):
             raise RuntimeError("foreground supervisor returned without a terminal")
+        if terminal.get("result") == "aborted":
+            abort_delivery_deadline_ns = time.monotonic_ns() + int(
+                ABORT_DELIVERY_TIMEOUT_S * 1_000_000_000
+            )
         wait_for_abort_delivery(
-            run_dir, terminal, expected_capture_pid=capture.pid
+            run_dir,
+            terminal,
+            expected_capture_pid=capture.pid,
+            deadline_ns=abort_delivery_deadline_ns,
         )
         capture_exit = _close_capture(capture)
         if capture_exit != 0:
@@ -475,13 +616,18 @@ def run_experiment(
             "process_topology_count": 2,
         }
     except KeyboardInterrupt:
-        send_timestamped_command_to_fifo(run_dir / EMERGENCY_FIFO, "ACTIVE ABORT")
+        deadline_ns, submission_error = _submit_priority_abort(run_dir)
+        abort_delivery_deadline_ns = deadline_ns
+        interrupt_error = RuntimeError("foreground owner received explicit interrupt")
+        if submission_error is not None:
+            interrupt_error = RuntimeError(f"{interrupt_error}; {submission_error}")
         return _retain_foreground_review_hold(
             run_dir=run_dir,
             device=device,
             capture=capture,
             supervisor=supervisor,
-            error=RuntimeError("foreground owner received explicit interrupt"),
+            error=interrupt_error,
+            abort_delivery_deadline_ns=deadline_ns,
         )
     except Exception as exc:
         if not physical:
@@ -493,6 +639,7 @@ def run_experiment(
             capture=capture,
             supervisor=supervisor,
             error=exc,
+            abort_delivery_deadline_ns=abort_delivery_deadline_ns,
         )
     finally:
         if cleanup is not None:

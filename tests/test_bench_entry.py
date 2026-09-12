@@ -40,6 +40,7 @@ def test_entry_evidence_precedes_board_io_and_failed_board_is_not_retried(monkey
         retained = json.loads((kwargs["run_dir"] / "reports/physical_entry.json").read_text())
         assert retained["run_spec_sha256"] == spec.sha256
         assert (kwargs["run_dir"] / "run_spec.json").read_bytes() == spec.path.read_bytes()
+        assert (kwargs["run_dir"] / "rehearsal_receipt.json").read_bytes() == kwargs["rehearsal_path"].read_bytes()
         assert calls == ["consume"]
         calls.append("board")
         raise ValueError("different board")
@@ -48,6 +49,11 @@ def test_entry_evidence_precedes_board_io_and_failed_board_is_not_retried(monkey
         bench_entry.start(**kwargs)
     assert calls == ["consume", "board"]
     assert not (kwargs["run_dir"] / "run_manifest.json").exists()
+    failure = json.loads((kwargs["run_dir"] / "reports/physical_entry.json").read_text())
+    assert failure["status"] == "entry_failed"
+    assert failure["phase"] == "board_identity"
+    assert failure["error"] == "different board"
+    assert failure["automatic_retry"] is False
 
 
 def test_relocated_authorized_artifact_is_uploaded(monkeypatch, tmp_path):
@@ -101,4 +107,61 @@ def test_failed_upload_once_retains_complete_output(monkeypatch, tmp_path):
     assert (tmp_path / "reports/firmware_upload.log").read_text() == "complete upload failure details\n"
     retained = json.loads((tmp_path / "reports/firmware_entry.json").read_text())
     assert retained["status"] == "failed" and retained["exit_code"] == 7
-    assert retained["flash_count"] == 1
+    assert retained["upload_attempt_count"] == 1
+
+
+def test_uploader_reads_retained_bytes_when_delivered_source_changes(monkeypatch, tmp_path):
+    (tmp_path / "reports").mkdir()
+    source = tmp_path / "delivered.uf2"
+    original = b"authorized original image"
+    source.write_bytes(original)
+    firmware = {"uf2": {"path": str(source), "size_bytes": len(original),
+                          "sha256": sha256(original).hexdigest()}, "fqbn": "test"}
+    def board(*a, **kw):
+        source.write_bytes(b"source changed by a concurrent build or sync")
+        return {"serial": "exact"}
+    monkeypatch.setattr(bench_entry, "read_board_identity", board)
+    monkeypatch.setattr(bench_entry, "_serial_owner_pids", lambda device: [])
+    monkeypatch.setattr(bench_entry, "_detect_single_device", lambda: "/dev/cu.usbmodem-test")
+    def upload(command, **kw):
+        staged = tmp_path / "firmware/entry.uf2"
+        assert command[-1] == str(staged)
+        assert staged.read_bytes() == original
+        assert staged.stat().st_mode & 0o222 == 0
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(bench_entry.subprocess, "run", upload)
+    assert bench_entry._upload_once(firmware=firmware, device="/dev/never-open", bench=None,
+                                  run_dir=tmp_path, arduino_cli="never-execute") == "/dev/cu.usbmodem-test"
+    record = json.loads((tmp_path / "reports/firmware_entry.json").read_text())
+    assert record["status"] == "passed"
+    assert record["uf2_sha256"] == sha256(original).hexdigest()
+    assert source.read_bytes() != original
+
+
+def test_changed_spec_copy_is_rejected_before_consumption_or_board_io(monkeypatch, tmp_path):
+    kwargs, spec = _entry(monkeypatch, tmp_path)
+    def authorize(*a, **kw):
+        spec.path.write_text("partial concurrent spec replacement")
+        return SimpleNamespace(consume=lambda *_: pytest.fail("entry consumed"))
+    monkeypatch.setattr(bench_entry, "authorize_entry", authorize)
+    monkeypatch.setattr(bench_entry, "read_board_identity", lambda *a, **kw: pytest.fail("board queried"))
+    with pytest.raises(ValueError):
+        bench_entry.start(**kwargs)
+    assert not (kwargs["run_dir"] / "reports/physical_entry.json").exists()
+
+
+def test_failed_upload_diagnostic_write_cannot_replace_primary_failure(monkeypatch, tmp_path):
+    (tmp_path / "reports").mkdir()
+    image = tmp_path / "image.uf2"
+    image.write_bytes(b"image")
+    firmware = {"uf2": {"path": str(image), "size_bytes": 5,
+                          "sha256": sha256(b"image").hexdigest()}, "fqbn": "test"}
+    def board(*a, **kw):
+        raise RuntimeError("primary board failure")
+    def persist(*a, **kw):
+        raise OSError("storage failure")
+    monkeypatch.setattr(bench_entry, "read_board_identity", board)
+    monkeypatch.setattr(bench_entry, "_write_new", persist)
+    with pytest.raises(RuntimeError, match="primary board failure"):
+        bench_entry._upload_once(firmware=firmware, device="/dev/never-open", bench=None,
+                                run_dir=tmp_path, arduino_cli="never-execute")

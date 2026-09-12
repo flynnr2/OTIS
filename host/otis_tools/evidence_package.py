@@ -19,10 +19,55 @@ RUN_RECORD_CONTRACT = "otis_run_record_v1"
 CAPTURE_ACTIVE = Path("capture_in_progress.flag")
 CAPTURE_CLOSURE = Path("reports/capture_segment_closure_v1.json")
 ANALYSIS_REPORT = Path("reports/offline_analysis_v1.json")
+ANALYSIS_CONTRACT = "otis_offline_analysis_v1"
+ANALYZER_TOOL = "adaptive_hybrid_analyze_v1"
+ANALYZER_PATH = "host/otis_tools/adaptive_hybrid_analyze.py"
+CAPTURE_PROTOCOL = "otis_capture_closure_v1"
+CAPTURE_RAW = Path("raw/serial.log")
+_CAPTURE_COUNTERS = {
+    "bytes_written",
+    "lines_seen",
+    "lines_parsed",
+    "malformed_utf8",
+    "parser_errors",
+    "reconnect_count",
+    "commands_sent",
+    "commands_rejected",
+    "emergency_aborts_sent",
+}
+_CAPTURE_MARKER_FIELDS = {
+    "event",
+    "utc",
+    *_CAPTURE_COUNTERS,
+    "normal_command_buffered_bytes_discarded",
+    "emergency_abort_latched",
+    "owner_pid",
+    "transport_generation",
+}
 _RUNTIME_FIFOS = {
     "normal_command": "control/normal_commands.fifo",
     "emergency_abort": "control/emergency_abort.fifo",
 }
+PASSING_ANALYSIS_CHECKS = frozenset(
+    {
+        "manifest_current",
+        "csv_contracts_exact",
+        "exact_lifecycle_records",
+        "transactions_exact",
+        "maintenance_replay_exact",
+        "D14_D8_measurement_replay_exact",
+        "selected_estimates_replay_exact",
+        "decision_measurement_sources_exact",
+        "phase_accepted_sources_exact",
+        "response_replay_exact",
+        "transaction_capsules_exact",
+        "D10_optional_event_isolated",
+        "inhibited_zero_write_authority_exact",
+        "supervisor_terminal_exact",
+        "accepted_span_qualification_coordinate_exact",
+        "scientific_outcome_determined",
+    }
+)
 _OUTCOMES = frozenset(
     {
         "qualified_complete",
@@ -128,7 +173,9 @@ def _read_object(path: Path, description: str) -> dict[str, Any]:
     return _portable(value)
 
 
-def _validate_run_binding(root: Path) -> tuple[dict[str, Any], set[str]]:
+def _validate_run_binding(
+    root: Path,
+) -> tuple[dict[str, Any], dict[str, Any], set[str]]:
     """Validate retained record/spec identities without current runtime code."""
 
     record_path = root / RUN_MANIFEST
@@ -191,7 +238,7 @@ def _validate_run_binding(root: Path) -> tuple[dict[str, Any], set[str]]:
     fifos = topology.get("fifos") if isinstance(topology, dict) else None
     if fifos != _RUNTIME_FIFOS:
         raise ValueError("run specification runtime FIFO declaration differs")
-    return record, set(fifos.values())
+    return record, spec, set(fifos.values())
 
 
 def _validate_omissions(
@@ -272,7 +319,114 @@ def _inventory(
     return sorted(entries, key=lambda entry: entry["path"]), omissions
 
 
-def _analysis(root: Path) -> dict[str, Any]:
+def _validate_passing_analysis(
+    value: dict[str, Any],
+    *,
+    record: dict[str, Any],
+    spec: dict[str, Any],
+    inventory: list[dict[str, Any]],
+) -> None:
+    expected_keys = {
+        "schema_version",
+        "contract",
+        "tool",
+        "tool_sha256",
+        "created_utc",
+        "run_id",
+        "run_identity",
+        "build_identity",
+        "image_identity",
+        "programme_id",
+        "policy_id",
+        "status",
+        "evidence_integrity",
+        "scientific_outcome",
+        "outcome",
+        "source_package_content_sha256",
+        "primary_decision",
+        "terminal_result",
+        "terminal_reason",
+        "checks",
+        "csv_validation",
+        "exact_lifecycle_records",
+        "maintenance_replay",
+        "measurement_replay",
+        "response_replay",
+        "transaction_capsule_sha256",
+        "transaction_capsule_errors",
+        "source_sha256",
+        "D10_semantics",
+        "host_discrepancy_authority",
+        "limitations",
+        "analysis_sha256",
+    }
+    unsigned = {key: item for key, item in value.items() if key != "analysis_sha256"}
+    checks = value.get("checks")
+    sources = value.get("source_sha256")
+    inventory_by_path = {item["path"]: item for item in inventory}
+    identity = spec.get("identity", {})
+    artifact = spec.get("firmware", {}).get("artifact", {})
+    runtime = spec.get("runtime", {})
+    policy = runtime.get("policy", {}) if isinstance(runtime, dict) else {}
+    toolset = spec.get("host", {}).get("toolset", {})
+    entries = toolset.get("entries") if isinstance(toolset, dict) else None
+    expected_tool = next(
+        (
+            item
+            for item in entries or []
+            if isinstance(item, dict) and item.get("path") == ANALYZER_PATH
+        ),
+        None,
+    )
+    if (
+        set(value) != expected_keys
+        or value.get("schema_version") != 1
+        or value.get("contract") != ANALYSIS_CONTRACT
+        or value.get("tool") != ANALYZER_TOOL
+        or value.get("run_id") != record.get("run_id")
+        or value.get("run_identity") != identity.get("run_identity")
+        or value.get("build_identity") != artifact.get("build_identity")
+        or value.get("image_identity") != identity.get("image_identity")
+        or value.get("programme_id") != identity.get("programme_id")
+        or value.get("policy_id") != policy.get("policy_id")
+        or not isinstance(expected_tool, dict)
+        or value.get("tool_sha256") != expected_tool.get("sha256")
+        or value.get("evidence_integrity") != "passed"
+        or value.get("scientific_outcome") != value.get("outcome")
+        or value.get("outcome") not in (_OUTCOMES - {"undetermined"})
+        or value.get("source_package_content_sha256") is not None
+        or not isinstance(checks, dict)
+        or set(checks) != PASSING_ANALYSIS_CHECKS
+        or any(item is not True for item in checks.values())
+        or not isinstance(sources, dict)
+        or not sources
+        or value.get("analysis_sha256")
+        != sha256(_identity_bytes(unsigned)).hexdigest()
+    ):
+        raise ValueError("passing analysis report is incomplete or contradictory")
+    required_sources = {RUN_MANIFEST.as_posix(), "run_spec.json"}
+    if not required_sources.issubset(sources) or not any(
+        isinstance(path, str) and path.startswith("raw/") for path in sources
+    ):
+        raise ValueError("passing analysis report omits required source evidence")
+    for relative, identity in sources.items():
+        if not isinstance(relative, str) or not isinstance(identity, str):
+            raise TypeError("passing analysis source identity is malformed")
+        _safe_relative(relative)
+        retained = inventory_by_path.get(relative)
+        if retained is None or retained.get("sha256") != identity:
+            raise ValueError(
+                f"passing analysis source differs from sealed inventory: {relative}"
+            )
+
+
+def _analysis(
+    root: Path,
+    *,
+    record: dict[str, Any],
+    spec: dict[str, Any],
+    inventory: list[dict[str, Any]],
+) -> dict[str, Any]:
     report = root / ANALYSIS_REPORT
     if not report.exists():
         return {"status": "review_required", "outcome": "undetermined"}
@@ -281,6 +435,10 @@ def _analysis(root: Path) -> dict[str, Any]:
         raise ValueError("analysis report status must be passed or review_required")
     if value.get("outcome") not in _OUTCOMES:
         raise ValueError("analysis report outcome is not recognised")
+    if value["status"] == "passed":
+        _validate_passing_analysis(
+            value, record=record, spec=spec, inventory=inventory
+        )
     return {
         "status": value["status"],
         "outcome": value["outcome"],
@@ -289,13 +447,89 @@ def _analysis(root: Path) -> dict[str, Any]:
     }
 
 
+def _capture_stopped_marker(root: Path) -> dict[str, Any] | None:
+    raw = root / CAPTURE_RAW
+    if raw.is_symlink() or not raw.is_file():
+        return None
+    try:
+        with raw.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            stream.seek(max(0, size - 65536))
+            lines = stream.read().splitlines()
+        if not lines:
+            return None
+        prefix = b"# OTIS_HOST "
+        if not lines[-1].startswith(prefix):
+            return None
+        marker = json.loads(lines[-1][len(prefix) :].decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None
+    return marker if isinstance(marker, dict) else None
+
+
+def _capture_complete(
+    root: Path, *, closure: dict[str, Any], record: dict[str, Any]
+) -> bool:
+    counters = closure.get("counters")
+    marker = _capture_stopped_marker(root)
+    return not (
+        set(closure)
+        != {
+            "schema_version",
+            "protocol",
+            "closed_utc",
+            "run",
+            "run_manifest_sha256",
+            "device",
+            "baud",
+            "owner_pid",
+            "transport_generation",
+            "closure_mode",
+            "logical_segment_closed",
+            "physical_serial_open",
+            "serial_reopened",
+            "counters",
+        }
+        or closure.get("schema_version") != 1
+        or closure.get("protocol") != CAPTURE_PROTOCOL
+        or not isinstance(closure.get("closed_utc"), str)
+        or not closure["closed_utc"].endswith("Z")
+        or not isinstance(closure.get("run"), str)
+        or closure.get("device") != record.get("serial_device")
+        or closure.get("baud") != 115200
+        or type(closure.get("owner_pid")) is not int
+        or closure["owner_pid"] <= 0
+        or type(closure.get("transport_generation")) is not int
+        or closure["transport_generation"] <= 0
+        or closure.get("closure_mode") != "physical_serial_close"
+        or closure.get("logical_segment_closed") is not True
+        or closure.get("physical_serial_open") is not False
+        or closure.get("serial_reopened") is not False
+        or not isinstance(counters, dict)
+        or set(counters) != _CAPTURE_COUNTERS
+        or any(type(item) is not int or item < 0 for item in counters.values())
+        or not isinstance(marker, dict)
+        or set(marker) != _CAPTURE_MARKER_FIELDS
+        or marker.get("event") != "capture_stopped"
+        or not isinstance(marker.get("utc"), str)
+        or marker.get("owner_pid") != closure.get("owner_pid")
+        or marker.get("transport_generation")
+        != closure.get("transport_generation")
+        or marker.get("emergency_abort_latched") not in {True, False}
+        or type(marker.get("normal_command_buffered_bytes_discarded")) is not int
+        or marker["normal_command_buffered_bytes_discarded"] < 0
+        or any(marker.get(name) != counters[name] for name in _CAPTURE_COUNTERS)
+    )
+
+
 def _unsigned(
     root: Path, *, retained_omissions: object | None = None
 ) -> dict[str, Any]:
     run_manifest = root / RUN_MANIFEST
     if not run_manifest.is_file() or run_manifest.is_symlink():
         raise ValueError("package is missing its regular run_manifest.json")
-    record, allowed_fifos = _validate_run_binding(root)
+    record, spec, allowed_fifos = _validate_run_binding(root)
     inventory, omissions = _inventory(
         root,
         allowed_fifos=allowed_fifos,
@@ -312,16 +546,17 @@ def _unsigned(
         except ValueError:
             closure_value = {}
         if (
-            closure_value.get("logical_segment_closed") is True
-            and closure_value.get("physical_serial_open") is False
-            and closure_value.get("run_manifest_sha256") == _sha256(run_manifest)
+            closure_value.get("run_manifest_sha256") == _sha256(run_manifest)
+            and _capture_complete(root, closure=closure_value, record=record)
         ):
             capture["integrity"] = "complete"
     return {
         "contract": PACKAGE_CONTRACT,
         "run_manifest": record,
         "capture": capture,
-        "analysis": _analysis(root),
+        "analysis": _analysis(
+            root, record=record, spec=spec, inventory=inventory
+        ),
         "inventory": inventory,
         "omitted_runtime_endpoints": omissions,
     }
@@ -383,7 +618,10 @@ def validate_package(run_dir: Path) -> dict[str, Any]:
     root = source.resolve()
     if (root / CAPTURE_ACTIVE).exists():
         raise ValueError("active capture cannot be validated")
-    recorded = _read_object(root / PACKAGE_MANIFEST, "package manifest")
+    package_manifest = root / PACKAGE_MANIFEST
+    if package_manifest.is_symlink() or not package_manifest.is_file():
+        raise ValueError("package manifest must be a retained regular file")
+    recorded = _read_object(package_manifest, "package manifest")
     identity = recorded.pop("package_content_sha256", None)
     if not isinstance(identity, str) or len(identity) != 64:
         raise ValueError("package manifest has no valid content identity")

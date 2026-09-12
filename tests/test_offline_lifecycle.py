@@ -18,18 +18,52 @@ def _closed_run(root: Path) -> Path:
     root.mkdir()
     write_simulated_run(root)
     (root / "raw").mkdir()
-    (root / "raw/serial.log").write_bytes(
-        b"retained incomplete scientific observations\n"
+    counters = {
+        "bytes_written": 44,
+        "lines_seen": 1,
+        "lines_parsed": 0,
+        "malformed_utf8": 0,
+        "parser_errors": 0,
+        "reconnect_count": 0,
+        "commands_sent": 0,
+        "commands_rejected": 0,
+        "emergency_aborts_sent": 0,
+    }
+    marker = {
+        "event": "capture_stopped",
+        "utc": "2026-09-12T10:02:00Z",
+        **counters,
+        "normal_command_buffered_bytes_discarded": 0,
+        "emergency_abort_latched": False,
+        "owner_pid": 42,
+        "transport_generation": 1,
+    }
+    (root / "raw/serial.log").write_text(
+        "retained incomplete scientific observations\n"
+        + "# OTIS_HOST "
+        + json.dumps(marker, sort_keys=True)
+        + "\n"
     )
     (root / "reports").mkdir()
     (root / "reports/capture_segment_closure_v1.json").write_text(
         json.dumps(
             {
+                "schema_version": 1,
+                "protocol": "otis_capture_closure_v1",
+                "closed_utc": "2026-09-12T10:02:00Z",
+                "run": str(root),
                 "logical_segment_closed": True,
                 "physical_serial_open": False,
                 "run_manifest_sha256": sha256(
                     (root / "run_manifest.json").read_bytes()
                 ).hexdigest(),
+                "device": "/dev/ttys999",
+                "baud": 115200,
+                "owner_pid": 42,
+                "transport_generation": 1,
+                "closure_mode": "physical_serial_close",
+                "serial_reopened": False,
+                "counters": counters,
             }
         )
     )
@@ -40,6 +74,9 @@ def test_failed_analysis_seals_diagnostic_without_claiming_scientific_pass(tmp_p
     run = _closed_run(tmp_path / "acquisition")
     raw = (run / "raw/serial.log").read_bytes()
     result = offline.finish_run(run)
+    assert Path(result["package_directory"]) == run.resolve()
+    assert Path(result["package_manifest"]) == run.resolve() / "evidence_package_v1.json"
+    assert validate_package(Path(result["package_directory"]))["package_content_sha256"] == result["package_content_sha256"]
     assert result["capture"]["integrity"] == "complete"
     assert result["analysis"]["status"] == "review_required"
     assert result["analysis"]["outcome"] == "undetermined"
@@ -61,6 +98,27 @@ def test_failed_analysis_seals_diagnostic_without_claiming_scientific_pass(tmp_p
         validate_package(run)["package_content_sha256"]
         == result["package_content_sha256"]
     )
+
+
+def test_analyzer_identity_is_checked_before_analysis_report_creation(
+    tmp_path, monkeypatch
+):
+    run = _closed_run(tmp_path / "acquisition")
+    monkeypatch.setattr(
+        offline,
+        "_verify_frozen_analyzer",
+        lambda _root: (_ for _ in ()).throw(ValueError("frozen analyzer differs")),
+    )
+    monkeypatch.setattr(
+        offline,
+        "analyze",
+        lambda _root: pytest.fail("mismatched analyzer was invoked"),
+    )
+    result = offline.finish_run(run)
+    report = json.loads((run / "reports/offline_analysis_v1.json").read_text())
+    assert result["analysis"]["status"] == "review_required"
+    assert report["failure_class"] == "offline_analysis_failure"
+    assert report["error"] == "frozen analyzer differs"
 
 
 def test_package_retry_only_validates_and_retries_optional_registration(

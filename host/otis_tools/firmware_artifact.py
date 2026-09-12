@@ -63,9 +63,12 @@ def firmware_artifact_identity_sha256(value: dict[str, Any]) -> str:
 
 
 def _file_binding(path: Path) -> dict[str, Any]:
-    path = path.resolve(strict=True)
-    if not path.is_file() or path.is_symlink():
-        raise ValueError(f"firmware artifact is not a regular file: {path}")
+    source = path.expanduser()
+    if source.is_symlink():
+        raise ValueError(f"firmware artifact is not a regular file: {source}")
+    path = source.resolve(strict=True)
+    if not path.is_file():
+        raise ValueError(f"firmware artifact is not a regular file: {source}")
     data = path.read_bytes()
     return {
         "path": str(path),
@@ -238,8 +241,11 @@ def _artifact_paths(manifest_path: Path, manifest: dict[str, Any]) -> dict[str, 
 
 
 def _validated_document(manifest_path: Path) -> dict[str, Any]:
-    manifest_path = manifest_path.resolve(strict=True)
-    if manifest_path.is_symlink() or not manifest_path.is_file():
+    source = manifest_path.expanduser()
+    if source.is_symlink():
+        raise ValueError("firmware build manifest must be a regular file")
+    manifest_path = source.resolve(strict=True)
+    if not manifest_path.is_file():
         raise ValueError("firmware build manifest must be a regular file")
     manifest = _object(manifest_path)
     if (

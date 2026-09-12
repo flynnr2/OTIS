@@ -1059,6 +1059,7 @@ class DeterministicPtyInstrument:
         self.error: BaseException | None = None
         self.commands: list[str] = []
         self.generation = 0
+        self.pps_snapshot_generation = 0
         self.status_sequence = 0
         self.latest_event_timestamp_ticks = 1200 * RP2040_US
         self.query_nonce = 1
@@ -1243,7 +1244,7 @@ class DeterministicPtyInstrument:
                 "reference_acceptance_state": "tracking",
                 "reference_acceptance_policy_sha256": self.reference_acceptance_binding["policy_sha256"],
                 "hybrid_state": "SETUP_PENDING",
-                "hybrid_reason": "awaiting_exact_setup",
+                "hybrid_reason": "setup_consumers_pending",
                 "first_phase_checkpoint_passed": "false",
                 "phase_nonzero_application_count": "0",
                 "phase_material_application_count": "0",
@@ -1411,6 +1412,13 @@ class DeterministicPtyInstrument:
             ("pps_gate", "reference_acceptance_epoch"): "1",
             ("pps_gate", "reference_acceptance_last_loss_reason"): "none",
             ("pps_gate", "accepted_boundary_ordinal"): str(self.accepted_boundary_ordinal),
+            ("pps_gate", "accepted_anchor_timestamp_ticks"): str(
+                max(
+                    self.latest_event_timestamp_ticks,
+                    self.accepted_boundary_ordinal * RP2040_US,
+                )
+                % (1 << 32)
+            ),
             ("pps_gate", "reference_acceptance_policy_sha256"): self.reference_acceptance_binding["policy_sha256"],
             ("pps_gate", "reference_acceptance_state"): "tracking",
             ("pps_gate", "accepted_anchor_current"): "true",
@@ -1418,13 +1426,27 @@ class DeterministicPtyInstrument:
             ("pps_gate", "association_state"): "clean",
         }
 
+    def _emit_pps_snapshot(self) -> None:
+        self.pps_snapshot_generation += 1
+        health = self._pps_health()
+        ordered = [
+            (("pps_gate", "snapshot"), "begin"),
+            (
+                ("pps_gate", "snapshot_generation"),
+                str(self.pps_snapshot_generation),
+            ),
+            *((key, health[key]) for key in sorted(health)),
+            (("pps_gate", "snapshot"), "end"),
+        ]
+        self._emit_health_items(ordered)
+
     def _emit_snapshot(self) -> None:
         with self._lock:
             # A solicited ACTIVE reply can precede the first periodic PPS
             # diagnostics on real firmware. Exercise that startup order through
             # the actual carrier, reducer and census, not an all-ready fixture.
             if self.generation > 0:
-                self._emit_health_map(self._pps_health())
+                self._emit_pps_snapshot()
             self.generation += 1
             active = {
                 key: value

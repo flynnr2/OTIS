@@ -236,7 +236,7 @@ def _capture(tmp_path: Path, chunks: list[bytes]) -> tuple[Path, dict[str, objec
         # bytes must already be durable at this boundary.
         _wait(lambda: (run_dir / "raw/serial.log").stat().st_size >= sum(map(len, chunks)))
     finally:
-        process.send_signal(signal.SIGTERM)
+        process.send_signal(signal.SIGINT)
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -441,6 +441,15 @@ def test_actual_setup_and_arm_paths_wait_for_missing_live_frontier(
         ("adaptive_hybrid", "accepted_anchor_current"): "true",
         ("adaptive_hybrid", "reference_acceptance_policy_sha256"): "1" * 64,
         ("pps_gate", "reference_acceptance_policy_sha256"): "1" * 64,
+        ("pps_gate", "accepted_anchor_timestamp_ticks"): "9000000",
+        (
+            supervisor_module.LIVE_FRONTIER_COMPONENT,
+            supervisor_module.LIVE_FRONTIER_TICKS_KEY,
+        ): "10000000",
+        (
+            supervisor_module.LIVE_FRONTIER_COMPONENT,
+            supervisor_module.LIVE_FRONTIER_DOMAIN_KEY,
+        ): "rp2040_monotonic_us32",
     }
     setup._maybe_start_or_arm({
         **capture_health,

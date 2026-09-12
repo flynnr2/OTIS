@@ -13,6 +13,32 @@ from .evidence_package import validate_package
 
 REGISTRY_CONTRACT = "otis_evidence_registry_v1"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_OUTCOMES = {
+    "qualified_complete",
+    "bounded_nonpass",
+    "interrupted_incomplete",
+    "diagnostic_complete",
+    "undetermined",
+}
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite registry JSON value is forbidden: {value}")
+
+
+def _validate_analysis(value: object) -> bool:
+    if not isinstance(value, dict) or value.get("status") not in {
+        "passed",
+        "review_required",
+    } or value.get("outcome") not in _OUTCOMES:
+        return False
+    if set(value) == {"status", "outcome"}:
+        return value == {"status": "review_required", "outcome": "undetermined"}
+    return (
+        set(value) == {"status", "outcome", "path", "sha256"}
+        and value.get("path") == "reports/offline_analysis_v1.json"
+        and bool(_HEX64.fullmatch(str(value.get("sha256", ""))))
+    )
 
 
 def _atomic_write(path: Path, value: dict[str, Any]) -> None:
@@ -52,14 +78,14 @@ def _validate_entry(identity: str, value: object) -> dict[str, Any]:
         }
         or value.get("package_content_sha256") != identity
         or value.get("capture_integrity") not in {"complete", "partial"}
-        or not isinstance(value.get("analysis"), dict)
+        or not _validate_analysis(value.get("analysis"))
         or not isinstance(value.get("locations"), list)
     ):
         raise ValueError("registry entry shape or identity differs")
     locations = value["locations"]
-    if locations != sorted(set(locations)) or any(
-        not isinstance(item, str) or not Path(item).is_absolute() for item in locations
-    ):
+    if any(not isinstance(item, str) for item in locations) or locations != sorted(
+        set(locations)
+    ) or any(not Path(item).is_absolute() for item in locations):
         raise ValueError("registry package locations are malformed")
     return value
 
@@ -68,8 +94,10 @@ def _load(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"contract": REGISTRY_CONTRACT, "packages": {}}
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+        value = json.loads(
+            path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as error:
         raise ValueError("registry is not valid JSON") from error
     if (
         not isinstance(value, dict)

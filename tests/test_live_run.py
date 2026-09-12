@@ -54,7 +54,9 @@ def _capture_state(path: Path, *, abort: bool) -> dict[str, object]:
     return value
 
 
-def test_priority_abort_is_observed_by_owner_without_a_relay_or_resend(tmp_path: Path) -> None:
+def test_priority_abort_is_observed_by_owner_without_a_relay_or_resend(
+    tmp_path: Path,
+) -> None:
     state_path = tmp_path / "reports/capture_device_state.json"
     state = _capture_state(state_path, abort=True)
     # Abort observation must survive the diagnostic that placed the owner on hold.
@@ -107,6 +109,7 @@ def _status_line(key: str, value: str, sequence: int) -> str:
         "flags": "0",
     }
     from io import StringIO
+
     stream = StringIO()
     csv.DictWriter(stream, fieldnames=HEALTH_FIELDS, lineterminator="\n").writerow(row)
     return stream.getvalue()
@@ -114,14 +117,16 @@ def _status_line(key: str, value: str, sequence: int) -> str:
 
 def _aborted_snapshot() -> bytes:
     values = {key: _active_value(key) for key in ACTIVE_STATUS_KEYS}
-    values.update({
-        "state": "ABORTED",
-        "fail_static": "true",
-        "evidence_pending": "false",
-        "evidence_phase": "evidence_clear",
-        "evidence_request_sequence": "0",
-        "confirmed_applied_code_known": "false",
-    })
+    values.update(
+        {
+            "state": "ABORTED",
+            "fail_static": "true",
+            "evidence_pending": "false",
+            "evidence_phase": "evidence_clear",
+            "evidence_request_sequence": "0",
+            "confirmed_applied_code_known": "false",
+        }
+    )
     rows = [
         (SNAPSHOT_BEGIN_KEY, "7"),
         (SNAPSHOT_CONTRACT_KEY, ACTIVE_STATUS_SNAPSHOT_CONTRACT),
@@ -176,7 +181,9 @@ def test_monitor_is_a_projection_and_never_publishes_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "reports").mkdir()
-    capture = _capture_state(tmp_path / "reports/capture_device_state.json", abort=False)
+    capture = _capture_state(
+        tmp_path / "reports/capture_device_state.json", abort=False
+    )
     supervisor = {
         "host_verification_hold": {"source": "fixture"},
         "qualified_d14_accepted_apertures": 12,
@@ -185,7 +192,8 @@ def test_monitor_is_a_projection_and_never_publishes_state(
         json.dumps(supervisor), encoding="utf-8"
     )
     monkeypatch.setattr(
-        monitor, "load_manifest",
+        monitor,
+        "load_manifest",
         lambda _run_dir: SimpleNamespace(data={"host": {"serial_device": "/dev/none"}}),
     )
     monkeypatch.setattr(monitor, "_serial_owner_pids", lambda _device: {capture["pid"]})
@@ -205,7 +213,8 @@ def test_simulated_runtime_requires_explicit_pty_capture_adapter(
     manifest = tmp_path / "run_manifest.json"
     manifest.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(
-        live_run, "load_manifest",
+        live_run,
+        "load_manifest",
         lambda _run_dir: SimpleNamespace(
             path=manifest, data={"execution_kind": "simulated"}
         ),
@@ -254,7 +263,9 @@ def test_live_entry_rejects_changed_host_tool_bytes_before_starting_capture(
     monkeypatch.setattr(
         live_run.subprocess,
         "Popen",
-        lambda *_args, **_kwargs: pytest.fail("capture started before tool verification"),
+        lambda *_args, **_kwargs: pytest.fail(
+            "capture started before tool verification"
+        ),
     )
 
     with pytest.raises(ValueError, match="host tool bytes differ"):
@@ -263,3 +274,187 @@ def test_live_entry_rejects_changed_host_tool_bytes_before_starting_capture(
             device="/dev/fake",
             physical=True,
         )
+
+
+class _ReviewCapture:
+    def __init__(self, *states: int | None) -> None:
+        self.pid = 4242
+        self._states = iter(states)
+        self._last: int | None = None
+
+    def poll(self) -> int | None:
+        try:
+            self._last = next(self._states)
+        except StopIteration:
+            pass
+        return self._last
+
+
+def test_review_hold_retains_owner_when_ctrl_c_abort_submission_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture = _ReviewCapture(None, None, 7)
+    monkeypatch.setattr(
+        live_run,
+        "read_capture_transport_state",
+        lambda *_args, **_kwargs: {
+            "emergency_abort_latched": False,
+            "emergency_aborts_sent": 0,
+        },
+    )
+    sleeps = 0
+
+    def interrupt_once(_seconds: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps == 1:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(live_run.time, "sleep", interrupt_once)
+    monkeypatch.setattr(
+        live_run,
+        "send_timestamped_command_to_fifo",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            SystemExit("no capture command reader")
+        ),
+    )
+
+    result = live_run._retain_foreground_review_hold(
+        run_dir=tmp_path,
+        device="/dev/fake",
+        capture=capture,
+        supervisor=None,
+        error=RuntimeError("initial owner fault"),
+    )
+
+    assert result["status"] == "pending_review_capture_ended"
+    state = json.loads(
+        (tmp_path / "reports/adaptive_hybrid_supervisor_state.json").read_text()
+    )
+    assert state["runtime_owner"]["execution"] == "foreground_review_hold"
+    assert state["host_verification_hold"]["last_source"] == (
+        "priority_abort_submission"
+    )
+    assert "no capture command reader" in state["host_verification_hold"]["last_error"]
+
+
+def test_review_hold_stale_capture_state_expires_delivery_without_teardown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture = _ReviewCapture(None, 9)
+    monkeypatch.setattr(
+        live_run,
+        "read_capture_transport_state",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("stale capture projection")
+        ),
+    )
+    monkeypatch.setattr(live_run.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        live_run,
+        "_close_capture",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unconfirmed abort must not tear down capture"
+        ),
+    )
+
+    result = live_run._retain_foreground_review_hold(
+        run_dir=tmp_path,
+        device="/dev/fake",
+        capture=capture,
+        supervisor=None,
+        error=RuntimeError("initial owner fault"),
+        abort_delivery_deadline_ns=1,
+    )
+
+    assert result["status"] == "pending_review_capture_ended"
+    assert result["abort_delivery_error"] == (
+        "priority abort delivery was not confirmed before its deadline"
+    )
+    state = json.loads(
+        (tmp_path / "reports/adaptive_hybrid_supervisor_state.json").read_text()
+    )
+    assert state["host_verification_hold"]["last_source"] == ("priority_abort_delivery")
+    assert state["host_verification_hold"]["capture_and_serial_owner_retained"] is True
+
+
+def test_review_hold_catches_interrupt_from_capture_state_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture = _ReviewCapture(None, None, 8)
+    reads = 0
+
+    def interrupted_read(*_args, **_kwargs):
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            raise KeyboardInterrupt
+        return {"emergency_abort_latched": False, "emergency_aborts_sent": 0}
+
+    submissions = []
+    monkeypatch.setattr(live_run, "read_capture_transport_state", interrupted_read)
+    monkeypatch.setattr(live_run.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        live_run,
+        "send_timestamped_command_to_fifo",
+        lambda fifo, command: submissions.append((fifo, command)),
+    )
+
+    result = live_run._retain_foreground_review_hold(
+        run_dir=tmp_path,
+        device="/dev/fake",
+        capture=capture,
+        supervisor=None,
+        error=RuntimeError("initial owner fault"),
+    )
+
+    assert submissions == [(tmp_path / live_run.EMERGENCY_FIFO, "ACTIVE ABORT")]
+    assert result["status"] == "pending_review_capture_ended"
+
+
+def test_review_hold_retains_owner_after_abort_observer_io_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture = _ReviewCapture(None, 9)
+    monkeypatch.setattr(
+        live_run,
+        "read_capture_transport_state",
+        lambda *_args, **_kwargs: {
+            "emergency_abort_latched": True,
+            "emergency_aborts_sent": 1,
+        },
+    )
+    monkeypatch.setattr(
+        live_run,
+        "_abort_delivery_confirmed",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("injected raw observer failure")
+        ),
+    )
+    monkeypatch.setattr(live_run.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        live_run,
+        "_close_capture",
+        lambda *_args, **_kwargs: pytest.fail(
+            "observer failure must not release capture"
+        ),
+    )
+
+    result = live_run._retain_foreground_review_hold(
+        run_dir=tmp_path,
+        device="/dev/fake",
+        capture=capture,
+        supervisor=None,
+        error=RuntimeError("initial owner fault"),
+    )
+
+    assert result["status"] == "pending_review_capture_ended"
+    state = json.loads(
+        (tmp_path / "reports/adaptive_hybrid_supervisor_state.json").read_text()
+    )
+    assert state["host_verification_hold"]["last_source"] == (
+        "priority_abort_delivery_observer"
+    )
+    assert (
+        "injected raw observer failure" in state["host_verification_hold"]["last_error"]
+    )

@@ -6,14 +6,23 @@ Large experiment data belongs outside Git. Commit small fixtures, contracts,
 reviewed findings, and source instead.
 
 While `capture_in_progress.flag` exists, analysis and sealing refuse the run.
+The worker creates this reservation exclusively before opening evidence files.
 Only the acquisition owner closes capture after the appropriate terminal and
-command-delivery evidence. An offline tool cannot stop a live instrument.
+command-delivery evidence. Clean closure is published after serial and evidence
+streams have closed successfully. Startup exceptions, write/close failures,
+unexpected disconnect, and immediate termination retain the reservation and
+cannot report complete capture. A retained reservation after worker death is
+a recovery/review condition; offline tools must not simply delete it. An offline tool cannot stop a live instrument.
 
 After closure, `otis package RUN_DIR` performs analysis and seals the retained
 payload. It preserves an analyzer failure as `review_required` with an
 `undetermined` scientific outcome. A package containing useful partial evidence
 is not an uninterrupted qualification pass. Capture completeness requires a
-closure bound to the exact run record and a closed serial connection.
+validated current closure record bound to the exact run record and a closed
+serial connection. A passing analysis requires its full current report, matching
+source hashes, frozen analyzer identity, and successful checks; a small JSON
+object claiming success is insufficient. A physical entry retains the exact
+rehearsal receipt, including package and sealed boundary-report identities.
 
 The immutable `evidence_package_v1.json` lists each relative regular-file path,
 size, and SHA-256 hash. Its content identity also binds the run record, capture

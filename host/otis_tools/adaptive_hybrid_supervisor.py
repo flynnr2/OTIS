@@ -501,6 +501,7 @@ _ADAPTIVE_HYBRID_AUTHORITATIVE_CAPTURE_COUNTERS = _AUTHORITATIVE_CAPTURE_COUNTER
     "physical_pps_missing_count",
 )
 _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH = {
+    "snapshot": "end",
     "reference_acceptance_state": "tracking",
     "accepted_anchor_current": "true",
     "fifo_continuity": "continuous",
@@ -548,6 +549,31 @@ def _authoritative_capture_health_faults(
         ("adaptive_hybrid", "session_id")
     ):
         faults.append("accepted_status_mismatch:capture_session")
+    try:
+        anchor_ticks = int(health[("pps_gate", "accepted_anchor_timestamp_ticks")])
+        active_frontier_ticks = int(
+            health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]
+        )
+        frontier_domain = health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_DOMAIN_KEY)]
+    except (KeyError, TypeError, ValueError):
+        faults.append("accepted_status_mismatch:producer_frontier_unavailable")
+    else:
+        progress = forward_progress(
+            anchor_ticks,
+            active_frontier_ticks,
+            domain=str(frontier_domain),
+            allow_equal=True,
+        )
+        maximum_lead_ticks = (
+            QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S * RP2040_MONOTONIC_US_PER_SECOND
+        )
+        if (
+            frontier_domain != "rp2040_monotonic_us32"
+            or not progress.valid
+            or progress.distance_ticks is None
+            or progress.distance_ticks > maximum_lead_ticks
+        ):
+            faults.append("accepted_status_mismatch:producer_frontier_stale")
     return faults
 
 

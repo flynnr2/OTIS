@@ -119,6 +119,15 @@ def _capture_health(session: int = 5) -> dict[tuple[str, str], str]:
         ("pps_gate", "reference_acceptance_policy_sha256"): "1" * 64,
         ("pps_gate", "snapshot_session"): str(session),
         ("adaptive_hybrid", "session_id"): str(session),
+        ("pps_gate", "accepted_anchor_timestamp_ticks"): "9000000",
+        (
+            supervisor_module.LIVE_FRONTIER_COMPONENT,
+            supervisor_module.LIVE_FRONTIER_TICKS_KEY,
+        ): "10000000",
+        (
+            supervisor_module.LIVE_FRONTIER_COMPONENT,
+            supervisor_module.LIVE_FRONTIER_DOMAIN_KEY,
+        ): "rp2040_monotonic_us32",
     }
 
 
@@ -241,6 +250,42 @@ def test_zero_write_wall_endpoint_is_static_without_a_known_dac_code(
     assert terminal["last_confirmed_code"] is None
     assert supervisor.state["terminal_static_code"] is None
     assert holds == []
+
+
+def test_zero_write_wall_endpoint_rejects_stale_pps_source_frontier(
+    tmp_path: Path,
+) -> None:
+    supervisor = _bare_supervisor(INHIBITED_ZERO_WRITE, tmp_path)
+    health = _zero_write_terminal_health(supervisor)
+    health[("pps_gate", "accepted_anchor_timestamp_ticks")] = "1"
+    health[
+        (
+            supervisor_module.LIVE_FRONTIER_COMPONENT,
+            supervisor_module.LIVE_FRONTIER_TICKS_KEY,
+        )
+    ] = str(
+        (supervisor_module.QUALIFIED_ORIGIN_MAXIMUM_STATUS_LEAD_S + 1)
+        * supervisor_module.RP2040_MONOTONIC_US_PER_SECOND
+    )
+    supervisor._identity_ready = lambda _health: True
+    supervisor._qualified_d14_apertures = lambda _health: 0
+    supervisor._save = lambda: None
+    holds: list[tuple[str, str]] = []
+    supervisor._enter_host_verification_hold = (
+        lambda error, *, source="host_verifier": holds.append((str(error), source))
+    )
+
+    supervisor._maybe_finish_bench_attempt(
+        health, supervisor._wall_deadline_monotonic_ns
+    )
+
+    assert supervisor.state["terminal"] is None
+    assert holds == [
+        (
+            "zero-write wall endpoint lacks a clear static terminal",
+            "bench_attempt_wall_endpoint_observer",
+        )
+    ]
 
 
 @pytest.mark.parametrize(
