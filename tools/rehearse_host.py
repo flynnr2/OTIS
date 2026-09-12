@@ -17,6 +17,7 @@ from typing import Any
 
 from host.otis_tools.adaptive_hybrid_analyze import analyze
 from host.otis_tools.adaptive_hybrid_contract import ADAPTIVE_HYBRID_PROGRAMME
+from host.otis_tools.evidence_package import ANALYSIS_REPORT
 from host.otis_tools.live_run import run_experiment
 from host.otis_tools.offline import finish_run
 from host.otis_tools.run_spec import (
@@ -219,7 +220,7 @@ def _owner_control_progress(run_dir: Path) -> tuple[object, ...]:
 
 def _analysis_checks(run_dir: Path) -> dict[str, object]:
     try:
-        report = json.loads((run_dir / "reports/offline_analysis_v1.json").read_text(encoding="utf-8"))
+        report = json.loads((run_dir / ANALYSIS_REPORT).read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
     checks = report.get("checks")
@@ -305,7 +306,7 @@ def _write_boundaries_report(run_dir: Path, spec: Any, required: list[str], resu
 
 def _analysis_passed(run_dir: Path) -> bool:
     try:
-        report = json.loads((run_dir / "reports/offline_analysis_v1.json").read_text(encoding="utf-8"))
+        report = json.loads((run_dir / ANALYSIS_REPORT).read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return False
     return report.get("status") == "passed" and report.get("outcome") != "undetermined"

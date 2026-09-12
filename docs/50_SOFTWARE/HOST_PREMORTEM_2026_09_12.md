@@ -89,19 +89,22 @@ joins. It validates the CSVs and hashes source files in additional passes.
 At 259,200 apertures and the firmware's 600-second estimate cadence, selecting
 sources scans approximately 111,974,400 span candidates for 432 estimates.
 
-A bounded current-schema probe replayed 25,000 apertures and 41 estimates exactly
-in 0.570 seconds, with 150,487,040 bytes peak process RSS (a repeated
-measurement; the original probe used 141,344,768 bytes). Linear scaling of that
-in-memory core alone is roughly 1.5 GiB; that is an extrapolation, not a full
-analyzer measurement, and excludes CSV parsing and additional indexes. The
-largest existing raw replay test covers 49,752 rows, not the full 72-hour
-CSV/analyzer/report path. Full-artifact capacity remains an explicit open gate
-before a long campaign, especially on the older bench Mac. It does not block the
-short inhibited entry. The retained probe source, invocation and measured output accompany the delivery
-under `capacity-probe/`. The likely remedies are indexed source selection and
-streaming reconstruction; choose them against a measured budget, not guesswork. A capacity
-failure after successful capture should be repaired by replaying the unchanged
-evidence; it must not force another physical acquisition.
+A subsequent full-artifact measurement processed 259,200 synthetic apertures
+and 432 estimates through the actual analyzer in 44.25 seconds, with
+1,187,037,184 bytes peak process RSS; analysis and sealing passed with the
+explicit `interrupted_incomplete` outcome. This measurement supersedes the
+25,000-aperture core-only extrapolation for that workload. That baseline excluded phase history. A subsequent dense-phase run added
+259,200 RPH/PHE pairs and passed in 65.6 seconds with 1,425,342,464 bytes peak
+RSS; its 568,205,781-byte package passed integrity verification. Neither fixture
+contains controller transactions or makes a physical-duration claim. See
+[the retained capacity findings](OFFLINE_CAPACITY_2026_09_12.md) for identities,
+method, the dense-phase follow-up, and remaining limits.
+
+The baseline does not justify a new replay or storage framework. Analysis can
+run after closure on the development Mac instead of competing with serial
+capture on the older bench Mac. A capacity failure after successful capture
+should be repaired by replaying unchanged evidence; it must not force another
+physical acquisition.
 
 Power loss can also leave recently buffered data or an active reservation. File
 flush and a content seal are not an all-files atomic durability guarantee. Do

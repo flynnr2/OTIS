@@ -18,9 +18,9 @@ RUN_SPEC_CONTRACT = "otis_run_spec_v1"
 RUN_RECORD_CONTRACT = "otis_run_record_v1"
 CAPTURE_ACTIVE = Path("capture_in_progress.flag")
 CAPTURE_CLOSURE = Path("reports/capture_segment_closure_v1.json")
-ANALYSIS_REPORT = Path("reports/offline_analysis_v1.json")
-ANALYSIS_CONTRACT = "otis_offline_analysis_v1"
-ANALYZER_TOOL = "adaptive_hybrid_analyze_v1"
+ANALYSIS_REPORT = Path("reports/offline_analysis_v2.json")
+ANALYSIS_CONTRACT = "otis_offline_analysis_v2"
+ANALYZER_TOOL = "adaptive_hybrid_analyze_v2"
 ANALYZER_PATH = "host/otis_tools/adaptive_hybrid_analyze.py"
 CAPTURE_PROTOCOL = "otis_capture_closure_v1"
 CAPTURE_RAW = Path("raw/serial.log")
@@ -331,6 +331,7 @@ def _validate_passing_analysis(
         "contract",
         "tool",
         "tool_sha256",
+        "host_toolset_sha256",
         "created_utc",
         "run_id",
         "run_identity",
@@ -380,7 +381,7 @@ def _validate_passing_analysis(
     )
     if (
         set(value) != expected_keys
-        or value.get("schema_version") != 1
+        or value.get("schema_version") != 2
         or value.get("contract") != ANALYSIS_CONTRACT
         or value.get("tool") != ANALYZER_TOOL
         or value.get("run_id") != record.get("run_id")
@@ -391,6 +392,7 @@ def _validate_passing_analysis(
         or value.get("policy_id") != policy.get("policy_id")
         or not isinstance(expected_tool, dict)
         or value.get("tool_sha256") != expected_tool.get("sha256")
+        or value.get("host_toolset_sha256") != toolset.get("toolset_sha256")
         or value.get("evidence_integrity") != "passed"
         or value.get("scientific_outcome") != value.get("outcome")
         or value.get("outcome") not in (_OUTCOMES - {"undetermined"})

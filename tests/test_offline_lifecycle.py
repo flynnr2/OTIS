@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools import offline
+from host.otis_tools import run_spec as run_spec_module
 from host.otis_tools.adaptive_hybrid_analyze import analyze
 from host.otis_tools.evidence_package import validate_package
 from host.otis_tools.run_loader import load_manifest
@@ -75,13 +76,18 @@ def test_failed_analysis_seals_diagnostic_without_claiming_scientific_pass(tmp_p
     raw = (run / "raw/serial.log").read_bytes()
     result = offline.finish_run(run)
     assert Path(result["package_directory"]) == run.resolve()
-    assert Path(result["package_manifest"]) == run.resolve() / "evidence_package_v1.json"
-    assert validate_package(Path(result["package_directory"]))["package_content_sha256"] == result["package_content_sha256"]
+    assert (
+        Path(result["package_manifest"]) == run.resolve() / "evidence_package_v1.json"
+    )
+    assert (
+        validate_package(Path(result["package_directory"]))["package_content_sha256"]
+        == result["package_content_sha256"]
+    )
     assert result["capture"]["integrity"] == "complete"
     assert result["analysis"]["status"] == "review_required"
     assert result["analysis"]["outcome"] == "undetermined"
     assert (run / "raw/serial.log").read_bytes() == raw
-    report = json.loads((run / "reports/offline_analysis_v1.json").read_text())
+    report = json.loads((run / "reports/offline_analysis_v2.json").read_text())
     assert report["failure_class"] == "offline_analysis_failure"
     assert report["firmware_authority"] is False
     analyzer_path = Path(
@@ -100,25 +106,28 @@ def test_failed_analysis_seals_diagnostic_without_claiming_scientific_pass(tmp_p
     )
 
 
-def test_analyzer_identity_is_checked_before_analysis_report_creation(
+def test_full_toolset_identity_is_checked_before_analysis_report_creation(
     tmp_path, monkeypatch
 ):
     run = _closed_run(tmp_path / "acquisition")
+    current = run_spec_module._host_toolset()
     monkeypatch.setattr(
-        offline,
-        "_verify_frozen_analyzer",
-        lambda _root: (_ for _ in ()).throw(ValueError("frozen analyzer differs")),
+        run_spec_module,
+        "_host_toolset",
+        lambda: {**current, "toolset_sha256": "0" * 64},
     )
     monkeypatch.setattr(
         offline,
         "analyze",
-        lambda _root: pytest.fail("mismatched analyzer was invoked"),
+        lambda _root: pytest.fail("mismatched analysis toolset was invoked"),
     )
     result = offline.finish_run(run)
-    report = json.loads((run / "reports/offline_analysis_v1.json").read_text())
+    report = json.loads((run / "reports/offline_analysis_v2.json").read_text())
     assert result["analysis"]["status"] == "review_required"
     assert report["failure_class"] == "offline_analysis_failure"
-    assert report["error"] == "frozen analyzer differs"
+    assert report["error"] == (
+        "current host tool bytes differ from the frozen run specification"
+    )
 
 
 def test_package_retry_only_validates_and_retries_optional_registration(
@@ -165,7 +174,7 @@ def test_active_capture_cannot_be_finalized_by_offline_tools(tmp_path):
     (run / "capture_in_progress.flag").touch()
     with pytest.raises(ValueError, match="cannot close"):
         offline.finish_run(run)
-    assert not (run / "reports/offline_analysis_v1.json").exists()
+    assert not (run / "reports/offline_analysis_v2.json").exists()
 
 
 def test_offline_finalization_rejects_symlink_run_root(tmp_path):
