@@ -64,11 +64,22 @@ OtisPpsFifoDrainResult otis_pps_fifo_drain(
     }
   }
   result.timestamp_ambiguous = result.timestamp_ambiguous || result.count > 1u;
-  if (port.depth() != 0u) {
+  const uint32_t remaining = port.depth();
+  // The loop may have observed empty before a fresh word arrived. In that
+  // case the still-enabled level source schedules another IRQ; no budget was
+  // exhausted and this later word must not manufacture an integrity fault.
+  if (remaining != 0u && result.count == budget) {
     result.faults |= budget < 8u ? OTIS_FIFO_DRAIN_RING_FULL
                                : OTIS_FIFO_DRAIN_BUDGET;
     stop();  // Do not return into an enabled, continually refilling level IRQ.
   }
+  // A stall may appear after the last per-word check, including while the
+  // empty/final-depth observations race with further producer activity.
+  if (port.rxstall()) {
+    result.faults |= OTIS_FIFO_DRAIN_RXSTALL;
+    stop();
+  }
+  // This is a sampled health frontier, not an atomic future-health promise.
   // A singleton alone does NOT prove service latency or timestamp sufficiency.
   // The one downstream acceptance gate must assess these source coordinates.
   return result;

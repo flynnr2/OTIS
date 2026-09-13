@@ -10,9 +10,21 @@ struct Port {
   std::deque<uint32_t> fifo;
   uint32_t ticks = 0, reads = 0, stops = 0, replenished = 100;
   uint32_t stall_after_read = UINT32_MAX;
+  uint32_t depth_calls = 0, arrival_at_depth = UINT32_MAX;
+  bool stall_on_arrival = false;
   bool stalled = false, stopped = false, refill = false;
   explicit Port(std::initializer_list<uint32_t> values) : fifo(values) {}
-  uint32_t depth() { return static_cast<uint32_t>(fifo.size()); }
+  uint32_t depth() {
+    ++depth_calls;
+    if (depth_calls == arrival_at_depth && !stopped) {
+      fifo.push_back(77u);
+      if (stall_on_arrival) {
+        while (fifo.size() < 8) fifo.push_back(78u);
+        stalled = true;  // Ninth attempted autopush is not committed.
+      }
+    }
+    return static_cast<uint32_t>(fifo.size());
+  }
   bool rxstall() { return stalled; }
   uint32_t service_ticks() { return ticks++; }
   void stop() { stopped = true; ++stops; }
@@ -142,6 +154,25 @@ int main() {
   out = otis_pps_fifo_drain(stalls_during_read, 2, seq, 128);
   assert(out.count == 2 && out.faults == OTIS_FIFO_DRAIN_RXSTALL);
   assert(stalls_during_read.stops == 1);
+
+  // A new word after the loop saw empty belongs to the next level IRQ. It
+  // must not be called an exhausted eight-read budget after only one read.
+  Port late_arrival({66}); late_arrival.arrival_at_depth = 4; seq = 0;
+  out = otis_pps_fifo_drain(late_arrival, 3, seq, 128);
+  assert(out.count == 1 && out.faults == 0 && !out.stopped);
+  assert(late_arrival.fifo.front() == 77 && seq == 1);
+  out = otis_pps_fifo_drain(late_arrival, 3, seq, 128);
+  assert(out.count == 1 && out.faults == 0 && seq == 2);
+  assert(out.words[0].ordinal == 1 && out.words[0].cumulative_down_counter == 77);
+
+  // A real RXSTALL becoming visible at the exit frontier still freezes the
+  // source, preserving the returned word and eight unread committed words.
+  Port late_stall({66}); late_stall.arrival_at_depth = 4;
+  late_stall.stall_on_arrival = true; seq = 0;
+  out = otis_pps_fifo_drain(late_stall, 3, seq, 128);
+  assert(out.count == 1 && out.faults == OTIS_FIFO_DRAIN_RXSTALL);
+  assert(out.stopped && late_stall.stops == 1 && late_stall.fifo.size() == 8);
+  assert(out.words[0].cumulative_down_counter == 66 && seq == 1);
 
   Port unstarted({99}); seq = 0;
   out = otis_pps_fifo_drain(unstarted, 0, seq, 128);

@@ -66,3 +66,25 @@ in the integration list above.
 Verification: the drain harness plus existing reference acceptance/live tests
 passed **40 tests in 2.09 seconds**. No fixed-profile source or build input
 changed, and no physical operation or new qualification occurred.
+
+## Exit-frontier race found before integration
+
+Adversarial injection exposed a premature overload classification: the loop
+could observe empty, then the final depth check could see a newly arrived word
+and call it budget exhaustion even when only one word had been read. A failing
+native regression reproduced that path. The implementation now reports budget
+or ring exhaustion only when the actual read limit was reached. A later arrival
+otherwise remains queued for the next level IRQ, with no fabricated record or
+sequence advance.
+
+The drain also samples sticky RXSTALL after the final depth observation, so a
+fault that appears after the last per-word check freezes the source and retains
+both the returned records and remaining FIFO contents. This is a sampled health
+frontier, not an atomic assertion about future hardware state; the real driver
+and downstream admission must still preserve their causal health contract.
+
+The regression verifies the next IRQ consumes the late word exactly once and
+that a late stall leaves eight unread committed words intact. After correction,
+the same 40 focused drain/selector tests passed in 1.86 seconds. This repairs a
+prototype defect caught locally; it does not establish the cause of the prior
+physical attempt or qualify the replacement firmware.
