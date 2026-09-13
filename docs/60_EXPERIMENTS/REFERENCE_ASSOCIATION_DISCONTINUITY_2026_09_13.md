@@ -140,3 +140,26 @@ identity or an equally explicit causal guarantee. Another retry, foreground
 delay or host status comparison cannot supply it. Use the preserved evidence
 and bounded firmware models to select that change; do not promise electrical
 root-cause attribution without evidence capable of making the distinction.
+
+## Implemented diagnostic change and validation
+
+Implementation revision `80ace6d2c765e4646e8f67e3cfcb02fae1887fb4` preserves the
+unassociated front as specified above. The native backend fixture exercises the
+actual backend, including DMA completion during abort, write-one-to-clear PIO
+status, overflow, fault suppression and new-session recovery. The native
+firmware formatter feeds the real host splitter and validator, including a
+present zero word and a later DMA frontier. Contradictory presence, capture
+identity, queue depth and backward frontiers are rejected.
+
+- Full current suite: **715 passed in 96.80 s**.
+- Pinned fixed `adaptive_hybrid_regulation` firmware build: passed from a clean
+  implementation checkout; session `202609130a510003`.
+- Program storage: 223,260 bytes. Static RAM: 154,140 bytes, unchanged;
+  available runtime memory: 108,004 bytes.
+- Development UF2: 481,792 bytes, SHA-256
+  `40c4524f42fb75c8daedf8d0123163e186d4db7ff38f52fbf85cb5c1ecf760ea`.
+
+This validation covers software behavior and the fixed-profile build. No
+hardware operation, physical qualification, or operational-path rehearsal of a
+new exact campaign bundle occurred. The result is not bench-entry authority
+and does not establish that the reference-association defect is repaired.
