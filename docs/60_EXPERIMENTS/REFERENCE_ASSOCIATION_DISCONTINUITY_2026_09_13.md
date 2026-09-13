@@ -227,3 +227,15 @@ unknown because per-event IRQ sampled level and the authoritative unread count
 were not retained. The next capture correction needs a demonstrated causal
 association guarantee. Neither a finer host timeline nor another unchanged
 72-hour restart supplies that guarantee.
+
+There is a concrete architectural reason the ±1.25 ms accepted-reference window
+did not contain this incident. `drain_pps_count_boundary_ring()` establishes
+REF/SNP association before calling `emit_pps_count_boundary()`, which in turn
+calls `reference_acceptance.observe()`. On association loss, firmware instead
+calls `reference_acceptance.invalidate(CaptureIntegrity)` and returns without
+presenting that candidate to the tolerance selector. Thus the existing rogue-PPS
+filter handles paired candidates; it cannot reject an IRQ-only candidate before
+that candidate breaks pairing. The repair target is this ordering/identity
+boundary, not a wider tolerance or a finer timestamp. Moving only the IRQ filter
+earlier is unsafe because a rejected IRQ may still have a corresponding PIO
+word; a replacement must account for both streams without guessing ownership.
