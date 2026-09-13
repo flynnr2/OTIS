@@ -44,3 +44,25 @@ Remaining integration is explicit:
    without manufacturing source timestamps or silently changing ±1.25 ms.
 5. Run the exact-profile resource/build checks and required end-to-end rehearsal
    before any physical candidate. The prototype does not authorize a bench run.
+
+## Selector handoff check
+
+The native harness also connects the implemented drain to the existing
+`OtisReferenceAcceptanceLive` with the current generated policy. After eight
+acquisition intervals, a synthetic early candidate at 902,367 microseconds is
+excluded; the following normal boundary produces one 10,000,000-edge accepted
+span in the same acceptance epoch, preserving the skipped raw ordinal. An empty
+FIFO does not advance record identity, and a subsequent normal span is accepted.
+A coalesced batch is retained as ambiguous; explicit invalidation of the timing
+model withdraws the old anchor's authority.
+
+The mapping and ambiguity decision in this harness are test-only seams, not the
+instrument adapter. In particular this does not prove that a real singleton's
+service timestamp is sufficiently fresh or that firmware will dispatch every
+consumer correctly. The timestamps/counts are synthetic and do not reconstruct
+missing bench observations. Those live adapter and physical boundaries remain
+in the integration list above.
+
+Verification: the drain harness plus existing reference acceptance/live tests
+passed **40 tests in 2.09 seconds**. No fixed-profile source or build input
+changed, and no physical operation or new qualification occurred.

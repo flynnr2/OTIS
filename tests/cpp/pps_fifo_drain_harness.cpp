@@ -3,6 +3,8 @@
 #include <deque>
 #include <initializer_list>
 #include "firmware/prototypes/pps_fifo_capture/otis_pps_fifo_drain.h"
+#include "firmware/arduino/otis_nano_rp2040_connect/otis_reference_acceptance_live.h"
+#include "firmware/arduino/otis_nano_rp2040_connect/otis_reference_acceptance_policy.generated.h"
 
 struct Port {
   std::deque<uint32_t> fifo;
@@ -23,7 +25,66 @@ struct Port {
   }
 };
 
+// Test-only mapping at the proposed integration seam. Both the FIFO drain and
+// selector are real code; this does not implement the instrument adapter/ISR.
+// All coordinates/counts below are synthetic, not missing bench evidence.
+static void test_fifo_to_real_selector() {
+  using D = OtisReferenceAcceptanceDisposition;
+  OtisReferenceAcceptanceLive selector(OTIS_REFERENCE_ACCEPTANCE_POLICY);
+  uint32_t next = 0;
+  auto deliver = [&](uint32_t ticks, uint32_t cumulative) {
+    Port port({cumulative});
+    port.ticks = ticks;
+    const auto batch = otis_pps_fifo_drain(port, 17, next, 128);
+    assert(batch.count == 1 && batch.faults == 0 && !batch.timestamp_ambiguous);
+    const auto &word = batch.words[0];
+    const OtisReferenceAcceptanceObservation observation = {
+        word.session, word.ordinal, word.ordinal, word.service_ticks,
+        word.cumulative_down_counter, 0, 16};
+    return selector.observe(observation, ticks, uint64_t(ticks) + 10, 1000);
+  };
+  assert(deliver(0, 0).disposition == D::Seeded);
+  for (uint32_t second = 1; second <= 8; ++second)
+    assert(!deliver(second * 1000000u, 0u - second * 10000000u).has_span);
+  assert(selector.status().tracking && selector.status().anchor_current);
+  const auto before = selector.status();
+  const auto early = deliver(8902367u, 0u - 89023670u);
+  assert(early.disposition == D::EarlyExcluded && !early.has_span);
+  assert(selector.status().anchor_snapshot_sequence == before.anchor_snapshot_sequence);
+  assert(selector.status().accepted_boundary_ordinal == before.accepted_boundary_ordinal);
+  const auto normal = deliver(9000000u, 0u - 90000000u);
+  assert(normal.disposition == D::AcceptedSpan && normal.has_span);
+  assert(normal.counted_edges == 10000000u && normal.interval_ticks == 1000000u);
+  assert(normal.excluded_candidate_count == 1u);
+  assert(normal.acceptance_epoch == before.acceptance_epoch);
+  assert(normal.opening.snapshot_sequence == 8u && normal.closing.snapshot_sequence == 10u);
+  assert(normal.opening.reference_sequence == normal.opening.snapshot_sequence);
+  assert(normal.closing.reference_sequence == normal.closing.snapshot_sequence);
+
+  // An empty FIFO (including a GPIO-only diagnostic) cannot advance the one
+  // authoritative record stream. The next real FIFO boundary remains usable.
+  Port no_word({});
+  const uint32_t saved_next = next;
+  const auto empty = otis_pps_fifo_drain(no_word, 17, next, 128);
+  assert(empty.count == 0 && next == saved_next);
+  const auto following = deliver(10000000u, 0u - 100000000u);
+  assert(following.has_span && following.counted_edges == 10000000u);
+  assert(following.excluded_candidate_count == 0u);
+  assert(following.acceptance_epoch == before.acceptance_epoch);
+
+  // No timestamp is fabricated for a coalesced batch. Its actual integration
+  // must withhold it at the common gate; this seam explicitly invalidates the
+  // timing model and verifies that the old accepted anchor loses authority.
+  Port coalesced({0u - 110000000u, 0u - 120000000u});
+  const auto ambiguous = otis_pps_fifo_drain(coalesced, 17, next, 128);
+  assert(ambiguous.count == 2 && ambiguous.timestamp_ambiguous);
+  const auto lost = selector.invalidate(OtisReferenceAcceptanceReason::ObservationAgeAmbiguous);
+  assert(!lost.has_span && !selector.status().anchor_current);
+  assert(!selector.status().tracking);
+}
+
 int main() {
+  test_fifo_to_real_selector();
   uint32_t seq = 0;
   Port empty({});
   auto out = otis_pps_fifo_drain(empty, 1, seq, 128);
