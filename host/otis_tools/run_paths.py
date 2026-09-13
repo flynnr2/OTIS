@@ -18,7 +18,7 @@ ACCEPTED_PPS_SPANS_CSV = "accepted_pps_spans_v1.csv"
 # It carries only the D6 observation of the forwarded D9 output and is never a
 # substitute for authoritative D14/D8 capture evidence.
 FORWARDED_MONITOR_SNAPSHOTS_CSV = "forwarded_monitor_snapshots.csv"
-ASSOCIATION_LOSS_DECISIONS_CSV = "association_loss_decisions_v1.csv"
+ASSOCIATION_LOSS_DECISIONS_CSV = "association_loss_decisions_v2.csv"
 HEALTH_CSV = "health.csv"
 DAC_STEPS_CSV = "dac_steps.csv"
 ENVIRONMENT_CSV = "environment.csv"
@@ -150,7 +150,7 @@ def default_csv_files() -> list[dict[str, str]]:
         },
         {
             "path": f"{CSV_DIR}/{ASSOCIATION_LOSS_DECISIONS_CSV}",
-            "contract": "association_loss_decisions_v1",
+            "contract": "association_loss_decisions_v2",
             "optional": True,
         },
         {"path": f"{CSV_DIR}/{HEALTH_CSV}", "contract": "health_v1"},

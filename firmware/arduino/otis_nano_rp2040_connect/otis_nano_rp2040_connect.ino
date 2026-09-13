@@ -1465,7 +1465,8 @@ void publish_dual_core_association_loss_decision(
     uint64_t pending_age_ticks, uint32_t boundary_depth,
     uint32_t boundary_dropped_count,
     const OtisPpsCountBoundaryObservation *next_reference,
-    const OtisPpsSnapshotBackendStats &snapshot_stats) {
+    const OtisPpsSnapshotBackendStats &snapshot_stats,
+    const OtisPpsSnapshotFrozenDiagnostic &frozen) {
   OtisDualCoreQueueStats queue_stats = {};
   otis_dual_core_get_stats(&queue_stats);
   const bool unread_snapshot = snapshot_stats.backlog_depth != 0u;
@@ -1485,7 +1486,7 @@ void publish_dual_core_association_loss_decision(
   const int used = snprintf(
       dual_core_association_loss_scratch.data,
       sizeof(dual_core_association_loss_scratch.data),
-      "ASL,1,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu\r\n",
+      "ASL,2,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu,%s,%lu,%lu,%lu,%lu,%lu,%s,%lu\r\n",
       static_cast<unsigned long>(dual_core_association_loss_scratch.sequence),
       reason == nullptr ? "association_loss_unspecified" : reason,
       classification, static_cast<unsigned long long>(decision_ticks),
@@ -1521,7 +1522,15 @@ void publish_dual_core_association_loss_decision(
       static_cast<unsigned long long>(
           queue_stats.timing_progress.phase_enter_ticks),
       static_cast<unsigned long long>(
-          queue_stats.timing_progress.last_progress_ticks));
+          queue_stats.timing_progress.last_progress_ticks),
+      frozen.frozen ? "true" : "false",
+      static_cast<unsigned long>(frozen.session),
+      static_cast<unsigned long>(frozen.producer_ordinal),
+      static_cast<unsigned long>(frozen.consumer_ordinal),
+      static_cast<unsigned long>(frozen.backlog_depth),
+      static_cast<unsigned long>(frozen.pio_fifo_depth),
+      frozen.front_word_present ? "true" : "false",
+      static_cast<unsigned long>(frozen.front_word));
   if (used <= 0 || static_cast<size_t>(used) >=
                        sizeof(dual_core_association_loss_scratch.data)) {
     otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
@@ -1778,11 +1787,16 @@ void drain_pps_count_boundary_ring(void) {
     OtisPpsCountBoundaryObservation next_reference = {};
     const bool have_next_reference =
         otis_pps_count_boundary_ring_peek(&next_reference);
+    const uint64_t decision_ticks = otis_monotonic_us32_now();
+    // Recovery clears the DMA ring. Freeze its unread front as diagnostic
+    // evidence only; it must never become a paired SNP or control input.
+    OtisPpsSnapshotFrozenDiagnostic frozen = {};
+    otis_pps_snapshot_backend_freeze_diagnostic(&frozen);
     publish_dual_core_association_loss_decision(
-        association_reason, otis_monotonic_us32_now(), pending_reference,
+        association_reason, decision_ticks, pending_reference,
         pending_age_ticks, otis_pps_count_boundary_ring_depth(),
         otis_pps_count_boundary_ring_dropped_count(),
-        have_next_reference ? &next_reference : nullptr, stats);
+        have_next_reference ? &next_reference : nullptr, stats, frozen);
     reference_acceptance.invalidate(OtisReferenceAcceptanceReason::CaptureIntegrity);
     otis_count_observation_update_reference_acceptance(reference_acceptance.status());
     otis_count_observation_note_association_loss(

@@ -291,6 +291,7 @@ def test_association_loss_freezes_decision_local_backend_evidence_before_rearm()
     drain = sketch[drain_start : sketch.index("void emit_build_provenance_status(void)", drain_start)]
     publish = "publish_dual_core_association_loss_decision("
     assert publish in drain
+    assert drain.index("otis_pps_snapshot_backend_freeze_diagnostic(&frozen)") < drain.index(publish)
     assert "otis_pps_count_boundary_ring_peek(&next_reference)" in drain
     assert drain.index(publish) < drain.index("otis_count_observation_note_association_loss(")
     assert drain.index(publish) < drain.index("otis_pps_snapshot_backend_rearm()")
@@ -301,7 +302,7 @@ def test_association_loss_freezes_decision_local_backend_evidence_before_rearm()
         sketch.index("void emit_captured_edge(", sketch.index("void publish_dual_core_association_loss_decision("))
     ]
     for evidence in (
-        '"ASL,1,',
+        '"ASL,2,',
         "pending_reference.reference_sequence",
         "pending_reference.pps_timestamp_ticks",
         "pending_age_ticks",
@@ -316,12 +317,12 @@ def test_association_loss_freezes_decision_local_backend_evidence_before_rearm()
     ):
         assert evidence in capsule
 
-    format_start = capsule.index('"ASL,1,')
+    format_start = capsule.index('"ASL,2,')
     format_end = capsule.index('\\r\\n"', format_start) + len('\\r\\n"')
     format_literal = capsule[format_start:format_end]
     format_fields = re.findall(r"%(?:ll|l)?[us]", format_literal)
-    assert len(format_fields) == 32
-    assert format_fields[-4:] == ["%lu", "%s", "%llu", "%llu"]
+    assert len(format_fields) == 40
+    assert format_fields[-8:] == ["%s", "%lu", "%lu", "%lu", "%lu", "%lu", "%s", "%lu"]
 
 def test_resource_and_telemetry_contract_name_boundary_ownership() -> None:
     registry = (FIRMWARE / "otis_resource_registry.cpp").read_text(

@@ -21,6 +21,12 @@ programme execution surface. The most important present limitations are:
   the frozen inclusive ±1.25 ms window after eight acquisition intervals. It
   cannot distinguish an impostor inside that window from the intended PPS.
   Exclusion preserves raw evidence and does not establish GNSS accuracy;
+- independent D14 IRQ references and PIO D8 snapshots can lose association
+  after an irregular reference observation. The September 13 investigation
+  retains one unread DMA front word in ASL schema 2 before recovery clears the
+  ring; this is unassociated diagnostic evidence, not a repair of the capture
+  limitation or proof of electrical cause. Remaining ring/FIFO words are not
+  serialized. See the [investigation](../60_EXPERIMENTS/REFERENCE_ASSOCIATION_DISCONTINUITY_2026_09_13.md);
 - CPU-observed expiry places control on hold while a paired hardware boundary
   is delayed. It does not prove a physical missing pulse. Source-coordinate
   ambiguity ends model qualification without inventing a missing timestamp;

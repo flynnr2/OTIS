@@ -80,7 +80,7 @@ FORWARDED_MONITOR_SNAPSHOT_FIELDS = [
     "channel_id",
 ]
 
-ASSOCIATION_LOSS_DECISION_V1_FIELDS = [
+ASSOCIATION_LOSS_DECISION_V2_FIELDS = [
     "record_type",
     "schema_version",
     "decision_sequence",
@@ -115,6 +115,14 @@ ASSOCIATION_LOSS_DECISION_V1_FIELDS = [
     "core1_phase",
     "core1_phase_enter_ticks",
     "core1_last_progress_ticks",
+    "snapshot_frozen",
+    "frozen_session",
+    "frozen_producer_ordinal",
+    "frozen_consumer_ordinal",
+    "frozen_backlog_depth",
+    "frozen_pio_fifo_depth",
+    "unassociated_front_word_present",
+    "unassociated_front_word",
 ]
 
 HEALTH_FIELDS = [
@@ -542,7 +550,7 @@ CONTRACT_FIELDS = {
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
     "pps_snapshots_v1": PPS_SNAPSHOT_FIELDS,
     "forwarded_monitor_snapshots_v1": FORWARDED_MONITOR_SNAPSHOT_FIELDS,
-    "association_loss_decisions_v1": ASSOCIATION_LOSS_DECISION_V1_FIELDS,
+    "association_loss_decisions_v2": ASSOCIATION_LOSS_DECISION_V2_FIELDS,
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
@@ -562,7 +570,7 @@ CONTRACT_RECORD_TYPES = {
     "count_observations_v1": {"CNT"},
     "pps_snapshots_v1": {"SNP"},
     "forwarded_monitor_snapshots_v1": {"MNS"},
-    "association_loss_decisions_v1": {"ASL"},
+    "association_loss_decisions_v2": {"ASL"},
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
@@ -582,7 +590,7 @@ CONTRACT_SCHEMA_VERSIONS = {
     "count_observations_v1": 1,
     "pps_snapshots_v1": 1,
     "forwarded_monitor_snapshots_v1": 1,
-    "association_loss_decisions_v1": 1,
+    "association_loss_decisions_v2": 2,
     "health_v1": 1,
     "dac_steps_v1": 1,
     "environment_v1": 1,
@@ -622,7 +630,7 @@ SEQUENCE_FIELDS = {
     "count_observations_v1": "count_seq",
     "pps_snapshots_v1": "snapshot_sequence",
     "forwarded_monitor_snapshots_v1": "snapshot_sequence",
-    "association_loss_decisions_v1": "decision_sequence",
+    "association_loss_decisions_v2": "decision_sequence",
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
@@ -642,7 +650,7 @@ TIMESTAMP_FIELDS = {
     "count_observations_v1": ("gate_open_ticks", "gate_close_ticks"),
     "pps_snapshots_v1": ("reference_timestamp_ticks",),
     "forwarded_monitor_snapshots_v1": ("reference_timestamp_ticks",),
-    "association_loss_decisions_v1": ("decision_ticks",),
+    "association_loss_decisions_v2": ("decision_ticks",),
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
@@ -668,7 +676,7 @@ DOMAIN_FIELDS = {
     "count_observations_v1": ("gate_domain",),
     "pps_snapshots_v1": (),
     "forwarded_monitor_snapshots_v1": (),
-    "association_loss_decisions_v1": (),
+    "association_loss_decisions_v2": (),
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
@@ -686,7 +694,7 @@ DOMAIN_FIELDS = {
 CONTRACT_IMPLICIT_TIME_DOMAINS = {
     "pps_snapshots_v1": "rp2040_monotonic_us32",
     "forwarded_monitor_snapshots_v1": "rp2040_monotonic_us32",
-    "association_loss_decisions_v1": "rp2040_monotonic_us32",
+    "association_loss_decisions_v2": "rp2040_monotonic_us32",
     "dac_steps_v1": "host_elapsed_ms",
 }
 
@@ -1207,7 +1215,7 @@ def _check_forwarded_monitor_snapshot(
         )
 
 
-def _check_association_loss_decision_v1(
+def _check_association_loss_decision_v2(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
     classifications = {
@@ -1218,19 +1226,18 @@ def _check_association_loss_decision_v1(
     }
     if row.get("classification") not in classifications:
         errors.append(
-            f"row {row_number}: classification must be one of "
-            f"{sorted(classifications)}"
+            f"row {row_number}: classification must be one of {sorted(classifications)}"
         )
     for field_name in (
         "next_reference_present",
         "snapshot_initialized",
         "snapshot_running",
         "snapshot_fault_latched",
+        "snapshot_frozen",
+        "unassociated_front_word_present",
     ):
         if row.get(field_name) not in {"true", "false"}:
-            errors.append(
-                f"row {row_number}: {field_name} must be 'true' or 'false'"
-            )
+            errors.append(f"row {row_number}: {field_name} must be 'true' or 'false'")
     numeric_fields = (
         "pending_reference_sequence",
         "pending_reference_ticks",
@@ -1255,6 +1262,12 @@ def _check_association_loss_decision_v1(
         "core1_last_snapshot_sequence",
         "core1_phase_enter_ticks",
         "core1_last_progress_ticks",
+        "frozen_session",
+        "frozen_producer_ordinal",
+        "frozen_consumer_ordinal",
+        "frozen_backlog_depth",
+        "frozen_pio_fifo_depth",
+        "unassociated_front_word",
     )
     parsed = {
         field_name: _parse_non_negative_int(
@@ -1291,6 +1304,69 @@ def _check_association_loss_decision_v1(
     ):
         errors.append(
             f"row {row_number}: backend_fault requires snapshot_fault_latched=true"
+        )
+
+    frozen = row.get("snapshot_frozen") == "true"
+    present = row.get("unassociated_front_word_present") == "true"
+    if not frozen:
+        if present or any(
+            parsed[name] not in {None, 0}
+            for name in (
+                "frozen_session",
+                "frozen_producer_ordinal",
+                "frozen_consumer_ordinal",
+                "frozen_backlog_depth",
+                "frozen_pio_fifo_depth",
+                "unassociated_front_word",
+            )
+        ):
+            errors.append(f"row {row_number}: unavailable freeze must carry no payload")
+    else:
+        if row.get("snapshot_initialized") != "true":
+            errors.append(f"row {row_number}: frozen backend must be initialized")
+        if parsed["frozen_session"] != parsed["snapshot_session"]:
+            errors.append(
+                f"row {row_number}: freeze must retain decision capture session"
+            )
+        produced, consumed, depth = (
+            parsed[name]
+            for name in (
+                "frozen_producer_ordinal",
+                "frozen_consumer_ordinal",
+                "frozen_backlog_depth",
+            )
+        )
+        if (
+            None not in (produced, consumed, depth)
+            and (produced - consumed) % (1 << 32) != depth
+        ):
+            errors.append(
+                f"row {row_number}: frozen backlog must equal ordinal distance"
+            )
+        previous_produced = parsed["snapshot_producer_ordinal"]
+        if produced is not None and previous_produced is not None and (
+            (produced - previous_produced) % (1 << 32) >= (1 << 31)
+        ):
+            errors.append(f"row {row_number}: frozen producer must not move backward")
+        if present and (
+            row.get("snapshot_fault_latched") == "true"
+            or parsed["snapshot_fault_flags"] not in {None, 0}
+        ):
+            errors.append(f"row {row_number}: faulted decision cannot claim a readable front word")
+        if parsed["frozen_consumer_ordinal"] != parsed["snapshot_consumer_ordinal"]:
+            errors.append(f"row {row_number}: freeze must not consume a snapshot")
+        if (
+            parsed["frozen_pio_fifo_depth"] is not None
+            and parsed["frozen_pio_fifo_depth"] > 8
+        ):
+            errors.append(f"row {row_number}: frozen FIFO exceeds joined RX capacity")
+        if present and (depth is None or not 1 <= depth <= 128):
+            errors.append(
+                f"row {row_number}: front word requires an unread non-overwritten slot"
+            )
+    if not present and parsed["unassociated_front_word"] not in {None, 0}:
+        errors.append(
+            f"row {row_number}: absent front word must carry zero placeholder"
         )
 
 
@@ -2994,8 +3070,8 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
                 _check_accepted_pps_span_v1(row, row_count, errors)
             if context.contract == "forwarded_monitor_snapshots_v1":
                 _check_forwarded_monitor_snapshot(row, row_count, errors)
-            if context.contract == "association_loss_decisions_v1":
-                _check_association_loss_decision_v1(row, row_count, errors)
+            if context.contract == "association_loss_decisions_v2":
+                _check_association_loss_decision_v2(row, row_count, errors)
             if context.contract == "health_v1":
                 _check_health(row, row_count, errors)
             if context.contract == "dac_steps_v1":

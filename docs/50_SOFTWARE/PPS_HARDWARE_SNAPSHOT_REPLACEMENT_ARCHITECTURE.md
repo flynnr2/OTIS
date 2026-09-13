@@ -473,3 +473,19 @@ digital continuity and load evidence unless it finds a contradiction.
   installed-core APIs and register-level ownership needed by the implementation.
 - [Arduino Nano RP2040 Connect full pinout](https://docs.arduino.cc/resources/pinouts/ABX00053-full-pinout.pdf):
   header pin and RP2040 GPIO mapping.
+
+## Current association-loss diagnostic boundary (2026-09-13)
+
+The independent CPU REF stream remains subject to strict association with PIO
+words. Two pending references competing with a word are not resolved by ordinal
+coincidence or expected PPS time. Capture integrity is invalidated and recovery
+starts a new session, preserving the prior campaign discontinuity.
+
+Before destructive rearm, ASL schema 2 stops PIO and DMA and retains the unread
+DMA front counter, if readable, with explicit presence, post-stop ordinals and
+ring/FIFO depths. Pre-stop decision statistics remain separate. This diagnostic
+freeze occurs only after the association-loss decision, never on a normal
+measurement boundary; it does not make CPU service the aperture owner. The raw
+counter is deliberately unassociated and cannot enter measurement or control.
+See the [wire semantics](../../data_contracts/association_loss_decisions_v2.csv.md)
+and [bounded investigation](../60_EXPERIMENTS/REFERENCE_ASSOCIATION_DISCONTINUITY_2026_09_13.md).
