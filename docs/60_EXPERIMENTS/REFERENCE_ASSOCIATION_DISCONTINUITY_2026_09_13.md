@@ -163,3 +163,67 @@ This validation covers software behavior and the fixed-profile build. No
 hardware operation, physical qualification, or operational-path rehearsal of a
 new exact campaign bundle occurred. The result is not bench-entry authority
 and does not establish that the reference-association defect is repaired.
+
+## Further discrimination from retained output-monitor evidence
+
+A bounded follow-up used the same immutable diagnostic archive; no new hardware
+operation or firmware change was made. The capture IRQ/ring, association guard,
+PIO program and output-monitor sources inspected are identical to frozen
+revision `41de81d`.
+
+The supplied CSV excerpt contains 810 clean MNS/SNP pairs. Every pair has the
+same raw down-counter offset, MNS minus SNP modulo 2^32: 56,658 edges. The last
+clean MNS (monitor session 1, sequence 813, raw line 35162) is 455,068,166 at
+reference source 813. The next retained MNS (same monitor session, sequence 814,
+raw line 35262) is 445,068,166. The raw difference is exactly 10,000,000 edges.
+It was drained at recovered reference source 816, timestamp 817250373, and has
+status 4 (`FIFO_BACKLOG`). This timestamp names the CPU drain's reference,
+not the hardware time at which the old word was captured.
+
+This is useful independent transport evidence: the D9/D6 output monitor runs
+a separate state machine using the same PIO instruction program, and its FIFO
+is CPU-drained without DMA. It was not rearmed with the authoritative backend.
+Its service reads the oldest FIFO word only after an authoritative association;
+when more words remain, it preserves that oldest word and disables itself
+locally. The status change is therefore an expected consequence of skipped
+monitor service during the authoritative loss, not evidence that the monitor
+caused the loss. Its pre-event counters report no missing snapshot, FIFO backlog
+or PIO stall; its subsequent fault is the single FIFO backlog.
+
+**Inference:** under the previously observed oscillator behaviour, this oldest
+unread monitor word is consistent with the normal next one-second PPS boundary.
+A word corresponding to the CPU observation only 902,367 microseconds after the
+previous boundary would ordinarily have a substantially smaller count delta.
+This strengthens the hypothesis that an extra CPU-side reference observation,
+or a brief input event observed differently by GPIO IRQ and PIO, caused the
+stream disagreement. It weakens a fault isolated to the authoritative DMA path.
+The monitor shares D14 and the PIO design, so this is not independent proof of
+reference integrity, electrical origin, or uninterrupted D8 operation. An IRQ
+delay, oscillator excursion, or shared PIO limitation could undermine the
+inference. Do not reconstruct the missing authoritative word from the 56,658
+historical offset or use this diagnostic to restore qualification.
+
+The scheduler audit found D14 IRQ registration and capture consumption both on
+Core 1. Capture-ring pop masks that core's IRQs while copying the record. Each
+first observation of a new PIO word defers pairing for one foreground pass;
+that pass drains up to 31 IRQ records, the full usable capture-ring capacity.
+There is no demonstrated cross-core ring race or missed-drain-capacity bug for
+these two records. The pinned SDK acknowledges the masked GPIO event before
+calling the Arduino callback; the D14 attachment enables rising edges only.
+No repository path that synthesizes a D14 IRQ was found.
+
+A sufficiently delayed foreground can still make the conservative guard reject
+two genuine queued references, even if both PIO words exist. This is a separate
+architectural limitation, not a proved explanation here: CPU delay alone does
+not explain why the ASL DMA frontier contained only one unread word. Delayed
+DMA visibility is not categorically excluded by this snapshot. Existing 4 Hz
+progress breadcrumbs do not measure the maximum intervening service latency.
+
+Current ranking is therefore: investigate GPIO-IRQ/PIO event-recognition
+agreement first; retain DMA visibility and unusual servicing as secondary
+hypotheses; timestamp quantization is unsupported by the 97,615-microsecond
+separation. The precise origin and duration of the extra observation remain
+unknown because per-event IRQ sampled level and the authoritative unread count
+were not retained. The next capture correction needs a demonstrated causal
+association guarantee. Neither a finer host timeline nor another unchanged
+72-hour restart supplies that guarantee.
