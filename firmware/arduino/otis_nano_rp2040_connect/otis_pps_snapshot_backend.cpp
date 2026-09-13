@@ -307,6 +307,61 @@ bool otis_pps_snapshot_backend_pop(OtisPpsHardwareSnapshot *snapshot) {
   return true;
 }
 
+void otis_pps_snapshot_backend_freeze_diagnostic(
+    OtisPpsSnapshotFrozenDiagnostic *out) {
+  if (out == nullptr) {
+    return;
+  }
+  *out = {false, 0u, 0u, 0u, 0u, 0u, false, 0u};
+  if (!backend.initialized) {
+    return;
+  }
+
+  // Stop the producer before its transport. The pinned SDK's DMA abort does
+  // not return until an in-flight read/write transfer has retired, so the
+  // post-abort transfer count is the committed ring frontier. RP2040-E13 may
+  // raise a spurious completion IRQ after abort; this backend uses no DMA IRQ.
+  // Words still in the PIO FIFO are separately counted but are not claimed as
+  // committed ring observations because they have no DMA ring ordinal.
+  const bool dma_was_busy =
+      backend.dma_channel >= 0 &&
+      dma_channel_is_busy(static_cast<uint>(backend.dma_channel));
+  stop_transport();
+  __dmb();
+  const uint32_t produced = producer_ordinal();
+  const uint32_t consumed = backend.consumer_ordinal;
+  const uint32_t depth = produced - consumed;
+  const uint32_t fifo_depth =
+      backend.sm < 0
+          ? 0u
+          : static_cast<uint32_t>(pio_sm_get_rx_fifo_level(
+                backend.pio, static_cast<uint>(backend.sm)));
+  const bool settled_pio_rxstall =
+      backend.sm < 0 ||
+      ((backend.pio->fdebug >> static_cast<uint>(backend.sm)) & 1u) != 0u;
+  const uint32_t settled_dma_control =
+      backend.dma_channel < 0
+          ? DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS
+          : dma_channel_hw_addr(static_cast<uint>(backend.dma_channel))
+                ->ctrl_trig;
+  const bool settled_dma_error =
+      (settled_dma_control & DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS) != 0u;
+  const bool front_word_present =
+      depth > 0u && depth <= kSnapshotRingCapacity &&
+      dma_was_busy && !backend.fault_latched &&
+      !backend.overwrite_pending && !settled_pio_rxstall &&
+      !settled_dma_error;
+  uint32_t front_word = 0u;
+  if (front_word_present) {
+    __dmb();
+    front_word = snapshot_ring[consumed & kSnapshotRingMask];
+    __dmb();
+  }
+  *out = {true,         backend.session, produced,   consumed,
+          depth,        fifo_depth,      front_word_present,
+          front_word};
+}
+
 bool otis_pps_snapshot_backend_rearm(void) {
   if (!backend.initialized) {
     return false;

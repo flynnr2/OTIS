@@ -671,7 +671,7 @@
         "event_timestamp_ticks"
       ]
     },
-    "association_loss_decisions_v1": {
+    "association_loss_decisions_v2": {
       "atom": [
         "reason",
         "classification",
@@ -681,7 +681,9 @@
         "next_reference_present",
         "snapshot_initialized",
         "snapshot_running",
-        "snapshot_fault_latched"
+        "snapshot_fault_latched",
+        "snapshot_frozen",
+        "unassociated_front_word_present"
       ],
       "record_type": [
         "record_type"
@@ -708,7 +710,13 @@
         "snapshot_dma_stopped_count",
         "core1_loop_sequence",
         "core1_last_snapshot_session",
-        "core1_last_snapshot_sequence"
+        "core1_last_snapshot_sequence",
+        "frozen_session",
+        "frozen_producer_ordinal",
+        "frozen_consumer_ordinal",
+        "frozen_backlog_depth",
+        "frozen_pio_fifo_depth",
+        "unassociated_front_word"
       ],
       "uint64": [
         "decision_ticks",
@@ -1409,7 +1417,7 @@
         "event_timestamp_ticks"
       ]
     },
-    "association_loss_decisions_v1": {
+    "association_loss_decisions_v2": {
       "domain_fields": [],
       "fields": [
         "record_type",
@@ -1445,14 +1453,22 @@
         "core1_last_snapshot_sequence",
         "core1_phase",
         "core1_phase_enter_ticks",
-        "core1_last_progress_ticks"
+        "core1_last_progress_ticks",
+        "snapshot_frozen",
+        "frozen_session",
+        "frozen_producer_ordinal",
+        "frozen_consumer_ordinal",
+        "frozen_backlog_depth",
+        "frozen_pio_fifo_depth",
+        "unassociated_front_word_present",
+        "unassociated_front_word"
       ],
       "first_consumer": "capture_serial.CsvRecordSplitter",
       "implicit_time_domain": "rp2040_monotonic_us32",
       "record_types": [
         "ASL"
       ],
-      "schema_version": 1,
+      "schema_version": 2,
       "sequence_field": "decision_sequence",
       "session_field": null,
       "timestamp_fields": [

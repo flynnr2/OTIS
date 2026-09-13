@@ -210,7 +210,7 @@ def test_contract_authority_is_current_complete_and_deterministically_generated(
         RECORD_FIELDS
     )
     assert len(RECORD_FIELDS) == 17
-    assert sum(len(fields) for fields in RECORD_FIELDS.values()) == 451
+    assert sum(len(fields) for fields in RECORD_FIELDS.values()) == 459
     assert RAW_ONLY_DIAGNOSTIC_RECORD_TYPES == {
         "BOOT",
         "BOOTDIAG",
@@ -252,7 +252,7 @@ def test_every_record_field_has_contract_derived_legal_and_illegal_boundaries() 
                 for value in illegal
             ), f"{contract}.{field} illegal matrix disagrees with the contract"
             exercised += 1
-    assert exercised == 451
+    assert exercised == 459
 
 
 def test_every_active_status_value_has_a_contract_derived_wire_type() -> None:

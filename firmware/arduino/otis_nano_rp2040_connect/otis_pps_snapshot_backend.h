@@ -18,6 +18,21 @@ struct OtisPpsHardwareSnapshot {
   uint32_t status;
 };
 
+// A fail-closed, non-consuming snapshot of backend state taken before rearm.
+// pio_fifo_depth reports words captured by PIO but not committed to the DMA
+// ring. Such words have no stable ring ordinal and are never exposed as the
+// unassociated front word.
+struct OtisPpsSnapshotFrozenDiagnostic {
+  bool frozen;
+  uint32_t session;
+  uint32_t producer_ordinal;
+  uint32_t consumer_ordinal;
+  uint32_t backlog_depth;
+  uint32_t pio_fifo_depth;
+  bool front_word_present;
+  uint32_t front_word;
+};
+
 struct OtisPpsSnapshotBackendStats {
   bool initialized;
   bool running;
@@ -45,6 +60,8 @@ struct OtisPpsSnapshotBackendStats {
 bool otis_pps_snapshot_backend_begin(void);
 void otis_pps_snapshot_backend_poll(void);
 bool otis_pps_snapshot_backend_pop(OtisPpsHardwareSnapshot *snapshot);
+void otis_pps_snapshot_backend_freeze_diagnostic(
+    OtisPpsSnapshotFrozenDiagnostic *out);
 bool otis_pps_snapshot_backend_rearm(void);
 void otis_pps_snapshot_backend_get_stats(OtisPpsSnapshotBackendStats *out);
 
