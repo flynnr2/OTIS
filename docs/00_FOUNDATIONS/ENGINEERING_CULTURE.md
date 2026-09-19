@@ -96,6 +96,19 @@ Architectural discussions should continuously ask:
 
 ---
 
+# Development and Bench Exchange
+
+The development Mac and bench Mac exchange prepared bundles, manifests, JSON,
+checksums, prompts and completed evidence through `~/Documents/OTIS_DATA/`.
+A bench handoff must name the actual shared delivery directory and a return
+location there. Copy and verify the prepared files before reporting delivery;
+a verified local copy does not prove synchronization has reached the other Mac.
+Keep active acquisition in the repository's local `runs/` directory and copy
+completed evidence without changing its records or seals. State access or
+transfer failures explicitly rather than substituting an unshared local path.
+
+---
+
 # Replayability Is Sacred
 
 Raw logs and telemetry are not debugging exhaust.

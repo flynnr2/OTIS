@@ -71,6 +71,17 @@ those tools, firmware inputs or the successful gate.
 
 ## Bench prompt
 
+Development/bench exchange uses `~/Documents/OTIS_DATA/`. Place this delivery
+in `~/Documents/OTIS_DATA/service-capture-20260919/`, with its archive, JSON
+manifests, checksums and updated outer `BENCH_PROMPT.md`. Verify `SHA256SUMS` and
+extract `otis-service-capture-ready-20260919.tar.gz` there; the resulting bundle
+is `service-capture-ready/`. The archive SHA-256 remains
+`4bf67804234a623ce6ba0dc78ef6b9c77659639ae3a9c8e23b2a47ce237b2a3f`.
+Return completed packages, result JSON, checksums and findings under
+`~/Documents/OTIS_DATA/service-capture-20260919/bench-return/`. A local copy does
+not establish synchronization to the other Mac; report unavailable files or
+blocked access explicitly.
+
 Use the separately delivered bundle and its `HANDOFF.json` checkout revision.
 The development Mac owns engineering, bundle creation and rehearsals; the bench
 only installs the pinned dependencies if necessary, reproduces the exact image,
@@ -78,12 +89,13 @@ then flashes once and runs the frozen observation. Do not substitute a new
 specification or image to resolve an identity mismatch.
 
 ```sh
-python3 -m host.otis_tools compile /path/to/bundle/run_spec.json \
+OTIS_BUNDLE="$HOME/Documents/OTIS_DATA/service-capture-20260919/service-capture-ready"
+python3 -m host.otis_tools compile "$OTIS_BUNDLE/run_spec.json" \
   --output-dir build/bench-service-capture
 
-python3 -m host.otis_tools run /path/to/bundle/run_spec.json \
-  --rehearsal /path/to/bundle/rehearsal-receipt.json \
-  --rehearsal-package /path/to/bundle/rehearsal \
+python3 -m host.otis_tools run "$OTIS_BUNDLE/run_spec.json" \
+  --rehearsal "$OTIS_BUNDLE/rehearsal-receipt.json" \
+  --rehearsal-package "$OTIS_BUNDLE/rehearsal" \
   --firmware-manifest build/bench-service-capture/artifacts/firmware_build_manifest.json \
   --run-dir runs/bench-service-capture-five-minute \
   --device /dev/cu.usbmodemACTUAL \
