@@ -69,3 +69,14 @@ when its maximum possible interval is below the lower bound. Acceptance requires
 the minimum and maximum both inside the bounds. An overlap with a boundary loses
 qualification as `ObservationAgeAmbiguous`; unknown uncertainty and every
 nonzero status are likewise ineligible.
+
+## Capture recognition and static digital bound
+
+The D14 test precedes `IN X,32` by one PIO clock without an intervening change
+to X. Before that test, D8 WAIT instructions make recognition depend on D8
+transitions. Under the explicitly proved synchronized-D8 dwell envelope of
+4–9 PIO clocks per high/low phase, an armed D14 high held through recognition
+reaches IN within ten clocks. This conditional implementation bound is not an
+individual hardware timestamp, physical pin guarantee, or live verification
+of that dwell envelope. It must not tighten `timestamp_uncertainty_ticks` or
+replace the timer-domain recognition bracket. See [the current assessment](../docs/50_SOFTWARE/PPS_CAPTURE_CURRENT_ASSESSMENT_2026_09_19.md).

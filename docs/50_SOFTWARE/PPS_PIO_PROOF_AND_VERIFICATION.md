@@ -256,3 +256,16 @@ counter/latch or CPLD fallback.
   conditioning limits.
 - `docs/datasheets/ABX00053-schematics.pdf`: Nano RP2040 Connect signal path;
   no hidden autonomous counter/capture latch exists.
+
+## Current 10 MHz assessment (2026-09-19)
+
+The verifier also runs the unchanged instruction words at nominal 10 MHz:
+7,936 cases and 55,552 adjacent intervals, all within -1/0/+1 model boundary
+error. A separate exhaustive reachable-state check proves at most ten PIO
+clocks from D14 high presented to the SM to IN, conditional on synchronized
+D8 high/low dwells of 4–9 clocks, an armed D14 that remains high and no FIFO
+stall. Recognition itself precedes IN by exactly one clock with unchanged X.
+These are digital endpoints, not a pad-level or timer-domain latency claim.
+The historical two-flop phase model does not model the complete input mapping
+pipeline or physical synchronizer behavior. See the [current assessment](PPS_CAPTURE_CURRENT_ASSESSMENT_2026_09_19.md)
+for assumptions, current results, alternatives and diagnostic unavailability.

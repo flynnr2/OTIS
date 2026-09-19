@@ -7,15 +7,14 @@ program: WAIT, JMP and IN/autopush.  Any other opcode fails closed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import argparse
 import json
 import math
-from pathlib import Path
 import re
 import subprocess
-from typing import Iterable
-
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+from pathlib import Path
 
 SYS_HZ = 133_000_000
 OSC_HZ = 16_000_000
@@ -50,6 +49,7 @@ class ProofFailure(RuntimeError):
 class Snapshot:
     cycle: int
     down_counter: int
+    recognition_cycle: int | None = None
 
 
 @dataclass
@@ -59,6 +59,8 @@ class PioMachine:
     fifo_depth: int = 0
     rx_stall: bool = False
     snapshots: list[Snapshot] = field(default_factory=list)
+    recognition_cycle: int | None = None
+    recognition_counter: int | None = None
 
     def _advance(self) -> None:
         self.pc += 1
@@ -82,6 +84,9 @@ class PioMachine:
                 self.x = (self.x - 1) & 0xFFFFFFFF
             elif condition == 6:  # PIN: independent EXECCTRL_JMP_PIN (PPS).
                 take = pps
+                if take and self.pc in (2, 4):
+                    self.recognition_cycle = cycle
+                    self.recognition_counter = self.x
             else:
                 raise ProofFailure(f"unsupported JMP condition {condition} at PC {self.pc}")
             if take:
@@ -109,7 +114,17 @@ class PioMachine:
                 self.rx_stall = True
                 return
             self.fifo_depth += 1
-            self.snapshots.append(Snapshot(cycle=cycle, down_counter=self.x))
+            if self.recognition_cycle is not None:
+                if self.x != self.recognition_counter:
+                    raise ProofFailure("D8 count changed between PPS recognition and snapshot")
+                if cycle != self.recognition_cycle + 1:
+                    raise ProofFailure("nonstalled recognition-to-IN path is not one clock")
+            self.snapshots.append(Snapshot(
+                cycle=cycle, down_counter=self.x,
+                recognition_cycle=self.recognition_cycle,
+            ))
+            self.recognition_cycle = None
+            self.recognition_counter = None
             self._advance()
             return
 
@@ -128,8 +143,8 @@ class TwoFlopSynchronizer:
         return observed
 
 
-def _physical_oscillator(cycle: int, phase: float, duty: float) -> bool:
-    return ((phase + cycle * OSC_HZ / SYS_HZ) % 1.0) < duty
+def _physical_oscillator(cycle: int, phase: float, duty: float, oscillator_hz: int = OSC_HZ) -> bool:
+    return ((phase + cycle * oscillator_hz / SYS_HZ) % 1.0) < duty
 
 
 def _physical_pps(cycle: int, start: float, period: float, high_cycles: float) -> bool:
@@ -138,11 +153,11 @@ def _physical_pps(cycle: int, start: float, period: float, high_cycles: float) -
     return ((cycle - start) % period) < high_cycles
 
 
-def _physical_edge_count(start: float, end: float, oscillator_phase: float) -> int:
+def _physical_edge_count(start: float, end: float, oscillator_phase: float, oscillator_hz: int = OSC_HZ) -> int:
     """Count continuous-time oscillator rises in the half-open interval [start, end)."""
 
-    before_start = math.ceil(oscillator_phase + start * OSC_HZ / SYS_HZ - 1e-12)
-    before_end = math.ceil(oscillator_phase + end * OSC_HZ / SYS_HZ - 1e-12)
+    before_start = math.ceil(oscillator_phase + start * oscillator_hz / SYS_HZ - 1e-12)
+    before_end = math.ceil(oscillator_phase + end * oscillator_hz / SYS_HZ - 1e-12)
     return before_end - before_start
 
 
@@ -150,7 +165,9 @@ def _down_counter_delta(first: int, second: int) -> int:
     return (first - second) & 0xFFFFFFFF
 
 
-def simulate_case(*, phase_index: int, duty_percent: int, pps_edges: int = 8) -> tuple[int, ...]:
+def simulate_case(*, phase_index: int, duty_percent: int, pps_edges: int = 8,
+                  oscillator_hz: int = OSC_HZ,
+                  recognition_delays: list[int] | None = None) -> tuple[int, ...]:
     oscillator_phase = phase_index / 256.0
     duty = duty_percent / 100.0
     pps_start = 101.25
@@ -160,13 +177,13 @@ def simulate_case(*, phase_index: int, duty_percent: int, pps_edges: int = 8) ->
         pps_start + (pps_edges - 1) * pps_period + pps_high_cycles + 32
     )
 
-    initial_osc = _physical_oscillator(0, oscillator_phase, duty)
+    initial_osc = _physical_oscillator(0, oscillator_phase, duty, oscillator_hz)
     machine = PioMachine()
     osc_sync = TwoFlopSynchronizer(initial_osc, initial_osc)
     pps_sync = TwoFlopSynchronizer(False, False)
 
     for cycle in range(final_cycle):
-        raw_osc = _physical_oscillator(cycle, oscillator_phase, duty)
+        raw_osc = _physical_oscillator(cycle, oscillator_phase, duty, oscillator_hz)
         raw_pps = _physical_pps(cycle, pps_start, pps_period, pps_high_cycles)
         machine.step(
             cycle,
@@ -183,9 +200,15 @@ def simulate_case(*, phase_index: int, duty_percent: int, pps_edges: int = 8) ->
         )
 
     errors: list[int] = []
+    if recognition_delays is not None:
+        for edge, snapshot in zip(physical_edges, machine.snapshots):
+            # Ideal two-flop model: ceil(edge) is sampled, visible two cycles later.
+            if snapshot.recognition_cycle is None:
+                raise ProofFailure("snapshot lacks its own recognition endpoint")
+            recognition_delays.append(snapshot.recognition_cycle - (math.ceil(edge) + 2))
     for index in range(1, len(physical_edges)):
         expected = _physical_edge_count(
-            physical_edges[index - 1], physical_edges[index], oscillator_phase
+            physical_edges[index - 1], physical_edges[index], oscillator_phase, oscillator_hz
         )
         actual = _down_counter_delta(
             machine.snapshots[index - 1].down_counter,
@@ -254,6 +277,77 @@ def verify_timing_paths() -> int:
     if installed_latency != 4:
         raise ProofFailure(f"expected four-cycle bound, got {installed_latency}")
     return installed_latency
+
+
+def verify_sampled_recognition_bound(*, minimum_dwell: int = 4,
+                                    maximum_dwell: int = 9) -> dict[str, object]:
+    """Exhaust reachable digital states, then raise D14 at every armed state.
+
+    Dwell is consecutive synchronized D8 samples of one level, in PIO clocks.
+    Every high and low dwell in the declared range is explored independently;
+    this is stronger than a finite periodic phase grid but is not pad physics.
+    """
+    if minimum_dwell < 4 or maximum_dwell < minimum_dwell:
+        raise ProofFailure("sampled D8 dwell envelope is outside this proof")
+
+    def successors(level: bool, dwell: int) -> tuple[tuple[bool, int], ...]:
+        result = []
+        if dwell < maximum_dwell:
+            result.append((level, dwell + 1))
+        if dwell >= minimum_dwell:
+            result.append((not level, 1))
+        return tuple(result)
+
+    frontier = {(PROGRAM_INITIAL_PC, level, dwell)
+                for level in (False, True) for dwell in range(1, maximum_dwell + 1)}
+    reachable = set()
+    while frontier:
+        pc, level, dwell = frontier.pop()
+        state = (pc, level, dwell)
+        if state in reachable:
+            continue
+        reachable.add(state)
+        # Include every PPS history: a falling D14 can rearm on either
+        # high-state checkpoint (PC 8 or 13), leaving PC 9 or 14 armed too.
+        for pps in (False, True):
+            machine = PioMachine(pc=pc)
+            machine.step(0, level, pps)
+            frontier.update((machine.pc, next_level, next_dwell)
+                            for next_level, next_dwell in successors(level, dwell))
+
+    armed = {state for state in reachable if state[0] in (0, 1, 2, 3, 4, 5, 9, 14)}
+    maximum_recognition = 0
+    for state in armed:
+        paths = {(*state, 0)}
+        visited = set()
+        while paths:
+            pc, level, dwell, elapsed = paths.pop()
+            key = (pc, level, dwell, elapsed)
+            if key in visited:
+                continue
+            visited.add(key)
+            if elapsed > 2 * maximum_dwell + 8:
+                raise ProofFailure("D14 recognition is not bounded in declared dwell envelope")
+            machine = PioMachine(pc=pc)
+            machine.step(elapsed, level, True)
+            if machine.recognition_cycle is not None:
+                maximum_recognition = max(maximum_recognition, elapsed)
+                machine.step(elapsed + 1, level, True)
+                if len(machine.snapshots) != 1:
+                    raise ProofFailure("recognized D14 did not capture on next instruction")
+                continue
+            paths.update((machine.pc, next_level, next_dwell, elapsed + 1)
+                         for next_level, next_dwell in successors(level, dwell))
+    return {
+        "synchronized_d8_dwell_clocks": [minimum_dwell, maximum_dwell],
+        "reachable_states": len(reachable),
+        "armed_states": len(armed),
+        "sampled_d14_to_recognition_max_clocks": maximum_recognition,
+        "sampled_d14_to_snapshot_max_clocks": maximum_recognition + 1,
+        "recognition_to_snapshot_clocks": 1,
+        "assumptions": "D14 armed and stays high through recognition; no FIFO stall; ideal synchronous digital levels",
+        "not_available": "physical pin bound, individual hardware coordinate or timer-domain latency",
+    }
 
 
 def verify_program_structure() -> None:
@@ -365,8 +459,9 @@ def verify_fault_paths() -> dict[str, object]:
     stalled_pc = stalled.pc
     stalled_x = stalled.x
     stalled_snapshots = len(stalled.snapshots)
-    for cycle in range(cycle + 1, cycle + 257):
-        stalled.step(cycle, (cycle % 8) < 4, (cycle % 160) < 24, drain_fifo=False)
+    for stalled_cycle in range(cycle + 1, cycle + 257):
+        stalled.step(stalled_cycle, (stalled_cycle % 8) < 4,
+                     (stalled_cycle % 160) < 24, drain_fifo=False)
     if (
         stalled.pc != stalled_pc
         or stalled.x != stalled_x
@@ -491,16 +586,20 @@ def verify_repository_installation(
     }
 
 
-def run_phase_sweep(duties: Iterable[int] = range(35, 66)) -> dict[str, object]:
+def run_phase_sweep(duties: Iterable[int] = range(35, 66), *,
+                    oscillator_hz: int = OSC_HZ) -> dict[str, object]:
     duties = tuple(duties)
     error_histogram: dict[int, int] = {}
     span_error_histogram: dict[int, int] = {}
     case_count = 0
     interval_count = 0
     maximum_span_intervals = 0
+    recognition_delays: list[int] = []
     for duty in duties:
         for phase in range(256):
-            errors = simulate_case(phase_index=phase, duty_percent=duty)
+            errors = simulate_case(phase_index=phase, duty_percent=duty,
+                                   oscillator_hz=oscillator_hz,
+                                   recognition_delays=recognition_delays)
             case_count += 1
             interval_count += len(errors)
             for error in errors:
@@ -537,6 +636,13 @@ def run_phase_sweep(duties: Iterable[int] = range(35, 66)) -> dict[str, object]:
             sorted(span_error_histogram.items())
         ),
         "maximum_tested_span_intervals": maximum_span_intervals,
+        "oscillator_hz": oscillator_hz,
+        "sampled_d14_to_recognition_clocks": {
+            "minimum": min(recognition_delays), "maximum": max(recognition_delays),
+            "samples": len(recognition_delays),
+            "meaning": "finite phase sweep extrema, not a physical worst-case bound",
+        },
+        "recognition_to_snapshot_clocks": 1,
     }
 
 
@@ -579,6 +685,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.pioasm:
         verify_assembled_words(args.pioasm, args.source)
     result = run_phase_sweep()
+    result["current_10mhz_envelope"] = run_phase_sweep(oscillator_hz=10_000_000)
+    result["current_sampled_dwell_bound"] = verify_sampled_recognition_bound()
     result["fault_paths"] = verify_fault_paths()
     result["repository_installation"] = verify_repository_installation(
         args.backend_source, args.generated_header, args.firmware_manifest

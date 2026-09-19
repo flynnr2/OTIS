@@ -144,3 +144,32 @@ An interleaved record from another component does not become a PPS or ACTIVE
 snapshot member. A duplicate key within either owned snapshot remains invalid,
 even when both values match. There is no last-value-wins or special CONFIG
 exception in the host reducer. The wire schema and timing meanings are unchanged.
+
+### Incremental Core 0 periodic reports
+
+The periodic service report freezes its getter results once and transports one
+complete STS row per scheduling opportunity. Component `periodic_status` carries
+`generation_begin`, `snapshot_ticks`, `snapshot_domain`, `incomplete_generations`
+and a matching `generation_end`. The snapshot coordinate describes the retained
+view's origin; each STS header keeps its actual formatting-time coordinate and
+wire-ordered status sequence. This does not imply a simultaneous atomic snapshot
+across all hardware and cores. Its age-dependent GNSS fields are relative to the
+retained origin, not the later emission time.
+
+Other record families and independently owned status cohorts may interleave
+between complete rows. `CONFIG?`/`DUALCORE?` cancel an unfinished periodic report
+with `generation_cancel` before publishing overlapping fields. A cancelled,
+unclosed, duplicated or contradictory generation is incomplete diagnostic
+evidence. Carrier loss may prevent an end/cancel marker; the next report's
+saturating incomplete count does not repair missing rows. Core 1 PPS and ACTIVE
+cohort contracts and command acknowledgements retain their existing meanings.
+See [the output-service repair](../docs/50_SOFTWARE/PERIODIC_STATUS_SERVICE_REPAIR.md).
+
+When a normal command is retained behind an incomplete output frame, bounded
+input scanning continues so a later explicit `ACTIVE ABORT` can reach the timing
+owner. Further normal commands cannot overwrite that retained command: they are
+rejected and counted. After output resumes and the admitted command executes
+once, `command/deferred_commands_rejected` reports the count since its previous
+emission (saturating at UINT32_MAX). This is explicit input rejection accounting,
+not a retry or command acknowledgement. The host still must not pipeline normal
+commands behind an unresolved acknowledgement.

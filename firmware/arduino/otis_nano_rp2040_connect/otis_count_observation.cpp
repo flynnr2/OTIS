@@ -130,6 +130,21 @@ uint32_t pps_gate_status_snapshot_generation = 0u;
 OtisPpsDiagnostics pps_diagnostics = {};
 OtisAcceptedReferenceStatus accepted_reference_status = {};
 
+enum class PendingBoundaryStatusKind : uint8_t { None, Opening, Window };
+struct PendingBoundaryStatus {
+  PendingBoundaryStatusKind kind;
+  OtisRuntimeState *runtime_state;
+  OtisStatusEmitContext *status_context;
+  WindowAnomaly anomaly;
+  uint32_t flags;
+  bool ratio_available;
+};
+// Core 1 owns both these pointers and the referenced runtime state. No other
+// boundary or reference/count mutation may pass the pending formatter: those
+// entry points flush it first. This retains the transition's coherent state
+// without copying a large status store or delaying its canonical CNT record.
+PendingBoundaryStatus pending_boundary_status = {};
+
 void emit_status(OtisStatusEmitContext *context, const char *component,
                  const char *key, const char *value, const char *severity,
                  uint32_t flags) {
@@ -701,14 +716,33 @@ void emit_count_observation(OtisRuntimeState *runtime_state,
 
 }  // namespace
 
+void otis_count_observation_emit_pending_boundary_status(void) {
+  if (pending_boundary_status.kind == PendingBoundaryStatusKind::None) return;
+  const PendingBoundaryStatus pending = pending_boundary_status;
+  pending_boundary_status = {};
+  if (pending.kind == PendingBoundaryStatusKind::Opening) {
+    emit_pps_gate_status(pending.status_context, OTIS_SEVERITY_WARN,
+                         pending.flags);
+  } else if (pending.kind == PendingBoundaryStatusKind::Window) {
+    emit_pps_gate_window_status(pending.runtime_state, pending.status_context,
+                                pending.anomaly, pending.ratio_available);
+    if (!pending.anomaly.valid) {
+      emit_bad_window_diagnostics(pending.runtime_state, pending.status_context,
+                                  pending.anomaly);
+    }
+  }
+}
+
 void otis_count_observation_update_reference_acceptance(
     const OtisAcceptedReferenceStatus &status) {
+  otis_count_observation_emit_pending_boundary_status();
   accepted_reference_status = status;
 }
 
 bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   OtisStatusEmitContext *status_context,
                                   const OtisCountObservationConfig *config) {
+  otis_count_observation_emit_pending_boundary_status();
   (void)runtime_state;
   bool counter_ok = otis_pps_snapshot_backend_begin();
   OtisPpsSnapshotBackendStats snapshot_stats;
@@ -847,6 +881,7 @@ bool otis_count_observation_on_pps_boundary(
     OtisStatusEmitContext *status_context,
     const OtisCountObservationConfig *config,
     const OtisPpsCountBoundaryObservation *observation) {
+  otis_count_observation_emit_pending_boundary_status();
   if (observation == nullptr) {
     return false;
   }
@@ -897,9 +932,9 @@ bool otis_count_observation_on_pps_boundary(
     pps_gated_ratio.last_reason = kWindowReasonPpsRecoveryInhibit;
     otis_pps_diagnostics_increment_saturating(
         &pps_gated_ratio.physical_aperture_incomplete_count);
-    emit_pps_gate_status(status_context, OTIS_SEVERITY_WARN,
-                         observation->capture_flags |
-                             OTIS_FLAG_GATE_INCOMPLETE);
+    pending_boundary_status = {
+        PendingBoundaryStatusKind::Opening, runtime_state, status_context, {},
+        observation->capture_flags | OTIS_FLAG_GATE_INCOMPLETE, false};
     return false;
   }
 
@@ -1182,11 +1217,9 @@ bool otis_count_observation_on_pps_boundary(
         otis_monotonic_us32_now());
   }
   if (state_transition || reason_transition || !emit_count) {
-    emit_pps_gate_window_status(runtime_state, status_context, anomaly,
-                                anomaly.valid && counted_edges > 0u);
-    if (!anomaly.valid) {
-      emit_bad_window_diagnostics(runtime_state, status_context, anomaly);
-    }
+    pending_boundary_status = {
+        PendingBoundaryStatusKind::Window, runtime_state, status_context,
+        anomaly, 0u, anomaly.valid && counted_edges > 0u};
   }
 
   return emit_count;
@@ -1197,6 +1230,7 @@ void otis_count_observation_note_capture_loss(
     OtisStatusEmitContext *status_context,
     uint32_t consumer_ordinal,
     const char *reason) {
+  otis_count_observation_emit_pending_boundary_status();
   if (runtime_state == nullptr || status_context == nullptr) {
     return;
   }
@@ -1226,6 +1260,7 @@ void otis_count_observation_note_control_consumer(uint32_t session,
 bool otis_count_observation_service(OtisRuntimeState *runtime_state,
                                     OtisStatusEmitContext *status_context,
                                     const OtisCountObservationConfig *config) {
+  otis_count_observation_emit_pending_boundary_status();
   uint32_t now_ms = millis();
   project_common_control_eligibility(runtime_state, config, now_ms);
   OtisPpsSnapshotBackendStats snapshot_stats;

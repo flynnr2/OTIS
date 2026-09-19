@@ -286,13 +286,13 @@ def test_capture_replay_rejects_wrong_active_identity_and_session(
     _publish(publisher, _fixture_lines(), through_sequence=FIRST_ACTIVE_END)
     health = _health(publisher)
 
-    supervisor = _supervisor(tmp_path, health)
+    supervisor = _supervisor(tmp_path / "wrong-build", health)
     wrong_build = dict(health)
     wrong_build[(ACTIVE_COMPONENT, "build_identity")] = "source:" + "0" * 64
     with pytest.raises(ValueError, match="build_identity mismatch"):
         supervisor._classify_startup_snapshot(wrong_build)
 
-    supervisor = _supervisor(tmp_path, health)
+    supervisor = _supervisor(tmp_path / "wrong-session", health)
     assert supervisor._identity_ready(health) is True
     wrong_session = dict(health)
     wrong_session[(ACTIVE_COMPONENT, "session_id")] = "2"
