@@ -35,15 +35,15 @@ class AdaptiveHybridProgramme:
     manifest_section: str = "adaptive_hybrid"
     policy_id: str = PROGRAMME_ID
     setup_code: int = 0xA84D
-    maximum_applications: int = 144
-    maximum_physical_applications: int = 144
-    maximum_cumulative_movement_codes: int = 3_024
+    maximum_applications: int = 336
+    maximum_physical_applications: int = 336
+    maximum_cumulative_movement_codes: int = 7_056
     maximum_step_codes: int = 21
     minimum_code: int = 0xA800
     maximum_code: int = 0xAB00
     minimum_applied_cadence_s: int = 1_800
     qualified_duration_s: int = 259_200
-    absolute_wall_limit_s: int = 280_800
+    absolute_wall_limit_s: int = 604_800
     minimum_natural_phase_material_applications: int = 0
     correction_response_reserve_s: int = 1_500
     qualified_d14_aperture_count: int = 259_200
@@ -147,9 +147,9 @@ CAUSAL_STATE_SCHEMA_VERSION = 2
 CAUSAL_STATE_CONTRACT_ID = "adaptive_hybrid_bench_attempt_causal_state_v2"
 
 INHIBITED_ZERO_WRITE = "inhibited_zero_write"
-CONTINGENT_72_HOUR_HYBRID_CONTROL = "contingent_72_hour_hybrid_control"
+UNATTENDED_7_DAY_HYBRID_CONTROL = "unattended_7_day_hybrid_control"
 PURPOSES = frozenset(
-    {INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL}
+    {INHIBITED_ZERO_WRITE, UNATTENDED_7_DAY_HYBRID_CONTROL}
 )
 
 EXPECTED_BOARD_SERIAL = "503533748A919118"
@@ -164,7 +164,7 @@ EXPECTED_COMPILE_FQBN = "rp2040:rp2040:arduino_nano_connect:freq=133"
 PROGRESS_DOMAIN = "accepted_D14_D8_apertures"
 ENDPOINT_CONTRACT = "qualified_D14_D8_aperture_count_v2"
 AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES = (
-    ADAPTIVE_HYBRID_PROGRAMME.qualified_d14_aperture_count
+    ADAPTIVE_HYBRID_PROGRAMME.absolute_wall_limit_s
     - ADAPTIVE_HYBRID_PROGRAMME.correction_response_reserve_d14_apertures
 )
 CORRECTION_RESPONSE_RESERVE_APERTURES = 1_511
@@ -174,7 +174,11 @@ INHIBITED_ZERO_WRITE_ABSOLUTE_WALL_LIMIT_S = 300
 INHIBITED_ZERO_WRITE_WALL_ORIGIN = "supervisor_monotonic_start_after_capture_ready"
 ARM_OPPORTUNITY_INTERVAL_S = 600
 ARM_SUBMISSION_LIMIT = ABSOLUTE_WALL_LIMIT_S // ARM_OPPORTUNITY_INTERVAL_S
-QUALIFIED_APERTURE_MILESTONES = (21_600, 86_400, 172_800, 259_200)
+QUALIFIED_APERTURE_MILESTONES = (21_600, 86_400, 172_800, 259_200, 432_000, 604_800)
+UNATTENDED_CLOSURE_RESERVE_S = 2_111
+UNATTENDED_MONITOR_INTERVAL_S = 2
+UNATTENDED_STALE_AFTER_S = 15
+UNATTENDED_STORAGE_RESERVE_BYTES = 10 * 1024**3
 SETUP_CODE = ADAPTIVE_HYBRID_PROGRAMME.setup_code
 
 
@@ -212,7 +216,7 @@ _LIMITS = MappingProxyType(
             success_terminal="inhibited_zero_write_complete",
             zero_natural_correction_outcome="inhibited_by_contract",
         ),
-        CONTINGENT_72_HOUR_HYBRID_CONTROL: _PurposeLimits(
+        UNATTENDED_7_DAY_HYBRID_CONTROL: _PurposeLimits(
             setup_application_limit=1,
             automatic_application_limit=(
                 ADAPTIVE_HYBRID_PROGRAMME.authorized_maximum_physical_applications
@@ -231,9 +235,7 @@ _LIMITS = MappingProxyType(
             absolute_wall_limit_s=ABSOLUTE_WALL_LIMIT_S,
             authority_initially_closed=False,
             authority_closure_trigger="automatic_application_limit_reached",
-            success_terminal=(
-                ADAPTIVE_HYBRID_PROGRAMME.qualified_endpoint_reason
-            ),
+            success_terminal="adaptive_hybrid_endurance_complete",
             zero_natural_correction_outcome=(
                 "zero_natural_corrections_valid_at_qualified_endpoint"
             ),
@@ -321,9 +323,10 @@ class BenchAttemptEnvelope:
                     FIRST_DEPENDENT_DECISION_RESERVE_APERTURES
                 ),
                 "absolute_wall_limit_s": limits.absolute_wall_limit_s,
-                "wall_limit_role": "separate_hard_bound_not_decision_counter",
+                "wall_limit_role": "fixed_host_observation_endpoint",
+                "closure_reserve_s": UNATTENDED_CLOSURE_RESERVE_S if self.purpose == UNATTENDED_7_DAY_HYBRID_CONTROL else 0,
                 **({"wall_limit_origin": INHIBITED_ZERO_WRITE_WALL_ORIGIN}
-                   if self.purpose == INHIBITED_ZERO_WRITE else {}),
+                   if self.purpose in PURPOSES else {}),
             },
             "causal_state": {
                 "schema_version": CAUSAL_STATE_SCHEMA_VERSION,
@@ -372,13 +375,20 @@ class BenchAttemptEnvelope:
                 ),
                 "accepted_D14_D8_aperture_milestones": (
                     list(QUALIFIED_APERTURE_MILESTONES)
-                    if self.purpose == CONTINGENT_72_HOUR_HYBRID_CONTROL
+                    if self.purpose == UNATTENDED_7_DAY_HYBRID_CONTROL
                     else []
                 ),
                 "first_application_milestone_nonterminal": (
-                    self.purpose == CONTINGENT_72_HOUR_HYBRID_CONTROL
+                    self.purpose == UNATTENDED_7_DAY_HYBRID_CONTROL
                 ),
                 "host_monitor_may_decide_terminal": False,
+                "reviewer_availability_required": False,
+                "unanswered_escalation": "retain_capture_hold_affected_authority_no_timeout_approval",
+                "automatic_recovery": ["causal_GNSS_metadata_requalification"],
+                "monitor_interval_s": UNATTENDED_MONITOR_INTERVAL_S,
+                "stale_after_s": UNATTENDED_STALE_AFTER_S,
+                "storage_reserve_bytes": UNATTENDED_STORAGE_RESERVE_BYTES,
+                "automatic_process_restart": False,
             },
             "host_discrepancy_semantics": {
                 "transition": "operator_review_hold",

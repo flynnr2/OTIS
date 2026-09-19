@@ -71,6 +71,7 @@ PASSING_ANALYSIS_CHECKS = frozenset(
 _OUTCOMES = frozenset(
     {
         "qualified_complete",
+        "endurance_complete",
         "bounded_nonpass",
         "interrupted_incomplete",
         "diagnostic_complete",

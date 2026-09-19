@@ -9,6 +9,7 @@ import pty
 import shutil
 import threading
 import time
+from unittest.mock import patch
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -17,6 +18,9 @@ from typing import Any
 
 from host.otis_tools.adaptive_hybrid_analyze import analyze
 from host.otis_tools.adaptive_hybrid_contract import ADAPTIVE_HYBRID_PROGRAMME
+from host.otis_tools.adaptive_hybrid_supervisor import AdaptiveHybridSupervisor
+from host.otis_tools.adaptive_hybrid_transactions import SUPERVISOR_STATE
+from host.otis_tools.capture_device import CAPTURE_STATE
 from host.otis_tools.evidence_package import ANALYSIS_REPORT
 from host.otis_tools.live_run import run_experiment
 from host.otis_tools.offline import finish_run
@@ -331,6 +335,17 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
     control_rehearsal = "two_progressive_transactions_complete" in required_boundaries
     emulator = DeterministicPtyInstrument(master, runtime, ADAPTIVE_HYBRID_PROGRAMME)
     scheduler_error: list[BaseException] = []
+    inject_review_hold = threading.Event()
+    review_hold_proved = False
+    original_finish = AdaptiveHybridSupervisor._maybe_finish
+
+    def finish_with_unanswered_review(owner, health, now_ns):
+        if inject_review_hold.is_set() and owner.state.get("host_verification_hold") is None:
+            owner._enter_host_verification_hold(
+                ValueError("deterministic unanswered-review rehearsal"), source="rehearsal_injection"
+            )
+        return original_finish(owner, health, now_ns)
+
 
     # The capture worker must become the PTY slave's sole owner before its
     # readiness proof; the parent retains only the master producer endpoint.
@@ -340,6 +355,7 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
     def on_ready(experiment):
         thread = emulator.start()
         def schedule() -> None:
+            nonlocal review_hold_proved
             try:
                 progress = _owner_control_progress(experiment.run_dir)
                 last_progress = time.monotonic()
@@ -357,6 +373,32 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
                         time.sleep(0.02)
                     if any(command.startswith(("ACTIVE SETUP ", "ACTIVE ARM ")) for command in emulator.commands):
                         raise RuntimeError("zero-write rehearsal observed control authority")
+                if control_rehearsal:
+                    inject_review_hold.set()
+                    deadline = time.monotonic() + 10
+                    while time.monotonic() < deadline:
+                        held = json.loads((run_dir / SUPERVISOR_STATE).read_text())
+                        if held.get("host_verification_hold") is not None:
+                            break
+                        time.sleep(0.05)
+                    else:
+                        raise TimeoutError("review hold did not propagate")
+                    first_capture = json.loads((run_dir / CAPTURE_STATE).read_text())
+                    first_commands = tuple(c for c in emulator.commands if c.startswith(("ACTIVE SETUP ", "ACTIVE ARM ")))
+                    first_lease = held.get("lease_sequence", 0)
+                    # Leave the escalation unanswered beyond a real lease cycle.
+                    time.sleep(7)
+                    later = json.loads((run_dir / SUPERVISOR_STATE).read_text())
+                    later_capture = json.loads((run_dir / CAPTURE_STATE).read_text())
+                    review_hold_proved = (
+                        later.get("host_verification_hold") is not None
+                        and later.get("terminal") is None
+                        and later.get("lease_sequence", 0) > first_lease
+                        and later_capture["bytes_written"] > first_capture["bytes_written"]
+                        and first_commands == tuple(c for c in emulator.commands if c.startswith(("ACTIVE SETUP ", "ACTIVE ARM ")))
+                    )
+                    if not review_hold_proved:
+                        raise RuntimeError("unanswered review did not preserve bounded operation")
                 pressure_fd, pressure_report = _exercise_normal_transport(
                     experiment.run_dir / "control/normal_commands.fifo", experiment.run_dir / "raw/serial.log"
                 )
@@ -385,7 +427,8 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
         return cleanup
 
     try:
-        live = run_experiment(manifest_path=run_dir / "run_manifest.json", device=device, physical=False, capture_command=_capture_command(device, run_dir), on_ready=on_ready)
+        with patch.object(AdaptiveHybridSupervisor, "_maybe_finish", finish_with_unanswered_review):
+            live = run_experiment(manifest_path=run_dir / "run_manifest.json", device=device, physical=False, capture_command=_capture_command(device, run_dir), on_ready=on_ready)
     finally:
         if slave_open:
             os.close(slave)
@@ -419,6 +462,7 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
                 and analysis_checks.get("transactions_exact") is True
             ),
             "metadata_hold_nonterminal_and_requalified": _owner_metadata_hold_requalified(run_dir),
+            "unanswered_review_retains_capture_and_lease_without_new_authority": review_hold_proved,
         })
     boundary_results.update({
         "normal_transport_obstruction_detected": _normal_transport_obstruction_proved(run_dir, raw),

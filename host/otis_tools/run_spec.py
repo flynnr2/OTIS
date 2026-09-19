@@ -72,6 +72,7 @@ _CONTROL_REHEARSAL_BOUNDARIES = (
     "setup_arm_and_acknowledgements_exact",
     "two_progressive_transactions_complete",
     "metadata_hold_nonterminal_and_requalified",
+    "unanswered_review_retains_capture_and_lease_without_new_authority",
 )
 _COMMON_REHEARSAL_CLOSING = (
     "normal_transport_obstruction_detected",
@@ -853,7 +854,7 @@ def required_rehearsal_boundaries(spec: ValidatedRunSpec) -> list[str]:
     purpose = spec.document()["campaign"]["bench_attempt"]["purpose"]
     control = (
         _CONTROL_REHEARSAL_BOUNDARIES
-        if purpose == "contingent_72_hour_hybrid_control"
+        if purpose == "unattended_7_day_hybrid_control"
         else ()
     )
     return [*_COMMON_REHEARSAL_OPENING, *control, *_COMMON_REHEARSAL_CLOSING]
@@ -939,6 +940,7 @@ def _validate_rehearsal_receipt(
         or analysis.get("outcome")
         not in {
             "qualified_complete",
+        "endurance_complete",
             "bounded_nonpass",
             "interrupted_incomplete",
             "diagnostic_complete",

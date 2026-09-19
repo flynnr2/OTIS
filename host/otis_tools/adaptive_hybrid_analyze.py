@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .adaptive_hybrid_contract import (
-    CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    UNATTENDED_7_DAY_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
     AdaptiveHybridProgramme,
     programme_from_mapping,
@@ -192,16 +192,22 @@ def classify_scientific_outcome(
     if result == "healthy_stop":
         if validated_bench_attempt.purpose == INHIBITED_ZERO_WRITE:
             return "diagnostic_complete"
-        if validated_bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+        if validated_bench_attempt.purpose != UNATTENDED_7_DAY_HYBRID_CONTROL:
             return "undetermined"
-        if (
-            type(qualified_d14_accepted_apertures) is int
-            and qualified_d14_accepted_apertures
-            == programme.qualified_d14_aperture_count
-            and decision == programme.qualified_endpoint_reason
+        window = terminal.get("observation_window", {})
+        start = window.get("started_monotonic_ns")
+        deadline = window.get("deadline_monotonic_ns")
+        observed = window.get("observed_terminal_monotonic_ns")
+        if not (
+            window.get("clock_domain") == "host_monotonic_ns"
+            and all(type(value) is int for value in (start, deadline, observed))
+            and deadline - start == programme.absolute_wall_limit_s * 1_000_000_000
+            and observed >= deadline
+            and decision == "adaptive_hybrid_endurance_complete"
         ):
-            return "qualified_complete"
-        return "undetermined"
+            return "undetermined"
+        # Operational endurance and qualified aperture coverage remain distinct.
+        return "endurance_complete"
     if result == "aborted":
         return "interrupted_incomplete"
     if (

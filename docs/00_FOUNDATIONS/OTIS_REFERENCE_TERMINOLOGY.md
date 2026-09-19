@@ -787,3 +787,12 @@ Its width bounds timing uncertainty; it is not a measured service latency.
 With the current D8-driven PIO program it bounds snapshot recognition, not the
 electrical D14 transition when the oscillator is absent or slow. An unavailable
 or ambiguous bracket remains explicit and cannot qualify a reference.
+
+### Endurance completion and unanswered escalation
+
+Endurance completion means the declared host monotonic observation window ended
+with exact disarmed terminal evidence. Accepted D14/D8 apertures and control
+availability are reported separately; elapsed host duration is not metrological
+measurement duration. An unanswered escalation is retained evidence awaiting
+review plus the frozen immediate operating response. It is never implicit
+approval, a new control lease, or an automatic scientific failure.

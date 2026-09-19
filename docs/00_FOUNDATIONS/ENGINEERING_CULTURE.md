@@ -350,3 +350,23 @@ However, modularity must not compromise:
 - instrumentation rigor.
 
 Architectural clarity takes priority over maximal configurability.
+
+## Operation without an available reviewer
+
+An explicitly authorized unattended experiment runs through the local host
+supervisor without a Codex session or model budget. Routine decisions and known
+causal recovery follow a frozen contract. Escalation combines an immediate
+predefined response with a retained request for later review; silence is never
+approval or permission to abort. An unresolved decision-bearing discrepancy
+holds new authority while preserving capture, exact pending-phase identity and
+the last confirmed code. Firmware retains independent bounded fail-static
+behavior. A monitor observes and records transitions but cannot command, restart
+or terminate the instrument. Rehearsal must leave a review request unanswered
+and exercise continued capture and ownership service beyond a real lease cycle.
+
+Operational elapsed duration and accepted D14/D8 measurement coverage are
+distinct results. A seven-day observation endpoint does not claim seven days of
+qualified measurement or uninterrupted steering. The finite actuation deadline
+closes authority; unresolved endpoint evidence may retain a recording-only
+review hold beyond it. Publication or offline analysis failure does not erase
+otherwise valid acquisition.

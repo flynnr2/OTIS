@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     abort.add_argument("run_dir", type=Path)
     spec = commands.add_parser("spec", help="Freeze an inert experiment specification")
     spec.add_argument("firmware_manifest", type=Path)
-    spec.add_argument("--purpose", required=True, choices=("inhibited_zero_write", "contingent_72_hour_hybrid_control"))
+    spec.add_argument("--purpose", required=True, choices=("inhibited_zero_write", "unattended_7_day_hybrid_control"))
     spec.add_argument("--output", required=True, type=Path)
     compile_command = commands.add_parser("compile", help="Reproduce and verify the frozen firmware without hardware I/O")
     compile_command.add_argument("spec", type=Path)

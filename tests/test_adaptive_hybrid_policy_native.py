@@ -569,7 +569,7 @@ def test_ordinary_paths_limits_chatter_and_fail_static_are_parity_checked(
 
     limited = _controller()
     limited.application_count = limited.policy.maximum_applications
-    commands.extend(["INIT 43085 1", "SET_BUDGET 144 0"])
+    commands.extend(["INIT 43085 1", "SET_BUDGET 336 0"])
     first_limit = _observation(limited, 0, 0, 600)
     second_limit = _observation(limited, 600, 600, 1200)
     expected.extend([limited.decide(first_limit), limited.decide(second_limit)])

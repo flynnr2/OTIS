@@ -540,8 +540,8 @@ OtisAdaptiveHybridPolicy otis_adaptive_hybrid_default_policy() {
       43008,
       43776,
       1800,
-      144,
-      3024,
+      336,
+      7056,
       43085,
   };
 }
