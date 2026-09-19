@@ -79,7 +79,7 @@ def _wire_row(fields: list[str], row: dict[str, str]) -> bytes:
 
 
 def _reference_acceptance_binding(inputs: ValidatedAuthoritativeInputs) -> dict[str, str]:
-    path = "data_contracts/reference_acceptance_policy_v1.json"
+    path = "data_contracts/reference_acceptance_policy_v2.json"
     return {
         "path": path,
         "policy_id": inputs.document(path)["policy_id"],
@@ -1409,9 +1409,9 @@ class DeterministicPtyInstrument:
         return {
             **{("pps_gate", key): "0" for key in _authoritative_capture_counters(self.programme)},
             ("pps_gate", "boundary_owner"): "pio_state_machine",
-            ("pps_gate", "aperture_backend"): "pio_wait_cumulative_snapshot_dma_v1",
-            ("pps_gate", "backend_qualified"): "true",
-            ("pps_gate", "boundary_ring_capacity"): "127",
+            ("pps_gate", "aperture_backend"): "pio_wait_cumulative_snapshot_fifo_irq_v2",
+            ("pps_gate", "hardware_count_boundary"): "true",
+            ("pps_gate", "snapshot_ring_capacity"): "128",
             ("pps_gate", "snapshot_session"): "1",
             ("pps_gate", "reference_acceptance_epoch"): "1",
             ("pps_gate", "reference_acceptance_last_loss_reason"): "none",
@@ -1427,7 +1427,7 @@ class DeterministicPtyInstrument:
             ("pps_gate", "reference_acceptance_state"): "tracking",
             ("pps_gate", "accepted_anchor_current"): "true",
             ("pps_gate", "fifo_continuity"): "continuous",
-            ("pps_gate", "association_state"): "clean",
+            ("pps_gate", "capture_state"): "clean",
         }
 
     def _emit_config_reply(self) -> None:
@@ -1489,31 +1489,39 @@ class DeterministicPtyInstrument:
 
     def _emit_initial_observations(self) -> None:
         # The first SNP/REF is an anchor; only its adjacent successor produces
-        # CNT. The live capture observer freezes this earliest complete pair
-        # before the supervisor can submit SETUP.
+        # CNT. Emit each REF derivative immediately before its source SNP, as
+        # production firmware does, so capture-order integrity is rehearsed.
         self._emit_rows(
             CONTRACT_FIELDS["raw_events_v1"],
             [{
                 "record_type": "EVT", "schema_version": "1", "event_seq": "1000",
                 "channel_id": "0", "edge": "R", "timestamp_ticks": "0",
                 "capture_domain": "rp2040_monotonic_us32", "flags": "0",
-            }] + [{
-                "record_type": "REF", "schema_version": "1", "event_seq": str(1001 + sequence),
-                "channel_id": "1", "edge": "R", "timestamp_ticks": str(sequence * 1_000_000),
-                "capture_domain": "rp2040_monotonic_us32", "flags": "16",
-            } for sequence in range(2)],
+            }],
         )
-        self._emit_rows(
-            CONTRACT_FIELDS["pps_snapshots_v1"],
-            [{
-                "record_type": "SNP", "schema_version": "1", "session": "1",
-                "snapshot_sequence": str(sequence),
-                "cumulative_down_counter": str(0xFFFFFFFF - sequence * 10_000_000),
-                "reference_sequence": str(sequence),
-                "reference_timestamp_ticks": str(sequence * 1_000_000),
-                "status": "0", "backend": "pio_wait_cumulative_snapshot_dma_v1",
-            } for sequence in range(2)],
-        )
+        for sequence in range(2):
+            self._emit_rows(
+                CONTRACT_FIELDS["raw_events_v1"],
+                [{
+                    "record_type": "REF", "schema_version": "1",
+                    "event_seq": str(1001 + sequence), "channel_id": "1",
+                    "edge": "R", "timestamp_ticks": str(sequence * 1_000_000),
+                    "capture_domain": "rp2040_monotonic_us32", "flags": "16",
+                }],
+            )
+            self._emit_rows(
+                CONTRACT_FIELDS["pps_snapshots_v2"],
+                [{
+                    "record_type": "SNP", "schema_version": "2", "session": "1",
+                    "snapshot_sequence": str(sequence),
+                    "cumulative_down_counter": str(0xFFFFFFFF - sequence * 10_000_000),
+                    "reference_sequence": str(sequence),
+                    "reference_timestamp_ticks": str(sequence * 1_000_000),
+                    "timestamp_uncertainty_ticks": "1",
+                    "status": "0",
+                    "backend": "pio_wait_cumulative_snapshot_fifo_irq_v2",
+                }],
+            )
         self._emit_rows(
             CONTRACT_FIELDS["count_observations_v1"],
             [{
@@ -1523,8 +1531,10 @@ class DeterministicPtyInstrument:
                 "source_edge": "R", "source_domain": "h1_oscillator_10mhz", "flags": "16",
             }],
         )
-
-        self._emit_rows(CONTRACT_FIELDS["accepted_pps_spans_v1"], [self._accepted_span(1)])
+        self._emit_rows(
+            CONTRACT_FIELDS["accepted_pps_spans_v1"],
+            [self._accepted_span(1)],
+        )
 
     @staticmethod
     def _source_ticks(accepted_ordinal: int) -> int:
@@ -1588,12 +1598,12 @@ class DeterministicPtyInstrument:
                         "channel_id": "1", "edge": "R", "timestamp_ticks": str(closing_ticks),
                         "capture_domain": "rp2040_monotonic_us32", "flags": "16",
                     }),
-                    ("pps_snapshots_v1", {
-                        "record_type": "SNP", "schema_version": "1", "session": "1",
+                    ("pps_snapshots_v2", {
+                        "record_type": "SNP", "schema_version": "2", "session": "1",
                         "snapshot_sequence": str(sequence),
                         "cumulative_down_counter": str(self.raw_cumulative_down_counter),
                         "reference_sequence": str(sequence), "reference_timestamp_ticks": str(closing_ticks),
-                        "status": "0", "backend": "pio_wait_cumulative_snapshot_dma_v1",
+                        "timestamp_uncertainty_ticks": "1", "status": "0", "backend": "pio_wait_cumulative_snapshot_fifo_irq_v2",
                     }),
                     ("count_observations_v1", {
                         "record_type": "CNT", "schema_version": "1", "count_seq": str(sequence),
@@ -1716,7 +1726,7 @@ class DeterministicPtyInstrument:
             **{key: span[key] for key in ("opening_snapshot_sequence", "closing_snapshot_sequence",
                                          "opening_reference_sequence", "closing_reference_sequence")},
             "dac_epoch": decision["dac_epoch"],
-            "source_backend": "pio_wait_cumulative_snapshot_dma_v1",
+            "source_backend": "pio_wait_cumulative_snapshot_fifo_irq_v2",
             "source_file_sha256": "live_stream_unsealed",
             "method_id": "D14_ACCEPTED_SPAN_RELATIVE_PHASE_ACCUMULATOR_V1",
             "configuration_sha256": phase_hash,

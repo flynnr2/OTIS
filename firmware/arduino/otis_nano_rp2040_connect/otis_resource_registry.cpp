@@ -77,24 +77,20 @@ void add_pio_owner(const char *owner, const char *role,
                     program_length, owner, role);
 }
 
-void add_edge_capture_owner(uint16_t gpio, const char *role) {
-  add_bound_claim(OtisResourceType::Gpio, kRp2040Instance, gpio,
-                  OTIS_OWNER_EDGE_CAPTURE, role);
-  add_bound_claim(OtisResourceType::GpioIrq, kRp2040Instance, gpio,
-                  OTIS_OWNER_EDGE_CAPTURE, role);
-}
-
 void add_count_observation_owner(void) {
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
                   OTIS_PIN_OSC_OBSERVATION, OTIS_OWNER_COUNT_OBSERVATION,
                   "raw_oscillator_input");
+  add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
+                  OTIS_PIN_PPS_REFERENCE, OTIS_OWNER_COUNT_OBSERVATION,
+                  "d14_authoritative_reference_input");
 
   add_pio_owner(OTIS_OWNER_COUNT_OBSERVATION,
                 "d8_d14_cumulative_snapshot",
                 kPpsSnapshotPioProgramLength);
-  add_dynamic_claim(OtisResourceType::DmaChannel, kRp2040Instance, 1u,
+  add_dynamic_claim(OtisResourceType::PioIrqSource, 1u, 1u,
                     OTIS_OWNER_COUNT_OBSERVATION,
-                    "pps_snapshot_fifo_transport");
+                    "pio0_irq1_snapshot_rx_not_empty");
 }
 
 void add_forwarded_clock_monitor_owner(void) {
@@ -196,7 +192,7 @@ bool otis_resource_registry_begin(void) {
                   "micros_millis_reconstructed_capture");
   add_bound_claim(OtisResourceType::Clock, kRp2040Instance, kClockSystem,
                   OTIS_OWNER_ARDUINO_CLOCK_TREE,
-                  "cpu_usb_pio_dma_clock_tree");
+                  "cpu_usb_pio_clock_tree");
 
   add_bound_claim(OtisResourceType::Gpio, kRp2040Instance,
                   OTIS_PIN_FORWARDED_CLOCK_OUTPUT,
@@ -206,8 +202,6 @@ bool otis_resource_registry_begin(void) {
                   OTIS_OWNER_FORWARDED_CLOCK_OUTPUT,
                   "gpout0_gpin0_integer_divide_one");
 
-  add_edge_capture_owner(OTIS_PIN_PPS_REFERENCE,
-                         "pps_reference_observer_irq");
   add_count_observation_owner();
 
   add_h1_i2c_owner();
@@ -272,8 +266,8 @@ const char *otis_resource_type_name(OtisResourceType type) {
       return "pio_sm";
     case OtisResourceType::PioInstructionMemory:
       return "pio_imem";
-    case OtisResourceType::DmaChannel:
-      return "dma";
+    case OtisResourceType::PioIrqSource:
+      return "pio_irq_source";
     case OtisResourceType::Timer:
       return "timer";
     case OtisResourceType::Clock:
@@ -303,8 +297,10 @@ bool otis_resource_registry_bind_pio_program(const char *owner,
                             pio_block, offset, length);
 }
 
-bool otis_resource_registry_bind_dma_channel(const char *owner,
-                                             uint8_t channel) {
-  return bind_dynamic_claim(OtisResourceType::DmaChannel, owner,
-                            kRp2040Instance, channel, 1u);
+bool otis_resource_registry_bind_pio_irq_source(
+    const char *owner, uint8_t pio_block, uint8_t irq_index,
+    uint8_t source) {
+  const uint8_t instance = static_cast<uint8_t>(pio_block * 2u + irq_index);
+  return bind_dynamic_claim(OtisResourceType::PioIrqSource, owner, instance,
+                            source, 1u);
 }

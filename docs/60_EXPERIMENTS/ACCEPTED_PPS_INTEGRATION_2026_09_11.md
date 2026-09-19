@@ -22,7 +22,7 @@ The integrated policy SHA-256 is
 Its policy artifact has no independent control authority. Actual steering
 still requires the instrument's qualification, exact source, command, and
 acknowledgement gates. See the
-[acceptance contract](../../data_contracts/reference_acceptance_v1.md).
+[acceptance contract](../../data_contracts/reference_acceptance_v2.md).
 
 ## Complete producer-to-consumer boundary
 

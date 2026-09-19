@@ -27,10 +27,10 @@ bool otis_count_observation_on_pps_boundary(
     OtisStatusEmitContext *status_context,
     const OtisCountObservationConfig *config,
     const OtisPpsCountBoundaryObservation *observation);
-void otis_count_observation_note_association_loss(
+void otis_count_observation_note_capture_loss(
     OtisRuntimeState *runtime_state,
     OtisStatusEmitContext *status_context,
-    uint32_t reference_sequence,
+    uint32_t consumer_ordinal,
     const char *reason);
 void otis_count_observation_note_control_consumer(uint32_t session,
                                                   uint32_t sequence);

@@ -24,6 +24,52 @@ FIRST_ACTIVE_END = 411
 PPS_AND_SECOND_ACTIVE_END = 699
 QUERY_NONCE = 1_312_243_200
 
+# This retained fixture records the retired DMA/association vocabulary. Keep
+# its bytes immutable and adapt the all-zero historical diagnostics explicitly
+# when exercising the current host consumer.
+_CURRENT_PPS_KEY_RENAMES = {
+    "valid": "raw_window_valid",
+    "state": "raw_window_state",
+    "last_reason": "raw_window_reason",
+    "backend_qualified": "hardware_count_boundary",
+    "association_state": "capture_state",
+    "association_loss_reason": "capture_loss_reason",
+    "association_loss_count": "capture_loss_count",
+    "association_loss_reference_sequence": "capture_loss_consumer_ordinal",
+    "snapshot_producer_sequence": "snapshot_producer_ordinal",
+    "snapshot_consumer_sequence": "snapshot_consumer_ordinal",
+    "snapshot_overwrite_count": "snapshot_ring_full_count",
+    "snapshot_dma_error_count": "snapshot_irq_budget_exhausted_count",
+    "snapshot_dma_stopped_count": "snapshot_timestamp_ambiguous_count",
+    "physical_pps_state": "capture_service_state",
+    "physical_pps_missing_count": "capture_service_stale_count",
+    "physical_pps_restored_count": "capture_service_resumed_count",
+    "physical_pps_reminder_count": "capture_service_reminder_count",
+}
+_RETIRED_PPS_KEYS = frozenset({
+    "association_recovery_count",
+    "boundary_ring_depth",
+    "boundary_ring_capacity",
+    "boundary_ring_dropped_count",
+})
+
+
+def _project_current_pps_health(
+    health: dict[tuple[str, str], str],
+) -> dict[tuple[str, str], str]:
+    projected: dict[tuple[str, str], str] = {}
+    for (component, key), value in health.items():
+        if component != "pps_gate":
+            projected[(component, key)] = value
+            continue
+        if key in _RETIRED_PPS_KEYS:
+            continue
+        current_key = _CURRENT_PPS_KEY_RENAMES.get(key, key)
+        if current_key == "aperture_backend":
+            value = "pio_wait_cumulative_snapshot_fifo_irq_v2"
+        projected[(component, current_key)] = value
+    return projected
+
 
 def _fixture_lines() -> list[tuple[int, str]]:
     lines = FIXTURE.read_text(encoding="utf-8").splitlines()
@@ -52,7 +98,7 @@ def _health(publisher: ActiveStatusLivePublisher) -> dict[tuple[str, str], str]:
         publisher.path, required_query_nonce=QUERY_NONCE
     )
     assert selection.state == "complete", selection.diagnostic
-    return selection.health
+    return _project_current_pps_health(selection.health)
 
 
 def _first_and_second_health(

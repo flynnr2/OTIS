@@ -227,14 +227,15 @@ def _append_measurements(destination: Path, apertures: int) -> list[bytes]:
         }
         snapshot = {
             "record_type": "SNP",
-            "schema_version": "1",
+            "schema_version": "2",
             "session": "1",
             "snapshot_sequence": str(sequence),
             "cumulative_down_counter": str(counter),
             "reference_sequence": str(sequence),
             "reference_timestamp_ticks": str(timestamp),
+            "timestamp_uncertainty_ticks": "1",
             "status": "0",
-            "backend": "pio_wait_cumulative_snapshot_dma_v1",
+            "backend": "pio_wait_cumulative_snapshot_fifo_irq_v2",
         }
         count = {
             "record_type": "CNT",
@@ -277,7 +278,7 @@ def _append_measurements(destination: Path, apertures: int) -> list[bytes]:
         raw.extend(
             (
                 _device_line("raw_events_v1", reference),
-                _device_line("pps_snapshots_v1", snapshot),
+                _device_line("pps_snapshots_v2", snapshot),
                 _device_line("count_observations_v1", count),
                 _device_line("accepted_pps_spans_v1", span),
             )
@@ -393,7 +394,7 @@ def _append_dense_phase(destination: Path) -> tuple[list[bytes], int]:
                     )
                 },
                 "dac_epoch": "1",
-                "source_backend": "pio_wait_cumulative_snapshot_dma_v1",
+                "source_backend": "pio_wait_cumulative_snapshot_fifo_irq_v2",
                 "source_file_sha256": "live_stream_unsealed",
                 "method_id": "D14_ACCEPTED_SPAN_RELATIVE_PHASE_ACCUMULATOR_V1",
                 "configuration_sha256": phase_hash,

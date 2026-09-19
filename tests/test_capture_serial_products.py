@@ -31,7 +31,7 @@ def _canonical_wire_value(contract: str, field: str) -> str:
 
 def test_current_capture_inventory_matches_writer_backed_contract_registry() -> None:
     files = default_csv_files()
-    assert len(files) == 18
+    assert len(files) == 17
     assert {entry["contract"] for entry in files} == set(CONTRACT_FIELDS)
     assert len({entry["path"] for entry in files}) == len(files)
 

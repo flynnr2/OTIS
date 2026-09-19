@@ -32,6 +32,6 @@
     "raw_relative_phase_cycles": "exact_integer_accumulator",
     "phase_zero": "arbitrary_at_first_qualified_boundary_of_each_phase_epoch"
   },
-  "reference_acceptance_policy_ref": "data_contracts/reference_acceptance_policy_v1.json",
-  "reference_acceptance_policy_sha256": "ccbac9f756a0ff2932a3f1c160c464af06eaaa1713d8bbc0ceba73762f80fad3"
+  "reference_acceptance_policy_ref": "data_contracts/reference_acceptance_policy_v2.json",
+  "reference_acceptance_policy_sha256": "6185c27a630b77925e21ebbd7a9b4ab029908f86ef02cbd4f56db796a3999a44"
 }

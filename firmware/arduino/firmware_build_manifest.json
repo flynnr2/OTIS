@@ -34,7 +34,7 @@
   },
   "contract_bindings": {
     "firmware_host": "data_contracts/otis_firmware_host_contract_v1.json",
-    "reference_acceptance": "data_contracts/reference_acceptance_policy_v1.json"
+    "reference_acceptance": "data_contracts/reference_acceptance_policy_v2.json"
   },
   "forwarded_clock_contract": {
     "schema_version": 1,

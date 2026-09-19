@@ -70,14 +70,14 @@ def test_splitter_routes_monitor_records_separately_from_authoritative_snapshots
     with CsvRecordSplitter(
         {
             CONTRACT: monitor,
-            "pps_snapshots_v1": snapshots,
+            "pps_snapshots_v2": snapshots,
         }
     ) as splitter:
         assert splitter.process_line(ROW) == CONTRACT
         assert splitter.process_line(
-            "SNP,1,1,0,4294967295,7,16000000,0,"
-            "pio_wait_cumulative_snapshot_dma_v1"
-        ) == "pps_snapshots_v1"
+            "SNP,2,1,0,4294967295,0,16000000,1,0,"
+            "pio_wait_cumulative_snapshot_fifo_irq_v2"
+        ) == "pps_snapshots_v2"
 
     assert ROW in monitor.read_text(encoding="utf-8")
     assert ROW not in snapshots.read_text(encoding="utf-8")

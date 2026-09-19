@@ -103,7 +103,7 @@
       }
     },
     "reference_acceptance_policy_ref": {
-      "const": "data_contracts/reference_acceptance_policy_v1.json"
+      "const": "data_contracts/reference_acceptance_policy_v2.json"
     },
     "reference_acceptance_policy_sha256": {
       "type": "string",

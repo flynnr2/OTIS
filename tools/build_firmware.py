@@ -117,7 +117,7 @@ EXPECTED_SCHEMA_BINDINGS = {
 }
 EXPECTED_CONTRACT_BINDINGS = {
     "firmware_host": "data_contracts/otis_firmware_host_contract_v1.json",
-    "reference_acceptance": "data_contracts/reference_acceptance_policy_v1.json",
+    "reference_acceptance": "data_contracts/reference_acceptance_policy_v2.json",
 }
 FIRMWARE_HOST_BINDING_HELPER = (
     REPO_ROOT / "host" / "otis_tools" / "firmware_host_contract.py"

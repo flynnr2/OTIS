@@ -120,7 +120,10 @@ def test_pio_allocations_are_bound_to_the_registry() -> None:
     bind_program_index = snapshot_source.index(
         "otis_resource_registry_bind_pio_program", bind_sm_index
     )
-    assert claim_index < bind_sm_index < bind_program_index
+    bind_irq_source_index = snapshot_source.index(
+        "otis_resource_registry_bind_pio_irq_source", bind_program_index
+    )
+    assert claim_index < bind_sm_index < bind_program_index < bind_irq_source_index
     assert "OTIS_OWNER_COUNT_OBSERVATION" in snapshot_source[
         bind_sm_index : bind_program_index + 300
     ]
@@ -141,7 +144,7 @@ def test_i2c_controller_has_one_initializer() -> None:
     ).read_text(encoding="utf-8")
 
 
-def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> None:
+def test_pps_gated_counter_consumes_single_pio_owner() -> None:
     count_source = (FIRMWARE / "otis_count_observation.cpp").read_text(
         encoding="utf-8"
     )
@@ -156,7 +159,7 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
 
     emit_start = sketch_source.index("void emit_pps_count_boundary(")
     emit_end = sketch_source.index(
-        "void drain_pps_count_boundary_ring(", emit_start
+        "void drain_reference_snapshots(", emit_start
     )
     emit_body = sketch_source[emit_start:emit_end]
     assert "otis_count_observation_on_pps_boundary(" in emit_body
@@ -168,13 +171,13 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
         emit_body.index("otis_frequency_regulation_live_on_reference_selection("):
     ]
 
-    drain_start = sketch_source.index("void drain_pps_count_boundary_ring(")
+    drain_start = sketch_source.index("void drain_reference_snapshots(")
     drain_end = sketch_source.index("void emit_build_provenance_status(", drain_start)
     drain_body = sketch_source[drain_start:drain_end]
     assert "otis_pps_snapshot_backend_pop" in drain_body
-    assert "snapshot_message.kind = OtisObservationMessageKind::PpsSnapshot" in drain_body
-    assert "otis_dual_core_publish_observation(&snapshot_message)" in drain_body
-    assert "another_reference_waiting" in drain_body
+    assert "message.kind = OtisObservationMessageKind::PpsSnapshot" in drain_body
+    assert "otis_dual_core_publish_observation(&message)" in drain_body
+    assert "another_reference_waiting" not in drain_body
 
     consumer_start = sketch_source.index("void service_dual_core_outputs(void)")
     consumer_end = sketch_source.index(
@@ -188,10 +191,7 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
     loop1 = sketch_source[
         sketch_source.index("void loop1()") : sketch_source.index("void loop()")
     ]
-    assert loop1.index("drain_pps_count_boundary_ring()") < loop1.index(
-        "service_tcxo_gate()"
-    )
-    assert loop1.index("drain_capture_ring()") < loop1.index(
+    assert loop1.index("drain_reference_snapshots()") < loop1.index(
         "service_tcxo_gate()"
     )
     assert "service_serial_commands()" not in loop1
@@ -208,33 +208,6 @@ def test_pps_gated_counter_associates_independent_ref_with_pio_authority() -> No
     assert "start_h1_pio_long_gate_counter" not in reference_handler
 
 
-def test_irq_constructs_one_captured_event_for_diagnostics_and_ref() -> None:
-    irq_source = (FIRMWARE / "otis_capture_irq.cpp").read_text(encoding="utf-8")
-    ring_source = (FIRMWARE / "otis_capture_ring.cpp").read_text(encoding="utf-8")
-
-    handler_start = irq_source.index("void handle_capture_edge(void)")
-    handler_end = irq_source.index(
-        "}  // namespace", handler_start
-    )
-    handler = irq_source[handler_start:handler_end]
-    assert handler.count("otis_monotonic_us32_now_from_isr()") == 1
-    assert handler.count("gpio_get(OTIS_PIN_PPS_REFERENCE)") == 1
-    assert "const OtisCapturedEdge captured_event" in handler
-    assert "pps_count_boundary_handler" not in handler
-    assert "pio_sm_" not in handler
-    assert "dma_" not in handler
-    assert "otis_capture_ring_push_from_isr(captured_event)" in handler
-    assert "d14_last_raw_timestamp = timestamp" not in handler
-    assert "d14_last_accepted_timestamp = timestamp" not in handler
-    foreground_start = irq_source.index(
-        "void otis_capture_irq_process_reference_foreground("
-    )
-    foreground = irq_source[foreground_start:]
-    assert "d14_last_raw_timestamp = record.timestamp_ticks" in foreground
-    assert "d14_last_accepted_timestamp = record.timestamp_ticks" in foreground
-    assert "otis_monotonic_us32_now()" not in ring_source
-
-
 def test_all_requested_resource_classes_have_diagnostics() -> None:
     source = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
         encoding="utf-8"
@@ -244,7 +217,7 @@ def test_all_requested_resource_classes_have_diagnostics() -> None:
         "irq_claim_count",
         "pio_sm_claim_count",
         "pio_imem_claim_count",
-        "dma_claim_count",
+        "pio_irq_source_claim_count",
         "timer_claim_count",
         "clock_claim_count",
     ):
@@ -253,3 +226,17 @@ def test_all_requested_resource_classes_have_diagnostics() -> None:
     assert '"conflict_count"' in source
     assert '"binding_failure_count"' in source
     assert '"complete"' in source
+
+
+def test_reference_gpio_and_pio_irq_source_have_one_count_owner() -> None:
+    registry = (FIRMWARE / "otis_resource_registry.cpp").read_text(
+        encoding="utf-8"
+    )
+    header = (FIRMWARE / "otis_resource_registry.h").read_text(
+        encoding="utf-8"
+    )
+    assert "OTIS_OWNER_EDGE_CAPTURE" not in header
+    assert "add_edge_capture_owner" not in registry
+    assert "OTIS_PIN_PPS_REFERENCE, OTIS_OWNER_COUNT_OBSERVATION" in registry
+    assert "OtisResourceType::PioIrqSource" in registry
+    assert '"pio0_irq1_snapshot_rx_not_empty"' in registry

@@ -69,9 +69,9 @@ void emit_boundaries() {
   otis_emit_environment(UINT32_MAX, UINT64_MAX, "rp2040_monotonic_us32",
                         "bmp280", "pressure_reference", "1.25", "",
                         "1.25", UINT32_MAX);
-  otis_emit_pps_snapshot(0u, 0u, 0u, 0u, 0u, 0u, "pio_dma");
+  otis_emit_pps_snapshot(0u, 0u, 0u, 0u, 0u, 0u, 0u, "pio_fifo_irq");
   otis_emit_pps_snapshot(UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX,
-                         UINT64_MAX, UINT32_MAX, "pio_dma");
+                         UINT64_MAX, UINT32_MAX, UINT32_MAX, "pio_fifo_irq");
   otis_emit_forwarded_monitor_snapshot(0u, 0u, 0u, 0u, 0u, 0u, 0u,
                                        "pio_dma", 3u);
   otis_emit_forwarded_monitor_snapshot(

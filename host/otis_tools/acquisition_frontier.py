@@ -21,7 +21,7 @@ FRONTIER_PATH = "reports/acquisition_frontier_v1.json"
 FRONTIER_STATE_PATH = "reports/acquisition_frontier_live_state_v1.json"
 FRONTIER_POLICY = {
     "policy_id": "otis_prospective_acquisition_frontier_v1",
-    "selection": "first_unique_retained_adjacent_REF_SNP_CNT_pair",
+    "selection": "first_unique_retained_adjacent_single_owner_SNP_CNT_pair_with_REF_derivatives",
     "prefix": "retained_unqualified",
     "authority": "manual_setup_requires_raw_anchor_feedback_requires_complete_600_accepted_span_source",
     "advancement": "forbidden",
@@ -310,9 +310,15 @@ class AcquisitionFrontierTracker:
         session, sequence = _u32(row, "session"), _u32(row, "snapshot_sequence")
         reference_sequence = _u32(row, "reference_sequence")
         ticks = _u32(row, "reference_timestamp_ticks")
+        uncertainty = _u32(row, "timestamp_uncertainty_ticks")
         _u32(row, "cumulative_down_counter")
-        if row["backend"] != _SNAPSHOT_BACKEND or _u32(row, "status") & ~1:
-            raise ValueError("SNP backend or transport status is unsupported")
+        status = _u32(row, "status")
+        if row.get("schema_version") != "2" or row["backend"] != _SNAPSHOT_BACKEND:
+            raise ValueError("SNP contract or backend is unsupported")
+        if reference_sequence != sequence:
+            raise ValueError("SNP reference identity differs from its FIFO-word ordinal")
+        if status & ~0x1F or (uncertainty == 0xFFFFFFFF) != bool(status & (1 << 1)):
+            raise ValueError("SNP transport status or uncertainty is contradictory")
         previous = self.snapshots[-1] if self.snapshots else None
         if previous:
             before = previous["record"]
@@ -340,18 +346,23 @@ class AcquisitionFrontierTracker:
                 self.closed_sessions.add(int(before["session"]))
                 if session in self.closed_sessions:
                     raise ValueError("SNP returns to a closed session")
-        candidates = [item for item in self.references
-                      if int(item["record"]["timestamp_ticks"]) == ticks
-                      and (previous is None or previous.get("reference") is None
-                           or item["csv_row_ordinal"] > previous["reference"]["csv_row_ordinal"])]
-        if len(candidates) > 1:
-            raise ValueError("SNP has ambiguous retained REF association")
-        source["reference"] = candidates[0] if candidates else None
-        if not candidates and (self.frontier is not None or previous is not None):
-            raise ValueError("SNP is missing its retained REF")
-        if previous and int(previous["record"]["session"]) == session and previous.get("reference") and candidates:
-            if candidates[0]["csv_row_ordinal"] != previous["reference"]["csv_row_ordinal"] + 1:
-                raise ValueError("SNP association skips an interior D14 REF")
+        # REF is the immediately preceding same-owner serial presentation,
+        # audited for raw preservation. It never chooses or authorizes a SNP.
+        candidate = self.references[-1] if self.references else None
+        prior_reference = previous.get("reference") if previous else None
+        if (
+            candidate is None
+            or (prior_reference is not None and candidate["csv_row_ordinal"] <= prior_reference["csv_row_ordinal"])
+            or int(candidate["record"]["timestamp_ticks"]) != ticks
+            or candidate["capture_line_ordinal"] >= source["capture_line_ordinal"]
+        ):
+            candidate = None
+        source["reference"] = candidate
+        if candidate is None and (self.frontier is not None or previous is not None):
+            raise ValueError("SNP is missing its same-owner REF derivative")
+        if previous and int(previous["record"]["session"]) == session and prior_reference and candidate:
+            if candidate["csv_row_ordinal"] != prior_reference["csv_row_ordinal"] + 1:
+                raise ValueError("REF derivative stream has an interior gap")
         self.snapshots.append(source)
         self.current_capture_session = session
         if not self.current_session_pair_ready:
@@ -382,13 +393,13 @@ class AcquisitionFrontierTracker:
             candidate = list(self.snapshots)[-3:]
             if len({item["record"]["session"] for item in candidate}) == 1:
                 history, count_history = candidate, list(self.counts)[-2:]
-        exact, report, intervals = _raw_count_replay(
+        _, report, intervals = _raw_count_replay(
             [item["record"] for item in history],
             [item["reference"]["record"] for item in history],
             [item["record"] for item in count_history],
         )
-        if (not self.frontier and not exact) or not intervals or not intervals[-1]["count_exact"]:
-            raise ValueError("CNT does not reproduce retained SNP/REF: " + "; ".join(report["errors"]))
+        if (not self.frontier and not report.get("source_exact")) or not intervals or not intervals[-1]["count_exact"]:
+            raise ValueError("CNT does not reproduce retained SNP source: " + "; ".join(report["errors"]))
         session_pair_became_ready = not self.current_session_pair_ready
         self.current_session_pair_ready = True
         if self.frontier is None and not self.errors:
@@ -615,7 +626,7 @@ class AcquisitionFrontierTracker:
             raise ValueError("selected EST APS raw SNP window is reversed")
         selected_snapshots = snapshots[opening_position : closing_position + 1]
         if any(item.get("reference") is None for item in selected_snapshots):
-            raise ValueError("selected EST APS window lacks retained REF associations")
+            raise ValueError("selected EST APS window lacks retained REF derivatives")
         selected_references = [item["reference"] for item in selected_snapshots]
         count_index: dict[int, list[dict[str, Any]]] = {}
         for item in self.counts:
@@ -783,7 +794,7 @@ def _verify_live_marker(run_dir: Path, artifact: dict[str, Any]) -> bool:
     source_by_line = {artifact[name]["capture_line_ordinal"]: artifact[name] for name in _SOURCE_TYPES}
     if len(source_by_line) != len(_SOURCE_TYPES):
         raise ValueError("frontier source capture lines are not distinct")
-    fields_by_tag = {"REF": CONTRACT_FIELDS["raw_events_v1"], "SNP": CONTRACT_FIELDS["pps_snapshots_v1"], "CNT": CONTRACT_FIELDS["count_observations_v1"]}
+    fields_by_tag = {"REF": CONTRACT_FIELDS["raw_events_v1"], "SNP": CONTRACT_FIELDS["pps_snapshots_v2"], "CNT": CONTRACT_FIELDS["count_observations_v1"]}
     device_line = 0
     matched_sources: set[int] = set()
     markers = 0
@@ -830,7 +841,7 @@ def _bind_source_at_offset(
     offset = source.get("csv_byte_offset")
     if type(offset) is not int or offset < 0:
         raise ValueError("live source proof lacks an exact canonical CSV byte offset")
-    contract = {"REF": "raw_events_v1", "SNP": "pps_snapshots_v1", "CNT": "count_observations_v1", "APS": "accepted_pps_spans_v1", "EST": "estimates_v3"}[tag]
+    contract = {"REF": "raw_events_v1", "SNP": "pps_snapshots_v2", "CNT": "count_observations_v1", "APS": "accepted_pps_spans_v1", "EST": "estimates_v3"}[tag]
     files = [entry for entry in manifest.get("files", []) if entry.get("contract") == contract
              and (tag != "REF" or entry.get("record_type") == "REF")]
     if len(files) != 1:

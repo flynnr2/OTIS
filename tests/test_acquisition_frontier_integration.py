@@ -74,7 +74,7 @@ def _manifest() -> dict[str, object]:
         "files": [
             {"contract": "raw_events_v1", "record_type": "EVT", "path": "csv/external_events.csv"},
             {"contract": "raw_events_v1", "record_type": "REF", "path": "csv/reference_events.csv"},
-            {"contract": "pps_snapshots_v1", "path": "csv/pps_snapshots.csv"},
+            {"contract": "pps_snapshots_v2", "path": "csv/pps_snapshots.csv"},
             {"contract": "count_observations_v1", "path": "csv/count_observations.csv"},
             {"contract": "accepted_pps_spans_v1", "path": "csv/accepted_pps_spans_v1.csv"},
             {"contract": "estimates_v3", "path": "csv/estimates_v3.csv"},
@@ -104,12 +104,12 @@ def _evt(sequence: int, ticks: int) -> bytes:
 
 
 def _snapshot(sequence: int, ticks: int) -> bytes:
-    return _row("pps_snapshots_v1", {
-        "record_type": "SNP", "schema_version": "1", "session": "1",
+    return _row("pps_snapshots_v2", {
+        "record_type": "SNP", "schema_version": "2", "session": "1",
         "snapshot_sequence": str(sequence),
         "cumulative_down_counter": str((0xFFFFFFFF - sequence * 10_000_000) % (1 << 32)),
         "reference_sequence": str(sequence), "reference_timestamp_ticks": str(ticks),
-        "status": "0", "backend": "pio_wait_cumulative_snapshot_dma_v1",
+        "timestamp_uncertainty_ticks": "1", "status": "0", "backend": "pio_wait_cumulative_snapshot_fifo_irq_v2",
     })
 
 

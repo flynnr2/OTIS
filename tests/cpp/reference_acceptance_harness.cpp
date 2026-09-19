@@ -1,6 +1,6 @@
 // Native trace adapter only: policy values are supplied from the JSON contract.
 // Arguments: nominal tolerance acquisition max_edge_rate allowed_flags max_excluded max_count_span.
-// stdin: O session snp_sequence d14_sequence us32 downcounter status flags
+// stdin: O session snp_sequence reference_sequence us32 downcounter status flags uncertainty
 //        E now_us32 session last_snp_sequence last_d14_sequence drained_us32 complete
 // All output is derived JSONL; this executable has no firmware I/O or authority.
 #include "otis_reference_acceptance.h"
@@ -34,7 +34,8 @@ static void endpoint(const OtisReferenceAcceptanceObservation &value) {
             << ",\"ticks\":" << value.reference_timestamp_ticks
             << ",\"down_counter\":" << value.cumulative_down_counter
             << ",\"status\":" << value.snapshot_status
-            << ",\"flags\":" << value.reference_flags << "}";
+            << ",\"flags\":" << value.reference_flags
+            << ",\"uncertainty\":" << value.timestamp_uncertainty_ticks << "}";
 }
 
 static void emit(const OtisReferenceAcceptanceOutcome &value) {
@@ -87,6 +88,7 @@ int main(int argc, char **argv) {
         observation.cumulative_down_counter = read_number(line);
         observation.snapshot_status = read_number(line);
         observation.reference_flags = read_number(line);
+        observation.timestamp_uncertainty_ticks = read_number(line);
         const auto original = observation;
         retained.push_back(selector.observe(observation));
         assert(std::memcmp(&observation, &original, sizeof(observation)) == 0);

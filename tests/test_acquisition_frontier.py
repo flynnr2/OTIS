@@ -74,7 +74,7 @@ class RecordedStream:
             "files": [
                 {"contract": "raw_events_v1", "record_type": "REF", "path": "ref.csv"},
                 {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
-                {"contract": "pps_snapshots_v1", "path": "snapshots.csv"},
+                {"contract": "pps_snapshots_v2", "path": "snapshots.csv"},
                 {"contract": "count_observations_v1", "path": "counts.csv"},
                 {"contract": "accepted_pps_spans_v1", "path": "spans.csv"},
                 {"contract": "estimates_v3", "path": "estimates.csv"},

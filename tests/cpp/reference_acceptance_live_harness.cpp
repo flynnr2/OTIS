@@ -10,7 +10,7 @@ int main() {
   using R = OtisReferenceAcceptanceReason;
   OtisReferenceAcceptanceLive owner(OTIS_REFERENCE_ACCEPTANCE_POLICY);
   uint64_t ticks = 0xffff0000ull;
-  OtisReferenceAcceptanceObservation raw = {7u, 0xfffffff0u, 700u, uint32_t(ticks), 0xfffffff0u, 0u, 16u};
+  OtisReferenceAcceptanceObservation raw = {7u, 0xfffffff0u, 0xfffffff0u, uint32_t(ticks), 0xfffffff0u, 0u, 16u};
   auto deliver = [&](uint32_t delta, uint32_t edges, uint64_t lag = 200u) {
     if (delta) { ticks += delta; raw.snapshot_sequence++; raw.reference_sequence++; raw.cumulative_down_counter -= edges; }
     raw.reference_timestamp_ticks = uint32_t(ticks);

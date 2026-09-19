@@ -28,9 +28,10 @@ evidence.
 ## Current fixed measurement path
 
 D14 is the sole reference authority. D8 is the sole oscillator-count input.
-The fixed count path uses one continuously running PIO counter on D8 and a DMA
-cumulative snapshot at each D14 boundary. There is no selectable count or
-reference-capture profile in current firmware.
+The fixed count path uses one continuously running PIO counter on D8 and a
+bounded RX-FIFO IRQ that drains each D14-triggered cumulative snapshot into one
+software ring. There is no selectable count or reference-capture profile in
+current firmware.
 
 Component `pps_gate` reports the independent validity dimensions needed to
 interpret that path:
@@ -42,12 +43,16 @@ interpret that path:
   and adjacent-pair conclusions;
 - `fifo_continuity`, sequence, backlog, overflow, and dropped counters retain
   transport continuity evidence;
-- `association_state`, loss reason, and recovery counters retain D14-to-D8
-  association state;
+- `capture_state`, `capture_loss_count`, and `capture_loss_reason` retain the
+  fail-static state of the single-owner capture path;
+- `snapshot_producer_ordinal`, `snapshot_consumer_ordinal`, backlog, high-water,
+  ring-full, IRQ-budget, RXSTALL, and timestamp-ambiguity counters retain the
+  specific FIFO service and continuity evidence; ordinal fields are not
+  sequences and the retired `snapshot_*_sequence` keys are not current status;
 - `state`, `valid`, `last_reason`, startup/requalification fields, and
   `control_eligible` state the current fixed-path conclusion; and
-- implementation/provenance fields identify the PIO owner, DMA snapshot
-  mechanism, counter width/direction, resolution, and resource allocation.
+- implementation/provenance fields identify the PIO/FIFO-IRQ owner, counter
+  width/direction, service-coordinate semantics, resolution, and resources.
 
 Reference and count validity remain independent. A D14 fault must not be
 reported as a bad oscillator count, and a D8 fault must not be reported as a

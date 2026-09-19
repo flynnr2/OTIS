@@ -6,20 +6,21 @@
 #include "otis_timebase_math.h"
 
 // This header contains only state transitions and fixed-size progress markers.
-// Callers copy interrupt/DMA progress into it from foreground code. Queue drain,
-// telemetry, and control progress deliberately cannot change PPS presence.
+// Callers copy authoritative FIFO-capture progress into it from foreground
+// code. Queue drain, telemetry, and control progress deliberately cannot make
+// a stale capture source current again.
 
-enum class OtisPhysicalPpsState : uint8_t {
+enum class OtisPpsCaptureServiceState : uint8_t {
   NeverSeen,
   Present,
-  Missing,
+  Stale,
 };
 
 enum class OtisPpsDiagnosticsTransition : uint8_t {
   None,
-  PhysicalPpsMissing,
-  PhysicalPpsRestored,
-  PhysicalPpsReminder,
+  CaptureServiceStale,
+  CaptureServiceResumed,
+  CaptureServiceReminder,
 };
 
 enum class OtisPpsProgressSequenceRelation : uint8_t {
@@ -44,19 +45,19 @@ struct OtisPpsProgressMarker {
 
 struct OtisPpsDiagnostics {
   OtisPpsDiagnosticsConfig config;
-  OtisPhysicalPpsState physical_state;
+  OtisPpsCaptureServiceState capture_service_state;
   uint32_t session;
   uint64_t monitoring_started_ticks;
   uint64_t missing_transition_ticks;
   uint64_t restored_transition_ticks;
   uint64_t last_reminder_ticks;
 
-  uint32_t physical_pps_missing_count;
-  uint32_t physical_pps_restored_count;
-  uint32_t physical_pps_reminder_count;
-  uint32_t physical_sequence_gap_count;
+  uint32_t capture_service_stale_count;
+  uint32_t capture_service_resumed_count;
+  uint32_t capture_service_reminder_count;
+  uint32_t capture_sequence_gap_count;
 
-  OtisPpsProgressMarker latest_physical_pps;
+  OtisPpsProgressMarker latest_capture_service;
   OtisPpsProgressMarker latest_snapshot_produced;
   OtisPpsProgressMarker latest_snapshot_drained;
   OtisPpsProgressMarker latest_measurement_reconstructed;
@@ -128,7 +129,8 @@ static inline void otis_pps_diagnostics_begin(
   }
   *diagnostics = {};
   diagnostics->config = config;
-  diagnostics->physical_state = OtisPhysicalPpsState::NeverSeen;
+  diagnostics->capture_service_state =
+      OtisPpsCaptureServiceState::NeverSeen;
   diagnostics->session = session;
   diagnostics->monitoring_started_ticks = now_ticks;
 }
@@ -144,39 +146,40 @@ static inline void otis_pps_diagnostics_reset(OtisPpsDiagnostics *diagnostics,
 }
 
 static inline OtisPpsDiagnosticsTransition
-otis_pps_diagnostics_note_physical_pps(OtisPpsDiagnostics *diagnostics,
-                                       uint32_t producer_sequence,
-                                       uint64_t arrival_ticks) {
+otis_pps_diagnostics_note_capture_service(OtisPpsDiagnostics *diagnostics,
+                                          uint32_t producer_sequence,
+                                          uint64_t service_ticks) {
   if (diagnostics == nullptr) {
     return OtisPpsDiagnosticsTransition::None;
   }
 
   const OtisPpsProgressSequenceRelation relation =
       otis_pps_diagnostics_sequence_relation(
-          diagnostics->latest_physical_pps.valid,
-          diagnostics->latest_physical_pps.sequence, producer_sequence);
+          diagnostics->latest_capture_service.valid,
+          diagnostics->latest_capture_service.sequence, producer_sequence);
   if (relation == OtisPpsProgressSequenceRelation::Duplicate) {
-    // Re-observing the same producer mailbox is not a physical restoration.
+    // Re-observing the same producer frontier is not resumed capture service.
     return OtisPpsDiagnosticsTransition::None;
   }
   if (relation == OtisPpsProgressSequenceRelation::Gap) {
     otis_pps_diagnostics_increment_saturating(
-        &diagnostics->physical_sequence_gap_count);
+        &diagnostics->capture_sequence_gap_count);
   }
 
   otis_pps_diagnostics_set_progress_marker(
-      &diagnostics->latest_physical_pps, diagnostics->session,
-      producer_sequence, arrival_ticks);
+      &diagnostics->latest_capture_service, diagnostics->session,
+      producer_sequence, service_ticks);
 
-  if (diagnostics->physical_state == OtisPhysicalPpsState::Missing) {
-    diagnostics->physical_state = OtisPhysicalPpsState::Present;
-    diagnostics->restored_transition_ticks = arrival_ticks;
+  if (diagnostics->capture_service_state ==
+      OtisPpsCaptureServiceState::Stale) {
+    diagnostics->capture_service_state = OtisPpsCaptureServiceState::Present;
+    diagnostics->restored_transition_ticks = service_ticks;
     otis_pps_diagnostics_increment_saturating(
-        &diagnostics->physical_pps_restored_count);
-    return OtisPpsDiagnosticsTransition::PhysicalPpsRestored;
+        &diagnostics->capture_service_resumed_count);
+    return OtisPpsDiagnosticsTransition::CaptureServiceResumed;
   }
 
-  diagnostics->physical_state = OtisPhysicalPpsState::Present;
+  diagnostics->capture_service_state = OtisPpsCaptureServiceState::Present;
   return OtisPpsDiagnosticsTransition::None;
 }
 
@@ -186,20 +189,22 @@ static inline OtisPpsDiagnosticsTransition otis_pps_diagnostics_poll(
     return OtisPpsDiagnosticsTransition::None;
   }
 
-  if (diagnostics->physical_state != OtisPhysicalPpsState::Missing) {
-    const uint64_t anchor_ticks = diagnostics->latest_physical_pps.valid
-                                      ? diagnostics->latest_physical_pps
+  if (diagnostics->capture_service_state !=
+      OtisPpsCaptureServiceState::Stale) {
+    const uint64_t anchor_ticks = diagnostics->latest_capture_service.valid
+                                      ? diagnostics->latest_capture_service
                                             .observed_ticks
                                       : diagnostics->monitoring_started_ticks;
     const uint64_t elapsed_ticks =
         otis_pps_diagnostics_elapsed_ticks(anchor_ticks, now_ticks);
     if (elapsed_ticks > diagnostics->config.missing_timeout_ticks) {
-      diagnostics->physical_state = OtisPhysicalPpsState::Missing;
+      diagnostics->capture_service_state =
+          OtisPpsCaptureServiceState::Stale;
       diagnostics->missing_transition_ticks = now_ticks;
       diagnostics->last_reminder_ticks = now_ticks;
       otis_pps_diagnostics_increment_saturating(
-          &diagnostics->physical_pps_missing_count);
-      return OtisPpsDiagnosticsTransition::PhysicalPpsMissing;
+          &diagnostics->capture_service_stale_count);
+      return OtisPpsDiagnosticsTransition::CaptureServiceStale;
     }
     return OtisPpsDiagnosticsTransition::None;
   }
@@ -210,8 +215,8 @@ static inline OtisPpsDiagnosticsTransition otis_pps_diagnostics_poll(
           diagnostics->config.missing_reminder_period_ticks) {
     diagnostics->last_reminder_ticks = now_ticks;
     otis_pps_diagnostics_increment_saturating(
-        &diagnostics->physical_pps_reminder_count);
-    return OtisPpsDiagnosticsTransition::PhysicalPpsReminder;
+        &diagnostics->capture_service_reminder_count);
+    return OtisPpsDiagnosticsTransition::CaptureServiceReminder;
   }
   return OtisPpsDiagnosticsTransition::None;
 }

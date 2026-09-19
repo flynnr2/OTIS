@@ -4,7 +4,7 @@
 
 This document is the current claim boundary for the stabilized OTIS platform.
 It applies to the Arduino Nano RP2040 Connect, the fixed
-`pio_wait_cumulative_snapshot_dma_v1` D14/D8 capture mechanism, and the physical
+`pio_wait_cumulative_snapshot_fifo_irq_v2` D14/D8 capture mechanism, and the physical
 CX317 oscillator topology. It is an experimental measurement claim, not a
 calibration certificate or a claim that control action proves correctness.
 
@@ -34,7 +34,7 @@ The accepted instruction proof found endpoint allocation error of only `-1`,
 `0`, or `+1` oscillator edge over every contiguous tested span of one through
 seven intervals; it did not accumulate once per interval. Subject to the
 unchanged proof-bound PIO program, clock, pin, synchronizer, snapshot, FIFO,
-DMA, and validity assumptions, the supported digital component is therefore
+bounded FIFO transport, and validity assumptions, the supported digital component is therefore
 one oscillator edge total over a clean span. Expressed as a span mean, this is
 `1/N Hz` at a nominal `N`-second duration. It is a digital architecture bound,
 not the uncertainty of the complete instrument.
@@ -62,7 +62,7 @@ increases the reported relative phase. The epoch zero is arbitrary at the
 opening snapshot of a continuous session.
 
 Session changes, acceptance-epoch changes, reset evidence, unbridgeable reference evidence,
-snapshot/reference association loss, sequence discontinuity, and ambiguous
+unbounded or ambiguous recognition timing, sequence discontinuity, and ambiguous
 counter wrap end the epoch. No guessed offset bridges them. A healthy DAC epoch
 transition may remain inside the same raw phase epoch only while physical
 capture continuity is preserved. An excluded early candidate or delivery-only
@@ -71,8 +71,8 @@ derived controller authoritative.
 
 ## Evidence and limitations
 
-The current digital claim rests on the accepted capture audit and its retained
-evidence:
+The unchanged PIO counting claim draws on the historical capture audit below.
+That record used DMA transport and does not qualify the new FIFO IRQ adapter:
 
 - the exact PIO instruction audit covered 7,936 phase/duty cases and 55,552
   adjacent intervals;
@@ -84,7 +84,7 @@ evidence:
 
 The current firmware changes do not alter the proof-bound aperture. Any change
 to a bound PIO word, clock, divider, synchronizer, pin, state-machine ownership,
-snapshot rule, FIFO/autopush setting, or DMA transfer semantics invalidates
+snapshot rule, FIFO/autopush setting, or transport semantics invalidates
 reuse of the digital proof until its required verification is repeated.
 
 The following components remain unavailable or unqualified:
@@ -129,5 +129,11 @@ without discarding a continuously measured nominal span. This admission rule
 cannot identify an impostor inside the same window. Its numerical and retained
 recording checks do not qualify the receiver electrically or establish a new
 physical 72-hour result. The original recorded attempts retain their original
-contracts and outcomes. See `data_contracts/reference_acceptance_v1.md` for the
+contracts and outcomes. See `data_contracts/reference_acceptance_v2.md` for the
 current policy and required integration gates.
+
+The current selector applies that window to the entire PIO-recognition bracket,
+not merely its CPU-service endpoint. A bracket crossing either limit withholds
+qualification. This is an explicit change from independent GPIO timestamp
+association; it does not measure electrical D14 edge timing. No current result
+claims measured capture-to-service latency. See `SINGLE_REFERENCE_OWNER_REPAIR.md`.

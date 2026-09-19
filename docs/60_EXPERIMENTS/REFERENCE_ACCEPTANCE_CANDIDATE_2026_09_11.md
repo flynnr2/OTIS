@@ -9,7 +9,7 @@ It remains unwired and has no control authority. Frequency, phase, live
 capture association, producer-frontier expiry and campaign qualification have
 not been promoted to this policy.
 
-The [prospective contract](../../data_contracts/reference_acceptance_v1.md)
+The [prospective contract](../../data_contracts/reference_acceptance_v2.md)
 states acquisition, tracking, exclusion, loss and requalification semantics.
 The numerical window incorporates the operator's report of successful use
 on another instrument with the same GPS breakout board. That other

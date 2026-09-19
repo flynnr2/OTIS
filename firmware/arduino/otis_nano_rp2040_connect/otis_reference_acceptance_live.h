@@ -60,7 +60,10 @@ class OtisReferenceAcceptanceLive {
     const bool coordinate_exact =
         uint32_t(source_extended_ticks) == observation.reference_timestamp_ticks &&
         source_extended_ticks <= now_ticks &&
-        now_ticks - source_extended_ticks <= maximum_observation_age_ticks;
+        observation.timestamp_uncertainty_ticks < (uint32_t(1) << 31) &&
+        source_extended_ticks >= observation.timestamp_uncertainty_ticks &&
+        now_ticks - source_extended_ticks + observation.timestamp_uncertainty_ticks <=
+            maximum_observation_age_ticks;
     const bool same_session = have_source_ &&
         observation.capture_session == status_.capture_session;
     const bool order_exact = !same_session ||
@@ -122,7 +125,7 @@ class OtisReferenceAcceptanceLive {
       status_.anchor_reference_sequence = anchor.reference_sequence;
       status_.anchor_timestamp_ticks = anchor.reference_timestamp_ticks;
       status_.excluded_candidate_count = 0u;
-      anchor_extended_ticks_ = source_ticks;
+      anchor_extended_ticks_ = source_ticks - anchor.timestamp_uncertainty_ticks;
       expiry_pending_ = false;
     }
     if (result.disposition == D::QualificationLost) {

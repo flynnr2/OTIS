@@ -146,6 +146,7 @@ struct OtisPpsSnapshotMessage {
   uint32_t cumulative_down_counter;
   uint32_t reference_sequence;
   uint64_t reference_timestamp_ticks;
+  uint32_t timestamp_uncertainty_ticks;
   uint32_t status;
 };
 
@@ -180,6 +181,7 @@ struct OtisMonitorObservationMessage {
   uint32_t cumulative_down_counter;
   uint32_t reference_sequence;
   uint64_t reference_timestamp_ticks;
+  uint32_t timestamp_uncertainty_ticks;
   uint32_t status;
   uint8_t channel_id;
 };

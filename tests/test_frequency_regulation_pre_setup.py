@@ -25,7 +25,11 @@ def test_pre_setup_selected_estimate_remains_safe_observe(tmp_path: Path) -> Non
     subprocess.run(
         [
             compiler,
-            "-std=c++17",
+            "-std=gnu++20",
+            "-DARDUINO_ARCH_RP2040=1",
+            "-DPICO_NO_HARDWARE=0",
+            "-DPICO_PIO_VERSION=0",
+            "-I", str(ROOT / "tests/cpp/pps_snapshot_backend_stubs"),
             "-Wall",
             "-Wextra",
             "-Werror",
@@ -35,6 +39,7 @@ def test_pre_setup_selected_estimate_remains_safe_observe(tmp_path: Path) -> Non
             "-ffunction-sections",
             "-fdata-sections",
             str(ROOT / "tests/cpp/frequency_regulation_pre_setup_harness.cpp"),
+            str(ROOT / "tests/cpp/pps_fifo_consumer_port.cpp"),
             str(FIRMWARE / "otis_frequency_regulation_engine.cpp"),
             str(FIRMWARE / "otis_integer_count_tight_deadband.cpp"),
             str(FIRMWARE / "otis_monotonic_us_extension.cpp"),

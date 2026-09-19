@@ -79,7 +79,7 @@ def test_absent_carrier_abandons_only_outbound_framing_before_liveness() -> None
 
     abandon = sketch[
         sketch.index("void abandon_dual_core_serial_frames_on_carrier_loss(void)") :
-        sketch.index("void publish_dual_core_association_loss_decision(")
+        sketch.index("OtisRegulationStaticCodeState regulation_static_code_state(")
     ]
     assert "dual_core_evidence_transport_active = false;" in abandon
     assert "otis_phase_preview_transport_abandon_active_frame()" in abandon
@@ -92,8 +92,8 @@ def test_core1_capture_drain_has_one_ring_budget() -> None:
         encoding="utf-8"
     )
     body = sketch[
-        sketch.index("void drain_capture_ring(void)") :
-        sketch.index("void emit_pps_count_boundary(")
+        sketch.index("void drain_reference_snapshots(void)") :
+        sketch.index("void emit_build_provenance_status(")
     ]
-    assert "uint32_t budget = OTIS_CAPTURE_RING_SIZE - 1u;" in body
-    assert "while (budget-- > 0u && otis_capture_ring_pop(&record))" in body
+    assert "uint32_t budget = 128u;" in body
+    assert "while (budget-- > 0u && otis_pps_snapshot_backend_pop(&snapshot))" in body

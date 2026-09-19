@@ -126,7 +126,7 @@ def test_invalid_d10_is_diagnostic_only_in_actual_measurement_replay(
 ) -> None:
     files = [
         {"contract": "count_observations_v1", "path": "counts.csv"},
-        {"contract": "pps_snapshots_v1", "path": "snapshots.csv"},
+        {"contract": "pps_snapshots_v2", "path": "snapshots.csv"},
         {"contract": "raw_events_v1", "record_type": "REF", "path": "ref.csv"},
         {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
         {"contract": "estimates_v3", "path": "estimates.csv"},
@@ -170,7 +170,7 @@ def test_measurement_replay_uses_firmware_binary64_projection_before_serializati
 ) -> None:
     files = [
         {"contract": "count_observations_v1", "path": "counts.csv"},
-        {"contract": "pps_snapshots_v1", "path": "snapshots.csv"},
+        {"contract": "pps_snapshots_v2", "path": "snapshots.csv"},
         {"contract": "raw_events_v1", "record_type": "REF", "path": "ref.csv"},
         {"contract": "raw_events_v1", "record_type": "EVT", "path": "evt.csv"},
         {"contract": "estimates_v3", "path": "estimates.csv"},
@@ -269,16 +269,16 @@ def test_control_interfaces_have_no_external_event_authority_fields() -> None:
 def test_fixed_firmware_preserves_d10_seam_without_claiming_a_backend() -> None:
     board = (FIRMWARE / "otis_board.h").read_text(encoding="utf-8")
     sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(encoding="utf-8")
-    capture_irq = (FIRMWARE / "otis_capture_irq.cpp").read_text(encoding="utf-8")
+    backend = (FIRMWARE / "otis_pps_snapshot_backend.cpp").read_text(encoding="utf-8")
     reference_init = sketch[
         sketch.index("void boot_phase_pps_input_init(void)") :
         sketch.index("void boot_phase_peripherals_init(void)")
     ]
     assert "OTIS_PIN_EXTERNAL_EVENT = D10" in board
     assert "OTIS_PIN_PPS_REFERENCE = D14" in board
-    assert "otis_capture_irq_begin_d14_reference" in reference_init
-    assert "OTIS_CHANNEL_PPS_REFERENCE" in capture_irq
-    assert "OTIS_PIN_PPS_REFERENCE" in capture_irq
+    assert "otis_pps_snapshot_backend_get_stats" in reference_init
+    assert "OTIS_PIN_PPS_REFERENCE" in backend
+    assert "OTIS_PIN_EXTERNAL_EVENT" not in backend
     capture_init = sketch[
         sketch.index("void boot_phase_capture_init(void)") :
         sketch.index("void boot_phase_timer_init(void)")

@@ -12,8 +12,6 @@
 #include "otis_board.h"
 #include "otis_boot_capabilities.h"
 #include "otis_boot_diag.h"
-#include "otis_capture_irq.h"
-#include "otis_capture_ring.h"
 #include "otis_count_observation.h"
 #include "otis_reference_acceptance_live.h"
 #include "otis_reference_acceptance_format.h"
@@ -33,9 +31,9 @@
 #include "otis_forwarded_clock_monitor.h"
 #include "otis_gnss_receiver.h"
 #include "otis_memory_budget.h"
-#include "otis_pps_count_boundary_ring.h"
 #include "otis_pps_count_boundary.h"
 #include "otis_pps_snapshot_backend.h"
+#include "otis_reference_record.h"
 #include "otis_protocol.h"
 #include "otis_resource_registry.h"
 #include "otis_runtime_state.h"
@@ -92,13 +90,12 @@ uint32_t dual_core_last_metadata_ms = 0u;
 uint32_t dual_core_last_timing_status_ms = 0u;
 bool dual_core_timing_trace_started = false;
 uint32_t dual_core_last_timing_trace_ms = 0u;
-uint32_t dual_core_association_loss_decision_sequence = 0u;
 OtisRegulationStaticCodeState dual_core_static_code = {};
 OtisReceiverQualificationMessage dual_core_receiver = {};
 // Association-loss publication runs on the bounded timing-core stack. Keep
 // its full evidence-frame formatter in static storage; Core 1 is the only
 // producer and the publication is synchronous.
-OtisEvidenceFrameMessage dual_core_association_loss_scratch = {};
+OtisEvidenceFrameMessage dual_core_reference_evidence_scratch = {};
 OtisEvidenceFrameMessage dual_core_evidence_transport = {};
 uint16_t dual_core_evidence_transport_sent = 0u;
 bool dual_core_evidence_transport_active = false;
@@ -246,6 +243,7 @@ void configure_selected_capabilities(void) {
                               OtisBootCapabilityRequirement::Required);
 }
 
+void update_adaptive_hybrid_regulation_health();
 void emit_selected_capability_status();
 void emit_resource_ownership_status();
 void emit_protocol_banner_if_serial_ready();
@@ -554,6 +552,7 @@ bool publish_dual_core_active_status(uint32_t now_ms) {
 
 OtisSetupAuthorityContext current_dual_core_setup_authority_context(
     uint32_t now_s) {
+  update_adaptive_hybrid_regulation_health();
   OtisAdaptiveHybridRegulationLiveStatus active = {};
   otis_adaptive_hybrid_regulation_live_get_status(&active, now_s);
   return {
@@ -616,48 +615,25 @@ void publish_dual_core_timing_health(uint32_t now_ms) {
     return;
   dual_core_last_timing_status_ms = now_ms;
 
-  const uint32_t capture_dropped = otis_capture_ring_dropped_count();
-  const uint32_t boundary_dropped =
-      otis_pps_count_boundary_ring_dropped_count();
-  const uint32_t drop_flags = capture_dropped || boundary_dropped
-                                  ? OTIS_FLAG_CAPTURE_RING_OVERRUN
-                                  : OTIS_FLAG_NONE;
+  OtisPpsSnapshotBackendStats capture = {};
+  otis_pps_snapshot_backend_get_stats(&capture);
   publish_dual_core_timing_status_u32(
       "capture", "event_count", runtime_state.capture.emitted_event_count,
       OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   publish_dual_core_timing_status_u32(
-      "capture", "dropped_count", capture_dropped,
-      capture_dropped ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO, drop_flags);
+      "capture", "error_flags", capture.fault_flags,
+      capture.fault_latched ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
+      capture.fault_latched ? OTIS_FLAG_SOURCE_HEALTH_SUSPECT : OTIS_FLAG_NONE);
   publish_dual_core_timing_status_u32(
-      "capture", "pps_count_boundary_dropped_count", boundary_dropped,
-      boundary_dropped ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
-      drop_flags);
+      "capture", "snapshot_ring_full_count", capture.ring_full_count,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
   publish_dual_core_timing_status_u32(
-      "capture", "error_flags", drop_flags,
-      drop_flags ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO, drop_flags);
+      "capture", "irq_budget_exhausted_count", capture.irq_budget_exhausted_count,
+      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
 
   otis_count_observation_emit_status(&runtime_state,
                                      &dual_core_timing_status_context);
   publish_forwarded_clock_monitor_status();
-
-  OtisCaptureIrqReferenceStats d14;
-  otis_capture_irq_get_reference_stats(&d14);
-  publish_dual_core_timing_status_u32(
-      "pps_d14", "raw_edge_count", d14.d14_raw_edge_count,
-      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "pps_d14", "accepted_pps_count", d14.d14_accepted_pps_count,
-      OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "pps_d14", "rejected_short_count", d14.d14_rejected_short_count,
-      d14.d14_rejected_short_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
-      d14.d14_rejected_short_count ? OTIS_FLAG_PULSE_TOO_NARROW
-                                   : OTIS_FLAG_NONE);
-  publish_dual_core_timing_status_u32(
-      "pps_d14", "rejected_long_count", d14.d14_rejected_long_count,
-      d14.d14_rejected_long_count ? OTIS_SEVERITY_WARN : OTIS_SEVERITY_INFO,
-      d14.d14_rejected_long_count ? OTIS_FLAG_PULSE_TOO_WIDE
-                                  : OTIS_FLAG_NONE);
 
   publish_dual_core_active_status(now_ms);
 }
@@ -868,6 +844,7 @@ void service_dual_core_timing_inputs(void) {
                           : "capture_lease_rejected_on_core1");
         otis_dual_core_publish_critical(&transition);
       } else if (message.run_control.kind == OtisRunControlKind::Arm) {
+        update_adaptive_hybrid_regulation_health();
         const bool accepted = otis_adaptive_hybrid_regulation_live_arm(
             message.run_control.authorization_sequence,
             message.run_control.nonce, message.run_control.expires_s,
@@ -921,6 +898,7 @@ void service_dual_core_timing_inputs(void) {
         publish_dual_core_active_status(millis());
       } else if (message.run_control.kind ==
                  OtisRunControlKind::EvidenceRelease) {
+        update_adaptive_hybrid_regulation_health();
         const bool accepted = otis_adaptive_hybrid_regulation_live_acknowledge_evidence(
             message.run_control.request_sequence,
             message.run_control.evidence_phase, millis() / 1000u);
@@ -1232,8 +1210,8 @@ void service_dual_core_outputs(void) {
       otis_emit_pps_snapshot(
           snapshot.session, snapshot.sequence,
           snapshot.cumulative_down_counter, snapshot.reference_sequence,
-          snapshot.reference_timestamp_ticks, snapshot.status,
-          "pio_wait_cumulative_snapshot_dma_v1");
+          snapshot.reference_timestamp_ticks, snapshot.timestamp_uncertainty_ticks,
+          snapshot.status, "pio_wait_cumulative_snapshot_fifo_irq_v2");
     } else if (observation.kind ==
                OtisObservationMessageKind::CountObservation) {
       const OtisCountObservationMessage &count = observation.count;
@@ -1459,125 +1437,32 @@ void abandon_dual_core_serial_frames_on_carrier_loss(void) {
       abandoned < remaining ? abandoned : remaining;
 }
 
-void publish_dual_core_association_loss_decision(
-    const char *reason, uint64_t decision_ticks,
-    const OtisPpsCountBoundaryObservation &pending_reference,
-    uint64_t pending_age_ticks, uint32_t boundary_depth,
-    uint32_t boundary_dropped_count,
-    const OtisPpsCountBoundaryObservation *next_reference,
-    const OtisPpsSnapshotBackendStats &snapshot_stats,
-    const OtisPpsSnapshotFrozenDiagnostic &frozen) {
-  OtisDualCoreQueueStats queue_stats = {};
-  otis_dual_core_get_stats(&queue_stats);
-  const bool unread_snapshot = snapshot_stats.backlog_depth != 0u;
-  const char *classification =
-      snapshot_stats.fault_latched
-          ? "backend_fault"
-          : (unread_snapshot
-                 ? "unread_snapshot_present_when_decision_made"
-                 : (reason != nullptr &&
-                            strcmp(reason, "snapshot_association_timeout") == 0
-                        ? "timeout_no_snapshot"
-                        : "no_unread_snapshot_healthy_backend"));
-
-  dual_core_association_loss_scratch = {};
-  dual_core_association_loss_scratch.sequence =
-      dual_core_association_loss_decision_sequence++;
-  const int used = snprintf(
-      dual_core_association_loss_scratch.data,
-      sizeof(dual_core_association_loss_scratch.data),
-      "ASL,2,%lu,%s,%s,%llu,%lu,%llu,%llu,%lu,%lu,%s,%lu,%llu,%s,%s,%s,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%s,%llu,%llu,%s,%lu,%lu,%lu,%lu,%lu,%s,%lu\r\n",
-      static_cast<unsigned long>(dual_core_association_loss_scratch.sequence),
-      reason == nullptr ? "association_loss_unspecified" : reason,
-      classification, static_cast<unsigned long long>(decision_ticks),
-      static_cast<unsigned long>(pending_reference.reference_sequence),
-      static_cast<unsigned long long>(pending_reference.pps_timestamp_ticks),
-      static_cast<unsigned long long>(pending_age_ticks),
-      static_cast<unsigned long>(boundary_depth),
-      static_cast<unsigned long>(boundary_dropped_count),
-      next_reference == nullptr ? "false" : "true",
-      static_cast<unsigned long>(next_reference == nullptr
-                                     ? 0u
-                                     : next_reference->reference_sequence),
-      static_cast<unsigned long long>(
-          next_reference == nullptr ? 0u : next_reference->pps_timestamp_ticks),
-      snapshot_stats.initialized ? "true" : "false",
-      snapshot_stats.running ? "true" : "false",
-      snapshot_stats.fault_latched ? "true" : "false",
-      static_cast<unsigned long>(snapshot_stats.fault_flags),
-      static_cast<unsigned long>(snapshot_stats.session),
-      static_cast<unsigned long>(snapshot_stats.producer_ordinal),
-      static_cast<unsigned long>(snapshot_stats.consumer_ordinal),
-      static_cast<unsigned long>(snapshot_stats.backlog_depth),
-      static_cast<unsigned long>(snapshot_stats.backlog_high_water),
-      static_cast<unsigned long>(snapshot_stats.overwrite_count),
-      static_cast<unsigned long>(snapshot_stats.continuity_loss_count),
-      static_cast<unsigned long>(snapshot_stats.pio_rxstall_count),
-      static_cast<unsigned long>(snapshot_stats.dma_error_count),
-      static_cast<unsigned long>(snapshot_stats.dma_stopped_count),
-      static_cast<unsigned long>(queue_stats.timing_progress.loop_sequence),
-      static_cast<unsigned long>(queue_stats.timing_progress.last_snapshot_session),
-      static_cast<unsigned long>(queue_stats.timing_progress.last_snapshot_sequence),
-      otis_timing_progress_phase_name(queue_stats.timing_progress.phase),
-      static_cast<unsigned long long>(
-          queue_stats.timing_progress.phase_enter_ticks),
-      static_cast<unsigned long long>(
-          queue_stats.timing_progress.last_progress_ticks),
-      frozen.frozen ? "true" : "false",
-      static_cast<unsigned long>(frozen.session),
-      static_cast<unsigned long>(frozen.producer_ordinal),
-      static_cast<unsigned long>(frozen.consumer_ordinal),
-      static_cast<unsigned long>(frozen.backlog_depth),
-      static_cast<unsigned long>(frozen.pio_fifo_depth),
-      frozen.front_word_present ? "true" : "false",
-      static_cast<unsigned long>(frozen.front_word));
-  if (used <= 0 || static_cast<size_t>(used) >=
-                       sizeof(dual_core_association_loss_scratch.data)) {
-    otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
-    return;
-  }
-  dual_core_association_loss_scratch.length = static_cast<uint16_t>(used);
-  otis_dual_core_publish_evidence(&dual_core_association_loss_scratch);
-}
-
-void emit_captured_edge(const OtisCapturedEdge &record) {
-  if (record.reference_record && record.edge == 'R') {
-    otis_capture_irq_process_reference_foreground(record);
-    const OtisPpsCountBoundaryObservation pending_reference = {
-        0u,
-        0u,
-        record.source_sequence,
-        record.timestamp_ticks,
-        0u,
-        0u,
-        record.flags,
-        OTIS_PPS_APERTURE_NONE,
-    };
-    otis_pps_count_boundary_ring_push_from_isr(pending_reference);
-  }
-
-  OtisObservationMessage message = {};
-  message.kind = OtisObservationMessageKind::RawEdge;
-  message.raw_edge.sequence = runtime_state.sequences.event_seq++;
-  message.raw_edge.timestamp_ticks = record.timestamp_ticks;
-  message.raw_edge.flags = record.flags;
-  message.raw_edge.channel_id = record.channel_id;
-  message.raw_edge.edge = record.edge;
-  message.raw_edge.reference_record = record.reference_record;
-  otis_dual_core_publish_observation(&message);
-  runtime_state.capture.emitted_event_count++;
-}
-
 OtisRegulationStaticCodeState regulation_static_code_state(void) {
   return dual_core_static_code;
+}
+
+void note_reference_capture_fault(const OtisPpsSnapshotBackendStats &stats) {
+  static bool fault_reported = false;
+  if (stats.fault_latched && !fault_reported) {
+    fault_reported = true;
+    reference_acceptance.invalidate(OtisReferenceAcceptanceReason::CaptureIntegrity);
+    otis_count_observation_update_reference_acceptance(reference_acceptance.status());
+    otis_count_observation_note_capture_loss(
+        &runtime_state, &status_emit_context, stats.consumer_ordinal,
+        "snapshot_backend_fault");
+    const auto code = regulation_static_code_state();
+    otis_frequency_regulation_live_on_capture_fault(
+        "snapshot_backend_fault", millis() / 1000u, &code);
+    otis_phase_preview_live_note_reset();
+    // No automatic rearm: preserve unread FIFO/ring evidence and session.
+  }
 }
 
 void update_adaptive_hybrid_regulation_health(void) {
   const uint32_t now_ms = millis();
   OtisPpsSnapshotBackendStats snapshot;
   otis_pps_snapshot_backend_get_stats(&snapshot);
-  OtisCaptureIrqReferenceStats d14;
-  otis_capture_irq_get_reference_stats(&d14);
+  note_reference_capture_fault(snapshot);
   // D14 is the sole PPS/reference authority and the PIO snapshot backend
   // counts only D8 oscillator edges at D14 boundaries. D10 is the independent
   // external-event input; this fixed image does not claim it and no D10 observation
@@ -1588,11 +1473,9 @@ void update_adaptive_hybrid_regulation_health(void) {
   reference_acceptance.service(time_us_64());
   const auto &accepted = reference_acceptance.status();
   otis_count_observation_update_reference_acceptance(accepted);
-  const bool raw_pps_valid = d14.d14_accepted_pps_count > 0u;
+  const bool raw_pps_valid = accepted.tracking && accepted.anchor_current;
   const bool reference_integrity_valid =
-      otis_capture_ring_dropped_count() == 0u &&
-      otis_pps_count_boundary_ring_dropped_count() == 0u &&
-      !snapshot.fault_latched;
+      snapshot.running && !snapshot.fault_latched;
   OtisFrequencyRegulationAuthorityState preview;
   otis_frequency_regulation_live_get_authority_state(&preview);
   const bool applied_confirmed =
@@ -1654,32 +1537,18 @@ OtisCountObservationConfig count_observation_config(void) {
   };
 }
 
-void drain_capture_ring(void) {
-  OtisCapturedEdge record;
-  // A hostile/noisy input may continue refilling the ISR ring while Core 1
-  // drains it. One full declared ring per pass bounds the phase and guarantees
-  // later service/control phases receive CPU time.
-  uint32_t budget = OTIS_CAPTURE_RING_SIZE - 1u;
-  while (budget-- > 0u && otis_capture_ring_pop(&record)) {
-    emit_captured_edge(record);
-  }
-}
-
 void emit_pps_count_boundary(
     const OtisPpsCountBoundaryObservation &observation,
     uint32_t snapshot_status) {
-  // timerawl/micros() and time_us_64() are two widths of the same RP2040
-  // hardware microsecond counter. Project the captured low word into its
-  // nearest past 64-bit coordinate, with an explicit bounded service age.
+  // Project FIFO service into the same timer's 64-bit domain. Its retained
+  // recognition-time uncertainty participates in selection and freshness;
+  // this projection does not turn CPU service into a latched edge timestamp.
   const uint64_t now_ticks = time_us_64();
   const uint32_t capture_age = uint32_t(now_ticks) -
       uint32_t(observation.pps_timestamp_ticks);
   const uint64_t closing_extended_ticks =
       now_ticks >= capture_age ? now_ticks - capture_age : UINT64_MAX;
-  const OtisReferenceAcceptanceObservation paired = {
-      observation.session, observation.sequence, observation.reference_sequence,
-      uint32_t(observation.pps_timestamp_ticks),
-      observation.cumulative_down_counter, snapshot_status, observation.capture_flags};
+  const auto paired = otis_reference_candidate(observation, snapshot_status);
   OtisReferenceAcceptanceOutcome selection = reference_acceptance.observe(
       paired, closing_extended_ticks, now_ticks,
       OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS);
@@ -1692,8 +1561,8 @@ void emit_pps_count_boundary(
       &runtime_state, &status_emit_context, &count_config, &observation);
   if (selection.has_span) {
     // Reuse the timing owner's existing sequential evidence scratch buffer.
-    // Association-loss and accepted-span formatting cannot be concurrent.
-    auto &frame = dual_core_association_loss_scratch;
+    // The timing owner formats one accepted-span record at a time.
+    auto &frame = dual_core_reference_evidence_scratch;
     frame = {};
     if (!otis_reference_acceptance_format_span(selection,
             OTIS_REFERENCE_ACCEPTANCE_POLICY_SHA256, frame.data,
@@ -1746,113 +1615,38 @@ void service_adaptive_hybrid_regulation_application_outcome(void) {
       millis() / 1000u);
 }
 
-void drain_pps_count_boundary_ring(void) {
-  static bool have_pending_reference = false;
-  static OtisPpsCountBoundaryObservation pending_reference = {};
-  static OtisPpsSnapshotAssociationGuard snapshot_association_guard = {};
-
-  if (!have_pending_reference) {
-    have_pending_reference =
-        otis_pps_count_boundary_ring_pop(&pending_reference);
-  }
-  if (!have_pending_reference) {
-    return;
-  }
-
-  OtisPpsSnapshotBackendStats stats;
-  otis_pps_snapshot_backend_get_stats(&stats);
-  uint64_t pending_age_ticks = otis_monotonic_us32_interval(
-      pending_reference.pps_timestamp_ticks, otis_monotonic_us32_now());
-  uint64_t association_timeout_ticks =
-      static_cast<uint64_t>(OTIS_PPS_GATE_MAX_INTERVAL_US);
-  bool another_reference_waiting =
-      otis_pps_count_boundary_ring_depth() != 0u;
-  const OtisPpsSnapshotAssociationDecision association_decision =
-      otis_pps_snapshot_association_decide(
-          &snapshot_association_guard, stats.backlog_depth != 0u,
-          stats.session, stats.consumer_ordinal, another_reference_waiting);
-  if (stats.fault_latched ||
-      association_decision ==
-          OtisPpsSnapshotAssociationDecision::AssociationLoss ||
-      pending_age_ticks > association_timeout_ticks) {
-    // A second physical REF before the first association closes is immediate
-    // association loss, even if a word has since appeared. Queue/foreground
-    // delay cannot prove that word belongs to the older REF, so it is never
-    // paired retroactively with it.
-    const char *association_reason =
-        stats.fault_latched
-            ? "snapshot_backend_fault"
-            : (another_reference_waiting ? "ref_without_snapshot"
-                                         : "snapshot_association_timeout");
-    OtisPpsCountBoundaryObservation next_reference = {};
-    const bool have_next_reference =
-        otis_pps_count_boundary_ring_peek(&next_reference);
-    const uint64_t decision_ticks = otis_monotonic_us32_now();
-    // Recovery clears the DMA ring. Freeze its unread front as diagnostic
-    // evidence only; it must never become a paired SNP or control input.
-    OtisPpsSnapshotFrozenDiagnostic frozen = {};
-    otis_pps_snapshot_backend_freeze_diagnostic(&frozen);
-    publish_dual_core_association_loss_decision(
-        association_reason, decision_ticks, pending_reference,
-        pending_age_ticks, otis_pps_count_boundary_ring_depth(),
-        otis_pps_count_boundary_ring_dropped_count(),
-        have_next_reference ? &next_reference : nullptr, stats, frozen);
-    reference_acceptance.invalidate(OtisReferenceAcceptanceReason::CaptureIntegrity);
-    otis_count_observation_update_reference_acceptance(reference_acceptance.status());
-    otis_count_observation_note_association_loss(
-        &runtime_state, &status_emit_context,
-        pending_reference.reference_sequence, association_reason);
-    const OtisRegulationStaticCodeState regulation_code = regulation_static_code_state();
-    otis_frequency_regulation_live_on_capture_fault(
-        association_reason, millis() / 1000u, &regulation_code);
-    otis_phase_preview_live_note_reset();
-    otis_pps_snapshot_association_guard_reset(&snapshot_association_guard);
-    otis_pps_snapshot_backend_rearm();
-    otis_pps_count_boundary_ring_reset();
-    have_pending_reference = false;
-    return;
-  }
-
-  // The capture drain follows this service phase.  Defer a newly visible PIO
-  // word for one complete loop so a CPU-only short REF followed by the genuine
-  // same-boundary REF cannot consume and shift otherwise valid PIO snapshots.
-  if (association_decision !=
-      OtisPpsSnapshotAssociationDecision::Pair) {
-    return;
-  }
-
+void drain_reference_snapshots(void) {
+  // The only replenishment of bounded IRQ service credit in each Core 1 loop.
+  otis_pps_snapshot_backend_poll();
   OtisPpsHardwareSnapshot snapshot;
-  if (!otis_pps_snapshot_backend_pop(&snapshot)) {
-    return;
+  uint32_t budget = 128u;
+  while (budget-- > 0u && otis_pps_snapshot_backend_pop(&snapshot)) {
+    const auto observation = otis_reference_boundary(snapshot);
+    // REF is a presentation of this same record, never another capture owner.
+    OtisObservationMessage message = {};
+    message.kind = OtisObservationMessageKind::RawEdge;
+    message.raw_edge.sequence = runtime_state.sequences.event_seq++;
+    message.raw_edge.timestamp_ticks = snapshot.service_ticks;
+    message.raw_edge.flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+    message.raw_edge.channel_id = OTIS_CHANNEL_PPS_REFERENCE;
+    message.raw_edge.edge = 'R';
+    message.raw_edge.reference_record = true;
+    otis_dual_core_publish_observation(&message);
+    ++runtime_state.capture.emitted_event_count;
+    message = {};
+    message.kind = OtisObservationMessageKind::PpsSnapshot;
+    message.snapshot = {snapshot.session, snapshot.sequence,
+        snapshot.cumulative_down_counter, snapshot.sequence,
+        snapshot.service_ticks, snapshot.timestamp_uncertainty_ticks,
+        snapshot.status};
+    otis_dual_core_note_timing_snapshot(snapshot.session, snapshot.sequence);
+    otis_dual_core_publish_observation(&message);
+    emit_pps_count_boundary(observation, snapshot.status);
+    service_forwarded_clock_monitor_boundary(observation);
   }
-  otis_pps_snapshot_association_guard_reset(&snapshot_association_guard);
-
-  OtisPpsCountBoundaryObservation observation = pending_reference;
-  observation.session = snapshot.session;
-  observation.sequence = snapshot.sequence;
-  observation.cumulative_down_counter = snapshot.cumulative_down_counter;
-  if ((snapshot.status & OTIS_PPS_SNAPSHOT_STATUS_OVERWRITE_BEFORE) != 0u) {
-    observation.aperture_flags |=
-        OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW |
-        OTIS_PPS_APERTURE_PHYSICAL_APERTURE_INCOMPLETE;
-  }
-  OtisObservationMessage snapshot_message = {};
-  snapshot_message.kind = OtisObservationMessageKind::PpsSnapshot;
-  snapshot_message.snapshot.session = observation.session;
-  snapshot_message.snapshot.sequence = observation.sequence;
-  snapshot_message.snapshot.cumulative_down_counter =
-      observation.cumulative_down_counter;
-  snapshot_message.snapshot.reference_sequence =
-      observation.reference_sequence;
-  snapshot_message.snapshot.reference_timestamp_ticks =
-      observation.pps_timestamp_ticks;
-  snapshot_message.snapshot.status = snapshot.status;
-  otis_dual_core_note_timing_snapshot(observation.session,
-                                      observation.sequence);
-  otis_dual_core_publish_observation(&snapshot_message);
-  emit_pps_count_boundary(observation, snapshot.status);
-  service_forwarded_clock_monitor_boundary(observation);
-  have_pending_reference = false;
+  OtisPpsSnapshotBackendStats stats = {};
+  otis_pps_snapshot_backend_get_stats(&stats);
+  note_reference_capture_fault(stats);
 }
 
 void emit_build_provenance_status(void) {
@@ -1932,10 +1726,10 @@ void emit_common_boot_status(void) {
               OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status("capture", "mode", OTIS_CAPTURE_MODE, OTIS_SEVERITY_INFO,
               OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  emit_status("capture", "timestamp_latch", "irq_micros_reconstructed",
+  emit_status("capture", "timestamp_semantics", "fifo_service_coordinate_with_recognition_bound",
               OTIS_SEVERITY_WARN, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
   emit_status("capture", "limitation",
-              "bench_validation_not_final_pio_dma_metrology",
+              "pio_recognition_bound_not_electrical_edge_timestamp",
               OTIS_SEVERITY_WARN, OTIS_FLAG_TIMESTAMP_RECONSTRUCTED);
   emit_status("capture", "timestamp_domain",
               OTIS_DOMAIN_RP2040_MONOTONIC_US32, OTIS_SEVERITY_INFO,
@@ -1967,7 +1761,7 @@ void emit_common_boot_status(void) {
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status("system", "arduino_core", OTIS_TARGET_ARDUINO_CORE,
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  emit_status("build", "capture_backend", "d14_irq_reference",
+  emit_status("build", "capture_backend", "pio_wait_cumulative_snapshot_fifo_irq_v2",
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status("build", "tcxo_counter_backend", "d14_gated_d8_snapshot",
               OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
@@ -2025,16 +1819,6 @@ void emit_gnss_receiver_status(void) {
   const uint32_t now_ms = millis();
   OtisGnssReceiverSnapshot status;
   otis_gnss_receiver_get_snapshot(now_ms, &status);
-  bool raw_pps_control_eligible = false;
-  OtisCaptureIrqReferenceStats pps_status;
-  otis_capture_irq_get_reference_stats(&pps_status);
-  raw_pps_control_eligible =
-      runtime_state.tcxo.valid_for_control &&
-      pps_status.d14_accepted_pps_count > 0u &&
-      otis_capture_ring_dropped_count() == 0u &&
-      otis_pps_count_boundary_ring_dropped_count() == 0u;
-  const bool combined_control_eligible =
-      status.control_eligible && raw_pps_control_eligible;
   const uint32_t health_flags = status.control_eligible
                                     ? OTIS_FLAG_NONE
                                     : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT;
@@ -2352,18 +2136,9 @@ void emit_gnss_receiver_status(void) {
   emit_status("gnss_receiver", "metadata_control_eligible",
               status.control_eligible ? "true" : "false", health_severity,
               health_flags);
-  emit_status("gnss_receiver", "raw_pps_control_eligible",
-              raw_pps_control_eligible ? "true" : "false",
-              raw_pps_control_eligible ? OTIS_SEVERITY_INFO
-                                       : OTIS_SEVERITY_WARN,
-              raw_pps_control_eligible ? OTIS_FLAG_NONE
-                                       : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
-  emit_status("gnss_receiver", "control_eligible",
-              combined_control_eligible ? "true" : "false",
-              combined_control_eligible ? OTIS_SEVERITY_INFO
-                                        : OTIS_SEVERITY_WARN,
-              combined_control_eligible ? OTIS_FLAG_NONE
-                                        : OTIS_FLAG_REFERENCE_VALIDITY_SUSPECT);
+  // Receiver metadata is qualification only. The Core 1 ACTIVE/pps_gate
+  // snapshots report complete control eligibility without a cross-core read
+  // of mutable timing state.
   emit_status_u32("gnss_receiver", "identity_epoch", status.identity_epoch,
                   health_severity, health_flags);
   emit_status_u32("gnss_receiver", "checksum_valid_count",
@@ -2581,8 +2356,8 @@ void emit_resource_ownership_status(void) {
           OtisResourceType::PioInstructionMemory),
       OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(
-      "resource_registry", "dma_claim_count",
-      otis_resource_registry_claim_count(OtisResourceType::DmaChannel),
+      "resource_registry", "pio_irq_source_claim_count",
+      otis_resource_registry_claim_count(OtisResourceType::PioIrqSource),
       OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   emit_status_u32(
       "resource_registry", "timer_claim_count",
@@ -3087,7 +2862,9 @@ void boot_phase_timer_init(void) {
 
 void boot_phase_pps_input_init(void) {
   begin_boot_phase(BootPhase::PpsInputInit);
-  const bool pps_ready = otis_capture_irq_begin_d14_reference();
+  OtisPpsSnapshotBackendStats snapshot = {};
+  otis_pps_snapshot_backend_get_stats(&snapshot);
+  const bool pps_ready = snapshot.initialized && snapshot.running;
   record_capability_result(OtisBootCapability::PpsCapture, pps_ready);
   complete_boot_phase(BootPhase::PpsInputInit);
 }
@@ -3108,8 +2885,7 @@ void boot_phase_forwarded_monitor_init(void) {
 
 void boot_phase_ring_buffers_init(void) {
   begin_boot_phase(BootPhase::RingBuffersInit);
-  otis_capture_ring_reset();
-  otis_pps_count_boundary_ring_reset();
+  otis_dual_core_partition_reset();
   record_capability_result(OtisBootCapability::RingBuffers, true);
   complete_boot_phase(BootPhase::RingBuffersInit);
 }
@@ -3217,7 +2993,7 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
                 OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
     emit_status("system", "mode", OTIS_OPERATING_MODE_NAME,
                 OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-    emit_status("build", "capture_backend", "d14_irq_reference",
+    emit_status("build", "capture_backend", "pio_wait_cumulative_snapshot_fifo_irq_v2",
                 OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
     emit_status("build", "tcxo_counter_backend", "d14_gated_d8_snapshot",
                 OTIS_SEVERITY_INFO,
@@ -3495,7 +3271,6 @@ void service_serial_commands(bool output_allowed = true) {
 void setup() {
   otis_memory_budget_note_current_core();
   otis_runtime_state_init(&runtime_state);
-  otis_dual_core_partition_reset();
   otis_transport_liveness_reset(&dual_core_transport_liveness, millis(),
                                 otis_transport_written_bytes());
   dual_core_transport_abort_queued = false;
@@ -3525,7 +3300,7 @@ void setup() {
   boot_phase_ring_buffers_init();
   boot_phase_serial_init();
   boot_phase_protocol_banner();
-  // The count boundary handler must exist before the primary PPS IRQ is armed.
+  // Core 1 starts the single PIO reference owner after service initialization.
   boot_phase_peripherals_init();
   __atomic_store_n(&dual_core_service_boot_ready, true, __ATOMIC_RELEASE);
   const uint32_t timing_boot_wait_started_ms = millis();
@@ -3617,11 +3392,7 @@ void loop1() {
   if (trace_timing_loop)
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::BoundaryDrain,
                                         otis_monotonic_us32_now());
-  drain_pps_count_boundary_ring();
-  if (trace_timing_loop)
-    otis_dual_core_note_timing_progress(OtisTimingProgressPhase::CaptureDrain,
-                                        otis_monotonic_us32_now());
-  drain_capture_ring();
+  drain_reference_snapshots();
   if (trace_timing_loop)
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::GateService,
                                         otis_monotonic_us32_now());

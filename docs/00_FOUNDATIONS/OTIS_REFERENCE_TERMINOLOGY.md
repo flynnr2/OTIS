@@ -774,3 +774,14 @@ In OTIS:
 - raw provenance is sacred.
 
 Precision timing systems become fragile when terminology becomes fuzzy. This document exists to prevent that drift.
+
+## FIFO service coordinate and PIO recognition bracket
+
+A FIFO service coordinate is the RP2040 CPU timer observation after an immutable
+PIO snapshot word is read. It is not a hardware-latched pin timestamp. The
+recognition bracket is the conservative interval bounded by a prior FIFO-empty
+observation and service, with the declared IN/autopush publication allowance.
+Its width bounds timing uncertainty; it is not a measured service latency.
+With the current D8-driven PIO program it bounds snapshot recognition, not the
+electrical D14 transition when the oscillator is absent or slow. An unavailable
+or ambiguous bracket remains explicit and cannot qualify a reference.

@@ -14,11 +14,10 @@ REFERENCE_EVENTS_CSV = "reference_events.csv"
 COUNT_OBSERVATIONS_CSV = "count_observations.csv"
 PPS_SNAPSHOTS_CSV = "pps_snapshots.csv"
 ACCEPTED_PPS_SPANS_CSV = "accepted_pps_spans_v1.csv"
-# This is deliberately distinct from the D8 PIO/DMA snapshot evidence above.
+# This is deliberately distinct from the D8 PIO/FIFO-IRQ snapshot evidence above.
 # It carries only the D6 observation of the forwarded D9 output and is never a
 # substitute for authoritative D14/D8 capture evidence.
 FORWARDED_MONITOR_SNAPSHOTS_CSV = "forwarded_monitor_snapshots.csv"
-ASSOCIATION_LOSS_DECISIONS_CSV = "association_loss_decisions_v2.csv"
 HEALTH_CSV = "health.csv"
 DAC_STEPS_CSV = "dac_steps.csv"
 ENVIRONMENT_CSV = "environment.csv"
@@ -81,10 +80,6 @@ class RunPaths:
         return self.csv_dir / FORWARDED_MONITOR_SNAPSHOTS_CSV
 
     @property
-    def association_loss_decisions_csv(self) -> Path:
-        return self.csv_dir / ASSOCIATION_LOSS_DECISIONS_CSV
-
-    @property
     def health_csv(self) -> Path:
         return self.csv_dir / HEALTH_CSV
 
@@ -141,16 +136,11 @@ def default_csv_files() -> list[dict[str, str]]:
             "role": "authoritative_reference",
         },
         {"path": f"{CSV_DIR}/{COUNT_OBSERVATIONS_CSV}", "contract": "count_observations_v1"},
-        {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v1", "optional": True},
+        {"path": f"{CSV_DIR}/{PPS_SNAPSHOTS_CSV}", "contract": "pps_snapshots_v2", "optional": True},
         {"path": f"{CSV_DIR}/{ACCEPTED_PPS_SPANS_CSV}", "contract": "accepted_pps_spans_v1", "optional": True},
         {
             "path": f"{CSV_DIR}/{FORWARDED_MONITOR_SNAPSHOTS_CSV}",
             "contract": "forwarded_monitor_snapshots_v1",
-            "optional": True,
-        },
-        {
-            "path": f"{CSV_DIR}/{ASSOCIATION_LOSS_DECISIONS_CSV}",
-            "contract": "association_loss_decisions_v2",
             "optional": True,
         },
         {"path": f"{CSV_DIR}/{HEALTH_CSV}", "contract": "health_v1"},

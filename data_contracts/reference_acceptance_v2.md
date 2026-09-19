@@ -4,7 +4,7 @@
 
 This is the prospective acceptance contract and integrated measurement candidate for
 the existing D14/D8 instrument. Numerical parameters are defined once in
-`reference_acceptance_policy_v1.json`. Selection has no direct actuator authority. The candidate connects one selected
+`reference_acceptance_policy_v2.json`. Selection has no direct actuator authority. The candidate connects one selected
 span to both firmware measurement consumers and the versioned host path.
 Promotion to a physical campaign requires a complete release gate, exact
 firmware build and actual operational-path rehearsal.
@@ -33,16 +33,17 @@ condition, receiver state, or electrical disturbance.
 
 ## Capture before selection
 
-Selection operates only after the existing association establishes the exact
-correspondence between a D14 observation and its PIO/DMA cumulative D8
-snapshot. Filtering the CPU's REF stream before association is incorrect:
-PIO would still have captured the excluded physical rise.
+Selection consumes one canonical SNP v2 observation per committed PIO FIFO
+word. `snapshot_sequence` and `reference_sequence` identify that same word.
+There is no independent GPIO-to-PIO association step. The emitted REF row is a
+same-owner raw derivative retained for integrity and replay; REF matching does
+not grant or veto SNP authority.
 
 Keep every raw REF, SNP and adjacent CNT unchanged, including intervals that
-the raw aperture assessment rejects. A selected span is a separate derived
-observation. It must identify its actual raw endpoints and every excluded
-interior candidate. REF event-emission numbers, D14 source ordinals, snapshot
-ordinals and accepted-boundary ordinals remain distinct.
+the raw aperture diagnostic rejects. A selected span is a separate derived
+observation. It identifies its actual raw endpoints and every excluded interior
+candidate. REF event-emission numbers remain distinct from the equal SNP
+snapshot/reference ordinal and from accepted-boundary ordinals.
 
 ## Acquisition and tracking
 
@@ -55,12 +56,21 @@ tracking anchor; the first subsequent admitted interval is the first selected
 span. This short reference acquisition does not waive estimator history,
 actuator settling, receiver metadata, or existing startup requirements.
 
-While tracking, evaluate each candidate relative to the last accepted anchor,
-using exact unsigned counter-domain comparisons. A candidate earlier than
-998,750 microseconds is excluded. It changes neither the accepted anchor nor
-the reference-loss deadline. A candidate in the inclusive window may close
-one nominal PPS interval only when its complete intervening raw continuity
-and cumulative D8 count are unambiguous.
+While tracking, evaluate each candidate relative to the last accepted anchor.
+The FIFO CPU service delta is not a D14 edge interval, so selection uses the
+complete possible recognition interval:
+
+```text
+minimum = service_delta - candidate.timestamp_uncertainty_ticks
+maximum = service_delta + anchor.timestamp_uncertainty_ticks
+```
+
+A candidate is early only when `maximum < 998750`; it changes neither the
+accepted anchor nor the reference-loss deadline. Admission requires
+`minimum >= 998750` and `maximum <= 1001250`, complete intervening raw
+continuity, and unambiguous cumulative D8 count. An interval that overlaps a
+window boundary loses qualification as `observation_age_ambiguous`; it is not
+silently classified early or late.
 
 The admitted candidate becomes the new anchor. There is no adaptive tolerance,
 retrospective selection of a more favourable edge, or silent estimator-driven
@@ -68,24 +78,24 @@ change to this policy. The selected D8 count comes from the cumulative
 hardware endpoints; the local microsecond interval is an admission coordinate,
 not a substitute frequency reference.
 
-A candidate later than 1,001,250 microseconds cannot close a one-second span.
-Loss of the expected accepted boundary ends tracking and requires a new
-acceptance epoch and fresh acquisition. Do not manufacture a missing PPS
+A candidate whose minimum possible interval exceeds 1,001,250 microseconds
+cannot close a one-second span. Loss of the expected accepted boundary ends
+tracking and requires a new acceptance epoch and fresh acquisition. Do not manufacture a missing PPS
 timestamp or classify a two-second span as one nominal second. Raw capture
 continues through acquisition, exclusion and loss.
 
 One accepted span may exclude at most eight early candidates. A ninth ends
 tracking with an explicit exclusion-budget reason. This is a finite selection
 and retained-source bound, not evidence that any particular burst fits the
-physical capture queues. Existing overflow and association checks still apply.
+physical capture queues. FIFO status and continuity checks still apply.
 
 ## Continuity and expiry
 
-Every intervening raw association must remain available, in sequence and in
-the same capture session. Counter movement must satisfy its physical upper
-bound and declared rollover semantics. Missing or duplicated snapshot/source
-ordinals, association loss, flagged capture integrity, ambiguous movement,
-and session changes prevent bridging. Capture-session identity is not an
+Every intervening raw SNP must remain available, in sequence and in the same
+capture session. Counter movement must satisfy its physical upper bound and
+declared rollover semantics. Missing or duplicated single-owner ordinals,
+nonzero FIFO status, unknown or half-range timestamp uncertainty, ambiguous
+movement, and session changes prevent bridging. Capture-session identity is not an
 acceptance epoch or a phase epoch.
 
 Use the current producer's conservative gross count bound: 133 MHz times
@@ -102,12 +112,13 @@ they must never be substituted for raw SNP or D14 source ordinals. Acceptance
 epochs are separate unsigned 32-bit identities whose exhaustion fails closed
 instead of wrapping into a prior epoch's identity.
 
-Reference expiry is anchored to the accepted boundary. Continued early rogue
+Reference expiry is anchored conservatively to the earliest possible
+recognition coordinate, `anchor_service - anchor_uncertainty`. Continued early rogue
 traffic cannot make the accepted reference appear present. However, CPU time
 passing a deadline does not prove that no qualifying hardware observation is
 queued. A live expiry decision requires an explicit, session-bound producer
 frontier proving that earlier captured observations have been drained and
-associated. A delayed or incomplete frontier causes a diagnostic control hold;
+serviced. A delayed or incomplete frontier causes a diagnostic control hold;
 it cannot invent physical reference loss or discard an in-window observation.
 
 The native candidate exposes this frontier requirement explicitly. Its caller
@@ -143,7 +154,7 @@ policy or hold control when independent evidence establishes the discrepancy.
 ## Required source identities and promotion boundary
 
 The derived admission/span evidence must bind the frozen policy, capture
-session, acceptance epoch, candidate raw SNP and D14 source ordinals, opening
+session, acceptance epoch, candidate raw SNP identity (retaining both equal consumer fields), opening
 and closing raw identities and timestamps, accepted-boundary ordinals,
 excluded-candidate count, exact D8 edge count, one nominal PPS interval,
 disposition and reason. Raw-counter and timestamp domains remain explicit.
@@ -170,7 +181,7 @@ different epochs cannot be summed to manufacture an uninterrupted result.
 The earlier prefix remains useful evidence, and the host retains its existing
 review and explicit-operator-closure boundary.
 
-Promotion is one finite producer-to-consumer integration: actual association,
+Promotion is one finite producer-to-consumer integration: single-owner FIFO capture,
 raw count reconstruction, selection, frequency and phase consumers, their
 emitted records, real recorder, host source checks, control admission, analyzer
 and sealing. The native candidate alone establishes none of those unexercised
@@ -179,7 +190,7 @@ live boundaries and does not authorize another 72-hour run.
 ## Current protocol and attachment boundary
 
 The integrated candidate emits APS v1, EST v3, RPH/PHE v2, AHY/ACT v3 and AHM v2.
-Raw REF/SNP/CNT keep their original versions. The exact wire layouts are in
+Raw REF and CNT retain v1; SNP is the current-only v2 service-coordinate contract. The exact wire layouts are in
 `otis_firmware_host_contract_v1.json`; ACTIVE snapshot v2 binds the current
 acceptance epoch, accepted ordinal, policy and health coherently.
 

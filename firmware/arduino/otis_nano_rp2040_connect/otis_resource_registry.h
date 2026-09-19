@@ -7,7 +7,6 @@
 #define OTIS_OWNER_ARDUINO_TIMEBASE "arduino_timebase"
 #define OTIS_OWNER_FORWARDED_CLOCK_OUTPUT "forwarded_clock_output"
 #define OTIS_OWNER_FORWARDED_CLOCK_MONITOR "forwarded_clock_monitor"
-#define OTIS_OWNER_EDGE_CAPTURE "edge_capture"
 #define OTIS_OWNER_COUNT_OBSERVATION "count_observation"
 #define OTIS_OWNER_I2C_BUS "i2c_bus"
 #define OTIS_OWNER_DAC "dac_ad5693r"
@@ -20,7 +19,7 @@ enum class OtisResourceType : uint8_t {
   GpioIrq,
   PioStateMachine,
   PioInstructionMemory,
-  DmaChannel,
+  PioIrqSource,
   Timer,
   Clock,
   I2cController,
@@ -76,7 +75,9 @@ bool otis_resource_registry_bind_pio_program(const char *owner,
                                              uint8_t pio_block,
                                              uint8_t offset,
                                              uint8_t length);
-bool otis_resource_registry_bind_dma_channel(const char *owner,
-                                             uint8_t channel);
+bool otis_resource_registry_bind_pio_irq_source(const char *owner,
+                                                uint8_t pio_block,
+                                                uint8_t irq_index,
+                                                uint8_t source);
 
 #endif

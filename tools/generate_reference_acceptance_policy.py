@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY = ROOT / "data_contracts/reference_acceptance_policy_v1.json"
+POLICY = ROOT / "data_contracts/reference_acceptance_policy_v2.json"
 HEADER = ROOT / "firmware/arduino/otis_nano_rp2040_connect/otis_reference_acceptance_policy.generated.h"
 
 
@@ -20,7 +20,18 @@ def render_header() -> str:
               "maximum_excluded_candidates_per_span", "maximum_count_span_ticks")
     if any(type(policy.get(key)) is not int or not 0 <= policy[key] <= 0xffffffff for key in fields):
         raise ValueError("reference acceptance constants must be unsigned 32-bit integers")
-    if (policy["admission_coordinate_domain"] != "rp2040_monotonic_us32"
+    if (policy.get("schema_version") != 2
+        or policy.get("policy_id") != "otis_d14_accepted_reference_v2"
+        or policy["admission_coordinate_domain"] != "rp2040_monotonic_us32"
+        or policy.get("admission_coordinate_semantics") != "fifo_cpu_service_coordinate"
+        or policy.get("timestamp_uncertainty_field") != "timestamp_uncertainty_ticks"
+        or policy.get("unknown_timestamp_uncertainty") != 0xFFFFFFFF
+        or policy.get("reference_sequence_equals_snapshot_sequence") is not True
+        or policy.get("qualification_requires_zero_snapshot_status") is not True
+        or policy.get("interval_min_rule") != "service_delta_minus_closing_uncertainty"
+        or policy.get("interval_max_rule") != "service_delta_plus_opening_uncertainty"
+        or policy.get("early_exclusion_rule") != "interval_max_below_lower_bound"
+        or policy.get("boundary_overlap_disposition") != "observation_age_ambiguous"
         or policy["reference_pin"] != "D14" or policy["count_pin"] != "D8"
         or policy["qualification_may_sum_acceptance_epochs"] is not False
         or policy["nominal_intervals_per_accepted_span"] != 1):

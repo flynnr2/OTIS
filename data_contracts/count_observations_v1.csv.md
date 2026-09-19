@@ -64,10 +64,11 @@ If no honest close boundary exists, firmware should report the fault through
 ## Fixed backend semantics
 
 One PIO state machine continuously decrements a wrapping 32-bit counter on D8
-rising edges and snapshots its cumulative value when D14 satisfies the PPS
-condition. DMA transports the immutable word. The D14 GPIO IRQ provides the
-independent canonical `REF` timestamp but does not stop, sample, restart, or
-otherwise define the count aperture.
+rising edges and atomically pushes its cumulative value when D14 satisfies the
+reference condition. A bounded RX-FIFO IRQ drains the immutable word. The SNP
+FIFO CPU service coordinate and its lower-bound uncertainty describe service,
+not a hardware D14 latch. `REF` is emitted from the same owner as a canonical
+raw derivative and does not independently define the count aperture.
 
 A `CNT` row is emitted only when its opening and
 closing atomic boundary observations are sequence-continuous. A nominal
@@ -85,9 +86,9 @@ The CNT wire row has no capture-session field. A standalone
 `count_observations_v1.csv` validator therefore checks its shape, field values,
 domains, flags, and each gate's timestamp progression but cannot establish
 sequence or timestamp ordering between rows. Decision-bearing replay joins CNT
-rows to the unique adjacent same-session SNP/REF pair by closing ordinal and
+rows to the unique adjacent same-session SNP pair by closing ordinal and
 exact gate endpoints. That joined replay rejects duplicates, gaps, reordering,
-cross-session apertures, and ambiguous associations.
+cross-session apertures, and ambiguous service-coordinate progression.
 
 See `docs/50_SOFTWARE/COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md` for the full
 contract.

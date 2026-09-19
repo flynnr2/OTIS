@@ -14,7 +14,7 @@
     "uncertainty_policy": "unknown_components_unavailable",
     "criteria_rationale_document": "docs/50_SOFTWARE/PPS_CUMULATIVE_SNAPSHOT_SPAN_ESTIMATOR.md"
   },
-  "expected_snapshot_backend": "pio_wait_cumulative_snapshot_dma_v1",
+  "expected_snapshot_backend": "pio_wait_cumulative_snapshot_fifo_irq_v2",
   "authoritative_denominator": "nominal_accepted_D14_interval_count",
   "authoritative_policy": {
     "span_s": 600,
@@ -28,7 +28,7 @@
       "accepted_reference_qualification_loss",
       "capture_session_boundary",
       "accepted_span_sequence_discontinuity",
-      "reference_association_failure",
+      "reference_timing_ambiguity",
       "snapshot_or_counter_fault",
       "parser_or_transport_loss",
       "dac_control_epoch",
@@ -36,6 +36,6 @@
     ],
     "D10_external_event_anomaly_resets_estimator": false
   },
-  "reference_acceptance_policy_ref": "data_contracts/reference_acceptance_policy_v1.json",
-  "reference_acceptance_policy_sha256": "ccbac9f756a0ff2932a3f1c160c464af06eaaa1713d8bbc0ceba73762f80fad3"
+  "reference_acceptance_policy_ref": "data_contracts/reference_acceptance_policy_v2.json",
+  "reference_acceptance_policy_sha256": "6185c27a630b77925e21ebbd7a9b4ab029908f86ef02cbd4f56db796a3999a44"
 }

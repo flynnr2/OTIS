@@ -2,6 +2,7 @@
 #define OTIS_REFERENCE_ACCEPTANCE_H
 
 #include <stdint.h>
+#include "otis_pps_snapshot_backend.h"
 
 // Pure reference selection. The caller supplies the frozen policy; this
 // module performs no capture, I/O, or actuator operation.
@@ -15,9 +16,10 @@ struct OtisReferenceAcceptancePolicy {
   uint32_t maximum_count_span_ticks;
 };
 
-// A *paired* D14 / cumulative D8 observation, after physical association.
-// Timestamp domain: rp2040_monotonic_us32, 1 MHz, modular uint32.
-// SNP and D14 source ordinals: independent modular uint32 (not REF event_seq).
+// One PIO-owned D14 / cumulative D8 observation. Both ordinals identify the
+// same immutable FIFO word. Coordinate: FIFO CPU service in the RP2040
+// microsecond domain, modular uint32, NOT a hardware-latched edge timestamp.
+// The snapshot recognition lies in [service - uncertainty, service].
 // D8: cumulative PIO uint32 downcounter. No raw CNT validity is substituted for
 // reconstruction: a short adjacent raw aperture may be inside a valid span.
 struct OtisReferenceAcceptanceObservation {
@@ -28,6 +30,7 @@ struct OtisReferenceAcceptanceObservation {
   uint32_t cumulative_down_counter;
   uint32_t snapshot_status;
   uint32_t reference_flags;
+  uint32_t timestamp_uncertainty_ticks = 0u;
 };
 
 // A producer/association frontier, not a CPU-service timestamp. The caller
@@ -89,9 +92,17 @@ class OtisReferenceAcceptance {
       const OtisReferenceAcceptanceObservation &candidate) {
     if (!valid_policy()) return outcome(Disposition::InvalidPolicy, Reason::Policy);
     if (candidate.capture_session == 0u) return lose(Reason::UnknownSession);
-    if (candidate.snapshot_status != 0u ||
+    if (candidate.reference_sequence != candidate.snapshot_sequence)
+      return lose(Reason::RawSequence);
+    constexpr uint32_t timing_status =
+        OTIS_PPS_SNAPSHOT_STATUS_TIMESTAMP_AMBIGUOUS |
+        OTIS_PPS_SNAPSHOT_STATUS_TIMESTAMP_UNBOUNDED;
+    if ((candidate.snapshot_status & ~timing_status) != 0u ||
         (candidate.reference_flags & ~policy_.allowed_reference_flags) != 0u)
       return lose(Reason::CaptureIntegrity);
+    if ((candidate.snapshot_status & timing_status) != 0u ||
+        candidate.timestamp_uncertainty_ticks >= kHalfRange)
+      return lose(Reason::ObservationAgeAmbiguous);
     if (!have_raw_) {
       if (!seed(candidate)) return lose(Reason::EpochExhausted);
       return outcome(Disposition::Seeded);
@@ -109,16 +120,25 @@ class OtisReferenceAcceptance {
       return lose(Reason::RawTimestamp);
     const uint32_t accepted_ticks = candidate.reference_timestamp_ticks -
                                     anchor_.reference_timestamp_ticks;
-    // A late candidate starts acquisition; it never becomes a putative
-    // multi-second measurement whose counter residue we attempt to validate.
-    if (tracking_ && accepted_ticks > upper_ticks()) {
+    // Compare the full possible interval, never a point estimate of ISR
+    // service latency. This preserves the frozen tolerance and fails locally
+    // when the available timing evidence straddles a decision boundary.
+    const int64_t raw_min = int64_t(raw_ticks) - candidate.timestamp_uncertainty_ticks;
+    const int64_t raw_max = int64_t(raw_ticks) + last_raw_.timestamp_uncertainty_ticks;
+    const int64_t accepted_min = int64_t(accepted_ticks) - candidate.timestamp_uncertainty_ticks;
+    const int64_t accepted_max = int64_t(accepted_ticks) + anchor_.timestamp_uncertainty_ticks;
+    if (tracking_ && accepted_min > upper_ticks()) {
       if (!seed(candidate)) return lose(Reason::EpochExhausted);
       return outcome(Disposition::QualificationLost, Reason::LateBoundary);
     }
-    if (!tracking_ && (raw_ticks < lower_ticks() || raw_ticks > upper_ticks())) {
+    if (!tracking_ && (raw_max < lower_ticks() || raw_min > upper_ticks())) {
       if (!seed(candidate)) return lose(Reason::EpochExhausted);
       return outcome(Disposition::Seeded, Reason::AcquisitionRestart);
     }
+    if ((!tracking_ && (raw_min < lower_ticks() || raw_max > upper_ticks())) ||
+        (tracking_ && accepted_max >= lower_ticks() &&
+         (accepted_min < lower_ticks() || accepted_max > upper_ticks())))
+      return lose(Reason::ObservationAgeAmbiguous);
     const uint32_t raw_edges = last_raw_.cumulative_down_counter -
                                candidate.cumulative_down_counter;
     // This is the frozen gross count bound, not an inference of exact physical
@@ -139,7 +159,7 @@ class OtisReferenceAcceptance {
     }
     span_edges_ += raw_edges;
     if (span_edges_ > maximum_edges()) return lose(Reason::RawCount);
-    if (accepted_ticks < lower_ticks()) {
+    if (accepted_max < lower_ticks()) {
       if (excluded_ == policy_.maximum_excluded_candidates_per_span)
         return lose(Reason::ExclusionBudgetExhausted);
       ++excluded_;
@@ -166,7 +186,7 @@ class OtisReferenceAcceptance {
     anchor_ = candidate;
     span_edges_ = 0u;
     excluded_ = 0u;
-    result.expiry_timestamp_ticks = anchor_.reference_timestamp_ticks + upper_ticks();
+    result.expiry_timestamp_ticks = anchor_.reference_timestamp_ticks - anchor_.timestamp_uncertainty_ticks + upper_ticks();
     return result;
   }
 
@@ -272,7 +292,7 @@ class OtisReferenceAcceptance {
     result.acquisition_progress = progress_;
     result.acceptance_epoch = epoch_;
     result.accepted_boundary_ordinal = accepted_ordinal_;
-    result.expiry_timestamp_ticks = have_raw_ ? anchor_.reference_timestamp_ticks + upper_ticks() : 0u;
+    result.expiry_timestamp_ticks = have_raw_ ? anchor_.reference_timestamp_ticks - anchor_.timestamp_uncertainty_ticks + upper_ticks() : 0u;
     result.opening = anchor_;
     result.closing = last_raw_;
     result.excluded_candidate_count = excluded_;
