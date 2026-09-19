@@ -94,3 +94,27 @@ Retain failed analysis/finalization artifacts and replay complete immutable
 acquisition later rather than repeating successful physical collection.
 Return the closed evidence package and monitor logs as a single `.tar.gz` through
 `~/Documents/OTIS_DATA/`. A local copy is not proof of arrival on the other Mac.
+
+## Pre-write telemetry binding correction (19 September 2026)
+
+The v2 host pre-write contract uses Core 1's emitted `capture.error_flags`,
+`snapshot_ring_full_count` and `irq_budget_exhausted_count`, each exactly zero.
+Receiver `metadata_control_eligible` qualifies metadata only; the exact ACTIVE
+`setup_gnss_eligible`, `setup_reference_eligible` and `setup_partition_healthy`
+gates remain mandatory, along with the existing authoritative D14/D8 capture
+cohort gate before SETUP. Retired GPIO drop counters and receiver-owned raw PPS
+eligibility fields are not part of the snapshot firmware's telemetry. Missing
+current fields continue to inhibit authority. The fixed firmware is unchanged.
+
+The original rehearsal manufactured absent keys from host expectations. A
+producer-source regression now checks every required non-ACTIVE integrity and
+GNSS key against firmware status emitters, independently of that fixture. This
+checks source coverage, not physical publication or freshness; exact live gates
+remain necessary. The detached launcher also creates the run parent before its
+free-space check, without creating the acquisition directory or opening hardware.
+
+The held bench attempt remains immutable evidence of a platform escape into a
+campaign. This correction does not clear its hold, hot-reload its supervisor,
+authorize teardown, extend its deadline or authorize a replacement launch. A
+new frozen host spec and operational rehearsal are required. Preserve the
+existing owner until an explicit operator disposition.

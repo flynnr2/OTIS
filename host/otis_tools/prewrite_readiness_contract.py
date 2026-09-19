@@ -14,16 +14,19 @@ from .active_status_contract import ACTIVE_STATUS_KEYS
 from .firmware_host_contract import CONTRACT_ID, CONTRACT_SHA256
 
 
-RUNTIME_CONTRACT_ID = "adaptive_hybrid_prewrite_runtime_contract_v1"
+RUNTIME_CONTRACT_ID = "adaptive_hybrid_prewrite_runtime_contract_v2"
 RAW_PPS_QUALIFICATION_DEADLINE_S = 660
 
 Health = Mapping[tuple[str, str], str]
 
+# Core 1 publishes backend faults and queue-loss counters. Retired GPIO
+# capture counters are not emitted by the snapshot backend.
 HEALTH_INTEGRITY_EXACT = {
     ("protocol", "contract_id"): CONTRACT_ID,
     ("protocol", "contract_sha256"): CONTRACT_SHA256,
-    ("capture", "dropped_count"): "0",
-    ("capture", "pps_count_boundary_dropped_count"): "0",
+    ("capture", "error_flags"): "0",
+    ("capture", "snapshot_ring_full_count"): "0",
+    ("capture", "irq_budget_exhausted_count"): "0",
     ("dual_core", "telemetry_dropped"): "0",
     ("dual_core", "service_publish_failures"): "0",
     ("dual_core", "partition_fault"): "none",
@@ -50,6 +53,8 @@ GNSS_OPERATIONAL_PREWRITE_EXACT = {
     ("gnss_receiver", "post_bootstrap_baud_change_count"): "0",
     ("gnss_receiver", "autodiscovery_enabled"): "false",
 }
+# Receiver metadata qualifies GNSS only. D14 qualification is independently
+# required by SETUP_AUTHORITY_EXACT and the authoritative capture gate.
 GNSS_PREWRITE_EXACT = {
     ("gnss_receiver", "initialized"): "true",
     ("gnss_receiver", "link_state"): "online",
@@ -64,8 +69,6 @@ GNSS_PREWRITE_EXACT = {
     ("gnss_receiver", "identity_epoch"): "1",
     ("gnss_receiver", "identity_stable"): "true",
     ("gnss_receiver", "metadata_control_eligible"): "true",
-    ("gnss_receiver", "raw_pps_control_eligible"): "true",
-    ("gnss_receiver", "control_eligible"): "true",
     **GNSS_OPERATIONAL_PREWRITE_EXACT,
 }
 

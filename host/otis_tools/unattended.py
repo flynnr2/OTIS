@@ -151,6 +151,7 @@ def launch(run_args: list[str]) -> dict:
     directory = run_dir.with_name(run_dir.name + ".unattended")
     if run_dir.exists():
         raise ValueError("unattended launch requires a fresh run directory")
+    run_dir.parent.mkdir(parents=True, exist_ok=True)
     if "--rehearse" not in run_args and shutil.disk_usage(run_dir.parent).free < 50 * 1024**3:
         raise ValueError("unattended entry requires at least 50 GiB free for raw and derived evidence")
     directory.mkdir(parents=True, exist_ok=False)  # One-use launch guard.
