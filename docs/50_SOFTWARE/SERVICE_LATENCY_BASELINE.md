@@ -234,3 +234,6 @@ The combined prepared handoff records the new image's own resources, identities,
 release verification and host rehearsals. Physical improvements remain for the
 single finite inhibited bench observation; successful prior acquisition is not
 repeated to repair an offline consumer.
+
+The exact follow-up build and focused bench instructions are recorded in
+[the service/capture handoff](SERVICE_CAPTURE_BENCH_HANDOFF.md).

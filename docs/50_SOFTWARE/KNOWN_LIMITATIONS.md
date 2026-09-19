@@ -242,3 +242,11 @@ count snapshot, assuming 4–9-clock synchronized D8 dwells and no FIFO stall.
 This does not bound the electrical input path, characterize metastability or
 confirm the actual bench duty/edge quality. No per-event hardware clock
 coordinate or hardware-to-service latency becomes available.
+
+The periodic Core 0 report now uses one frozen view and bounded per-row USB
+admission; other existing synchronous output paths are unchanged. Desktop
+regressions establish framing, ordering, independent abort scanning and fixed
+obstruction deadlines, not a target worst-case service-time guarantee. The
+combined image leaves 470 bytes below the unchanged static RAM ceiling; live
+heap/stack reserves remain required physical evidence. See
+[the prepared service/capture handoff](SERVICE_CAPTURE_BENCH_HANDOFF.md).
