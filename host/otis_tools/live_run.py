@@ -412,6 +412,14 @@ def _retain_foreground_review_hold(
             except (OSError, TypeError, ValueError, json.JSONDecodeError):
                 pass
 
+            if (supervisor is not None and state is not None
+                and not state.get("emergency_abort_latched")
+                and int(state.get("emergency_aborts_sent", 0)) == 0):
+                try:
+                    supervisor._service_capture_lease()
+                except Exception as service_error:
+                    publish_diagnostic(service_error, source="foreground_hold_lease_service")
+
             confirmed = False
             if state is not None and (
                 state.get("emergency_abort_latched") is True

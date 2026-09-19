@@ -144,3 +144,29 @@ then requires recovery before its first ARM and two completed transactions.
 A provenance-linked small fixture from the 19 September bench record separately
 checks epoch changes and rejection of non-reference faults. The PTY models status
 loss, not physical D14 loss; retained real telemetry covers the observed event.
+
+## Host exception containment and ownership service
+
+The supervisor catches ordinary Python exceptions at the diagnostic-cycle
+boundary, preserves their traceback, inhibits new SETUP/ARM, and returns to
+ownership service. Explicit abort remains a separate BaseException path. The
+fallback foreground hold also calls the same admitted-lease service operation;
+retaining a capture process alone does not prove lease service.
+
+During review, lease renewal has its own bounded command operation. It neither
+renews nor clears an expired evidence-acknowledgement deadline. An unresolved
+normal command write still blocks subsequent normal commands, including leases;
+firmware retains its independent bounded fail-static response to real transport
+obstruction. No timeout authorizes replay or completion of ambiguous evidence.
+
+The retired post-origin aperture-extension helper has been removed from the
+live decision path; such discrepancies retain review rather than inventing
+recovery authority. Rehearsal raises an actual AttributeError while the second
+response is pending, then requires exact response completion, continuing lease
+and capture service through unanswered review, and explicit orderly closure.
+
+This repair is an interim containment boundary, not a new 72-hour launch claim.
+The next architectural boundary is one host lifecycle service for ownership,
+abort and closure, with scientific/transaction checks producing decisions and
+holds without displacing that service. Preserve working capture/protocol/evidence
+components; do not rebuild them without evidence of a defect.

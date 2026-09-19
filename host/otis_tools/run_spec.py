@@ -73,6 +73,7 @@ _CONTROL_REHEARSAL_BOUNDARIES = (
     "two_progressive_transactions_complete",
     "metadata_hold_nonterminal_and_requalified",
     "startup_reference_wait_recovers_before_first_ARM",
+    "exception_during_second_response_retains_owner_and_completes_exact_response",
     "unanswered_review_retains_capture_and_lease_without_new_authority",
 )
 _COMMON_REHEARSAL_CLOSING = (

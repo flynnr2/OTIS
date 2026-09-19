@@ -350,15 +350,19 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
     emulator = DeterministicPtyInstrument(master, runtime, ADAPTIVE_HYBRID_PROGRAMME)
     emulator.exercise_startup_reference_wait = control_rehearsal
     scheduler_error: list[BaseException] = []
-    inject_review_hold = threading.Event()
     review_hold_proved = False
+    exception_during_second_response = False
     original_finish = AdaptiveHybridSupervisor._maybe_finish
 
     def finish_with_unanswered_review(owner, health, now_ns):
-        if inject_review_hold.is_set() and owner.state.get("host_verification_hold") is None:
-            owner._enter_host_verification_hold(
-                ValueError("deterministic unanswered-review rehearsal"), source="rehearsal_injection"
-            )
+        nonlocal exception_during_second_response
+        if (control_rehearsal and not exception_during_second_response
+            and emulator.transaction_index == 2
+            and emulator.evidence_phase == "application_pending"):
+            exception_during_second_response = True
+            # Raise through the actual production exception boundary, rather
+            # than manufacturing a completed review-hold state.
+            raise AttributeError("deterministic missing-method fault during second response")
         return original_finish(owner, health, now_ns)
 
 
@@ -389,7 +393,8 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
                     if any(command.startswith(("ACTIVE SETUP ", "ACTIVE ARM ")) for command in emulator.commands):
                         raise RuntimeError("zero-write rehearsal observed control authority")
                 if control_rehearsal:
-                    inject_review_hold.set()
+                    if not exception_during_second_response:
+                        raise RuntimeError("second-response exception boundary was not exercised")
                     deadline = time.monotonic() + 10
                     while time.monotonic() < deadline:
                         held = json.loads((run_dir / SUPERVISOR_STATE).read_text())
@@ -478,6 +483,7 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
             ),
             "metadata_hold_nonterminal_and_requalified": _owner_metadata_hold_requalified(run_dir),
             "startup_reference_wait_recovers_before_first_ARM": _startup_reference_wait_proved(run_dir),
+            "exception_during_second_response_retains_owner_and_completes_exact_response": exception_during_second_response and _owner_second_response_confirmed(run_dir),
             "unanswered_review_retains_capture_and_lease_without_new_authority": review_hold_proved,
         })
     boundary_results.update({
