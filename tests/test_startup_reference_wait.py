@@ -87,6 +87,11 @@ def test_wait_requires_current_epoch_full_span_before_first_consumer(tmp_path, m
     owner._maybe_qualify(health)
     assert owner.state['qualification_started_utc'] is None
     estimate['source_acceptance_epoch'] = epoch
+    retained_frontier = owner.state['startup_reference_wait']['frontier_ticks']
+    owner.state['startup_reference_wait']['frontier_ticks'] = int(ticks) - 599_000_000
+    owner._maybe_qualify(health)
+    assert owner.state['qualification_started_utc'] is None
+    owner.state['startup_reference_wait']['frontier_ticks'] = retained_frontier
     owner._maybe_qualify(health)
     assert owner.state['qualification_started_utc'] is not None
     assert owner.state['startup_reference_wait']['resolved_utc'] is not None
