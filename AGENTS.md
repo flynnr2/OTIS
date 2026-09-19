@@ -316,6 +316,11 @@ or deadline expiry, not for observation latency alone.
   Unknown decision-bearing discrepancies retain capture and the last confirmed
   code while holding affected authority. Only fresh causal requalification may
   resume a documented recoverable hold; do not auto-clear a review hold.
+- An explicitly authorized scheduled endpoint may close capture despite a
+  retained diagnostic only when the final static/disarmed actuator and transaction
+  state are independently exact. Retain the unresolved review in the terminal;
+  do not classify it as scientific success or failure. Unverifiable final state
+  keeps the protective hold and recording.
 - Rehearse unanswered escalations beyond a real lease cycle and verify capture
   progress, retained pending identity, no new SETUP/ARM, and independent abort.
   A monitor failure must not kill or restart the control owner. No blind owner

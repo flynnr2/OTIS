@@ -286,8 +286,8 @@
         "automatic_restoration"
       ],
       "properties": {
-        "maximum_automatic_applications": {"const": 336},
-        "maximum_cumulative_absolute_movement_codes": {"const": 7056},
+        "maximum_automatic_applications": {"const": 144},
+        "maximum_cumulative_absolute_movement_codes": {"const": 3024},
         "maximum_combined_step_codes": {"const": 21},
         "minimum_applied_cadence_s": {"const": 1800},
         "minimum_code": {"const": 43008},

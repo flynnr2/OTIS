@@ -35,15 +35,15 @@ class AdaptiveHybridProgramme:
     manifest_section: str = "adaptive_hybrid"
     policy_id: str = PROGRAMME_ID
     setup_code: int = 0xA84D
-    maximum_applications: int = 336
-    maximum_physical_applications: int = 336
-    maximum_cumulative_movement_codes: int = 7_056
+    maximum_applications: int = 144
+    maximum_physical_applications: int = 144
+    maximum_cumulative_movement_codes: int = 3_024
     maximum_step_codes: int = 21
     minimum_code: int = 0xA800
     maximum_code: int = 0xAB00
     minimum_applied_cadence_s: int = 1_800
     qualified_duration_s: int = 259_200
-    absolute_wall_limit_s: int = 604_800
+    absolute_wall_limit_s: int = 259_200
     minimum_natural_phase_material_applications: int = 0
     correction_response_reserve_s: int = 1_500
     qualified_d14_aperture_count: int = 259_200
@@ -147,13 +147,13 @@ CAUSAL_STATE_SCHEMA_VERSION = 2
 CAUSAL_STATE_CONTRACT_ID = "adaptive_hybrid_bench_attempt_causal_state_v2"
 
 INHIBITED_ZERO_WRITE = "inhibited_zero_write"
-UNATTENDED_7_DAY_HYBRID_CONTROL = "unattended_7_day_hybrid_control"
+UNATTENDED_72_HOUR_HYBRID_CONTROL = "unattended_72_hour_hybrid_control"
 PURPOSES = frozenset(
-    {INHIBITED_ZERO_WRITE, UNATTENDED_7_DAY_HYBRID_CONTROL}
+    {INHIBITED_ZERO_WRITE, UNATTENDED_72_HOUR_HYBRID_CONTROL}
 )
 
-EXPECTED_BOARD_SERIAL = "503533748A919118"
-EXPECTED_HARDWARE_ID = "503533748A919118"
+EXPECTED_BOARD_SERIAL = "503514548A919118"
+EXPECTED_HARDWARE_ID = "503514548A919118"
 EXPECTED_USB_VID = "0x2341"
 EXPECTED_USB_PID = "0x005E"
 EXPECTED_USB_PRODUCT = "Nano RP2040 Connect"
@@ -174,7 +174,7 @@ INHIBITED_ZERO_WRITE_ABSOLUTE_WALL_LIMIT_S = 300
 INHIBITED_ZERO_WRITE_WALL_ORIGIN = "supervisor_monotonic_start_after_capture_ready"
 ARM_OPPORTUNITY_INTERVAL_S = 600
 ARM_SUBMISSION_LIMIT = ABSOLUTE_WALL_LIMIT_S // ARM_OPPORTUNITY_INTERVAL_S
-QUALIFIED_APERTURE_MILESTONES = (21_600, 86_400, 172_800, 259_200, 432_000, 604_800)
+QUALIFIED_APERTURE_MILESTONES = (21_600, 86_400, 172_800, 259_200)
 UNATTENDED_CLOSURE_RESERVE_S = 2_111
 UNATTENDED_MONITOR_INTERVAL_S = 2
 UNATTENDED_STALE_AFTER_S = 15
@@ -216,7 +216,7 @@ _LIMITS = MappingProxyType(
             success_terminal="inhibited_zero_write_complete",
             zero_natural_correction_outcome="inhibited_by_contract",
         ),
-        UNATTENDED_7_DAY_HYBRID_CONTROL: _PurposeLimits(
+        UNATTENDED_72_HOUR_HYBRID_CONTROL: _PurposeLimits(
             setup_application_limit=1,
             automatic_application_limit=(
                 ADAPTIVE_HYBRID_PROGRAMME.authorized_maximum_physical_applications
@@ -324,7 +324,7 @@ class BenchAttemptEnvelope:
                 ),
                 "absolute_wall_limit_s": limits.absolute_wall_limit_s,
                 "wall_limit_role": "fixed_host_observation_endpoint",
-                "closure_reserve_s": UNATTENDED_CLOSURE_RESERVE_S if self.purpose == UNATTENDED_7_DAY_HYBRID_CONTROL else 0,
+                "closure_reserve_s": UNATTENDED_CLOSURE_RESERVE_S if self.purpose == UNATTENDED_72_HOUR_HYBRID_CONTROL else 0,
                 **({"wall_limit_origin": INHIBITED_ZERO_WRITE_WALL_ORIGIN}
                    if self.purpose in PURPOSES else {}),
             },
@@ -375,13 +375,14 @@ class BenchAttemptEnvelope:
                 ),
                 "accepted_D14_D8_aperture_milestones": (
                     list(QUALIFIED_APERTURE_MILESTONES)
-                    if self.purpose == UNATTENDED_7_DAY_HYBRID_CONTROL
+                    if self.purpose == UNATTENDED_72_HOUR_HYBRID_CONTROL
                     else []
                 ),
                 "first_application_milestone_nonterminal": (
-                    self.purpose == UNATTENDED_7_DAY_HYBRID_CONTROL
+                    self.purpose == UNATTENDED_72_HOUR_HYBRID_CONTROL
                 ),
                 "host_monitor_may_decide_terminal": False,
+                "scheduled_closure_with_review_hold": "only_independently_proven_static_disarmed_state",
                 "reviewer_availability_required": False,
                 "unanswered_escalation": "retain_capture_hold_affected_authority_no_timeout_approval",
                 "automatic_recovery": ["causal_GNSS_metadata_requalification"],

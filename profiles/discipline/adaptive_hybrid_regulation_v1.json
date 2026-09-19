@@ -118,8 +118,8 @@
     "run_terminal": false
   },
   "global_authority_limits": {
-    "maximum_automatic_applications": 336,
-    "maximum_cumulative_absolute_movement_codes": 7056,
+    "maximum_automatic_applications": 144,
+    "maximum_cumulative_absolute_movement_codes": 3024,
     "maximum_combined_step_codes": 21,
     "minimum_applied_cadence_s": 1800,
     "minimum_code": 43008,

@@ -13,7 +13,7 @@ from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
-    UNATTENDED_7_DAY_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
     envelope_for_purpose,
 )
@@ -371,7 +371,7 @@ def test_zero_write_wall_endpoint_rejects_a_setup_authority_record(
 
 
 def test_one_application_setup_is_submitted_once(tmp_path: Path) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor._identity_ready = lambda _health: True
     supervisor._prewrite_readiness = lambda _health: SimpleNamespace(ready=True)
     supervisor._acquisition_authority_ready = lambda **_kwargs: True
@@ -418,7 +418,7 @@ def test_setup_confirmation_accepts_exact_ticks_within_reported_whole_second(
 def test_application_frontier_is_durable_before_phase_three_command(
     tmp_path: Path,
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     row = _application_row()
     active_path = tmp_path / ACTIVE_CSV
     _write_single_row(active_path, row)
@@ -493,7 +493,7 @@ def test_application_frontier_is_durable_before_phase_three_command(
 def test_application_count_mismatch_withholds_phase_three_acknowledgement(
     tmp_path: Path, firmware_count: int
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     row = _application_row()
     _write_single_row(tmp_path / ACTIVE_CSV, row)
     supervisor._qualified_d14_apertures = lambda _health: 700
@@ -515,7 +515,7 @@ def test_application_count_mismatch_withholds_phase_three_acknowledgement(
 def test_long_run_authority_closes_only_at_automatic_application_limit(
     tmp_path: Path,
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     limit = supervisor.runtime_context.bench_attempt.limits.automatic_application_limit
     rows = []
     for sequence in range(1, limit + 1):
@@ -555,8 +555,8 @@ def test_long_run_authority_closes_only_at_automatic_application_limit(
 
     causal = supervisor.state["bench_attempt_causal_state"]
     assert result["bench_attempt_authority_closed"] is True
-    assert causal["durable_ACT_application_count"] == 336
-    assert causal["firmware_correction_count"] == 336
+    assert causal["durable_ACT_application_count"] == 144
+    assert causal["firmware_correction_count"] == 144
     assert causal["authority_closed"] is True
     assert causal["closure"]["trigger"] == "automatic_application_limit_reached"
     assert supervisor.state["bench_attempt_arm_admission_closed"] is True
@@ -567,7 +567,7 @@ def test_long_run_authority_closes_only_at_automatic_application_limit(
 def test_long_run_early_hours_and_first_application_are_nonterminal(
     tmp_path: Path,
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "terminal": None,
@@ -584,8 +584,8 @@ def test_long_run_early_hours_and_first_application_are_nonterminal(
     assert supervisor.state["terminal"] is None
 
 
-def test_72_hour_checkpoint_is_nonterminal_and_week_endpoint_closes(tmp_path):
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+def test_aperture_checkpoint_is_nonterminal_and_host_endpoint_closes(tmp_path):
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(terminal=None, terminal_static_code=0xA84D)
     supervisor._qualified_d14_apertures = lambda _: 259_200
     supervisor._healthy_terminal_ready = lambda _: True
@@ -602,7 +602,7 @@ def test_72_hour_checkpoint_is_nonterminal_and_week_endpoint_closes(tmp_path):
 def test_long_run_host_discrepancy_at_endpoint_remains_review_hold(
     tmp_path: Path,
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     hold = {
         "source": "host_verifier",
         "review_status": "operator_review_required",
@@ -619,9 +619,7 @@ def test_long_run_host_discrepancy_at_endpoint_remains_review_hold(
     supervisor._qualified_d14_apertures = lambda _health: (
         ADAPTIVE_HYBRID_PROGRAMME.qualified_d14_aperture_count
     )
-    supervisor._healthy_terminal_ready = lambda _health: (_ for _ in ()).throw(
-        AssertionError("review hold attempted to decide the terminal")
-    )
+    supervisor._healthy_terminal_ready = lambda _health: False
     supervisor._save = lambda: None
     events: list[tuple[str, dict[str, object]]] = []
     supervisor._programme_event = lambda event, **fields: events.append(
@@ -640,7 +638,7 @@ def test_long_run_host_discrepancy_at_endpoint_remains_review_hold(
 def test_transaction_validation_error_enters_review_hold_without_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state["terminal"] = None
     supervisor._validate_hybrid_decisions_or_hold = lambda: True
     holds: list[tuple[Exception, str]] = []
@@ -664,7 +662,7 @@ def test_transaction_validation_error_enters_review_hold_without_terminal(
 def test_arm_admission_closes_at_exact_accepted_aperture_boundary(
     tmp_path: Path,
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "qualified_acceptance_ordinal_origin": 100,
@@ -702,7 +700,7 @@ def test_arm_admission_closes_at_exact_accepted_aperture_boundary(
 def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "manual_start_sent": True,
@@ -785,7 +783,7 @@ def test_one_application_arm_is_durable_and_not_reused_for_same_opportunity(
 def test_contingent_arm_waits_for_first_natural_opportunity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "manual_start_sent": True,
@@ -829,7 +827,7 @@ def test_contingent_arm_waits_for_first_natural_opportunity(
 def test_contingent_arm_rejects_durable_nonpreview_decision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "manual_start_sent": True,
@@ -882,7 +880,7 @@ def test_contingent_arm_rejects_durable_nonpreview_decision(
 def test_contingent_arm_coordinate_failure_does_not_publish_ghost_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "manual_start_sent": True,
@@ -944,7 +942,7 @@ def test_contingent_arm_coordinate_failure_does_not_publish_ghost_authority(
 def test_qualification_selector_uses_frozen_policy_estimator_identity(
     tmp_path: Path,
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.natural_policy = SimpleNamespace(
         frequency_estimator_id="OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1"
     )
@@ -971,7 +969,7 @@ def test_qualification_selector_uses_frozen_policy_estimator_identity(
 def test_metadata_requalification_is_epoch_bound_and_accepts_ordinal_wrap(
     tmp_path: Path, session: int, epoch: int, exact: bool,
 ) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor._save = lambda: None
     supervisor._programme_event = lambda *args, **kwargs: None
     values = {
@@ -998,7 +996,7 @@ def test_metadata_requalification_is_epoch_bound_and_accepts_ordinal_wrap(
 
 
 def test_qualified_apertures_allow_zero_wrap_but_never_add_epochs(tmp_path: Path) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(qualified_origin_session_id=5, qualified_acceptance_epoch_origin=1,
                             qualified_acceptance_ordinal_origin=(1 << 32) - 600)
     health = {("pps_gate", "snapshot_session"): "5", ("pps_gate", "reference_acceptance_epoch"): "1",
@@ -1010,7 +1008,7 @@ def test_qualified_apertures_allow_zero_wrap_but_never_add_epochs(tmp_path: Path
 
 
 def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     limits = supervisor.runtime_context.bench_attempt.limits
     deadline = limits.automatic_application_admission_deadline_apertures
     supervisor.state.update(
@@ -1042,7 +1040,7 @@ def test_retained_arm_admission_rejects_restart_tampering(tmp_path: Path) -> Non
 
 
 def test_setup_timeout_becomes_review_hold_not_abort(tmp_path: Path) -> None:
-    supervisor = _bare_supervisor(UNATTENDED_7_DAY_HYBRID_CONTROL, tmp_path)
+    supervisor = _bare_supervisor(UNATTENDED_72_HOUR_HYBRID_CONTROL, tmp_path)
     supervisor.state.update(
         {
             "manual_start_sent": True,
@@ -1111,10 +1109,10 @@ def test_inhibited_restart_rejected_before_base_constructor_or_clock_reset(tmp_p
 
 
 def test_active_retained_state_cannot_restart_week_clock(tmp_path):
-    subject = construct_simulated_supervisor(tmp_path, purpose=UNATTENDED_7_DAY_HYBRID_CONTROL)
+    subject = construct_simulated_supervisor(tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL)
     before = (tmp_path / "reports/adaptive_hybrid_supervisor_state.json").read_bytes()
     with pytest.raises(ValueError, match="cannot resume"):
-        construct_simulated_supervisor(tmp_path, purpose=UNATTENDED_7_DAY_HYBRID_CONTROL)
+        construct_simulated_supervisor(tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL)
     assert (tmp_path / "reports/adaptive_hybrid_supervisor_state.json").read_bytes() == before
 
 

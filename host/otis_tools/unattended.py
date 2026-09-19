@@ -138,7 +138,7 @@ def launch(run_args: list[str]) -> dict:
     if run_dir.exists():
         raise ValueError("unattended launch requires a fresh run directory")
     if "--rehearse" not in run_args and shutil.disk_usage(run_dir.parent).free < 50 * 1024**3:
-        raise ValueError("seven-day entry requires at least 50 GiB free for raw and derived evidence")
+        raise ValueError("unattended entry requires at least 50 GiB free for raw and derived evidence")
     directory.mkdir(parents=True, exist_ok=False)  # One-use launch guard.
     with (directory / "monitor.log").open("ab", buffering=0) as output:
         worker = subprocess.Popen(

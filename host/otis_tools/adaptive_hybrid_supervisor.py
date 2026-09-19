@@ -28,7 +28,7 @@ from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
-    UNATTENDED_7_DAY_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
     UNATTENDED_CLOSURE_RESERVE_S,
     AdaptiveHybridProgramme,
@@ -583,7 +583,7 @@ def require_fresh_inhibited_attempt(
 ) -> None:
     """Reject restart before mutating state or acquiring a new capture owner."""
     retained = run_dir / "reports/adaptive_hybrid_supervisor_state.json"
-    if runtime_context.bench_attempt.purpose in {INHIBITED_ZERO_WRITE, UNATTENDED_7_DAY_HYBRID_CONTROL} and (
+    if runtime_context.bench_attempt.purpose in {INHIBITED_ZERO_WRITE, UNATTENDED_72_HOUR_HYBRID_CONTROL} and (
         retained.exists() or retained.is_symlink()
     ):
         raise ValueError(
@@ -973,7 +973,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     "inhibited zero-write causal state grants application authority"
                 )
             return
-        if bench_attempt.purpose != UNATTENDED_7_DAY_HYBRID_CONTROL:
+        if bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             raise ValueError("unsupported authority-bearing bench attempt")
         if authority_closed:
             required_closure_fields = {
@@ -1060,7 +1060,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         """Persist each physical application frontier before phase-3 ACK."""
 
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt.purpose != UNATTENDED_7_DAY_HYBRID_CONTROL:
+        if bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             raise ValueError(
                 "inhibited zero-write attempt observed an ACT application"
             )
@@ -3109,7 +3109,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return True
         if self.state.get("bench_attempt_arm_admission_closed"):
             return True
-        if bench_attempt.purpose != UNATTENDED_7_DAY_HYBRID_CONTROL:
+        if bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             raise ValueError("unknown physical bench-attempt authority state")
         if time.monotonic_ns() >= self._wall_deadline_monotonic_ns - UNATTENDED_CLOSURE_RESERVE_S * 1_000_000_000:
             self.state["bench_attempt_arm_admission_closed"] = True
@@ -3533,7 +3533,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "last_confirmed_code": self.state["terminal_static_code"],
             "utc": _utc_now(),
         }
-        if self.runtime_context.bench_attempt.purpose in {INHIBITED_ZERO_WRITE, UNATTENDED_7_DAY_HYBRID_CONTROL}:
+        if self.runtime_context.bench_attempt.purpose in {INHIBITED_ZERO_WRITE, UNATTENDED_72_HOUR_HYBRID_CONTROL}:
             # Raw same-process host coordinates make the observation duration
             # reviewable without projecting UTC or firmware time into it.
             self.state["terminal"]["observation_window"] = {
@@ -3570,19 +3570,24 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     source="bench_attempt_wall_endpoint_observer",
                 )
             return True
-        if bench_attempt.purpose != UNATTENDED_7_DAY_HYBRID_CONTROL:
+        if bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             raise ValueError("unsupported physical bench-attempt terminal semantics")
         # Qualified progress is evidence, never a replacement for elapsed
         # endurance duration. 72 accepted hours is a nonterminal checkpoint.
         if not wall_reached:
-            return True
-        if self.state.get("host_verification_hold") is not None:
             return True
         if self._healthy_terminal_ready(health):
             self._set_healthy_endpoint(
                 health, endpoint=str(terminals["success_terminal"]),
                 observed_terminal_monotonic_ns=now_monotonic_ns,
             )
+            if self.state.get("host_verification_hold") is not None:
+                self.state["terminal"].update(
+                    result="scheduled_stop",
+                    reason="adaptive_hybrid_scheduled_stop_review_required",
+                    unresolved_review=self.state["host_verification_hold"],
+                )
+                self._save()
         else:
             self._enter_host_verification_hold(
                 ValueError("endurance endpoint lacks exact disarmed static evidence"),
@@ -3759,6 +3764,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     if not self._startup_census_admitted():
                         time.sleep(0.2)
                         continue
+                    # At the authorized endpoint, an unrelated retained diagnostic
+                    # cannot veto closure if static/disarmed evidence is exact.
+                    # Evaluate this before the diagnostic path that raised it.
+                    if (self.state.get("host_verification_hold") is not None
+                            and time.monotonic_ns() >= self._wall_deadline_monotonic_ns):
+                        self._maybe_finish(health, time.monotonic_ns())
+                        if self.state.get("terminal") is not None:
+                            self._emit_terminal_once()
+                            return 2  # Review pending; no scientific failure claim.
                     if not self._abort_on_authoritative_capture_discontinuity(health):
                         self._check_fail_static_health(health)
                         self._process_transactions()

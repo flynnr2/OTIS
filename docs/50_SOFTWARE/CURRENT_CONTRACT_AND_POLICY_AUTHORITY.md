@@ -113,25 +113,27 @@ Final drainage, analysis and sealing follow the observation endpoint. Retained
 state and terminal evidence identify the host clock, owner PID/nonce, start,
 deadline and observed terminal in integer monotonic nanoseconds.
 
-The current closed-loop physical purpose is `unattended_7_day_hybrid_control`.
-It authorizes at most 336 natural applications and 7,056 codes cumulative absolute
+The current closed-loop physical purpose is `unattended_72_hour_hybrid_control`.
+It authorizes at most 144 natural applications and 3,024 codes cumulative absolute
 movement inside the unchanged `0xA800..0xAB00` envelope, with the existing
 21-code maximum step and 1,800-second applied cadence. One setup remains separate.
-The finite operating window is 604,800 host monotonic seconds from supervisor
+The finite operating window is 259,200 host monotonic seconds from supervisor
 construction after capture readiness. Accepted D14/D8 apertures are separately
 recorded; 259,200 apertures is a nonterminal measurement checkpoint. The host
 closes new ARM admission 2,111 seconds before its deadline (and retains the
 independent accepted-aperture admission ceiling). At the deadline only exact
-healthy disarmed evidence permits normal closure. A review hold preserves capture
-beyond the endpoint without reopening authority or granting timeout approval.
+healthy disarmed evidence permits normal closure. A retained review request permits scheduled closure only when static/disarmed
+state is independently proven; the terminal remains review-required. Unknown
+actuator or transaction state retains recording beyond the endpoint without new
+authority or timeout approval.
 
 The analyzer reports `endurance_complete` only with the full declared monotonic
 window and exact terminal evidence, separately from its measurement-replay checks.
-This outcome is not a seven-day qualified-measurement claim. Zero natural
+This outcome is not a 72-hour qualified-measurement claim. Zero natural
 corrections remains legitimate. Re-entry against retained supervisor state is
 rejected before a new serial owner starts.
 
-See [the unattended contract and handoff](UNATTENDED_WEEK.md).
+See [the unattended contract and handoff](UNATTENDED_RUN.md).
 
 See [the bench handoff](BENCH_CORE_6_1_0_HANDOFF.md).
 

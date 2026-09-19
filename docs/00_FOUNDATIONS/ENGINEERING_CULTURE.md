@@ -365,7 +365,7 @@ or terminate the instrument. Rehearsal must leave a review request unanswered
 and exercise continued capture and ownership service beyond a real lease cycle.
 
 Operational elapsed duration and accepted D14/D8 measurement coverage are
-distinct results. A seven-day observation endpoint does not claim seven days of
+distinct results. A 72-hour observation endpoint does not claim 72 hours of
 qualified measurement or uninterrupted steering. The finite actuation deadline
 closes authority; unresolved endpoint evidence may retain a recording-only
 review hold beyond it. Publication or offline analysis failure does not erase

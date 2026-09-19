@@ -854,7 +854,7 @@ def required_rehearsal_boundaries(spec: ValidatedRunSpec) -> list[str]:
     purpose = spec.document()["campaign"]["bench_attempt"]["purpose"]
     control = (
         _CONTROL_REHEARSAL_BOUNDARIES
-        if purpose == "unattended_7_day_hybrid_control"
+        if purpose == "unattended_72_hour_hybrid_control"
         else ()
     )
     return [*_COMMON_REHEARSAL_OPENING, *control, *_COMMON_REHEARSAL_CLOSING]

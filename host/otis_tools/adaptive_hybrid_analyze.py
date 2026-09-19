@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .adaptive_hybrid_contract import (
-    UNATTENDED_7_DAY_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
     AdaptiveHybridProgramme,
     programme_from_mapping,
@@ -154,6 +154,16 @@ def _normalize_terminal(
             and primary is None
         )
         return exact, programme.qualified_endpoint_reason if exact else None, result, reason
+    if result == "scheduled_stop":
+        exact = (
+            validated_bench_attempt is not None
+            and validated_bench_attempt.purpose == UNATTENDED_72_HOUR_HYBRID_CONTROL
+            and reason == "adaptive_hybrid_scheduled_stop_review_required"
+            and isinstance(terminal.get("unresolved_review"), dict)
+            and type(terminal.get("last_confirmed_code")) is int
+            and programme.minimum_code <= terminal["last_confirmed_code"] <= programme.maximum_code
+        )
+        return exact, None, result, reason
     if result in {"nonpass", "aborted"}:
         exact = (
             isinstance(primary, str)
@@ -192,7 +202,7 @@ def classify_scientific_outcome(
     if result == "healthy_stop":
         if validated_bench_attempt.purpose == INHIBITED_ZERO_WRITE:
             return "diagnostic_complete"
-        if validated_bench_attempt.purpose != UNATTENDED_7_DAY_HYBRID_CONTROL:
+        if validated_bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             return "undetermined"
         window = terminal.get("observation_window", {})
         start = window.get("started_monotonic_ns")

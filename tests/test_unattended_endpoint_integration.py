@@ -4,9 +4,11 @@ import os
 import pty
 import threading
 
+import pytest
+
 from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
-    UNATTENDED_7_DAY_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
 )
 from host.otis_tools.adaptive_hybrid_supervisor import AdaptiveHybridSupervisor
 from host.otis_tools.live_run import run_experiment
@@ -21,8 +23,9 @@ from tools.rehearse_host import (
 )
 
 
-def test_week_endpoint_closes_after_second_response_without_abort(tmp_path, monkeypatch):
-    spec = build_synthetic_spec(monkeypatch, tmp_path, purpose=UNATTENDED_7_DAY_HYBRID_CONTROL)
+@pytest.mark.parametrize("pending_review", [False, True])
+def test_scheduled_endpoint_closes_after_second_response_without_abort(tmp_path, monkeypatch, pending_review):
+    spec = build_synthetic_spec(monkeypatch, tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL)
     master, slave = pty.openpty()
     device = os.ttyname(slave)
     record = create_run_record(spec, execution_kind="simulated", run_id=tmp_path.name,
@@ -33,6 +36,8 @@ def test_week_endpoint_closes_after_second_response_without_abort(tmp_path, monk
 
     def accelerate(owner, health, now_ns):
         if _owner_second_response_confirmed(tmp_path):
+            if pending_review and owner.state.get("host_verification_hold") is None:
+                owner._enter_host_verification_hold(ValueError("retained diagnostic at scheduled endpoint"))
             owner._wall_deadline_monotonic_ns = now_ns
         original(owner, health, now_ns)
 
@@ -61,7 +66,7 @@ def test_week_endpoint_closes_after_second_response_without_abort(tmp_path, monk
     finally:
         os.close(master)
     assert instrument.error is None
-    assert live["terminal"]["reason"] == "adaptive_hybrid_endurance_complete"
+    assert live["terminal"]["reason"] == ("adaptive_hybrid_scheduled_stop_review_required" if pending_review else "adaptive_hybrid_endurance_complete")
     assert live["capture_exit"] == 0
     assert "ACTIVE ABORT" not in instrument.commands
     window = live["terminal"]["observation_window"]

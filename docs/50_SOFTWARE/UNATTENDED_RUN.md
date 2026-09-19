@@ -1,26 +1,27 @@
-# Seven-day unattended hybrid experiment
+# 72-hour unattended hybrid experiment
 
 Preparation is offline on the development Mac. Physical launch is conditional on
 satisfactory review of the latest bench experiment and explicit bench entry.
 No firmware upload, reset, serial acquisition or DAC operation is performed here.
-The current controller is retained; only its finite application/movement budget
-is enlarged from 144/3,024 to 336/7,056. Its step, cadence, characterized envelope,
+The current controller is retained; its finite application/movement budget
+is retained at 144 applications / 3,024 codes cumulative movement. Its step, cadence, characterized envelope,
 metadata requalification and transaction proof requirements are unchanged.
 
 ## Operating contract
 
 - D14 is sole reference; D8 sole oscillator count. D10 is unimplemented and
   optional diagnostics have no control or terminal authority.
-- Duration: 168 hours in host monotonic nanoseconds, starting after capture
+- Duration: 72 hours in host monotonic nanoseconds, starting after capture
   readiness. Setup and qualification consume that window. UTC cannot renew it.
-- A 72-hour accepted-aperture checkpoint is nonterminal. Record aperture coverage,
+- Accepted-aperture checkpoints do not end the host observation window. Record aperture coverage,
   hold intervals, applications, responses and control state independently.
 - New ARM admission closes 2,111 seconds before the endpoint to reserve response
   and downstream observation. No forced corrections, restore, automatic owner
   restart, session reset, retry, live extension or reflash is authorized.
-- Healthy exact disarmed state permits normal closure. Missing/contradictory
-  endpoint evidence retains a review hold and capture; the actuation deadline
-  remains closed even if recording continues beyond seven days.
+- Healthy exact disarmed state permits normal closure. A retained review request does not veto scheduled closure when static/disarmed
+  state is independently exact; it remains in the terminal for later review.
+  Missing/contradictory actuator or transaction endpoint evidence retains a review hold and capture; the actuation deadline
+  remains closed even if recording continues beyond 72 hours.
 - The controller and admitted host transactions run without reviewer availability.
   Recoverable receiver metadata anomalies hold corrections and automatically
   requalify using existing causal firmware/host gates. Unknown decision-bearing
@@ -51,7 +52,7 @@ fails. The authoritative supervisor records full pending-phase/escalation detail
 
 Physical launch requires at least 50 GiB free; a 10 GiB remaining threshold
 produces a retained storage warning. No evidence is deleted to recover space.
-At 115200 baud the raw serial bound alone is about 7 GB/week; CSV and replay
+At 115200 baud the raw serial bound alone is about 3 GB/72 hours; CSV and replay
 products require additional space. Check actual growth during initial bench
 entry. Filesystem/storage failure cannot guarantee continued recording.
 
