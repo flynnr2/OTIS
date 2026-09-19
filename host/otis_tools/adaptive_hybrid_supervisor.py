@@ -2332,6 +2332,58 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 source="setup_transaction_observer",
             )
 
+    def _startup_reference_wait_permitted(self, health, capture_faults) -> bool:
+        """Only pre-origin, post-SETUP reference reacquisition is recoverable.
+
+        This is not clearance of a verifier hold or permission to join epochs.
+        Every non-reference capture/cohort fault remains review-required.
+        """
+        if (self.state.get("host_verification_hold") is not None
+            or self.state.get("qualification_started_utc") is not None
+            or self.state.get("qualified_origin_session_id") is not None
+            or self.state.get("setup_confirmed_utc") is None
+            or self.state.get("bench_attempt_arm_submission_count") != 0
+            or self.state.get("arm_pending")):
+            return False
+        exact = {
+            "session_id": str(self.state.get("initial_session_id")),
+            "manual_start_confirmed": "true",
+            "confirmed_applied_code_known": "true",
+            "dac_epoch": "1", "correction_count": "0",
+            "cumulative_movement_codes": "0", "evidence_pending": "false",
+            "evidence_phase": "evidence_clear", "evidence_request_sequence": "0",
+            "hybrid_state": "PHASE_QUALIFY",
+        }
+        if any(health.get(("adaptive_hybrid", key)) != value
+               for key, value in exact.items()):
+            return False
+        if health.get(("adaptive_hybrid", "state")) not in {"DISARMED", "REFERENCE_HOLD"}:
+            return False
+        try:
+            if int(health[("adaptive_hybrid", "confirmed_applied_code")], 0) != self.programme.setup_code:
+                return False
+            for key in _authoritative_capture_counters(self.programme):
+                value = int(health[("pps_gate", key)])
+                if value < 0 or (key not in {"physical_aperture_incomplete_count", "reference_acceptance_loss_count"} and value != 0):
+                    return False
+        except (KeyError, TypeError, ValueError):
+            return False
+        if health.get(("adaptive_hybrid", "setup_reference_eligible")) not in {"true", "false"}:
+            return False
+        allowed = set()
+        for component in ("pps_gate", "adaptive_hybrid"):
+            prefix = "" if component == "pps_gate" else "adaptive_hybrid."
+            for key, expected, legal in (
+                ("reference_acceptance_state", "tracking", {"acquiring", "tracking"}),
+                ("accepted_anchor_current", "true", {"false", "true"}),
+            ):
+                observed = health.get((component, key))
+                if observed not in legal:
+                    return False
+                if observed != expected:
+                    allowed.add(f"{prefix}{key}:{observed!r}!={expected!r}")
+        return set(capture_faults) <= allowed
+
     def _check_fail_static_health(
         self, health: dict[tuple[str, str], str]
     ) -> None:
@@ -2424,14 +2476,16 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             raise ValueError("ADAPTIVE_HYBRID exact runtime identity became unavailable")
         if setup_established:
             capture_faults = _authoritative_capture_health_faults(health)
-            if capture_faults:
+            startup_wait = self._startup_reference_wait_permitted(health, capture_faults)
+            if capture_faults and not startup_wait:
                 raise ValueError("ADAPTIVE_HYBRID reference qualification unavailable: "
                                  + "; ".join(capture_faults))
             required_true = (
                 "capture_lease_live",
-                "setup_reference_eligible",
                 "setup_partition_healthy",
             )
+            if not startup_wait:
+                required_true = (*required_true, "setup_reference_eligible")
             if not metadata_hold_active:
                 required_true = (*required_true, "setup_gnss_eligible")
             unhealthy = [key for key in required_true if not _truth(health, key)]
@@ -2440,6 +2494,16 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     "ADAPTIVE_HYBRID shared D14/D8/GNSS/capture qualification lost: "
                     + ", ".join(unhealthy)
                 )
+            if startup_wait and (capture_faults or not _truth(health, "setup_reference_eligible")):
+                if self.state.get("startup_reference_wait") is None:
+                    self.state["startup_reference_wait"] = {
+                        "entered_utc": _utc_now(), "session_id": self.state["initial_session_id"],
+                        "applied_code": self.programme.setup_code, "dac_epoch": 1,
+                        "resolved_utc": None, "faults": list(capture_faults),
+                        "frontier_ticks": int(health[(LIVE_FRONTIER_COMPONENT, LIVE_FRONTIER_TICKS_KEY)]),
+                    }
+                    self._save()
+                    self._programme_event("startup_reference_wait_entered", **self.state["startup_reference_wait"])
             self._update_gnss_metadata_hold(health, metadata_hold_active)
 
         if hybrid_state is None:
@@ -2804,6 +2868,23 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 # Independent observations may straddle reacquisition.
                 # Do not freeze a qualified origin until they name its epoch.
                 return
+        reference_wait = self.state.get("startup_reference_wait")
+        if reference_wait is not None:
+            if (self.state.get("host_verification_hold") is not None
+                or not _truth(health, "setup_reference_eligible")
+                or not _truth(health, "setup_gnss_eligible")
+                or not _truth(health, "setup_partition_healthy")
+                or session_id != reference_wait["session_id"]):
+                return
+            span = forward_progress(reference_wait["frontier_ticks"], origin_ticks,
+                                    domain="rp2040_monotonic_us32", allow_equal=True)
+            if (not span.valid or span.distance_ticks is None
+                or span.distance_ticks < SELECTED_INTERVAL_S * RP2040_MONOTONIC_US_PER_SECOND):
+                return
+            reference_wait["resolved_utc"] = _utc_now()
+            reference_wait["qualified_estimate_id"] = estimate["estimate_id"]
+            reference_wait["acceptance_epoch"] = acceptance_epoch_origin
+            self._programme_event("startup_reference_wait_requalified", **reference_wait)
         self.state["qualification_started_utc"] = _utc_now()
         self.state["qualified_origin_estimate_id"] = estimate["estimate_id"]
         self.state["qualified_origin_timestamp_ticks"] = origin_ticks
@@ -3146,6 +3227,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         if not self._startup_census_admitted():
             return
         if self.state.get("host_verification_hold") is not None:
+            return
+        reference_wait = self.state.get("startup_reference_wait")
+        if reference_wait is not None and reference_wait.get("resolved_utc") is None:
             return
         bench_attempt = self.runtime_context.bench_attempt
         if self._bench_authority_closed():
