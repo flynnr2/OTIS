@@ -1,6 +1,11 @@
 # PPS Capture Latency and Jitter Audit — 2026-08-01
 
-Status: accepted engineering conclusion and regression constraint
+Status: historical accepted engineering conclusion and regression constraint.
+The audited DMA/GPIO image is retired. Current transport and reference ownership
+are described in [single reference owner](SINGLE_REFERENCE_OWNER_REPAIR.md).
+The unchanged PIO aperture argument remains applicable; ISR sizes, source
+identity, DMA/ring behavior and physical qualification below refer only to the
+audited 2026-08-01 artifact.
 
 Scope: the `pio_wait_cumulative_snapshot_dma_v1` PPS-gated count path on the
 Arduino Nano RP2040 Connect with the ECS 16 MHz source and real GPS PPS. This
@@ -43,7 +48,7 @@ UF2 SHA-256: c33d877e6d419cf253131060ebf19e3c2465379cd770a660ca280c357b2b851f
 ELF SHA-256: 4bc54d39f60ad9b0e936133b9b6dbc756e6c678f2e74bb0ce00325ca0e0349cf
 ```
 
-The relevant sources copied into that build are identical to the current PIO
+The relevant sources copied into that build are identical to the then-current PIO
 backend, D14 IRQ, capture ring, boundary ring, and count-observation sources
 apart from Arduino's generated `#line` directives. The ELF contains the
 expected 15 assembled PIO words byte-for-byte.

@@ -1,6 +1,10 @@
 # ISR and PPS Diagnostics Remediation
 
-Status: implemented for the PPS hardware-snapshot candidate
+Status: historical remediation for the retired GPIO/DMA candidate.
+Current IRQ ownership and software diagnostics are described in
+[SINGLE_REFERENCE_OWNER_REPAIR.md](SINGLE_REFERENCE_OWNER_REPAIR.md) and
+[SERVICE_LATENCY_BASELINE.md](SERVICE_LATENCY_BASELINE.md). The inventory and
+profiles below refer to the original revision, not current executable paths.
 Date: 2026-07-31
 
 ## Hard rule

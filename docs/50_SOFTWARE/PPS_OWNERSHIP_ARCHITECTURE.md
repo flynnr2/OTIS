@@ -1,138 +1,53 @@
 # PPS Ownership Architecture
 
-## Decision
-
-PPS has two independent read-only observers with different authority:
-
-- the single PIO state machine owns the oscillator count and physical count
-  snapshot boundary; and
-- the D14 GPIO IRQ owns a reconstructed REF timestamp and physical-presence
-  diagnostic event.
-
-Neither observer substitutes for the other. DMA and foreground transport or
-associate truth but do not own it. D10 is outside the PPS fabric: it is the
-external event/edge input for future measurement against the disciplined D8
-oscillator.
-
-The hard rule is:
-
-> Physical measurement boundaries are hardware-owned. ISRs may transport or
-> annotate already-latched truth but may not define the aperture.
-
-## Event flow
+One PIO state machine owns D8 counting and its D14-recognized count boundary.
+The bounded FIFO IRQ transports immutable words and adds a CPU service
+coordinate; foreground maps each record into REF/SNP and derived observations.
+There is no independent GPIO reference observer, DMA transport or ordinal
+association between independent streams. See the detailed
+[single-owner contract](SINGLE_REFERENCE_OWNER_REPAIR.md).
 
 ```text
-                       D14 / GPIO26 PPS
-                         /             \
-                        /               \
-            PIO JMP PIN                 GPIO IRQ
-                 |                         |
- D8 oscillator -> one PIO SM              +-- timestamp + compact REF record
- WAIT PIN          X-- / IN X,32           +-- physical PPS progress
-                 |                         |
-          immutable SNP word               |
-                 |                         |
-         joined FIFO -> DMA                |
-                 |                         |
-                 +--------- foreground association
-                                  |
-                         adjacent X difference
-                                  |
-                  raw SNP + REF + bounded CNT + STS
+D8 / GPIO20 → PIO WAIT / X--
+D14 / GPIO26 → same PIO JMP PIN / IN X,32
+                        ↓
+                 joined RX FIFO
+                        ↓
+        bounded Core 1 FIFO IRQ / software ring
+                        ↓
+           same-record REF + SNP v2 + raw CNT
+                        ↓
+             common accepted-reference gate
+                        ↓
+                phase / frequency / control
 ```
-
-## Authority by field
 
 | Evidence | Owner | Meaning |
 |---|---|---|
-| `SNP.cumulative_down_counter` | PIO state machine | immutable cumulative 32-bit down-counter copied at PIO-recognized PPS |
-| `SNP.snapshot_sequence/session` | DMA transport plus backend session state | continuity/ownership metadata; DMA does not define the value or boundary |
-| `REF.timestamp_ticks` | D14 GPIO IRQ | reconstructed RP2040 timer observation of physical PPS |
-| `CNT.counted_edges` | foreground arithmetic over adjacent PIO snapshots | `previous_X - current_X mod 2^32`; no foreground time participates |
-| `CNT.gate_open/close_ticks` | associated adjacent D14 records | reference/gate-time evidence, not the count aperture |
+| Cumulative D8 down-counter | PIO state machine | Immutable count at PIO recognition of D14 |
+| Snapshot session and sequence | Sole FIFO record owner | Source continuity, independent of IRQ invocation count |
+| REF/SNP service coordinate | CPU timer after FIFO read | RP2040 operational coordinate, not electrical-edge timing |
+| Recognition uncertainty | Empty-FIFO/service observations | Conservative bound used by acceptance; no fabricated hardware timestamp |
+| Raw CNT | Adjacent snapshot arithmetic | Same-session cumulative difference modulo `2^32` |
+| Accepted span | Common reference selector | Explicit admitted endpoints retaining intervening raw evidence |
 
-## Deterministic association
+Hardware FIFO stalls, exhausted service budgets and ring exhaustion stop the
+source without clearing retained evidence. Explicit rearm requires a new
+session; runtime cannot repair continuity through automatic recovery. A first
+snapshot is an anchor; a count interval requires valid endpoints. A stopped D8
+can delay D14 recognition because the PIO program waits on oscillator levels.
+No independent physical-PPS presence claim survives that limitation.
 
-The D14 ISR captures one timer tick and publishes one fixed-size record. It
-does not touch PIO, DMA, or the counter. Foreground pairs the next contiguous
-PIO snapshot with the next D14 source sequence in the same acquisition
-session. Cross-type serial order is irrelevant; sequences, sessions, and raw
-timestamps are authoritative.
+Capture service remains independent of host attachment. Foreground progress,
+canonical publication and optional diagnostic export are different stages;
+missing telemetry never proves a missing physical pulse. GNSS serial metadata
+qualifies the receiver but is not timing authority. D6 and future D10 evidence
+remain fail-local, and D10 capture is not implemented.
 
-The first pair after boot or rearm establishes an anchor only. A clean `CNT`
-requires an adjacent PIO sequence, adjacent D14 source sequence, one session,
-acceptable REF interval/flags, valid snapshot status, and an unambiguous
-counter delta.
-
-If a second D14 REF is waiting while the first has no PIO snapshot, association
-is immediately lost, even if a snapshot word has appeared by the time
-foreground notices the second REF. Firmware rearms the PIO/DMA session, clears
-all old transport/pairing state, and requires two fresh snapshots. No later
-word is paired retroactively with the unmatched REF. The first new-session
-snapshot is the anchor and its adjacent successor is the first CNT candidate.
-`pps_gate/association_state`, `association_loss_reason`, and the saturating
-loss/recovery counters expose this transition. The unmatched REF remains raw
-evidence; no synthetic SNP or CNT is created for it.
-
-## Presence, backlog, and diagnostics
-
-Physical PPS presence follows the D14 hardware/ISR producer marker, not
-foreground drain or telemetry time. One continuous outage creates one missing
-transition; repeated watchdog polls do not create new outages. A later new D14
-event creates one restoration transition. Optional reminders use their own
-counter.
-
-Once the PPS producers are enabled, their foreground capture, snapshot,
-association, boundary, and estimator service remains live before and
-independently of USB serial-carrier attachment. Pre-attachment outbound records
-may be consumed and explicitly counted as discarded, but host presence must not
-gate internal drainage or manufacture a capture overflow.
-
-PIO snapshot production, snapshot drain, measurement reconstruction, telemetry
-emission, control consumption, foreground backlog, and telemetry backpressure
-are separate progress planes. Backlog within capacity can delay reporting but
-cannot alter captured count values or become `reference_missing_pps`.
-
-D10 is not a PPS observer. It remains an independent external-event input with
-an explicit D10/channel 0 contract and no PPS or control authority. The fixed
-firmware does not yet claim a safely isolated D10 capture backend. That backend
-must be implemented and qualified without sharing D14's interrupt/ring path or
-allowing D10 traffic to compromise D14/D8 capture.
-
-## Failure behavior
-
-- D14 ring overflow is a capture/storage fault, not proof that physical PPS is
-  absent.
-- PIO snapshot sequence gap/duplicate, D14 source-sequence mismatch, session
-  change, RX stall, DMA error/stop, or snapshot-ring overwrite invalidates
-  continuity.
-- Missing PPS with a continuing oscillator may produce a later long snapshot;
-  reference validity rejects it.
-- A narrow malformed D14 pulse may produce REF without SNP. The event is
-  reported as `ref_without_snapshot`, closes the old association, invalidates
-  the affected interval, and cannot be bridged by a later snapshot.
-- A stopped oscillator parks the PIO state machine in `WAIT`. D14 continues;
-  missing snapshot association fails closed and resumption begins a new
-  session.
-- Short, long, duplicate, bounce, glitch, or otherwise malformed PPS evidence
-  remains raw and diagnostic, but cannot become control-valid measurement.
-- Current source and deterministic proofs bind the qualified PPS-gated snapshot
-  backend into the fixed image. Physical qualification remains bound to the
-  exact historical evidence that established it; this code reset creates no new
-  physical claim.
-
-## Validation obligations
-
-1. Every candidate `CNT` must reconstruct exactly from adjacent raw `SNP`
-   values.
-2. Snapshot and D14 source sequences must be contiguous and associated REF
-   timestamps must be present in raw evidence.
-3. Quiet/load changes may alter backlog and reporting latency but not raw count
-   distribution or mean beyond the reviewed thresholds.
-4. One outage/restoration must produce exactly one transition each.
-5. The D14 ISR body must remain a bounded event-preservation path with no
-   policy, formatting, serial, floating point, PIO, or DMA choreography.
-
-See `PPS_PIO_PROOF_AND_VERIFICATION.md`,
-`PPS_GATED_RATIO_BACKEND_DESIGN.md`, and
-`ISR_AND_PPS_DIAGNOSTICS_REMEDIATION.md` for the detailed proofs and rules.
+The [service-latency baseline](SERVICE_LATENCY_BASELINE.md) observes exact
+software endpoints without entering capture or control decisions. It does not
+restore a GPIO ISR or change the count aperture. The
+[instruction proof](PPS_PIO_PROOF_AND_VERIFICATION.md) binds unchanged PIO words;
+backend native tests separately check bounded transport, loss preservation,
+source identity, restart and the first dependent decision. Physical timing and
+USB behavior require the authorized frozen-bundle bench gate.

@@ -165,6 +165,20 @@ struct OtisObservationMessage {
   OtisRawEdgeMessage raw_edge;
   OtisPpsSnapshotMessage snapshot;
   OtisCountObservationMessage count;
+  // Diagnostic coordinates only: native wrapping rp2040_monotonic_us32.
+  // Precommit is sampled after the queue slot copy and before release; the
+  // second coordinate is sampled after the same message has been popped.
+  // Their delta bounds publication-to-consumption from above, but does not
+  // locate publication within that interval. Neither is a hardware edge latch.
+  uint32_t queue_precommit_ticks;
+  uint32_t queue_consumed_ticks;
+  // Hardware timer high word is retained only to reject long/backwards
+  // residence; exported endpoints remain the native low32 coordinates.
+  uint32_t queue_precommit_high;
+  bool queue_clock_valid;
+  bool queue_clock_ambiguous;
+  // For RawEdge as well as PpsSnapshot, snapshot.session/sequence carry the
+  // originating capture identity; raw_edge.sequence remains presentation ID.
 };
 
 // D6 forwarded-output evidence has a separate lossy queue. It cannot consume

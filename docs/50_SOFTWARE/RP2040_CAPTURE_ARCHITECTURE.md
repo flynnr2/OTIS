@@ -17,16 +17,23 @@ D10 is not a PPS witness. Its absence, noise, invalidity, or overflow cannot
 affect D14/D8 validity, setup authority, regulation eligibility, actuation, or
 a run terminal. The pin/channel and host `EVT` contract are retained, but the
 firmware deliberately makes no isolation claim until a D10 capture path can be
-implemented without sharing D14's singleton GPIO interrupt/ring ownership.
+implemented with bounded resources and an independent loss path.
 
 ## Timing fabric
 
-D14 reference edges are captured through the dedicated reference IRQ path and
-timestamped in the RP2040 monotonic-microsecond domain. D8 is continuously
-counted by the PIO snapshot programme; D14 snapshots its cumulative counter,
-and DMA transports the hardware observations. Adjacent qualified snapshots
-produce canonical count intervals. CPU scheduling, USB, logging, and host
-service never define the physical count aperture.
+One PIO state machine continuously counts D8 and snapshots its cumulative
+counter when it recognizes D14 high after low. Core 1's bounded FIFO interrupt
+drains immutable words into a software ring. There is no independent D14 GPIO
+ISR or DMA transport. REF and SNP represent the same session and source ordinal;
+REF's RP2040 timer coordinate is observed after the FIFO read, not latched at
+the physical D14 edge. The last known-empty FIFO observation supplies a
+conservative recognition bracket. See [single reference owner](SINGLE_REFERENCE_OWNER_REPAIR.md).
+
+Adjacent valid raw snapshots produce canonical count intervals. The common
+selector separately qualifies accepted spans using the complete recognition
+bracket. CPU scheduling, USB, logging and host service never define or improve
+the PIO count aperture. Delayed service can widen qualification uncertainty or
+exhaust transport; it cannot rewrite a retained count.
 
 The canonical raw D14 timestamp and D8 snapshot remain separate from every
 derived interval, estimate, phase value, and regulation decision. Counter
@@ -51,7 +58,7 @@ claim to exercise a physical 600-aperture estimator producer.
 
 | Core | Responsibility |
 |---|---|
-| Core 1 | D14/D8 timing capture, DMA/ring service, estimation and regulation state |
+| Core 1 | D14/D8 FIFO/ring service, acceptance, estimation and regulation state |
 | Core 0 | sole serial owner, GNSS metadata/configuration, environment service, status emission, and physical DAC I2C execution |
 
 Bounded immutable queues are the only cross-core handoff. Capture producers are
@@ -80,5 +87,5 @@ remain local. Missing, duplicated, partial, late, or out-of-order records are
 never interpreted as zero or clean.
 
 See `PPS_OWNERSHIP_ARCHITECTURE.md`,
-`PPS_GATED_RATIO_BACKEND_DESIGN.md`, and
+`SINGLE_REFERENCE_OWNER_REPAIR.md`, and
 `COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md` for the detailed D14/D8 contracts.

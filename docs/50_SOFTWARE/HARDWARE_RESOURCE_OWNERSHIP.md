@@ -87,3 +87,11 @@ The canonical firmware build verifies that this exact image links with the
 pinned Arduino core. Those checks do not establish physical pin muxing, PIO
 allocation behavior under unrelated third-party code, or electrical timing;
 those remain bench-verification boundaries for the frozen image.
+
+## Service-diagnostic resource assessment
+
+The software-stage baseline adds no PIO state machine, instruction, DMA channel,
+GPIO observer or capture IRQ. The bounded hardware-marker assessment and
+unchanged static-memory ceiling are recorded in
+[SERVICE_LATENCY_BASELINE.md](SERVICE_LATENCY_BASELINE.md). Diagnostic stores
+and publication remain fail-local, separate from authoritative queues.

@@ -43,6 +43,7 @@ class CsvRecordSplitter:
         self.late_attach_fragment_seen = False
         self.last_disposition: str | None = None
         self.last_record_type: str | None = None
+        self.last_diagnostic_errors: tuple[str, ...] = ()
 
     def __enter__(self) -> CsvRecordSplitter:
         targets: list[tuple[str, Path]] = list(self.file_by_contract.items())
@@ -72,6 +73,7 @@ class CsvRecordSplitter:
     def process_line(self, line: str) -> str | None:
         self.last_disposition = None
         self.last_record_type = None
+        self.last_diagnostic_errors = ()
         clean = line.strip()
         if not clean:
             self.last_disposition = "empty"
@@ -79,6 +81,11 @@ class CsvRecordSplitter:
         try:
             row = next(csv.reader([clean]))
         except csv.Error as exc:
+            if clean.startswith("LAT,"):
+                self.last_record_type = "LAT"
+                self.last_disposition = "raw_only_diagnostic_invalid"
+                self.last_diagnostic_errors = (f"CSV parse error: {exc}",)
+                return None
             self.last_disposition = "error"
             if self.on_parser_error is not None:
                 self.on_parser_error(f"CSV parse error: {exc}")
@@ -92,6 +99,10 @@ class CsvRecordSplitter:
             self.recognized_protocol_line_seen = True
             wire_errors = validate_raw_only_diagnostic(row)
             if wire_errors:
+                if record_type == "LAT":
+                    self.last_disposition = "raw_only_diagnostic_invalid"
+                    self.last_diagnostic_errors = tuple(wire_errors)
+                    return None
                 self.last_disposition = "error"
                 if self.on_parser_error is not None:
                     self.on_parser_error(

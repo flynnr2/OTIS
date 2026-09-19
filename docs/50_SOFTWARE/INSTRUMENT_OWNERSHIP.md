@@ -33,8 +33,8 @@ initial condition, a controller takeover, or a fresh campaign.
 
 | Responsibility | Authoritative owner | Other participants and limits |
 | --- | --- | --- |
-| D8 count at the D14 boundary | PIO cumulative-counter snapshot | DMA transports the word; foreground reconstructs differences without defining the boundary. |
-| Local D14 reference observation | GPIO IRQ and its bounded record | The timestamp is read by the ISR in the RP2040 timer domain; it is not a PIO hardware timestamp. |
+| D8 count at the D14 boundary | PIO cumulative-counter snapshot | Bounded FIFO IRQ transports the word; foreground reconstructs differences without defining the boundary. |
+| Local D14 reference observation | Same PIO snapshot record | CPU timer sampled after FIFO read, with a conservative recognition bracket; no independent GPIO timestamp. |
 | Association and accepted-reference selection | Core 1 timing service | One selection outcome feeds both phase and frequency. Raw observations remain unchanged. |
 | Receiver and physical DAC service state | Core 0 GNSS and DAC drivers | Bounded immutable messages publish receiver qualification and applied-state facts to Core 1, independently of USB presence. |
 | Controller policy and transaction proposal | Core 1 selected adaptive controller | Host admission and durable-evidence checks constrain the current supervised campaign; they do not calculate the physical measurement. |
@@ -200,27 +200,17 @@ and investigation document SHA-256
 `44e94a5d37aa1d4f8439e9fb58b858484260c2633fed616f51261cb24dbe1ffb`.
 No sibling source or hardware was changed.
 
-Current OTIS endpoints differ:
+Current OTIS uses the [single reference owner](SINGLE_REFERENCE_OWNER_REPAIR.md).
+The independent GPIO ISR and DMA ring described by the earlier ownership
+review have been removed. One PIO word supplies both count and source identity;
+its RP2040 service coordinate is sampled after the FIFO read. No hardware timer
+latch exists. See the [implemented software-stage baseline](SERVICE_LATENCY_BASELINE.md)
+for exact endpoints, bounded diagnostic statistics and the hardware-marker
+assessment. GNSS serial processing remains a separate service channel.
 
-- The D14 IRQ reads the RP2040 microsecond timer after interrupt dispatch.
-- The PIO boundary snapshots the D8 cumulative count, not that timer.
-- DMA transfers count words and foreground polls their availability; there is
-  no existing paired hardware latch timestamp and service timestamp.
-
-The available same-clock diagnostic is therefore **D14 ISR timestamp to
-foreground boundary service**, using the existing bounded low-word projection.
-It excludes physical-edge-to-IRQ dispatch latency. It includes residence and
-association delay after the ISR timestamp. It must not be named PIO-latch-to-ISR
-latency or oscillator-domain event timing.
-
-An eventual diagnostic can report bounded sample counts, extrema, a small
-histogram and threshold events keyed to source identities. Sampling/wrap
-ambiguity and dropped diagnostics remain explicit and diagnostic-local.
-Formatting, serial writes, allocation and histogram traversal do not belong
-in the capture hot path. True hardware-latch-to-service latency needs an
-additional observable marker in a declared common domain, a hardware resource
-and overhead budget, and a calibrated pipeline interpretation. It is not
-implemented by this ownership cleanup.
+Historical sibling measurements and the retained verification results below
+remain bound to their stated revisions; they do not qualify current firmware
+interrupt timing.
 
 ## Verification boundaries
 

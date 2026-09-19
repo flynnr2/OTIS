@@ -38,6 +38,7 @@
 #include "otis_resource_registry.h"
 #include "otis_runtime_state.h"
 #include "otis_serial_frame_arbiter.h"
+#include "otis_service_latency_live.h"
 #include "otis_serial_command.h"
 #include "otis_status_emit.h"
 #include "otis_timebase.h"
@@ -1192,11 +1193,36 @@ void service_dual_core_setup_transaction(
   publish_dual_core_setup_ack(acknowledgement);
 }
 
+void note_observation_queue_service(const OtisObservationMessage &observation,
+                                    bool dispatch) {
+  if (observation.kind == OtisObservationMessageKind::RawEdge ||
+        observation.kind == OtisObservationMessageKind::PpsSnapshot) {
+      const auto channel = observation.kind == OtisObservationMessageKind::RawEdge
+          ? OTIS_LATENCY_D14 : OTIS_LATENCY_D8;
+      const auto status = observation.queue_clock_valid
+          ? (observation.queue_clock_ambiguous ? OTIS_LATENCY_AMBIGUOUS :
+                                                 OTIS_LATENCY_ELIGIBLE)
+          : OTIS_LATENCY_MISSING;
+      otis_service_latency_live_note({observation.snapshot.session,
+          observation.snapshot.sequence, observation.queue_precommit_ticks,
+          observation.queue_consumed_ticks, 0u, channel,
+          OTIS_LATENCY_QUEUE_PRECOMMIT_TO_CONSUMER_RETURN, status,
+          OTIS_LATENCY_RP2040_TIMER_US32});
+      otis_service_latency_live_note({observation.snapshot.session,
+          observation.snapshot.sequence, observation.queue_precommit_ticks,
+          dispatch ? otis_monotonic_us32_now() : 0u, 0u, channel,
+          OTIS_LATENCY_OUTPUT_PRECOMMIT_TO_FORMATTER_DISPATCH,
+          dispatch ? status : OTIS_LATENCY_MISSING,
+          OTIS_LATENCY_RP2040_TIMER_US32});
+    }
+}
+
 void service_dual_core_outputs(void) {
   OtisObservationMessage observation;
   uint8_t raw_budget = 24u;
   while (raw_budget-- > 0u &&
          otis_dual_core_take_observation(&observation)) {
+    note_observation_queue_service(observation, true);
     if (observation.kind == OtisObservationMessageKind::RawEdge) {
       const OtisRawEdgeMessage &edge = observation.raw_edge;
       otis_emit_raw_event(edge.reference_record ? OTIS_RECORD_REF
@@ -1222,6 +1248,8 @@ void service_dual_core_outputs(void) {
           count.flags);
     }
   }
+
+  otis_service_latency_live_output_service(millis());
 
   OtisMonitorObservationMessage monitor_observation;
   uint8_t monitor_budget = 8u;
@@ -1369,7 +1397,9 @@ void discard_dual_core_outputs_after_transport_fault(void) {
   // is the only supported recovery.
   OtisObservationMessage observation;
   for (uint8_t budget = 24u;
-       budget-- > 0u && otis_dual_core_take_observation(&observation);) {}
+       budget-- > 0u && otis_dual_core_take_observation(&observation);) {
+    note_observation_queue_service(observation, false);
+  }
   OtisMonitorObservationMessage monitor_observation;
   for (uint8_t budget = 8u;
        budget-- > 0u &&
@@ -1396,8 +1426,10 @@ void discard_dual_core_outputs_before_first_carrier(void) {
   // Core 1 continues producing; changing USB state never transfers ownership.
   OtisObservationMessage observation;
   for (uint8_t budget = 24u;
-       budget-- > 0u && otis_dual_core_take_observation(&observation);)
+       budget-- > 0u && otis_dual_core_take_observation(&observation);) {
+    note_observation_queue_service(observation, false);
     note_pre_carrier_discard();
+  }
   OtisMonitorObservationMessage monitor_observation;
   for (uint8_t budget = 8u;
        budget-- > 0u &&
@@ -1537,9 +1569,21 @@ OtisCountObservationConfig count_observation_config(void) {
   };
 }
 
+// Same immutable snapshot identifies both the D14 reference presentation and
+// D8 boundary word; no equality of independent presentation counters is assumed.
+void note_reference_service_latency(uint32_t session, uint32_t source_sequence,
+    OtisServiceLatencyStage stage, uint32_t start, uint32_t end,
+    OtisServiceLatencyStatus status = OTIS_LATENCY_ELIGIBLE) {
+  for (uint8_t channel = 1; channel <= 2; ++channel) {
+    otis_service_latency_live_note({session, source_sequence, start, end, 0u,
+        static_cast<OtisServiceLatencyChannel>(channel), stage, status,
+        OTIS_LATENCY_RP2040_TIMER_US32});
+  }
+}
+
 void emit_pps_count_boundary(
     const OtisPpsCountBoundaryObservation &observation,
-    uint32_t snapshot_status) {
+    uint32_t snapshot_status, uint32_t first_consumption_ticks) {
   // Project FIFO service into the same timer's 64-bit domain. Its retained
   // recognition-time uncertainty participates in selection and freshness;
   // this projection does not turn CPU service into a latched edge timestamp.
@@ -1552,6 +1596,10 @@ void emit_pps_count_boundary(
   OtisReferenceAcceptanceOutcome selection = reference_acceptance.observe(
       paired, closing_extended_ticks, now_ticks,
       OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS);
+  const uint32_t observation_ready_ticks = otis_monotonic_us32_now();
+  note_reference_service_latency(observation.session, observation.sequence,
+      OTIS_LATENCY_FIRST_CONSUMPTION_TO_READY, first_consumption_ticks,
+      observation_ready_ticks);
   otis_count_observation_update_reference_acceptance(reference_acceptance.status());
 
   // Canonical raw CNT production remains independent of accepted selection.
@@ -1578,8 +1626,12 @@ void emit_pps_count_boundary(
   OtisAdaptiveHybridRegulationLiveOutcome active_outcome = {};
   // Both consumers receive the identical immutable selection. Publishing phase
   // before the frequency decision binds its first dependent control consumer.
+  const uint32_t first_estimator_ticks = otis_monotonic_us32_now();
   otis_phase_preview_live_on_reference_selection(
       &selection, closing_extended_ticks, false);
+  note_reference_service_latency(observation.session, observation.sequence,
+      OTIS_LATENCY_READY_TO_FIRST_ESTIMATOR_CONSUMPTION, observation_ready_ticks,
+      first_estimator_ticks);
   update_adaptive_hybrid_regulation_health();
   otis_frequency_regulation_live_on_reference_selection(
       &selection, closing_extended_ticks, millis() / 1000u,
@@ -1618,13 +1670,33 @@ void service_adaptive_hybrid_regulation_application_outcome(void) {
 void drain_reference_snapshots(void) {
   // The only replenishment of bounded IRQ service credit in each Core 1 loop.
   otis_pps_snapshot_backend_poll();
+  // Long foreground absence makes modulo-us32 residence ambiguous even if
+  // its low-word subtraction looks short after a complete timer wrap.
+  static uint64_t previous_drain_ticks = 0;
+  bool sampled_drain = false;
+  bool residence_bounded = false;
   OtisPpsHardwareSnapshot snapshot;
   uint32_t budget = 128u;
   while (budget-- > 0u && otis_pps_snapshot_backend_pop(&snapshot)) {
+    const uint32_t first_consumption_ticks = otis_monotonic_us32_now();
+    if (!sampled_drain) {
+      const uint64_t drain_ticks = time_us_64();
+      residence_bounded = previous_drain_ticks != 0 &&
+          drain_ticks >= previous_drain_ticks &&
+          drain_ticks - previous_drain_ticks < OTIS_SERVICE_LATENCY_HALF_RANGE;
+      previous_drain_ticks = drain_ticks;
+      sampled_drain = true;
+    }
+    note_reference_service_latency(snapshot.session, snapshot.sequence,
+        OTIS_LATENCY_FIFO_READ_TO_FOREGROUND, snapshot.service_ticks,
+        first_consumption_ticks, residence_bounded ? OTIS_LATENCY_ELIGIBLE :
+                                                   OTIS_LATENCY_AMBIGUOUS);
     const auto observation = otis_reference_boundary(snapshot);
     // REF is a presentation of this same record, never another capture owner.
     OtisObservationMessage message = {};
     message.kind = OtisObservationMessageKind::RawEdge;
+    message.snapshot.session = snapshot.session;
+    message.snapshot.sequence = snapshot.sequence;
     message.raw_edge.sequence = runtime_state.sequences.event_seq++;
     message.raw_edge.timestamp_ticks = snapshot.service_ticks;
     message.raw_edge.flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
@@ -1641,7 +1713,7 @@ void drain_reference_snapshots(void) {
         snapshot.status};
     otis_dual_core_note_timing_snapshot(snapshot.session, snapshot.sequence);
     otis_dual_core_publish_observation(&message);
-    emit_pps_count_boundary(observation, snapshot.status);
+    emit_pps_count_boundary(observation, snapshot.status, first_consumption_ticks);
     service_forwarded_clock_monitor_boundary(observation);
   }
   OtisPpsSnapshotBackendStats stats = {};
@@ -2886,6 +2958,7 @@ void boot_phase_forwarded_monitor_init(void) {
 void boot_phase_ring_buffers_init(void) {
   begin_boot_phase(BootPhase::RingBuffersInit);
   otis_dual_core_partition_reset();
+  otis_dual_core_set_observation_diagnostic_clock(time_us_64);
   record_capability_result(OtisBootCapability::RingBuffers, true);
   complete_boot_phase(BootPhase::RingBuffersInit);
 }
@@ -3403,6 +3476,7 @@ void loop1() {
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::TimingHealth,
                                         otis_monotonic_us32_now());
   publish_dual_core_timing_health(now_ms);
+  otis_service_latency_live_timing_service();
   if (trace_timing_loop)
     otis_dual_core_note_timing_progress(OtisTimingProgressPhase::LoopIdle,
                                         otis_monotonic_us32_now());

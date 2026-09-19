@@ -216,6 +216,7 @@ def test_contract_authority_is_current_complete_and_deterministically_generated(
         "BOOTDIAG",
         "BOOT_FATAL",
         "BOOT_WARN",
+        "LAT",
     }
     assert {
         name: set(field_types)

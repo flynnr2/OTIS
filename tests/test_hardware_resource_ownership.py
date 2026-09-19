@@ -166,7 +166,12 @@ def test_pps_gated_counter_consumes_single_pio_owner() -> None:
     # Physical count construction consumes retained capture coordinates. The
     # later control decision separately records its actual production instant.
     count_call = emit_body[:emit_body.index("const OtisRegulationStaticCodeState")]
-    assert "otis_monotonic_us32_now()" not in count_call
+    # Service diagnostics may read the timer, but the canonical count still
+    # receives the immutable hardware-bound observation, never that timer read.
+    assert "&count_config, &observation)" in count_call
+    assert "const OtisPpsCountBoundaryObservation &observation" in count_call
+    assert "observation.pps_timestamp_ticks =" not in count_call
+    assert "observation.cumulative_down_counter =" not in count_call
     assert "otis_monotonic_us32_now()" in emit_body[
         emit_body.index("otis_frequency_regulation_live_on_reference_selection("):
     ]

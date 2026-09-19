@@ -29,12 +29,21 @@ class OtisSpscQueue {
   }
 
   bool try_push(const Message &message) {
+    return try_push_with_precommit(message, [](Message &) {});
+  }
+
+  // The bounded callback sees only the producer-owned, already copied slot.
+  // It runs after successful capacity admission, immediately before release.
+  // A clock sampled here precedes publication; it is not a publication latch.
+  template <typename Precommit>
+  bool try_push_with_precommit(const Message &message, Precommit precommit) {
     const uint32_t tail = __atomic_load_n(&tail_, __ATOMIC_RELAXED);
     const uint32_t head = __atomic_load_n(&head_, __ATOMIC_ACQUIRE);
     const uint32_t depth = tail - head;
     if (depth >= Capacity) return false;
 
     slots_[producer_slot_] = message;
+    precommit(slots_[producer_slot_]);
     if (++producer_slot_ == Capacity) producer_slot_ = 0u;
     __atomic_store_n(&tail_, tail + 1u, __ATOMIC_RELEASE);
     update_high_water(depth + 1u);

@@ -81,11 +81,20 @@ def test_actual_discard_bodies_share_one_concurrent_consumer_across_carrier_mode
     # The queue implementations themselves are linked unchanged below.
     for take in OUTPUT_TAKES:
         discard_bodies = discard_bodies.replace(take + "(", "checked_" + take + "(")
+    diagnostic_body = function_body(sketch, "note_observation_queue_service")
     source = r'''
 #include <atomic>
 #include <cassert>
 #include <thread>
 #include "otis_dual_core_partition.h"
+#include "otis_service_latency.h"
+uint32_t otis_monotonic_us32_now() { return 100u; }
+void otis_service_latency_live_note(const OtisServiceLatencySample &sample) {
+  if (sample.stage == OTIS_LATENCY_OUTPUT_PRECOMMIT_TO_FORMATTER_DISPATCH) {
+    assert(sample.status == OTIS_LATENCY_MISSING);
+    assert(sample.end_us32 == 0u);
+  }
+}
 
 uint32_t dual_core_pre_carrier_records_discarded = 0;
 std::atomic<uint32_t> consumed[6]{};
@@ -107,7 +116,7 @@ CHECKED_TAKE(otis_dual_core_take_critical, OtisCriticalRecordMessage, sequence, 
 CHECKED_TAKE(otis_dual_core_take_telemetry, OtisTelemetryMessage, sequence, 3)
 CHECKED_TAKE(otis_dual_core_take_evidence, OtisEvidenceFrameMessage, sequence, 4)
 CHECKED_TAKE(otis_dual_core_take_phase_preview, OtisPhasePreviewRecordMessage, observation_sequence, 5)
-''' + discard_bodies + r'''
+''' + 'void note_observation_queue_service(const OtisObservationMessage &observation, bool dispatch) {' + diagnostic_body + '}\n' + discard_bodies + r'''
 
 // A live-delivery stand-in uses the same consumer APIs. Native validation here
 // covers queue ownership/order and actual discard bodies, not USB formatting.
