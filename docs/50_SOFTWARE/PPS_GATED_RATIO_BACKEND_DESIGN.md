@@ -1,5 +1,10 @@
 # PPS-Gated Ratio Backend Design
 
+> Historical DMA/GPIO implementation description. Its transport and association
+> machinery have been replaced; the current contract is
+> [SINGLE_REFERENCE_OWNER_REPAIR](SINGLE_REFERENCE_OWNER_REPAIR.md). Historical
+> qualification below does not qualify the replacement FIFO IRQ implementation.
+
 ## Scope and invariant
 
 The fixed `pio_wait_cumulative_snapshot_dma_v1` mechanism counts oscillator

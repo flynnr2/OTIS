@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 import textwrap
@@ -96,44 +95,6 @@ def test_snapshot_and_sequence_wrap_validity_and_control_gating(
               assert(!gap.fifo_continuous);
               assert(!gap.control_eligible);
 
-              // A CPU-only early REF is pending when the next genuine PIO
-              // snapshot first appears.  The guard must yield one capture-ring
-              // drain; the genuine REF then makes the old association fail
-              // before either the count path or its first control consumer can
-              // observe a shifted snapshot.
-              OtisPpsSnapshotAssociationGuard association = {{}};
-              uint32_t emitted_count_count = 0u;
-              uint32_t first_control_consumer_count = 0u;
-              OtisPpsSnapshotAssociationDecision decision =
-                  otis_pps_snapshot_association_decide(
-                      &association, true, 1u, 19588u, false);
-              assert(decision ==
-                     OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain);
-              assert(emitted_count_count == 0u);
-              assert(first_control_consumer_count == 0u);
-
-              decision = otis_pps_snapshot_association_decide(
-                  &association, true, 1u, 19588u, true);
-              assert(decision ==
-                     OtisPpsSnapshotAssociationDecision::AssociationLoss);
-              assert(emitted_count_count == 0u);
-              assert(first_control_consumer_count == 0u);
-
-              // After rearm, the first clean identity is still deferred once,
-              // then reaches exactly one downstream count/control decision.
-              decision = otis_pps_snapshot_association_decide(
-                  &association, true, 2u, 0u, false);
-              assert(decision ==
-                     OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain);
-              decision = otis_pps_snapshot_association_decide(
-                  &association, true, 2u, 0u, false);
-              assert(decision == OtisPpsSnapshotAssociationDecision::Pair);
-              if (decision == OtisPpsSnapshotAssociationDecision::Pair) {{
-                ++emitted_count_count;
-                ++first_control_consumer_count;
-              }}
-              assert(emitted_count_count == 1u);
-              assert(first_control_consumer_count == 1u);
               return 0;
             }}
             """
@@ -154,193 +115,15 @@ def test_snapshot_and_sequence_wrap_validity_and_control_gating(
     subprocess.run([str(binary)], check=True)
 
 
-def test_boundary_ring_overflow_is_counted_and_latched(
-    tmp_path: Path,
-) -> None:
-    (tmp_path / "Arduino.h").write_text(
-        """
-#ifndef ARDUINO_H
-#define ARDUINO_H
-inline void noInterrupts(void) {}
-inline void interrupts(void) {}
-#endif
-""",
-        encoding="utf-8",
-    )
-    source = tmp_path / "pps_count_boundary_ring_check.cpp"
-    binary = tmp_path / "pps_count_boundary_ring_check"
-    source.write_text(
-        """
-#include <assert.h>
-#include "otis_pps_count_boundary_ring.h"
 
-static OtisPpsCountBoundaryObservation observation(uint32_t sequence) {
-  return {1u, sequence, sequence,
-          (uint64_t)sequence * 1000000ull,
-          0xffffffffu - sequence, 0u, 0u, 0u};
-}
-
-int main(void) {
-  otis_pps_count_boundary_ring_reset();
-  uint32_t capacity = otis_pps_count_boundary_ring_capacity();
-  assert(capacity >= 7u);
-  for (uint32_t sequence = 0u; sequence < capacity; ++sequence) {
-    assert(otis_pps_count_boundary_ring_push_from_isr(
-        observation(sequence)));
-  }
-  assert(!otis_pps_count_boundary_ring_push_from_isr(observation(capacity)));
-  assert(otis_pps_count_boundary_ring_dropped_count() == 1u);
-
-  OtisPpsCountBoundaryObservation peeked = {};
-  assert(otis_pps_count_boundary_ring_peek(&peeked));
-  assert(peeked.sequence == 0u);
-  assert(otis_pps_count_boundary_ring_depth() == capacity);
-
-  OtisPpsCountBoundaryObservation popped = {};
-  assert(otis_pps_count_boundary_ring_pop(&popped));
-  assert(popped.sequence == 0u);
-  assert(otis_pps_count_boundary_ring_push_from_isr(
-      observation(capacity + 1u)));
-
-  while (otis_pps_count_boundary_ring_pop(&popped)) {
-  }
-  assert(popped.sequence == capacity + 1u);
-  assert((popped.aperture_flags &
-          OTIS_PPS_APERTURE_OBSERVATION_OVERFLOW) != 0u);
-  assert(otis_pps_count_boundary_ring_depth() == 0u);
-  return 0;
-}
-""",
-        encoding="utf-8",
-    )
-    subprocess.run(
-        [
-            _compiler(),
-            "-std=c++17",
-            "-I",
-            str(tmp_path),
-            "-I",
-            str(FIRMWARE),
-            str(source),
-            str(FIRMWARE / "otis_pps_count_boundary_ring.cpp"),
-            "-o",
-            str(binary),
-        ],
-        check=True,
-    )
-    subprocess.run([str(binary)], check=True)
-
-
-def test_pio_boundary_path_is_hardware_owned_and_reason_contract_is_explicit() -> None:
-    source = (FIRMWARE / "otis_count_observation.cpp").read_text(
-        encoding="utf-8"
-    )
-    irq_source = (FIRMWARE / "otis_capture_irq.cpp").read_text(
-        encoding="utf-8"
-    )
-    backend = (FIRMWARE / "otis_pps_snapshot_backend.cpp").read_text(
-        encoding="utf-8"
-    )
-    assert "sm_config_set_jmp_pin(&config, OTIS_PIN_PPS_REFERENCE)" in backend
-    assert "sm_config_set_in_pins(&config, OTIS_GPIO_OSC_OBSERVATION)" in backend
-    assert "sm_config_set_in_shift(&config, true, true, 32u)" in backend
-    assert "stop_and_sample_h1_pio_counter_from_pps_isr" not in source
-    irq_start = irq_source.index("void handle_capture_edge(void)")
-    irq_end = irq_source.index("}  // namespace", irq_start)
-    irq_handler = irq_source[irq_start:irq_end]
-    assert "pps_count_boundary_handler" not in irq_handler
-    assert "pio_sm_" not in irq_handler
-    assert "dma_" not in irq_handler
-
-    foreground_start = source.index(
-        "bool otis_count_observation_on_pps_boundary("
-    )
-    foreground_end = source.index(
-        "bool otis_count_observation_service(", foreground_start
-    )
-    foreground = source[foreground_start:foreground_end]
-    assert "!h1_pio_long_gate.initialized || observation" not in foreground
-    assert "OTIS_FLAG_GATE_INCOMPLETE" in foreground
-
-    required_reasons = {
-        "boundary_capture_unavailable",
-        "boundary_sequence_gap",
-        "boundary_sequence_duplicate",
-        "boundary_observation_overflow",
-        "counter_snapshot_invalid",
-        "counter_wrap_handled",
-        "counter_wrap_ambiguous",
-        "physical_aperture_incomplete",
-        "reference_missing_pps",
-        "reference_pps_duplicate",
-        "reference_pps_short_interval",
-        "reference_pps_long_interval",
-        "reference_previous_boundary_invalid",
-        "count_saturated",
-        "count_zero",
-    }
-    for reason in required_reasons:
-        assert f'"{reason}"' in source
-
-
-def test_association_loss_freezes_decision_local_backend_evidence_before_rearm() -> None:
-    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
-    drain_start = sketch.index("void drain_pps_count_boundary_ring(void)")
-    drain = sketch[drain_start : sketch.index("void emit_build_provenance_status(void)", drain_start)]
-    publish = "publish_dual_core_association_loss_decision("
-    assert publish in drain
-    assert drain.index("otis_pps_snapshot_backend_freeze_diagnostic(&frozen)") < drain.index(publish)
-    assert "otis_pps_count_boundary_ring_peek(&next_reference)" in drain
-    assert drain.index(publish) < drain.index("otis_count_observation_note_association_loss(")
-    assert drain.index(publish) < drain.index("otis_pps_snapshot_backend_rearm()")
-    assert drain.index(publish) < drain.index("otis_pps_count_boundary_ring_reset()")
-
-    capsule = sketch[
-        sketch.index("void publish_dual_core_association_loss_decision(") :
-        sketch.index("void emit_captured_edge(", sketch.index("void publish_dual_core_association_loss_decision("))
-    ]
-    for evidence in (
-        '"ASL,2,',
-        "pending_reference.reference_sequence",
-        "pending_reference.pps_timestamp_ticks",
-        "pending_age_ticks",
-        "snapshot_stats.producer_ordinal",
-        "snapshot_stats.consumer_ordinal",
-        "snapshot_stats.backlog_depth",
-        "snapshot_stats.fault_flags",
-        "queue_stats.timing_progress.loop_sequence",
-        "queue_stats.timing_progress.phase_enter_ticks",
-        '"unread_snapshot_present_when_decision_made"',
-        '"no_unread_snapshot_healthy_backend"',
-    ):
-        assert evidence in capsule
-
-    format_start = capsule.index('"ASL,2,')
-    format_end = capsule.index('\\r\\n"', format_start) + len('\\r\\n"')
-    format_literal = capsule[format_start:format_end]
-    format_fields = re.findall(r"%(?:ll|l)?[us]", format_literal)
-    assert len(format_fields) == 40
-    assert format_fields[-8:] == ["%s", "%lu", "%lu", "%lu", "%lu", "%lu", "%s", "%lu"]
-
-def test_resource_and_telemetry_contract_name_boundary_ownership() -> None:
-    registry = (FIRMWARE / "otis_resource_registry.cpp").read_text(
-        encoding="utf-8"
-    )
-    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
-    config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
-
-    assert '"pps_reference_observer_irq"' in registry
-    count_source = (FIRMWARE / "otis_count_observation.cpp").read_text(encoding="utf-8")
-    assert '"pio_state_machine"' in count_source
-    assert '"pio_wait_cumulative_snapshot_dma_v1"' in count_source
-    assert '"config_snapshot", "begin"' in sketch
-    assert '"config_snapshot", "end"' in sketch
-    assert sketch.count("emit_build_provenance_status();") == 2
-    assert "if (!config_query_provenance_emitted)" in sketch
-    assert "config_query_provenance_emitted = true;" in sketch
-    assert "OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED" not in config
-    assert "OTIS_TCXO_COUNTER_BACKEND" not in config
+def test_no_independent_gpio_pairing_or_automatic_rearm():
+    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text()
+    drain = sketch.split("void drain_reference_snapshots(void)", 1)[1].split("void emit_build_provenance_status", 1)[0]
+    assert "otis_pps_snapshot_backend_pop" in drain
+    assert "otis_reference_boundary(snapshot)" in drain
+    assert "otis_pps_snapshot_backend_rearm" not in sketch
+    assert "OtisPpsSnapshotAssociationGuard" not in HELPER.read_text()
+    for retired in ("otis_capture_irq", "otis_capture_ring", "otis_pps_count_boundary_ring"):
+        assert retired not in sketch
+    assert "snapshot.timestamp_uncertainty_ticks" in drain
+    assert "emit_pps_count_boundary(observation, snapshot.status)" in drain

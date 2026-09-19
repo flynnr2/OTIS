@@ -29,7 +29,7 @@ PROFILE_SCHEMA_BINDINGS = {
         "schemas/plant_model_v1.schema.json"
     ),
 }
-REFERENCE_ACCEPTANCE_POLICY_PATH = "data_contracts/reference_acceptance_policy_v1.json"
+REFERENCE_ACCEPTANCE_POLICY_PATH = "data_contracts/reference_acceptance_policy_v2.json"
 CURRENT_CONTRACT_PATHS = frozenset({REFERENCE_ACCEPTANCE_POLICY_PATH})
 CURRENT_PROFILE_PATHS = frozenset(PROFILE_SCHEMA_BINDINGS)
 CURRENT_SCHEMA_PATHS = frozenset(

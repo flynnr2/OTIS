@@ -102,7 +102,7 @@ def test_pps_boundary_assessment_covers_rollover_duplicate_intervals_and_flags(
     ]
 
 
-def test_observed_185us_double_edge_is_rejected_without_latching_current_eligibility(
+def test_observed_185us_double_edge_is_rejected_by_raw_diagnostic_only(
     tmp_path: Path,
 ) -> None:
     source = textwrap.dedent(
@@ -143,7 +143,7 @@ def test_observed_185us_double_edge_is_rejected_without_latching_current_eligibi
         "1,0,0,0",  # clean cadence, explicit recovery-inhibit window
         "1,0,1,0",
         "1,0,2,0",
-        "1,0,3,1",  # current eligibility can recover after three clean windows
+        "1,0,3,1",  # legacy raw-diagnostic streak only; never control authority
     ]
 
     firmware = (FIRMWARE / "otis_count_observation.cpp").read_text(
@@ -151,7 +151,12 @@ def test_observed_185us_double_edge_is_rejected_without_latching_current_eligibi
     )
     assert 'return "suspect";' in firmware
     assert 'return "requalifying";' in firmware
-    assert "control_ready_clean_windows" in firmware
+    predicate = """runtime_state->tcxo.valid_for_control =
+      !runtime_state->tcxo.startup_inhibit_active &&
+      accepted_reference_status.tracking &&
+      accepted_reference_status.anchor_current;"""
+    assert firmware.count(predicate) == 2
+    assert "control_ready_clean_windows" not in firmware
 
 
 def test_pps_backend_exposes_independent_validity_and_unavailable_uncertainty() -> None:
@@ -170,14 +175,16 @@ def test_pps_backend_exposes_independent_validity_and_unavailable_uncertainty() 
     assert '"unavailable"' in source
 
 
-def test_pps_backend_times_out_before_the_first_reference_and_preserves_raw_boundary() -> None:
+def test_pps_backend_reports_stale_fifo_service_without_claiming_physical_absence() -> None:
     source = (FIRMWARE / "otis_count_observation.cpp").read_text(
         encoding="utf-8"
     )
     service = source[source.index("bool otis_count_observation_service(") :]
     assert "otis_pps_diagnostics_poll" in service
-    assert "OtisPpsDiagnosticsTransition::PhysicalPpsMissing" in service
-    assert "kReferenceReasonMissingPps" in service
+    assert "OtisPpsDiagnosticsTransition::CaptureServiceStale" in service
+    assert "reports stale FIFO service only" in service
+    assert "PhysicalPpsMissing" not in service
+    assert "kReferenceReasonMissingPps" not in source
 
     reference_start = source.index(
         "bool otis_count_observation_on_pps_boundary("

@@ -65,7 +65,7 @@ void otis_emit_csv_headers(void) {
   otis_emit_line_end();
   otis_transport_write_cstr(OTIS_CONTRACT_ENVIRONMENT_V1_HEADER);
   otis_emit_line_end();
-  otis_transport_write_cstr(OTIS_CONTRACT_PPS_SNAPSHOTS_V1_HEADER);
+  otis_transport_write_cstr(OTIS_CONTRACT_PPS_SNAPSHOTS_V2_HEADER);
   otis_emit_line_end();
   otis_transport_write_cstr(OTIS_CONTRACT_ACCEPTED_PPS_SPANS_V1_HEADER);
   otis_emit_line_end();
@@ -78,10 +78,11 @@ void otis_emit_pps_snapshot(uint32_t session, uint32_t snapshot_sequence,
                             uint32_t cumulative_down_counter,
                             uint32_t reference_sequence,
                             uint64_t reference_timestamp_ticks,
+                            uint32_t timestamp_uncertainty_ticks,
                             uint32_t status, const char *backend) {
   otis_emit_csv_text(OTIS_RECORD_SNP);
   otis_emit_comma();
-  otis_transport_write_uint32(OTIS_SCHEMA_VERSION_V1);
+  otis_transport_write_uint32(2u);
   otis_emit_comma();
   otis_transport_write_uint32(session);
   otis_emit_comma();
@@ -92,6 +93,8 @@ void otis_emit_pps_snapshot(uint32_t session, uint32_t snapshot_sequence,
   otis_transport_write_uint32(reference_sequence);
   otis_emit_comma();
   otis_print_uint64(reference_timestamp_ticks);
+  otis_emit_comma();
+  otis_transport_write_uint32(timestamp_uncertainty_ticks);
   otis_emit_comma();
   otis_transport_write_uint32(status);
   otis_emit_comma();

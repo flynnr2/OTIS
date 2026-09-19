@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <string.h>
-#include "reference_selection_fixture.h"
+#include "fifo_reference_selection_fixture.h"
 
 #define OTIS_BUILD_IMAGE_ID "adaptive_hybrid_regulation"
 
@@ -196,8 +196,8 @@ int main() {
   assert(otis_phase_preview_live_update_applied_code(0xA844u, 1u));
   const uint64_t applied_ticks = (uint64_t(kStartupWarmupS) + 100u) * 1000000u + 250000u;
   otis_frequency_regulation_live_on_dac_applied_epoch_exact(
-      0xA844u, 1u, uint32_t(applied_ticks / 1000000u), applied_ticks, 7u);
-  ReferenceSelectionFixture trace;
+      0xA844u, 1u, uint32_t(applied_ticks / 1000000u), applied_ticks, 1u);
+  FifoReferenceSelectionFixture trace;
   const uint64_t acceptance_anchor_ticks = exact_settling_deadline_ticks - 250000u;
   trace.extended_ticks = acceptance_anchor_ticks -
       uint64_t(OTIS_REFERENCE_ACCEPTANCE_POLICY.acquisition_intervals) * 1000000u;
@@ -241,19 +241,7 @@ int main() {
   }
   assert(captured_active_decision_count == 2u);
   assert(!captured_active_decision.phase_current && !captured_active_decision.phase_continuous);
-  // Actual association guard -> first dependent measurement consumers.
-  // A newly visible word is deferred. Another queued REF on the next pass
-  // forbids pairing it, so the selector/phase/frequency lose qualification.
-  // This is a deterministic software handoff, not a claim about electrical
-  // IRQ/PIO capture or physical queue latency.
-  OtisPpsSnapshotAssociationGuard association = {};
-  auto association_decision = otis_pps_snapshot_association_decide(
-      &association, true, trace.raw.capture_session, trace.raw.snapshot_sequence + 1u, false);
-  assert(association_decision == OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain);
-  assert(captured_active_decision_count == 2u);
-  association_decision = otis_pps_snapshot_association_decide(
-      &association, true, trace.raw.capture_session, trace.raw.snapshot_sequence + 1u, true);
-  assert(association_decision == OtisPpsSnapshotAssociationDecision::AssociationLoss);
+  // A capture-integrity loss withdraws both dependent consumers.
   trace.selection = trace.selector.invalidate(OtisReferenceAcceptanceReason::CaptureIntegrity);
   consume();
   assert(captured_active_decision_count == 2u);
@@ -262,35 +250,23 @@ int main() {
   assert(otis_phase_preview_live_get_active_snapshot(&phase_after_loss));
   assert(!phase_after_loss.phase_continuous && !phase_after_loss.phase_current);
 
-  ++trace.raw.capture_session;
-  trace.raw.snapshot_sequence = 0u;
-  auto guarded_pair = [&]() {
-    auto decision = otis_pps_snapshot_association_decide(
-        &association, true, trace.raw.capture_session, trace.raw.snapshot_sequence, false);
-    assert(decision == OtisPpsSnapshotAssociationDecision::DeferForReferenceDrain);
-    decision = otis_pps_snapshot_association_decide(
-        &association, true, trace.raw.capture_session, trace.raw.snapshot_sequence, false);
-    assert(decision == OtisPpsSnapshotAssociationDecision::Pair);
-    otis_pps_snapshot_association_guard_reset(&association);
-  };
-  guarded_pair();
+  native_fifo_rearm();
   trace.observe();
   consume();
-  auto advance_guarded_pair = [&]() {
+  auto advance_clean_record = [&]() {
     trace.extended_ticks += 1000000u;
     trace.raw.reference_timestamp_ticks = uint32_t(trace.extended_ticks);
     ++trace.raw.snapshot_sequence;
     ++trace.raw.reference_sequence;
     trace.raw.cumulative_down_counter -= 10000000u;
-    guarded_pair();
     trace.observe();
     consume();
   };
   for (uint32_t i = 0; i < OTIS_REFERENCE_ACCEPTANCE_POLICY.acquisition_intervals; ++i)
-    advance_guarded_pair();
+    advance_clean_record();
   assert(trace.selection.disposition == OtisReferenceAcceptanceDisposition::TrackingEstablished);
   assert(estimator.selected_count == 0u && captured_active_decision_count == 2u);
-  advance_guarded_pair();
+  advance_clean_record();
   assert(estimator.selected_count == 1u && captured_active_decision_count == 2u);
   return 0;
 }

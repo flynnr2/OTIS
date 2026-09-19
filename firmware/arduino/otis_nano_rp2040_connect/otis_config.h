@@ -13,7 +13,7 @@
 #define OTIS_OPERATING_MODE_NAME "ADAPTIVE_HYBRID_REGULATION"
 
 // Fixed D14 reference / D8 oscillator-count topology.
-#define OTIS_CAPTURE_MODE "irq_reconstructed"
+#define OTIS_CAPTURE_MODE "pio_snapshot_fifo_irq"
 
 // Receiver qualification and fail-static control hold.
 #define OTIS_GNSS_UART_BAUD 115200u
@@ -56,8 +56,6 @@
 #define OTIS_SERIAL_BAUD 115200u
 #define OTIS_SERIAL_WAIT_MS 250u
 #define OTIS_SAFE_MODE_FAILURE_THRESHOLD 3u
-#define OTIS_CAPTURE_RING_SIZE 32u
-#define OTIS_PPS_COUNT_BOUNDARY_RING_SIZE 128u
 #define OTIS_STATUS_PERIOD_MS 1000u
 #define OTIS_PPS_GATE_STATUS_PERIOD_MS 10000u
 #define OTIS_TCXO_GATE_PERIOD_US 10000000u
@@ -216,15 +214,6 @@
     OTIS_PPS_GATE_DUPLICATE_MAX_INTERVAL_US >= OTIS_PPS_GATE_MIN_INTERVAL_US || \
     OTIS_PPS_GATE_MISSING_TIMEOUT_US <= OTIS_PPS_GATE_MAX_INTERVAL_US
 #error "PPS interval limits are inconsistent."
-#endif
-#if OTIS_CAPTURE_RING_SIZE < 2u || OTIS_CAPTURE_RING_SIZE > 255u
-#error "Capture ring capacity is invalid."
-#endif
-#if OTIS_PPS_COUNT_BOUNDARY_RING_SIZE < 3u || \
-    OTIS_PPS_COUNT_BOUNDARY_RING_SIZE > 255u || \
-    (OTIS_PPS_COUNT_BOUNDARY_RING_SIZE & \
-     (OTIS_PPS_COUNT_BOUNDARY_RING_SIZE - 1u)) != 0u
-#error "PPS boundary ring capacity must be a power of two in 3..255."
 #endif
 #if OTIS_GNSS_RECONNECT_GAP_MS <= OTIS_GNSS_METADATA_MAX_AGE_MS
 #error "GNSS reconnect gap must exceed metadata freshness."

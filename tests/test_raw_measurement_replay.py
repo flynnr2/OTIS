@@ -63,9 +63,9 @@ def raw_measurement_rows(edge_counts=None, *, first_sequence=0, first_ticks=0, f
                 gate_open_ticks=str((ticks - interval_ticks) % MODULUS), gate_close_ticks=str(ticks),
                 gate_domain="rp2040_monotonic_us32", counted_edges=str(edge_counts[index - 1]),
                 source_edge="R", source_domain="h1_oscillator_10mhz", flags="16"))
-        snapshots.append(dict(record_type="SNP", schema_version="1", session="1", snapshot_sequence=str(seq),
+        snapshots.append(dict(record_type="SNP", schema_version="2", session="1", snapshot_sequence=str(seq),
             cumulative_down_counter=str(counter), reference_sequence=str(seq), reference_timestamp_ticks=str(ticks),
-            status="0", backend="pio_wait_cumulative_snapshot_dma_v1"))
+            timestamp_uncertainty_ticks="1", status="0", backend="pio_wait_cumulative_snapshot_fifo_irq_v2"))
         references.append(dict(record_type="REF", schema_version="1", event_seq=str(first_event_sequence + index), channel_id="1",
             edge="R", timestamp_ticks=str(ticks), capture_domain="rp2040_monotonic_us32", flags="16"))
     frequency = float(sum(edge_counts)) / len(edge_counts)
@@ -125,7 +125,7 @@ def diagnostic_estimate(rows, *, estimate_seq=0, opening_offset=0):
 
 def run_measurement(monkeypatch, rows):
     files = [dict(contract=contract, path=path) for contract, path in [
-        ("count_observations_v1", "counts.csv"), ("pps_snapshots_v1", "snapshots.csv"),
+        ("count_observations_v1", "counts.csv"), ("pps_snapshots_v2", "snapshots.csv"),
         ("accepted_pps_spans_v1", "spans.csv"), ("estimates_v3", "estimates.csv")]]
     files += [dict(contract="raw_events_v1", record_type=tag, path=path) for tag, path in [("REF", "ref.csv"), ("EVT", "evt.csv")]]
     monkeypatch.setattr(replay, "_read_csv", lambda path: rows[path.name])
@@ -261,13 +261,13 @@ def test_declared_bad_aperture_does_not_poison_later_complete_estimate(monkeypat
 def test_new_session_reanchors_and_estimate_uses_its_exact_closing_identity(monkeypatch):
     earlier = raw_measurement_rows([10_000_000] * 3)
     later = raw_measurement_rows(first_ticks=4_000_000)
-    for index, row in enumerate(later["snapshots.csv"]):
-        row.update(session="2", reference_sequence=str(index + 4))
+    for row in later["snapshots.csv"]:
+        row.update(session="2")
     for index, row in enumerate(later["ref.csv"]):
         row["event_seq"] = str(index + 1004)
     later["spans.csv"] = earlier["spans.csv"] + accepted_rows(later["snapshots.csv"], later["counts.csv"])
-    later["estimates.csv"][0].update(capture_session="2", source_opening_reference_sequence="4",
-        source_closing_reference_sequence="604", source_accepted_spans_ref=accepted_window_ref(2, 1, 0, 600))
+    later["estimates.csv"][0].update(capture_session="2", source_opening_reference_sequence="0",
+        source_closing_reference_sequence="600", source_accepted_spans_ref=accepted_window_ref(2, 1, 0, 600))
     for filename in ("snapshots.csv", "ref.csv", "counts.csv"):
         later[filename] = earlier[filename] + later[filename]
     exact, report, _ = run_measurement(monkeypatch, later)
@@ -286,8 +286,8 @@ def test_analyzer_accepts_session_reset_and_in_session_count_sequence_wrap(
     # after the previous CNT. Two retained REF-only observations preserve
     # unambiguous D14 chronology across the D8-local absence.
     later = raw_measurement_rows(first_ticks=2_152_000_000)
-    for index, row in enumerate(later["snapshots.csv"]):
-        row.update(session="2", reference_sequence=str(index + 5))
+    for row in later["snapshots.csv"]:
+        row.update(session="2")
     for index, row in enumerate(later["ref.csv"]):
         row["event_seq"] = str(index + 1008)
     bridge_references = []
@@ -309,7 +309,7 @@ def test_analyzer_accepts_session_reset_and_in_session_count_sequence_wrap(
         {"contract": contract, "path": filename}
         for contract, filename in (
             ("count_observations_v1", "counts.csv"),
-            ("pps_snapshots_v1", "snapshots.csv"),
+            ("pps_snapshots_v2", "snapshots.csv"),
             ("accepted_pps_spans_v1", "spans.csv"),
             ("estimates_v3", "estimates.csv"),
         )
@@ -324,7 +324,7 @@ def test_analyzer_accepts_session_reset_and_in_session_count_sequence_wrap(
     )
     contract_by_filename = {
         "counts.csv": "count_observations_v1",
-        "snapshots.csv": "pps_snapshots_v1",
+        "snapshots.csv": "pps_snapshots_v2",
         "spans.csv": "accepted_pps_spans_v1",
         "estimates.csv": "estimates_v3",
         "ref.csv": "raw_events_v1",
@@ -415,13 +415,15 @@ def test_reordered_records_are_not_silently_sorted_into_validity(monkeypatch, fi
     assert not exact, report
 
 
-def test_declared_snapshot_overwrite_is_reconstructable_but_not_usable():
+def test_declared_timestamp_ambiguous_batch_is_reconstructable_but_not_usable():
     rows = raw_measurement_rows([10_000_000] * 3)
     rows["snapshots.csv"][1]["status"] = "1"
-    rows["counts.csv"][0]["flags"] = str(16 | (1 << 1) | (1 << 12))
+    rows["counts.csv"][0]["flags"] = str(16 | (1 << 5) | (1 << 12))
+    rows["counts.csv"][1]["flags"] = str(16 | (1 << 3) | (1 << 12))
     exact, report, intervals = raw_replay(rows)
     assert exact, report
-    assert [item["measurement_valid"] for item in intervals] == [False, True, True]
+    assert [item["measurement_valid"] for item in intervals] == [False, False, True]
+    assert intervals[0]["observation_age_ambiguous"] is True
 
 
 def test_actual_operational_rehearsal_bootstrap_has_one_replayable_aperture():
@@ -508,7 +510,7 @@ def test_repeated_timestamp_pattern_with_two_legal_placements_is_ambiguous():
     rows["counts.csv"] = rows["counts.csv"][:2]
     exact, report, _ = raw_replay(rows)
     assert not exact
-    assert "ambiguous D14 REF association" in report["errors"][0]
+    assert any("ambiguous REF derivative placement" in error for error in report["errors"])
 
 
 def test_duplicate_timestamp_occurrence_cannot_be_chosen_arbitrarily():
@@ -522,37 +524,31 @@ def test_duplicate_timestamp_occurrence_cannot_be_chosen_arbitrarily():
     rows["ref.csv"].append(duplicate)
     exact, report, _ = raw_replay(rows)
     assert not exact
-    assert "ambiguous D14 REF association" in report["errors"][0]
+    assert any("ambiguous REF derivative placement" in error for error in report["errors"])
 
 
-def test_raw_association_uses_actual_distinct_producer_sequence_fields():
+def test_raw_ref_is_emitted_from_the_same_fifo_snapshot_owner():
     root = Path(__file__).resolve().parents[1]
     source = (root / "firmware/arduino/otis_nano_rp2040_connect/otis_nano_rp2040_connect.ino").read_text()
-    emitter = source.split("void emit_captured_edge(", 1)[1].split("OtisRegulationStaticCodeState regulation_static_code_state", 1)[0]
-    assert "record.source_sequence," in emitter
-    assert "message.raw_edge.sequence = runtime_state.sequences.event_seq++;" in emitter
-    assert "message.raw_edge.reference_record = record.reference_record;" in emitter
+    producer = source.split("void drain_reference_snapshots(void)", 1)[1].split(
+        "void service_adaptive_hybrid_regulation_application_outcome", 1
+    )[0]
+    assert "const auto observation = otis_reference_boundary(snapshot);" in producer
+    assert "message.raw_edge.timestamp_ticks = snapshot.service_ticks;" in producer
+    assert "snapshot.cumulative_down_counter, snapshot.sequence," in producer
 
 
-def test_estimate_names_distinct_snapshot_and_physical_source_ordinals(monkeypatch):
+def test_estimate_preserves_equal_single_owner_consumer_identity(monkeypatch):
     rows = raw_measurement_rows()
-    for row in rows["snapshots.csv"]:
-        row["reference_sequence"] = str(int(row["reference_sequence"]) + 7300)
-    rows["spans.csv"] = accepted_rows(rows["snapshots.csv"], rows["counts.csv"])
-    rows["estimates.csv"][0].update(source_opening_reference_sequence="7300", source_closing_reference_sequence="7900")
     exact, report, _ = run_measurement(monkeypatch, rows)
     assert exact, report
-    root = Path(__file__).resolve().parents[1]
-    firmware = root / "firmware/arduino/otis_nano_rp2040_connect"
-    source = (firmware / "otis_nano_rp2040_connect.ino").read_text()
-    assert "observation.sequence = snapshot.sequence;" in source
-    assert "snapshot_message.snapshot.reference_sequence =\n      observation.reference_sequence;" in source
-    live = (firmware / "otis_frequency_regulation_live.cpp").read_text()
-    assert "accepted_boundary_ordinal" in live
-    assert "static_cast<unsigned long>(span.last_sequence)" in live
-    assert "span.selected_first_reference_sequence" in live
-    assert "span.last_reference_sequence" in live
-
+    assert all(
+        row["snapshot_sequence"] == row["reference_sequence"]
+        for row in rows["snapshots.csv"]
+    )
+    estimate = rows["estimates.csv"][0]
+    assert estimate["source_opening_snapshot_sequence"] == estimate["source_opening_reference_sequence"]
+    assert estimate["source_closing_snapshot_sequence"] == estimate["source_closing_reference_sequence"]
 
 def test_missing_opening_snapshot_leaves_first_retained_count_unproven():
     rows = raw_measurement_rows([10_000_000] * 3)
@@ -562,7 +558,7 @@ def test_missing_opening_snapshot_leaves_first_retained_count_unproven():
     assert not exact
     assert len(intervals) == 2
     assert all(item["count_exact"] for item in intervals)
-    assert "CNT records lack a unique adjacent same-session SNP/REF pair" in report["errors"]
+    assert "CNT records lack a unique adjacent same-session SNP pair" in report["errors"]
 
 
 def test_accepted_ordinals_cannot_hide_a_skipped_raw_interval(monkeypatch):
@@ -595,6 +591,32 @@ def test_accepted_span_cannot_skip_an_earlier_in_window_candidate():
     assert not exact
     assert report["raw_count_replay"]["exact"]
     assert "at or after the acceptance window" in report["errors"][0]
+
+
+def test_accepted_span_requires_complete_uncertainty_interval_inside_window():
+    from host.otis_tools.accepted_span_replay import replay_accepted_spans
+
+    rows = raw_measurement_rows([10_000_000])
+    closing = rows["snapshots.csv"][1]
+    closing["reference_timestamp_ticks"] = "1001251"
+    closing["timestamp_uncertainty_ticks"] = "2"
+    rows["ref.csv"][1]["timestamp_ticks"] = "1001251"
+    rows["counts.csv"][0]["gate_close_ticks"] = "1001251"
+    rows["spans.csv"][0]["closing_reference_timestamp_ticks"] = "1001251"
+    manifest = measurement_manifest_value()
+    exact, report, _ = replay_accepted_spans(
+        rows["snapshots.csv"], rows["ref.csv"], rows["counts.csv"],
+        rows["spans.csv"],
+        acceptance_policy=validate_authoritative_inputs(
+            manifest["authoritative_inputs"]
+        ).document(POLICY_PATH),
+        acceptance_policy_sha256=manifest["reference_acceptance"][
+            "policy_sha256"
+        ],
+    )
+    assert not exact
+    assert report["raw_count_replay"]["exact"]
+    assert "complete admission interval differs" in report["errors"][0]
 
 
 def test_raw_accepted_spans_replay_without_estimator_output(monkeypatch):

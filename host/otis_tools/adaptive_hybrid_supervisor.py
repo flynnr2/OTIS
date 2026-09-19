@@ -482,31 +482,31 @@ def _truth(health: dict[tuple[str, str], str], key: str) -> bool:
 
 _AUTHORITATIVE_CAPTURE_COUNTERS = (
     "physical_aperture_incomplete_count",
-    "association_loss_count",
+    "capture_loss_count",
     "reference_acceptance_loss_count",
 )
 _ADAPTIVE_HYBRID_AUTHORITATIVE_CAPTURE_COUNTERS = _AUTHORITATIVE_CAPTURE_COUNTERS + (
-    "boundary_ring_dropped_count",
-    "missing_pps_count",
+    "capture_service_stale_count",
     "count_saturated_count",
     "boundary_sequence_gap_count",
     "boundary_sequence_duplicate_count",
     "boundary_overflow_count",
     "counter_snapshot_invalid_count",
-    "snapshot_overwrite_count",
+    "snapshot_ring_full_count",
     "snapshot_continuity_loss_count",
     "snapshot_pio_rxstall_count",
-    "snapshot_dma_error_count",
-    "snapshot_dma_stopped_count",
-    "physical_pps_missing_count",
+    "snapshot_irq_budget_exhausted_count",
+    "snapshot_timestamp_ambiguous_count",
 )
 _AUTHORITATIVE_CAPTURE_EXPECTED_HEALTH = {
     "snapshot": "end",
+    "aperture_backend": "pio_wait_cumulative_snapshot_fifo_irq_v2",
     "reference_acceptance_state": "tracking",
     "accepted_anchor_current": "true",
     "fifo_continuity": "continuous",
-    "association_state": "clean",
+    "capture_state": "clean",
 }
+
 
 
 def _authoritative_capture_counters(

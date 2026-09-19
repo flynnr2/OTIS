@@ -1,4 +1,4 @@
-"""Native check of the work-branch drain prototype, not the instrument driver."""
+"""Native check of the production FIFO drain policy, not the instrument driver."""
 
 import shutil
 import subprocess

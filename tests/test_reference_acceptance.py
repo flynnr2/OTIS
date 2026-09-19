@@ -10,7 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
-POLICY = json.loads((ROOT / "data_contracts/reference_acceptance_policy_v1.json").read_text())
+POLICY = json.loads((ROOT / "data_contracts/reference_acceptance_policy_v2.json").read_text())
 POLICY_KEYS = (
     "nominal_interval_ticks", "tolerance_ticks", "acquisition_intervals",
     "maximum_edge_rate_hz", "allowed_reference_flags", "maximum_excluded_candidates_per_span",
@@ -59,15 +59,17 @@ def run(harness, commands, **policy_overrides):
 
 
 class Trace:
-    def __init__(self, *, ticks=0, snapshot=100, reference=1000, counter=MODULUS - 1, session=1):
+    def __init__(self, *, ticks=0, snapshot=100, reference=None, counter=MODULUS - 1, session=1):
+        reference = snapshot if reference is None else reference
         self.ticks, self.snapshot, self.reference, self.counter, self.session = ticks, snapshot, reference, counter, session
         self.commands = []
         self.observations = []
 
-    def observe(self, *, status=0, flags=None):
+    def observe(self, *, status=0, flags=None, uncertainty=0):
         flags = POLICY["allowed_reference_flags"] if flags is None else flags
         row = dict(session=self.session, snapshot_sequence=self.snapshot, reference_sequence=self.reference,
-                   ticks=self.ticks, down_counter=self.counter, status=status, flags=flags)
+                   ticks=self.ticks, down_counter=self.counter, status=status, flags=flags,
+                   uncertainty=uncertainty)
         self.observations.append(row)
         self.commands.append("O " + " ".join(str(value) for value in row.values()))
         return row
@@ -169,6 +171,15 @@ def test_inclusive_window_endpoints(harness, offset):
     assert run(harness, trace.commands)[-1]["disposition"] == "accepted_span"
 
 
+def test_uncertainty_overlap_loses_qualification_in_native_trace(harness):
+    trace = Trace()
+    trace.acquire()
+    trace.advance(998_751, uncertainty=2)
+    result = run(harness, trace.commands)[-1]
+    assert result["disposition"] == "qualification_lost"
+    assert result["reason"] == "observation_age_ambiguous"
+
+
 def test_late_boundary_and_two_second_gap_start_fresh_acquisition(harness):
     trace = Trace()
     trace.acquire()
@@ -204,7 +215,9 @@ def test_acquisition_uses_consecutive_raw_intervals(harness):
 @pytest.mark.parametrize("defect,reason", [
     ("snp_gap", "raw_sequence"), ("reference_gap", "raw_sequence"),
     ("duplicate", "raw_sequence"), ("same_ticks", "raw_timestamp"),
-    ("backward_ticks", "raw_timestamp"), ("status", "capture_integrity"),
+    ("backward_ticks", "raw_timestamp"),
+    ("timing_status", "observation_age_ambiguous"),
+    ("transport_status", "capture_integrity"),
     ("flags", "capture_integrity"), ("zero_count", "raw_count"),
     ("impossible_count", "raw_count"), ("long_counter_interval", "late_boundary"),
     ("session", "session_changed"), ("unknown_session", "unknown_session"),
@@ -226,8 +239,10 @@ def test_intervening_raw_defects_prevent_bridging(harness, defect, reason):
         trace.advance(0, edges=1)
     elif defect == "backward_ticks":
         trace.advance(-1, edges=1)
-    elif defect == "status":
+    elif defect == "timing_status":
         trace.advance(100_000, status=1)
+    elif defect == "transport_status":
+        trace.advance(100_000, status=1 << 2)
     elif defect == "flags":
         trace.advance(100_000, flags=POLICY["allowed_reference_flags"] | 1)
     elif defect == "zero_count":
@@ -245,9 +260,9 @@ def test_intervening_raw_defects_prevent_bridging(harness, defect, reason):
     assert not spans(results)
 
 
-def test_raw_timer_counter_and_independent_ordinals_wrap_with_600_spans(harness):
+def test_raw_timer_counter_and_single_owner_ordinal_wrap_with_600_spans(harness):
     trace = Trace(ticks=MODULUS - 8_500_000, snapshot=MODULUS - 10,
-                  reference=MODULUS - 12, counter=30_000_000)
+                  counter=30_000_000)
     anchor = trace.acquire()
     for _ in range(600):
         trace.advance()

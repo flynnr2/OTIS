@@ -4,7 +4,6 @@ from pathlib import Path
 
 from tools.verify_pio_snapshot import (
     run_phase_sweep,
-    verify_dma_ring_model,
     verify_fault_paths,
     verify_program_structure,
     verify_repository_installation,
@@ -58,91 +57,16 @@ def test_stop_onset_full_fifo_startup_and_counter_wrap_fail_closed() -> None:
     assert stopped["finite_tail_max_snapshots"] <= 1
     assert faults["full_fifo"].startswith("RXSTALL after 8 unread words")
     assert faults["startup_mid_high"] == "suppressed until low then next rise"
-    transport = verify_dma_ring_model()
-    assert transport["exact_capacity"] == "lossless"
-    assert transport["overwrite_by_one"].startswith("detected")
 
 
-def test_d14_isr_only_preserves_compact_reference_events() -> None:
-    capture = (FW / "otis_capture_irq.cpp").read_text(encoding="utf-8")
-    d14 = _function_body(capture, "void handle_capture_edge(void)")
-
-    prohibited = (
-        "Serial",
-        "digitalRead",
-        "delay(",
-        "millis(",
-        "otis_monotonic_us32_now()",
-        "otis_classify_pps_interval_us",
-        "pio_sm_",
-        "dma_",
-        "float",
-        "double",
-    )
-    assert not any(token in d14 for token in prohibited)
-    assert "otis_monotonic_us32_now_from_isr" in d14
-    assert "gpio_get" in d14
-    assert "otis_capture_ring_push_from_isr" in d14
-    assert "d14_sampled_high_count" not in d14
-    assert "d14_last_raw_timestamp" not in d14
-
-    timestamp = d14.index("otis_monotonic_us32_now_from_isr()")
-    sampled_level = d14.index("gpio_get(OTIS_PIN_PPS_REFERENCE)")
-    ring_publish = d14.index("otis_capture_ring_push_from_isr")
-    assert timestamp < sampled_level < ring_publish
-
-    assert not (FW / "otis_pps_dual_observer.cpp").exists()
-    assert not (FW / "otis_pps_dual_observer.h").exists()
-
-
-def test_d14_isr_has_no_count_aperture_control() -> None:
-    capture = (FW / "otis_capture_irq.cpp").read_text(encoding="utf-8")
-    d14 = _function_body(capture, "void handle_capture_edge(void)")
-    prohibited = (
-        "pps_boundary_callback",
-        "stop_h1_pio",
-        "start_h1_pio",
-        "sample_h1_pio",
-        "otis_pps_snapshot_backend",
-        "otis_pps_count_boundary",
-        "pio_sm_",
-        "dma_",
-    )
-    assert not any(token in d14 for token in prohibited)
-
-
-def test_late_snapshot_cannot_be_paired_after_an_unmatched_reference() -> None:
-    sketch = (FW / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
-    body = _function_body(sketch, "void drain_pps_count_boundary_ring(void)")
-    helper = (FW / "otis_pps_count_boundary.h").read_text(encoding="utf-8")
-    assert "another_reference_waiting" in body
-    assert "otis_pps_snapshot_association_decide" in body
-    assert "DeferForReferenceDrain" in helper
-    assert "otis_pps_snapshot_backend_rearm()" in body
-    assert "paired retroactively" in body
-    assert "discard_first_recovery_snapshot" not in body
-    assert "otis_pps_count_boundary_ring_reset()" in body
-    assert body.index("another_reference_waiting") < body.index(
-        "otis_pps_snapshot_backend_pop"
-    )
-    assert body.index("otis_pps_snapshot_association_decide") < body.index(
-        "otis_pps_snapshot_backend_pop"
-    )
-    assert "otis_count_observation_note_association_loss" in body
-    assert '"ref_without_snapshot"' in body
-
-    count_source = (FW / "otis_count_observation.cpp").read_text(
-        encoding="utf-8"
-    )
-    association_loss = _function_body(
-        count_source, "void otis_count_observation_note_association_loss("
-    )
-    assert 'association_state = "lost"' in association_loss
-    assert "have_previous_observation = false" in association_loss
-    assert "kCountReasonSnapshotAbsent" in association_loss
-    assert "OTIS_FLAG_GATE_INCOMPLETE" in association_loss
+def test_single_owner_has_no_gpio_or_dma_pairing_runtime():
+    sketch = (FW / "otis_nano_rp2040_connect.ino").read_text()
+    backend = (FW / "otis_pps_snapshot_backend.cpp").read_text()
+    assert "attachInterrupt" not in sketch
+    assert "hardware/dma.h" not in backend
+    assert "otis_pps_snapshot_backend_rearm" not in sketch
+    for retired in ("otis_capture_irq.cpp", "otis_capture_ring.cpp", "otis_pps_count_boundary_ring.cpp"):
+        assert not (FW / retired).exists()
 
 
 def test_fixed_image_uses_the_qualified_pps_gated_snapshot_backend() -> None:
@@ -155,7 +79,7 @@ def test_fixed_image_uses_the_qualified_pps_gated_snapshot_backend() -> None:
         if path.suffix in {".cpp", ".h", ".ino", ".pio"}
     )
     assert "pps_isr_stop_sample_restart_v1" not in production_sources
-    assert "pio_wait_cumulative_snapshot_dma_v1" in production_sources
+    assert "pio_wait_cumulative_snapshot_fifo_irq_v2" in production_sources
     assert "otis_pps_snapshot_backend_begin" in production_sources
 
 

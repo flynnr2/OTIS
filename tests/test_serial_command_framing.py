@@ -207,7 +207,7 @@ def test_production_raw_emitters_cross_the_host_at_storage_boundaries(
     assert contracts.count("health_v1") == 1
     assert contracts.count("dac_steps_v1") == 2
     assert contracts.count("environment_v1") == 2
-    assert contracts.count("pps_snapshots_v1") == 2
+    assert contracts.count("pps_snapshots_v2") == 2
     assert contracts.count("forwarded_monitor_snapshots_v1") == 2
     assert all(
         validate_record_wire_values(contract, row) == ()

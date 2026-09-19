@@ -26,7 +26,7 @@ from host.otis_tools.raw_measurement_replay import (  # noqa: E402
     _raw_count_replay,
 )
 
-POLICY = ROOT / "data_contracts/reference_acceptance_policy_v1.json"
+POLICY = ROOT / "data_contracts/reference_acceptance_policy_v2.json"
 HEADER = ROOT / "firmware/arduino/otis_nano_rp2040_connect/otis_reference_acceptance.h"
 HARNESS = ROOT / "tests/cpp/reference_acceptance_harness.cpp"
 POLICY_ARGUMENTS = (

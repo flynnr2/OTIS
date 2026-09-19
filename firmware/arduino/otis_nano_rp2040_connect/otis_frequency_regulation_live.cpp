@@ -473,7 +473,7 @@ void otis_frequency_regulation_live_on_reference_selection(
     otis_frequency_regulation_live_on_capture_fault("accepted_reference_discontinuity", uptime_s, static_code);
     return;
   }
-  // Source EST/REF/SNP/CNT timestamps retain the captured D14 coordinate.
+  // Source coordinates retain FIFO service time; SNP carries its uncertainty.
   // A control decision is a later operational event: the caller samples it
   // after refreshing metadata health, so an asynchronous lifecycle transition
   // can never be followed by a backdated decision from a delayed capture.
@@ -482,7 +482,8 @@ void otis_frequency_regulation_live_on_reference_selection(
       operational_decision_raw_ticks < OTIS_RP2040_MONOTONIC_US32_MODULUS) {
     const uint64_t elapsed_since_capture = otis_monotonic_us32_interval(
         observation->reference_timestamp_ticks, operational_decision_raw_ticks);
-    if (elapsed_since_capture <= OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS &&
+    if (elapsed_since_capture + observation->timestamp_uncertainty_ticks <=
+            OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS &&
         current_boundary_extended_ticks <= UINT64_MAX - elapsed_since_capture)
       active_decision_timestamp_ticks =
           current_boundary_extended_ticks + elapsed_since_capture;
@@ -519,7 +520,9 @@ void otis_frequency_regulation_live_on_reference_selection(
     settling_interval_excluded =
         !interval_opening_exact ||
         observation->capture_session != exact_settling_capture_session ||
-        interval_opening_extended_ticks < exact_settling_deadline_ticks;
+        interval_opening_extended_ticks < selection->opening.timestamp_uncertainty_ticks ||
+        interval_opening_extended_ticks - selection->opening.timestamp_uncertainty_ticks <
+            exact_settling_deadline_ticks;
     if (!settling_interval_excluded)
       exact_settling_deadline_available = false;
   }

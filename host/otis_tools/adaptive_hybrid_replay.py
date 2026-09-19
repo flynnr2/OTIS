@@ -214,7 +214,7 @@ def _measurement_replay(
     """Reconstruct raw accepted D14/D8 spans and verify every emitted estimate."""
 
     counts = _read_csv(_single_contract_path(manifest, "count_observations_v1"))
-    snapshots = _read_csv(_single_contract_path(manifest, "pps_snapshots_v1"))
+    snapshots = _read_csv(_single_contract_path(manifest, "pps_snapshots_v2"))
     references = _read_csv(_raw_event_path(manifest, "REF"))
     spans = _read_csv(_single_contract_path(manifest, "accepted_pps_spans_v1"))
     estimates = _read_csv(_single_contract_path(manifest, "estimates_v3"))

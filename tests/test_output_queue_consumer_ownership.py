@@ -61,7 +61,7 @@ def test_output_queue_consumers_are_reachable_only_from_core0_sketch_roots():
     assert "discard_dual_core_outputs_before_first_carrier()" in absent
     assert "discard_dual_core_outputs_after_transport_fault()" in absent
     assert "otis_transport_ready()" not in bodies["loop1"]
-    for service_call in ("drain_pps_count_boundary_ring()", "drain_capture_ring()", "service_tcxo_gate()"):
+    for service_call in ("drain_reference_snapshots()", "service_tcxo_gate()"):
         assert service_call in bodies["loop1"]
 
 

@@ -671,62 +671,6 @@
         "event_timestamp_ticks"
       ]
     },
-    "association_loss_decisions_v2": {
-      "atom": [
-        "reason",
-        "classification",
-        "core1_phase"
-      ],
-      "bool": [
-        "next_reference_present",
-        "snapshot_initialized",
-        "snapshot_running",
-        "snapshot_fault_latched",
-        "snapshot_frozen",
-        "unassociated_front_word_present"
-      ],
-      "record_type": [
-        "record_type"
-      ],
-      "schema_version": [
-        "schema_version"
-      ],
-      "uint32": [
-        "decision_sequence",
-        "pending_reference_sequence",
-        "boundary_depth",
-        "boundary_dropped_count",
-        "next_reference_sequence",
-        "snapshot_fault_flags",
-        "snapshot_session",
-        "snapshot_producer_ordinal",
-        "snapshot_consumer_ordinal",
-        "snapshot_backlog_depth",
-        "snapshot_backlog_high_water",
-        "snapshot_overwrite_count",
-        "snapshot_continuity_loss_count",
-        "snapshot_pio_rxstall_count",
-        "snapshot_dma_error_count",
-        "snapshot_dma_stopped_count",
-        "core1_loop_sequence",
-        "core1_last_snapshot_session",
-        "core1_last_snapshot_sequence",
-        "frozen_session",
-        "frozen_producer_ordinal",
-        "frozen_consumer_ordinal",
-        "frozen_backlog_depth",
-        "frozen_pio_fifo_depth",
-        "unassociated_front_word"
-      ],
-      "uint64": [
-        "decision_ticks",
-        "pending_reference_ticks",
-        "pending_age_ticks",
-        "next_reference_ticks",
-        "core1_phase_enter_ticks",
-        "core1_last_progress_ticks"
-      ]
-    },
     "control_previews_v1": {
       "atom": [
         "decision_id",
@@ -1016,7 +960,7 @@
         "accepted_boundary_ordinal"
       ]
     },
-    "pps_snapshots_v1": {
+    "pps_snapshots_v2": {
       "atom": [
         "backend"
       ],
@@ -1031,6 +975,7 @@
         "snapshot_sequence",
         "cumulative_down_counter",
         "reference_sequence",
+        "timestamp_uncertainty_ticks",
         "status"
       ],
       "uint64": [
@@ -1417,64 +1362,6 @@
         "event_timestamp_ticks"
       ]
     },
-    "association_loss_decisions_v2": {
-      "domain_fields": [],
-      "fields": [
-        "record_type",
-        "schema_version",
-        "decision_sequence",
-        "reason",
-        "classification",
-        "decision_ticks",
-        "pending_reference_sequence",
-        "pending_reference_ticks",
-        "pending_age_ticks",
-        "boundary_depth",
-        "boundary_dropped_count",
-        "next_reference_present",
-        "next_reference_sequence",
-        "next_reference_ticks",
-        "snapshot_initialized",
-        "snapshot_running",
-        "snapshot_fault_latched",
-        "snapshot_fault_flags",
-        "snapshot_session",
-        "snapshot_producer_ordinal",
-        "snapshot_consumer_ordinal",
-        "snapshot_backlog_depth",
-        "snapshot_backlog_high_water",
-        "snapshot_overwrite_count",
-        "snapshot_continuity_loss_count",
-        "snapshot_pio_rxstall_count",
-        "snapshot_dma_error_count",
-        "snapshot_dma_stopped_count",
-        "core1_loop_sequence",
-        "core1_last_snapshot_session",
-        "core1_last_snapshot_sequence",
-        "core1_phase",
-        "core1_phase_enter_ticks",
-        "core1_last_progress_ticks",
-        "snapshot_frozen",
-        "frozen_session",
-        "frozen_producer_ordinal",
-        "frozen_consumer_ordinal",
-        "frozen_backlog_depth",
-        "frozen_pio_fifo_depth",
-        "unassociated_front_word_present",
-        "unassociated_front_word"
-      ],
-      "first_consumer": "capture_serial.CsvRecordSplitter",
-      "implicit_time_domain": "rp2040_monotonic_us32",
-      "record_types": [
-        "ASL"
-      ],
-      "schema_version": 2,
-      "sequence_field": "decision_sequence",
-      "session_field": null,
-      "timestamp_fields": [
-        "decision_ticks"
-      ]
-    },
     "control_previews_v1": {
       "domain_fields": [
         "time_domain"
@@ -1773,7 +1660,7 @@
       "session_field": "capture_session",
       "timestamp_fields": []
     },
-    "pps_snapshots_v1": {
+    "pps_snapshots_v2": {
       "domain_fields": [],
       "fields": [
         "record_type",
@@ -1783,6 +1670,7 @@
         "cumulative_down_counter",
         "reference_sequence",
         "reference_timestamp_ticks",
+        "timestamp_uncertainty_ticks",
         "status",
         "backend"
       ],
@@ -1791,7 +1679,7 @@
       "record_types": [
         "SNP"
       ],
-      "schema_version": 1,
+      "schema_version": 2,
       "sequence_field": "snapshot_sequence",
       "session_field": "session",
       "timestamp_fields": [

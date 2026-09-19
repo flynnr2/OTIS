@@ -222,3 +222,15 @@ compatibility readers, or authority exist on current HEAD.
   before bench entry. Neither can be promoted into a waveform, qualified-load,
   jitter, independently referenced frequency, or public delivered-output
   claim.
+
+## Single-owner FIFO capture candidate
+
+The DMA/GPIO association path is replaced by one bounded PIO FIFO owner.
+SNP v2 preserves CPU service time and a conservative PIO-recognition bracket;
+it does not provide a hardware-latched MCU-domain D14 timestamp or measured
+capture-to-service latency. Qualification requires the whole bracket to satisfy
+the unchanged tolerance. Delayed foreground empty sampling can therefore
+withdraw qualification even when the count is preserved. The unchanged PIO
+program observes D14 at D8-dependent checkpoints, so electrical D14 timing
+under stopped/slow D8 remains unmeasured. Native tests and host rehearsal do
+not establish physical interrupt timing. See SINGLE_REFERENCE_OWNER_REPAIR.md.

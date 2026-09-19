@@ -43,10 +43,10 @@ def test_named_phases_directly_bracket_selected_initializers() -> None:
     expected_work = {
         "boot_phase_early_init": "otis_resource_registry_begin()",
         "boot_phase_clocks_init": "otis_timebase_begin()",
-        "boot_phase_ring_buffers_init": "otis_capture_ring_reset()",
+        "boot_phase_ring_buffers_init": "otis_dual_core_partition_reset()",
         "boot_phase_serial_init": "otis_transport_begin(",
         "boot_phase_timer_init": "otis_count_observation_begin(",
-        "boot_phase_pps_input_init": "otis_capture_irq_begin_d14_reference(",
+        "boot_phase_pps_input_init": "otis_pps_snapshot_backend_get_stats(",
         "boot_phase_peripherals_init": "otis_dac_ad5693r_begin()",
         "boot_phase_preview_init": "otis_phase_preview_live_begin(",
         "boot_phase_capability_audit": "otis_resource_registry_complete()",

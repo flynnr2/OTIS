@@ -116,7 +116,8 @@ device-driver boundaries.
 The accepted-reference cutover adds APS v1 and replaces the derived layouts
 with EST v3, RPH/PHE v2, AHY/ACT v3 and AHM v2. ACTIVE snapshot v2 publishes
 acceptance identity and current-anchor qualification within its complete
-query-bound generation. The raw REF/SNP/CNT layouts remain unchanged. The
+query-bound generation. Raw REF/CNT retain v1 while the current-only SNP v2 layout adds the FIFO
+service-coordinate uncertainty bound and single-owner identity. The
 reference-policy header is separately generated and checked with
 `python tools/generate_reference_acceptance_policy.py --check`.
 

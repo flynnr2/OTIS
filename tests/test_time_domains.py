@@ -209,15 +209,15 @@ def test_session_transition_near_wrap_does_not_bridge_domains(tmp_path: Path) ->
     path.write_text(
         "record_type,schema_version,session,snapshot_sequence,"
         "cumulative_down_counter,reference_sequence,"
-        "reference_timestamp_ticks,status,backend\n"
-        f"SNP,1,1,1,1000,1,{modulus - 10},0,pio_wait_cumulative_snapshot_dma_v1\n"
-        "SNP,1,2,0,900,0,5,0,pio_wait_cumulative_snapshot_dma_v1\n",
+        "reference_timestamp_ticks,timestamp_uncertainty_ticks,status,backend\n"
+        f"SNP,2,1,1,1000,1,{modulus - 10},1,0,pio_wait_cumulative_snapshot_fifo_irq_v2\n"
+        "SNP,2,2,0,900,0,5,1,0,pio_wait_cumulative_snapshot_fifo_irq_v2\n",
         encoding="utf-8",
     )
     result = validate_csv(
         path,
         CsvValidationContext(
-            contract="pps_snapshots_v1",
+            contract="pps_snapshots_v2",
             known_channels=frozenset(),
             known_domains=frozenset({"rp2040_monotonic_us32"}),
         ),

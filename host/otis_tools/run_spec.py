@@ -352,7 +352,7 @@ def _required_files() -> list[dict[str, Any]]:
     required = {
         "raw_events_v1",
         "count_observations_v1",
-        "pps_snapshots_v1",
+        "pps_snapshots_v2",
         "accepted_pps_spans_v1",
         "estimates_v3",
         "active_transactions_v3",
@@ -634,7 +634,7 @@ class ValidatedRunSpec:
             "image_identity": identity["image_identity"],
             "bench_attempt": campaign["bench_attempt"],
             "board": "arduino_nano_rp2040_connect",
-            "capture_mode": "pio_wait_cumulative_snapshot_with_independent_gpio_ref",
+            "capture_mode": "pio_fifo_irq_single_reference_owner",
             "control_mode": bench.purpose,
             "closed_loop_control": automatic > 0,
             "actionable": physical

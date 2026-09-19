@@ -1,62 +1,70 @@
 #include "otis_pps_snapshot_backend.h"
 
 #include <hardware/clocks.h>
-#include <hardware/dma.h>
 #include <hardware/gpio.h>
+#include <hardware/irq.h>
 #include <hardware/pio.h>
-#include <hardware/regs/dma.h>
+#include <hardware/regs/pio.h>
 #include <hardware/sync.h>
+#include <hardware/timer.h>
+#include <pico/platform.h>
 
 #include "otis_board.h"
 #include "otis_config.h"
+#include "otis_pps_fifo_drain.h"
 #include "otis_pps_snapshot.pio.h"
 #include "otis_resource_registry.h"
 
 namespace {
 
 constexpr uint32_t kRequiredSystemClockHz = 133000000u;
-constexpr uint32_t kDmaInitialTransferCount = UINT32_MAX;
 constexpr uint32_t kSnapshotRingCapacity = 128u;
 constexpr uint32_t kSnapshotRingMask = kSnapshotRingCapacity - 1u;
-constexpr uint8_t kSnapshotRingAddressBits = 9u;  // 128 x uint32_t = 512 B.
+constexpr uint32_t kFifoWordsPerForegroundService = 8u;
+constexpr uint kPioIrqIndex = 1u;
 static_assert((kSnapshotRingCapacity & kSnapshotRingMask) == 0u,
               "snapshot ring capacity must be a power of two");
 
-alignas(512) volatile uint32_t snapshot_ring[kSnapshotRingCapacity] = {};
+OtisPpsHardwareSnapshot snapshot_ring[kSnapshotRingCapacity] = {};
 
 struct BackendState {
   PIO pio;
   int sm;
   int program_offset;
-  int dma_channel;
+  int irq_number;
   bool initialized;
   bool running;
   bool fault_latched;
-  bool overwrite_pending;
-  uint32_t session;
-  uint32_t consumer_ordinal;
-  uint32_t backlog_high_water;
-  uint32_t overwrite_count;
-  uint32_t continuity_loss_count;
-  uint32_t pio_rxstall_count;
-  uint32_t dma_error_count;
-  uint32_t dma_stopped_count;
-  uint32_t fault_flags;
+  bool fault_reported;
+  bool have_empty_lower_bound;
+  volatile uint32_t session;
+  volatile uint32_t producer_ordinal;
+  volatile uint32_t consumer_ordinal;
+  volatile uint32_t backlog_high_water;
+  volatile uint32_t continuity_loss_count;
+  volatile uint32_t pio_rxstall_count;
+  volatile uint32_t irq_budget_exhausted_count;
+  volatile uint32_t ring_full_count;
+  volatile uint32_t timestamp_ambiguous_count;
+  volatile uint32_t fault_flags;
+  volatile uint32_t last_service_ticks;
+  uint64_t empty_lower_bound_ticks;
+  uint32_t irq_entries_since_poll;
+  uint32_t words_since_poll;
   uint32_t system_clock_hz;
 };
 
 BackendState backend = {
-    pio0, -1, -1, -1, false, false, false, false, 0u, 0u, 0u,
-    0u,   0u, 0u, 0u,  0u,    0u,
+    pio0, -1, -1, -1, false, false, false, false, false,
+    0u,   0u, 0u,  0u,    0u,    0u,    0u,    0u,
+    0u,   0u, 0u,  0u,    0u,    0u,    0u,
 };
 
-void increment_saturating(uint32_t *counter) {
-  if (*counter != UINT32_MAX) {
-    *counter += 1u;
-  }
+void increment_saturating(volatile uint32_t *counter) {
+  if (*counter != UINT32_MAX) *counter += 1u;
 }
 
-void add_saturating(uint32_t *counter, uint32_t value) {
+void add_saturating(volatile uint32_t *counter, uint32_t value) {
   if (UINT32_MAX - *counter < value) {
     *counter = UINT32_MAX;
   } else {
@@ -64,83 +72,154 @@ void add_saturating(uint32_t *counter, uint32_t value) {
   }
 }
 
-uint32_t stable_dma_transfer_count(void) {
-  if (backend.dma_channel < 0) {
-    return kDmaInitialTransferCount;
-  }
-  dma_channel_hw_t *channel =
-      dma_channel_hw_addr(static_cast<uint>(backend.dma_channel));
-  uint32_t second = channel->transfer_count;
-  for (uint8_t attempt = 0u; attempt < 4u; ++attempt) {
-    uint32_t first = second;
-    __dmb();
-    second = channel->transfer_count;
-    if (first == second) {
-      __dmb();
-      return second;
-    }
-  }
-  __dmb();
-  return second;
+uint sm_index() {
+  return static_cast<uint>(backend.sm);
 }
 
-uint32_t producer_ordinal(void) {
-  return kDmaInitialTransferCount - stable_dma_transfer_count();
+pio_interrupt_source_t rx_source() {
+  return pio_get_rx_fifo_not_empty_interrupt_source(sm_index());
 }
 
-void stop_transport(void) {
+bool rxstall_latched() {
+  if (backend.sm < 0) return false;
+  const uint32_t mask = 1u << (PIO_FDEBUG_RXSTALL_LSB + sm_index());
+  return (backend.pio->fdebug & mask) != 0u;
+}
+
+void set_source_enabled(bool enabled) {
   if (backend.sm >= 0) {
-    pio_sm_set_enabled(backend.pio, static_cast<uint>(backend.sm), false);
+    pio_set_irq1_source_enabled(backend.pio, rx_source(), enabled);
   }
-  if (backend.dma_channel >= 0) {
-    dma_channel_abort(static_cast<uint>(backend.dma_channel));
+}
+
+void stop_source_and_state_machine() {
+  set_source_enabled(false);
+  if (backend.sm >= 0) {
+    pio_sm_set_enabled(backend.pio, sm_index(), false);
   }
   backend.running = false;
 }
 
-void latch_fatal_fault(uint32_t flag) {
-  backend.fault_flags |= flag;
-  if (backend.fault_latched) {
-    return;
+struct HardwareFifoPort {
+  bool empty() const {
+    return pio_sm_is_rx_fifo_empty(backend.pio, sm_index());
   }
-  backend.fault_latched = true;
-  increment_saturating(&backend.continuity_loss_count);
-  stop_transport();
+
+  bool rxstall() const {
+    return rxstall_latched();
+  }
+
+  uint32_t read() {
+    return pio_sm_get(backend.pio, sm_index());
+  }
+
+  uint64_t now() const {
+    return time_us_64();
+  }
+
+  void stop() {
+    stop_source_and_state_machine();
+  }
+};
+
+void latch_faults(uint32_t faults) {
+  if (faults == 0u) return;
+  const uint32_t new_faults = faults & ~backend.fault_flags;
+  if ((new_faults & OTIS_PPS_SNAPSHOT_STATUS_PIO_RXSTALL) != 0u) {
+    increment_saturating(&backend.pio_rxstall_count);
+  }
+  if ((new_faults & OTIS_PPS_SNAPSHOT_STATUS_RING_FULL) != 0u) {
+    increment_saturating(&backend.ring_full_count);
+  }
+  if ((new_faults &
+       OTIS_PPS_SNAPSHOT_STATUS_IRQ_BUDGET_EXHAUSTED) != 0u) {
+    increment_saturating(&backend.irq_budget_exhausted_count);
+  }
+  backend.fault_flags |= faults;
+  if (!backend.fault_latched) {
+    backend.fault_latched = true;
+    backend.fault_reported = false;
+    increment_saturating(&backend.continuity_loss_count);
+  }
+  stop_source_and_state_machine();
 }
 
-bool configure_session(void) {
-  if (backend.sm < 0 || backend.program_offset < 0 ||
-      backend.dma_channel < 0) {
-    return false;
+void publish_drain_result(const OtisPpsFifoDrainResult &result) {
+  uint32_t produced = backend.producer_ordinal;
+  const uint32_t retained_faults =
+      backend.fault_latched ? backend.fault_flags : 0u;
+  for (uint32_t index = 0u; index < result.count; ++index) {
+    OtisPpsHardwareSnapshot record = result.records[index];
+    record.status |= retained_faults;
+    snapshot_ring[produced & kSnapshotRingMask] = record;
+    __dmb();
+    produced++;
+    backend.producer_ordinal = produced;
+    backend.last_service_ticks = record.service_ticks;
   }
+  if (result.timestamp_ambiguous) {
+    add_saturating(&backend.timestamp_ambiguous_count, result.count);
+  }
+  const uint32_t depth = produced - backend.consumer_ordinal;
+  if (depth > backend.backlog_high_water) {
+    backend.backlog_high_water = depth;
+  }
+}
 
-  uint sm = static_cast<uint>(backend.sm);
-  uint dma_channel = static_cast<uint>(backend.dma_channel);
-  pio_sm_set_enabled(backend.pio, sm, false);
-  dma_channel_abort(dma_channel);
+void service_fifo(uint32_t word_budget) {
+  HardwareFifoPort port;
+  const uint32_t depth =
+      backend.producer_ordinal - backend.consumer_ordinal;
+  const uint32_t ring_slots =
+      depth < kSnapshotRingCapacity ? kSnapshotRingCapacity - depth : 0u;
+  uint32_t next_sequence = backend.producer_ordinal;
+  OtisPpsFifoDrainResult result = otis_pps_fifo_drain(
+      port, backend.session, next_sequence, ring_slots, word_budget,
+      backend.have_empty_lower_bound, backend.empty_lower_bound_ticks);
+
+  // Preserve every word read before publishing the fault that stopped its
+  // source. The helper has already stopped hardware without clearing FIFO.
+  publish_drain_result(result);
+  backend.words_since_poll += result.count;
+  if (result.empty_after && result.faults == 0u) {
+    backend.have_empty_lower_bound = true;
+    backend.empty_lower_bound_ticks = result.empty_observation_ticks;
+  }
+  latch_faults(result.faults);
+}
+
+void otis_pps_snapshot_fifo_irq_handler() {
+  if (!backend.initialized || backend.sm < 0) return;
+
+  HardwareFifoPort port;
+  // This shared handler owns only this SM's enabled RX-not-empty source.
+  // A different PIO source may share IRQ 1 while our FIFO is nonempty but
+  // deliberately gated between foreground service boundaries.
+  const uint32_t source_mask = 1u << static_cast<uint32_t>(rx_source());
+  if ((backend.pio->ints1 & source_mask) == 0u || port.empty()) return;
+
+  // One non-empty invocation is admitted per foreground poll. Keeping this
+  // source disabled until poll bounds both repeated singleton IRQs and words.
+  set_source_enabled(false);
+  if (!backend.running || backend.fault_latched) return;
+
+  if (backend.irq_entries_since_poll != 0u ||
+      backend.words_since_poll >= kFifoWordsPerForegroundService) {
+    latch_faults(OTIS_PPS_SNAPSHOT_STATUS_IRQ_BUDGET_EXHAUSTED);
+    return;
+  }
+  backend.irq_entries_since_poll = 1u;
+  service_fifo(kFifoWordsPerForegroundService - backend.words_since_poll);
+}
+
+void initialise_state_machine_session() {
+  const uint sm = sm_index();
   pio_sm_clear_fifos(backend.pio, sm);
   pio_sm_restart(backend.pio, sm);
   pio_sm_clkdiv_restart(backend.pio, sm);
-  backend.pio->fdebug = 1u << sm;  // Clear this SM's sticky RXSTALL flag.
+  backend.pio->fdebug = 1u << (PIO_FDEBUG_RXSTALL_LSB + sm);
 
-  for (uint32_t index = 0u; index < kSnapshotRingCapacity; ++index) {
-    snapshot_ring[index] = 0u;
-  }
-  __dmb();
-
-  dma_channel_config dma_config = dma_channel_get_default_config(dma_channel);
-  channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_32);
-  channel_config_set_read_increment(&dma_config, false);
-  channel_config_set_write_increment(&dma_config, true);
-  channel_config_set_ring(&dma_config, true, kSnapshotRingAddressBits);
-  channel_config_set_dreq(
-      &dma_config, pio_get_dreq(backend.pio, sm, false));
-  channel_config_set_high_priority(&dma_config, true);
-  dma_channel_configure(dma_channel, &dma_config,
-                        const_cast<uint32_t *>(snapshot_ring),
-                        &backend.pio->rxf[sm], kDmaInitialTransferCount, true);
-
-  // X initialisation and the start PC are session setup only.  The first PIO
+  // X initialisation and the start PC are session setup only. The first PIO
   // snapshot is an anchor and no interval crosses this CPU-owned setup point.
   pio_sm_exec(backend.pio, sm, pio_encode_mov(pio_x, pio_null));
   pio_sm_exec(
@@ -148,48 +227,43 @@ bool configure_session(void) {
       pio_encode_jmp(static_cast<uint>(backend.program_offset) +
                      otis_pps_snapshot_initial_pc));
 
+  backend.producer_ordinal = 0u;
   backend.consumer_ordinal = 0u;
   backend.backlog_high_water = 0u;
-  backend.overwrite_pending = false;
   backend.fault_latched = false;
+  backend.fault_reported = false;
   backend.fault_flags = OTIS_PPS_SNAPSHOT_STATUS_NONE;
+  // The disabled SM and just-cleared FIFO establish a real empty
+  // observation. Sample its lower-bound coordinate before enabling the SM so
+  // a word committed before the first foreground poll remains bounded.
+  backend.have_empty_lower_bound = true;
+  backend.empty_lower_bound_ticks = time_us_64();
+  backend.irq_entries_since_poll = 0u;
+  backend.words_since_poll = 0u;
+  backend.last_service_ticks = 0u;
   backend.running = true;
   pio_sm_set_enabled(backend.pio, sm, true);
-  return true;
+  // poll() grants the first IRQ credit; it need not invent the first bound.
 }
 
 }  // namespace
 
 bool otis_pps_snapshot_backend_begin(void) {
-  if (backend.initialized) {
-    return false;
-  }
+  if (backend.initialized || get_core_num() != 1u) return false;
+
   backend.system_clock_hz = clock_get_hz(clk_sys);
-  if (backend.system_clock_hz != kRequiredSystemClockHz) {
-    return false;
-  }
+  if (backend.system_clock_hz != kRequiredSystemClockHz) return false;
 
   backend.pio = pio0;
   if (!pio_can_add_program(backend.pio, &otis_pps_snapshot_program)) {
     return false;
   }
   backend.sm = pio_claim_unused_sm(backend.pio, false);
-  if (backend.sm < 0) {
-    return false;
-  }
+  if (backend.sm < 0) return false;
+
   backend.program_offset =
       static_cast<int>(pio_add_program(backend.pio, &otis_pps_snapshot_program));
-  backend.dma_channel = dma_claim_unused_channel(false);
-  if (backend.dma_channel < 0) {
-    pio_remove_program(backend.pio, &otis_pps_snapshot_program,
-                       static_cast<uint>(backend.program_offset));
-    pio_sm_unclaim(backend.pio, static_cast<uint>(backend.sm));
-    backend.sm = -1;
-    backend.program_offset = -1;
-    return false;
-  }
-
-  bool ownership_bound =
+  const bool ownership_bound =
       otis_resource_registry_bind_pio_state_machine(
           OTIS_OWNER_COUNT_OBSERVATION, 0u,
           static_cast<uint8_t>(backend.sm)) &&
@@ -197,11 +271,16 @@ bool otis_pps_snapshot_backend_begin(void) {
           OTIS_OWNER_COUNT_OBSERVATION, 0u,
           static_cast<uint8_t>(backend.program_offset),
           static_cast<uint8_t>(otis_pps_snapshot_program.length)) &&
-      otis_resource_registry_bind_dma_channel(
-          OTIS_OWNER_COUNT_OBSERVATION,
-          static_cast<uint8_t>(backend.dma_channel));
+      otis_resource_registry_bind_pio_irq_source(
+          OTIS_OWNER_COUNT_OBSERVATION, 0u,
+          static_cast<uint8_t>(kPioIrqIndex),
+          static_cast<uint8_t>(rx_source()));
   if (!ownership_bound) {
-    stop_transport();
+    pio_remove_program(backend.pio, &otis_pps_snapshot_program,
+                       static_cast<uint>(backend.program_offset));
+    pio_sm_unclaim(backend.pio, static_cast<uint>(backend.sm));
+    backend.sm = -1;
+    backend.program_offset = -1;
     return false;
   }
 
@@ -227,183 +306,147 @@ bool otis_pps_snapshot_backend_begin(void) {
       static_cast<uint>(backend.program_offset) + otis_pps_snapshot_initial_pc,
       &config);
 
+  backend.irq_number = pio_get_irq_num(backend.pio, kPioIrqIndex);
+  if (irq_get_exclusive_handler(static_cast<uint>(backend.irq_number)) !=
+      nullptr) {
+    pio_remove_program(backend.pio, &otis_pps_snapshot_program,
+                       static_cast<uint>(backend.program_offset));
+    pio_sm_unclaim(backend.pio, static_cast<uint>(backend.sm));
+    backend.sm = -1;
+    backend.program_offset = -1;
+    backend.irq_number = -1;
+    return false;
+  }
+  irq_add_shared_handler(static_cast<uint>(backend.irq_number),
+                         otis_pps_snapshot_fifo_irq_handler,
+                         PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
+  irq_set_enabled(static_cast<uint>(backend.irq_number), true);
+
   backend.initialized = true;
   backend.session = 1u;
-  return configure_session();
-}
-
-void otis_pps_snapshot_backend_poll(void) {
-  if (!backend.initialized || !backend.running) {
-    return;
-  }
-  uint sm = static_cast<uint>(backend.sm);
-  uint32_t rxstall = (backend.pio->fdebug >> sm) & 1u;
-  if (rxstall != 0u) {
-    increment_saturating(&backend.pio_rxstall_count);
-    latch_fatal_fault(OTIS_PPS_SNAPSHOT_STATUS_PIO_RXSTALL);
-    return;
-  }
-
-  dma_channel_hw_t *channel =
-      dma_channel_hw_addr(static_cast<uint>(backend.dma_channel));
-  if ((channel->ctrl_trig & DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS) != 0u) {
-    increment_saturating(&backend.dma_error_count);
-    latch_fatal_fault(OTIS_PPS_SNAPSHOT_STATUS_DMA_ERROR);
-    return;
-  }
-  if (!dma_channel_is_busy(static_cast<uint>(backend.dma_channel))) {
-    increment_saturating(&backend.dma_stopped_count);
-    latch_fatal_fault(OTIS_PPS_SNAPSHOT_STATUS_DMA_STOPPED);
-    return;
-  }
-
-  uint32_t produced = producer_ordinal();
-  uint32_t depth = produced - backend.consumer_ordinal;
-  if (depth > backend.backlog_high_water) {
-    backend.backlog_high_water = depth;
-  }
-  if (depth > kSnapshotRingCapacity) {
-    add_saturating(&backend.overwrite_count,
-                   depth - kSnapshotRingCapacity);
-    increment_saturating(&backend.continuity_loss_count);
-    backend.consumer_ordinal = produced;
-    backend.overwrite_pending = true;
-  }
-}
-
-bool otis_pps_snapshot_backend_pop(OtisPpsHardwareSnapshot *snapshot) {
-  if (snapshot == nullptr || !backend.initialized) {
-    return false;
-  }
-  otis_pps_snapshot_backend_poll();
-  if (!backend.running || backend.fault_latched) {
-    return false;
-  }
-
-  uint32_t produced = producer_ordinal();
-  uint32_t depth = produced - backend.consumer_ordinal;
-  if (depth == 0u || depth > kSnapshotRingCapacity) {
-    return false;
-  }
-
-  uint32_t sequence = backend.consumer_ordinal;
-  uint32_t index = sequence & kSnapshotRingMask;
-  __dmb();
-  uint32_t cumulative_down_counter = snapshot_ring[index];
-  __dmb();
-  backend.consumer_ordinal++;
-
-  uint32_t status = OTIS_PPS_SNAPSHOT_STATUS_NONE;
-  if (backend.overwrite_pending) {
-    status |= OTIS_PPS_SNAPSHOT_STATUS_OVERWRITE_BEFORE;
-    backend.overwrite_pending = false;
-  }
-  *snapshot = {
-      backend.session,
-      sequence,
-      cumulative_down_counter,
-      status,
-  };
+  set_source_enabled(false);
+  initialise_state_machine_session();
   return true;
 }
 
-void otis_pps_snapshot_backend_freeze_diagnostic(
-    OtisPpsSnapshotFrozenDiagnostic *out) {
-  if (out == nullptr) {
-    return;
-  }
-  *out = {false, 0u, 0u, 0u, 0u, 0u, false, 0u};
-  if (!backend.initialized) {
+void otis_pps_snapshot_backend_poll(void) {
+  if (!backend.initialized || get_core_num() != 1u) return;
+
+  const uint32_t interrupt_state = save_and_disable_interrupts();
+  set_source_enabled(false);
+  backend.irq_entries_since_poll = 0u;
+  backend.words_since_poll = 0u;
+
+  if (backend.fault_latched) {
+    // A fault freezes the producer, but poll may move its already-committed
+    // FIFO words into newly available ring slots. It never clears or rearms.
+    if (!pio_sm_is_rx_fifo_empty(backend.pio, sm_index())) {
+      service_fifo(kFifoWordsPerForegroundService);
+    }
+    restore_interrupts(interrupt_state);
     return;
   }
 
-  // Stop the producer before its transport. The pinned SDK's DMA abort does
-  // not return until an in-flight read/write transfer has retired, so the
-  // post-abort transfer count is the committed ring frontier. RP2040-E13 may
-  // raise a spurious completion IRQ after abort; this backend uses no DMA IRQ.
-  // Words still in the PIO FIFO are separately counted but are not claimed as
-  // committed ring observations because they have no DMA ring ordinal.
-  const bool dma_was_busy =
-      backend.dma_channel >= 0 &&
-      dma_channel_is_busy(static_cast<uint>(backend.dma_channel));
-  stop_transport();
-  __dmb();
-  const uint32_t produced = producer_ordinal();
-  const uint32_t consumed = backend.consumer_ordinal;
-  const uint32_t depth = produced - consumed;
-  const uint32_t fifo_depth =
-      backend.sm < 0
-          ? 0u
-          : static_cast<uint32_t>(pio_sm_get_rx_fifo_level(
-                backend.pio, static_cast<uint>(backend.sm)));
-  const bool settled_pio_rxstall =
-      backend.sm < 0 ||
-      ((backend.pio->fdebug >> static_cast<uint>(backend.sm)) & 1u) != 0u;
-  const uint32_t settled_dma_control =
-      backend.dma_channel < 0
-          ? DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS
-          : dma_channel_hw_addr(static_cast<uint>(backend.dma_channel))
-                ->ctrl_trig;
-  const bool settled_dma_error =
-      (settled_dma_control & DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS) != 0u;
-  const bool front_word_present =
-      depth > 0u && depth <= kSnapshotRingCapacity &&
-      dma_was_busy && !backend.fault_latched &&
-      !backend.overwrite_pending && !settled_pio_rxstall &&
-      !settled_dma_error;
-  uint32_t front_word = 0u;
-  if (front_word_present) {
-    __dmb();
-    front_word = snapshot_ring[consumed & kSnapshotRingMask];
-    __dmb();
+  if (rxstall_latched()) {
+    service_fifo(kFifoWordsPerForegroundService);
+    restore_interrupts(interrupt_state);
+    return;
   }
-  *out = {true,         backend.session, produced,   consumed,
-          depth,        fifo_depth,      front_word_present,
-          front_word};
+
+  // Sample before observing empty so a racing push cannot move the retained
+  // lower bound past an unread word.
+  const uint64_t empty_candidate = time_us_64();
+  if (pio_sm_is_rx_fifo_empty(backend.pio, sm_index())) {
+    backend.have_empty_lower_bound = true;
+    backend.empty_lower_bound_ticks = empty_candidate;
+  }
+  if (backend.running) set_source_enabled(true);
+  restore_interrupts(interrupt_state);
+}
+
+bool otis_pps_snapshot_backend_pop(OtisPpsHardwareSnapshot *snapshot) {
+  if (snapshot == nullptr || !backend.initialized ||
+      get_core_num() != 1u) {
+    return false;
+  }
+
+  const uint32_t interrupt_state = save_and_disable_interrupts();
+  const uint32_t consumed = backend.consumer_ordinal;
+  if (consumed == backend.producer_ordinal) {
+    restore_interrupts(interrupt_state);
+    return false;
+  }
+  __dmb();
+  *snapshot = snapshot_ring[consumed & kSnapshotRingMask];
+  __dmb();
+  backend.consumer_ordinal = consumed + 1u;
+  restore_interrupts(interrupt_state);
+  return true;
 }
 
 bool otis_pps_snapshot_backend_rearm(void) {
-  if (!backend.initialized) {
+  if (!backend.initialized || get_core_num() != 1u) return false;
+
+  set_source_enabled(false);
+  pio_sm_set_enabled(backend.pio, sm_index(), false);
+  const uint32_t interrupt_state = save_and_disable_interrupts();
+  backend.running = false;
+
+  const bool evidence_drained =
+      backend.producer_ordinal == backend.consumer_ordinal &&
+      pio_sm_is_rx_fifo_empty(backend.pio, sm_index());
+  if (!evidence_drained || backend.session == UINT32_MAX ||
+      (backend.fault_latched && !backend.fault_reported)) {
+    restore_interrupts(interrupt_state);
     return false;
   }
-  stop_transport();
-  backend.session++;
-  return configure_session();
+
+  backend.session = backend.session + 1u;
+  initialise_state_machine_session();
+  restore_interrupts(interrupt_state);
+  return true;
 }
 
 void otis_pps_snapshot_backend_get_stats(OtisPpsSnapshotBackendStats *out) {
-  if (out == nullptr) {
+  if (out == nullptr) return;
+  if (!backend.initialized || get_core_num() != 1u) {
+    *out = {};
     return;
   }
-  otis_pps_snapshot_backend_poll();
-  uint32_t produced = backend.initialized ? producer_ordinal() : 0u;
-  uint32_t depth = produced - backend.consumer_ordinal;
-  if (depth > kSnapshotRingCapacity) {
-    depth = kSnapshotRingCapacity;
+
+  const uint32_t interrupt_state = save_and_disable_interrupts();
+  // Stats are non-consuming, but they are also an authority freshness
+  // boundary: sample the sticky hardware fault before copying state.
+  if (rxstall_latched()) {
+    latch_faults(OTIS_PPS_SNAPSHOT_STATUS_PIO_RXSTALL);
   }
+  uint32_t depth =
+      backend.producer_ordinal - backend.consumer_ordinal;
+  if (depth > kSnapshotRingCapacity) depth = kSnapshotRingCapacity;
   *out = {
       backend.initialized,
       backend.running,
       backend.fault_latched,
       backend.session,
-      produced,
+      backend.producer_ordinal,
       backend.consumer_ordinal,
       depth,
       backend.backlog_high_water,
-      backend.overwrite_count,
       backend.continuity_loss_count,
       backend.pio_rxstall_count,
-      backend.dma_error_count,
-      backend.dma_stopped_count,
+      backend.irq_budget_exhausted_count,
+      backend.ring_full_count,
+      backend.timestamp_ambiguous_count,
       backend.fault_flags,
+      backend.last_service_ticks,
       backend.system_clock_hz,
       0u,
       static_cast<uint8_t>(backend.sm < 0 ? 0xff : backend.sm),
       static_cast<uint8_t>(backend.program_offset < 0 ? 0xff
                                                      : backend.program_offset),
       static_cast<uint8_t>(otis_pps_snapshot_program.length),
-      static_cast<uint8_t>(backend.dma_channel < 0 ? 0xff
-                                                  : backend.dma_channel),
       static_cast<uint16_t>(kSnapshotRingCapacity),
   };
+  if (backend.fault_latched) backend.fault_reported = true;
+  restore_interrupts(interrupt_state);
 }

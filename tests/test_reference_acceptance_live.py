@@ -30,7 +30,7 @@ def test_generated_policy_and_fixed_build_binding():
     assert HEADER.read_text() == render_header()
     import json
     manifest = json.loads((ROOT / "firmware/arduino/firmware_build_manifest.json").read_text())
-    assert manifest["contract_bindings"]["reference_acceptance"] == "data_contracts/reference_acceptance_policy_v1.json"
+    assert manifest["contract_bindings"]["reference_acceptance"] == "data_contracts/reference_acceptance_policy_v2.json"
 
 
 def test_core0_execute_checks_the_retained_measurement_identity(tmp_path):

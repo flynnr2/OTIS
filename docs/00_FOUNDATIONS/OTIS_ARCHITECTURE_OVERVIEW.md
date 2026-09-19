@@ -103,16 +103,19 @@ future work with explicit authority and evidence contracts.
 
 ## Accepted-reference integration
 
-The current candidate selects D14 references after hardware snapshot
-association. Raw REF/SNP/CNT remain canonical; APS records separately identify
-accepted D8 spans, their acceptance epoch and their full raw source range.
-One selector output feeds both frequency and relative-phase measurement.
-Accepted-span identity then passes through EST, phase, active transactions,
-recorder readiness, host replay and qualified-duration accounting.
+The current candidate selects immutable PIO-owned D14/D8 snapshots through
+one reference acceptance gate. Raw SNP/CNT/REF remain canonical; REF is a
+presentation of the same snapshot rather than an independent GPIO owner.
+APS separately identifies accepted D8 spans, their acceptance epoch and full
+raw source range. One immutable selection feeds frequency and relative-phase
+measurement, then transaction identity, recorder readiness, replay and duration
+accounting. Raw interval diagnostics have no separate control-admission role.
 
-Receiver metadata and delayed observation delivery can hold control without
-resetting continuous measurement history. Physical absence is not inferred
-from a CPU deadline. Same-clock64-bit projection of captured RP2040 low words
-bounds observation age; ambiguity withdraws the model's qualification while
-preserving raw evidence. Source gaps and acceptance-epoch changes require
-fresh support, and an uninterrupted campaign cannot sum different epochs.
+FIFO service coordinates are CPU observations, not hardware-latched D14 edge
+timestamps. Their explicit uncertainty brackets PIO snapshot recognition using
+a prior FIFO-empty observation. The whole possible interval must satisfy the
+reference tolerance. Receiver metadata remains a separate control gate.
+See [the single-owner contract](../50_SOFTWARE/SINGLE_REFERENCE_OWNER_REPAIR.md)
+for bounds, fault retention and the distinction between PIO recognition and an
+electrical D14 edge. Session/acceptance-epoch changes require fresh support;
+an uninterrupted campaign cannot sum different epochs.

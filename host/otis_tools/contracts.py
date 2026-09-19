@@ -58,6 +58,7 @@ PPS_SNAPSHOT_FIELDS = [
     "cumulative_down_counter",
     "reference_sequence",
     "reference_timestamp_ticks",
+    "timestamp_uncertainty_ticks",
     "status",
     "backend",
 ]
@@ -78,51 +79,6 @@ FORWARDED_MONITOR_SNAPSHOT_FIELDS = [
     "status",
     "backend",
     "channel_id",
-]
-
-ASSOCIATION_LOSS_DECISION_V2_FIELDS = [
-    "record_type",
-    "schema_version",
-    "decision_sequence",
-    "reason",
-    "classification",
-    "decision_ticks",
-    "pending_reference_sequence",
-    "pending_reference_ticks",
-    "pending_age_ticks",
-    "boundary_depth",
-    "boundary_dropped_count",
-    "next_reference_present",
-    "next_reference_sequence",
-    "next_reference_ticks",
-    "snapshot_initialized",
-    "snapshot_running",
-    "snapshot_fault_latched",
-    "snapshot_fault_flags",
-    "snapshot_session",
-    "snapshot_producer_ordinal",
-    "snapshot_consumer_ordinal",
-    "snapshot_backlog_depth",
-    "snapshot_backlog_high_water",
-    "snapshot_overwrite_count",
-    "snapshot_continuity_loss_count",
-    "snapshot_pio_rxstall_count",
-    "snapshot_dma_error_count",
-    "snapshot_dma_stopped_count",
-    "core1_loop_sequence",
-    "core1_last_snapshot_session",
-    "core1_last_snapshot_sequence",
-    "core1_phase",
-    "core1_phase_enter_ticks",
-    "core1_last_progress_ticks",
-    "snapshot_frozen",
-    "frozen_session",
-    "frozen_producer_ordinal",
-    "frozen_consumer_ordinal",
-    "frozen_backlog_depth",
-    "frozen_pio_fifo_depth",
-    "unassociated_front_word_present",
-    "unassociated_front_word",
 ]
 
 HEALTH_FIELDS = [
@@ -548,9 +504,8 @@ TIGHT_DEADBAND_DECISION_V1_FIELDS = [
 CONTRACT_FIELDS = {
     "raw_events_v1": RAW_EVENT_FIELDS,
     "count_observations_v1": COUNT_OBSERVATION_FIELDS,
-    "pps_snapshots_v1": PPS_SNAPSHOT_FIELDS,
+    "pps_snapshots_v2": PPS_SNAPSHOT_FIELDS,
     "forwarded_monitor_snapshots_v1": FORWARDED_MONITOR_SNAPSHOT_FIELDS,
-    "association_loss_decisions_v2": ASSOCIATION_LOSS_DECISION_V2_FIELDS,
     "health_v1": HEALTH_FIELDS,
     "dac_steps_v1": DAC_STEP_FIELDS,
     "environment_v1": ENVIRONMENT_FIELDS,
@@ -568,9 +523,8 @@ CONTRACT_FIELDS = {
 CONTRACT_RECORD_TYPES = {
     "raw_events_v1": {"EVT", "REF"},
     "count_observations_v1": {"CNT"},
-    "pps_snapshots_v1": {"SNP"},
+    "pps_snapshots_v2": {"SNP"},
     "forwarded_monitor_snapshots_v1": {"MNS"},
-    "association_loss_decisions_v2": {"ASL"},
     "health_v1": {"STS"},
     "dac_steps_v1": {"DAC"},
     "environment_v1": {"ENV"},
@@ -588,9 +542,8 @@ CONTRACT_RECORD_TYPES = {
 CONTRACT_SCHEMA_VERSIONS = {
     "raw_events_v1": 1,
     "count_observations_v1": 1,
-    "pps_snapshots_v1": 1,
+    "pps_snapshots_v2": 2,
     "forwarded_monitor_snapshots_v1": 1,
-    "association_loss_decisions_v2": 2,
     "health_v1": 1,
     "dac_steps_v1": 1,
     "environment_v1": 1,
@@ -628,9 +581,8 @@ if CONTRACT_SCHEMA_VERSIONS != AUTHORITY_RECORD_SCHEMA_VERSIONS:
 SEQUENCE_FIELDS = {
     "raw_events_v1": "event_seq",
     "count_observations_v1": "count_seq",
-    "pps_snapshots_v1": "snapshot_sequence",
+    "pps_snapshots_v2": "snapshot_sequence",
     "forwarded_monitor_snapshots_v1": "snapshot_sequence",
-    "association_loss_decisions_v2": "decision_sequence",
     "health_v1": "status_seq",
     "dac_steps_v1": "seq",
     "environment_v1": "env_seq",
@@ -648,9 +600,8 @@ SEQUENCE_FIELDS = {
 TIMESTAMP_FIELDS = {
     "raw_events_v1": ("timestamp_ticks",),
     "count_observations_v1": ("gate_open_ticks", "gate_close_ticks"),
-    "pps_snapshots_v1": ("reference_timestamp_ticks",),
+    "pps_snapshots_v2": ("reference_timestamp_ticks",),
     "forwarded_monitor_snapshots_v1": ("reference_timestamp_ticks",),
-    "association_loss_decisions_v2": ("decision_ticks",),
     "health_v1": ("timestamp_ticks",),
     "dac_steps_v1": ("elapsed_ms",),
     "environment_v1": ("timestamp_ticks",),
@@ -674,9 +625,8 @@ CHANNEL_FIELDS = {
 DOMAIN_FIELDS = {
     "raw_events_v1": ("capture_domain",),
     "count_observations_v1": ("gate_domain",),
-    "pps_snapshots_v1": (),
+    "pps_snapshots_v2": (),
     "forwarded_monitor_snapshots_v1": (),
-    "association_loss_decisions_v2": (),
     "health_v1": ("status_domain",),
     "dac_steps_v1": (),
     "environment_v1": ("observation_domain",),
@@ -692,14 +642,13 @@ DOMAIN_FIELDS = {
 }
 
 CONTRACT_IMPLICIT_TIME_DOMAINS = {
-    "pps_snapshots_v1": "rp2040_monotonic_us32",
+    "pps_snapshots_v2": "rp2040_monotonic_us32",
     "forwarded_monitor_snapshots_v1": "rp2040_monotonic_us32",
-    "association_loss_decisions_v2": "rp2040_monotonic_us32",
     "dac_steps_v1": "host_elapsed_ms",
 }
 
 SESSION_FIELDS = {
-    "pps_snapshots_v1": "session",
+    "pps_snapshots_v2": "session",
     "forwarded_monitor_snapshots_v1": "session",
     "tight_deadband_decisions_v1": "capture_session",
     "accepted_pps_spans_v1": "capture_session",
@@ -962,7 +911,7 @@ def _check_sequence(contract: str, row: dict[str, str], row_number: int, previou
     # layer validates SNP/CNT adjacency using session, ordinal and endpoints.
     if contract in {
         "count_observations_v1",
-        "pps_snapshots_v1",
+        "pps_snapshots_v2",
         "forwarded_monitor_snapshots_v1",
         "accepted_pps_spans_v1",
         "relative_phase_observations_v2",
@@ -1092,20 +1041,46 @@ def _check_count_observation(row: dict[str, str], row_number: int, errors: list[
 
 
 def _check_pps_snapshot(row: dict[str, str], row_number: int, errors: list[str]) -> None:
+    parsed: dict[str, int | None] = {}
     for field_name in (
         "session",
         "snapshot_sequence",
         "cumulative_down_counter",
         "reference_sequence",
+        "timestamp_uncertainty_ticks",
         "status",
     ):
-        value = _parse_non_negative_int(row.get(field_name, ""), field_name, row_number, errors)
+        value = _parse_non_negative_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        parsed[field_name] = value
         if value is not None and value > 0xFFFFFFFF:
             errors.append(
                 f"row {row_number}: {field_name} must fit in an unsigned 32-bit integer"
             )
-    if not row.get("backend"):
-        errors.append(f"row {row_number}: backend must not be empty")
+    if row.get("backend") != "pio_wait_cumulative_snapshot_fifo_irq_v2":
+        errors.append(
+            f"row {row_number}: backend must be "
+            "pio_wait_cumulative_snapshot_fifo_irq_v2"
+        )
+    if (
+        None not in (parsed["snapshot_sequence"], parsed["reference_sequence"])
+        and parsed["reference_sequence"] != parsed["snapshot_sequence"]
+    ):
+        errors.append(
+            f"row {row_number}: reference_sequence must equal snapshot_sequence"
+        )
+    status = parsed["status"]
+    uncertainty = parsed["timestamp_uncertainty_ticks"]
+    if status is not None and status & ~0x1F:
+        errors.append(f"row {row_number}: status uses unknown SNP v2 bits")
+    if None not in (status, uncertainty) and (
+        uncertainty == 0xFFFFFFFF
+    ) != bool(status & (1 << 1)):
+        errors.append(
+            f"row {row_number}: UINT32_MAX uncertainty must exactly match "
+            "TIMESTAMP_UNBOUNDED status"
+        )
 
 
 def _check_accepted_pps_span_v1(
@@ -1196,7 +1171,17 @@ def _check_accepted_pps_span_v1(
 def _check_forwarded_monitor_snapshot(
     row: dict[str, str], row_number: int, errors: list[str]
 ) -> None:
-    _check_pps_snapshot(row, row_number, errors)
+    for field_name in (
+        "session", "snapshot_sequence", "cumulative_down_counter",
+        "reference_sequence", "status",
+    ):
+        value = _parse_non_negative_int(
+            row.get(field_name, ""), field_name, row_number, errors
+        )
+        if value is not None and value > 0xFFFFFFFF:
+            errors.append(
+                f"row {row_number}: {field_name} must fit in an unsigned 32-bit integer"
+            )
     if row.get("backend") != "pio_wait_cumulative_snapshot_cpu_v1":
         errors.append(
             f"row {row_number}: forwarded monitor backend must be "
@@ -1212,161 +1197,6 @@ def _check_forwarded_monitor_snapshot(
         errors.append(
             f"row {row_number}: forwarded monitor channel_id must be 3 (D6); "
             f"got {channel_id}"
-        )
-
-
-def _check_association_loss_decision_v2(
-    row: dict[str, str], row_number: int, errors: list[str]
-) -> None:
-    classifications = {
-        "backend_fault",
-        "unread_snapshot_present_when_decision_made",
-        "timeout_no_snapshot",
-        "no_unread_snapshot_healthy_backend",
-    }
-    if row.get("classification") not in classifications:
-        errors.append(
-            f"row {row_number}: classification must be one of {sorted(classifications)}"
-        )
-    for field_name in (
-        "next_reference_present",
-        "snapshot_initialized",
-        "snapshot_running",
-        "snapshot_fault_latched",
-        "snapshot_frozen",
-        "unassociated_front_word_present",
-    ):
-        if row.get(field_name) not in {"true", "false"}:
-            errors.append(f"row {row_number}: {field_name} must be 'true' or 'false'")
-    numeric_fields = (
-        "pending_reference_sequence",
-        "pending_reference_ticks",
-        "pending_age_ticks",
-        "boundary_depth",
-        "boundary_dropped_count",
-        "next_reference_sequence",
-        "next_reference_ticks",
-        "snapshot_fault_flags",
-        "snapshot_session",
-        "snapshot_producer_ordinal",
-        "snapshot_consumer_ordinal",
-        "snapshot_backlog_depth",
-        "snapshot_backlog_high_water",
-        "snapshot_overwrite_count",
-        "snapshot_continuity_loss_count",
-        "snapshot_pio_rxstall_count",
-        "snapshot_dma_error_count",
-        "snapshot_dma_stopped_count",
-        "core1_loop_sequence",
-        "core1_last_snapshot_session",
-        "core1_last_snapshot_sequence",
-        "core1_phase_enter_ticks",
-        "core1_last_progress_ticks",
-        "frozen_session",
-        "frozen_producer_ordinal",
-        "frozen_consumer_ordinal",
-        "frozen_backlog_depth",
-        "frozen_pio_fifo_depth",
-        "unassociated_front_word",
-    )
-    parsed = {
-        field_name: _parse_non_negative_int(
-            row.get(field_name, ""), field_name, row_number, errors
-        )
-        for field_name in numeric_fields
-    }
-    for field_name in ("reason", "core1_phase"):
-        if not row.get(field_name):
-            errors.append(f"row {row_number}: {field_name} must not be empty")
-    if row.get("next_reference_present") == "false" and (
-        parsed["next_reference_sequence"] not in {None, 0}
-        or parsed["next_reference_ticks"] not in {None, 0}
-    ):
-        errors.append(
-            f"row {row_number}: absent next reference must carry zero identity"
-        )
-    backlog = parsed["snapshot_backlog_depth"]
-    classification = row.get("classification")
-    if classification == "unread_snapshot_present_when_decision_made" and backlog == 0:
-        errors.append(
-            f"row {row_number}: unread-snapshot classification requires backlog"
-        )
-    if classification in {
-        "timeout_no_snapshot",
-        "no_unread_snapshot_healthy_backend",
-    } and backlog not in {None, 0}:
-        errors.append(
-            f"row {row_number}: no-snapshot classification requires zero backlog"
-        )
-    if (
-        classification == "backend_fault"
-        and row.get("snapshot_fault_latched") != "true"
-    ):
-        errors.append(
-            f"row {row_number}: backend_fault requires snapshot_fault_latched=true"
-        )
-
-    frozen = row.get("snapshot_frozen") == "true"
-    present = row.get("unassociated_front_word_present") == "true"
-    if not frozen:
-        if present or any(
-            parsed[name] not in {None, 0}
-            for name in (
-                "frozen_session",
-                "frozen_producer_ordinal",
-                "frozen_consumer_ordinal",
-                "frozen_backlog_depth",
-                "frozen_pio_fifo_depth",
-                "unassociated_front_word",
-            )
-        ):
-            errors.append(f"row {row_number}: unavailable freeze must carry no payload")
-    else:
-        if row.get("snapshot_initialized") != "true":
-            errors.append(f"row {row_number}: frozen backend must be initialized")
-        if parsed["frozen_session"] != parsed["snapshot_session"]:
-            errors.append(
-                f"row {row_number}: freeze must retain decision capture session"
-            )
-        produced, consumed, depth = (
-            parsed[name]
-            for name in (
-                "frozen_producer_ordinal",
-                "frozen_consumer_ordinal",
-                "frozen_backlog_depth",
-            )
-        )
-        if (
-            None not in (produced, consumed, depth)
-            and (produced - consumed) % (1 << 32) != depth
-        ):
-            errors.append(
-                f"row {row_number}: frozen backlog must equal ordinal distance"
-            )
-        previous_produced = parsed["snapshot_producer_ordinal"]
-        if produced is not None and previous_produced is not None and (
-            (produced - previous_produced) % (1 << 32) >= (1 << 31)
-        ):
-            errors.append(f"row {row_number}: frozen producer must not move backward")
-        if present and (
-            row.get("snapshot_fault_latched") == "true"
-            or parsed["snapshot_fault_flags"] not in {None, 0}
-        ):
-            errors.append(f"row {row_number}: faulted decision cannot claim a readable front word")
-        if parsed["frozen_consumer_ordinal"] != parsed["snapshot_consumer_ordinal"]:
-            errors.append(f"row {row_number}: freeze must not consume a snapshot")
-        if (
-            parsed["frozen_pio_fifo_depth"] is not None
-            and parsed["frozen_pio_fifo_depth"] > 8
-        ):
-            errors.append(f"row {row_number}: frozen FIFO exceeds joined RX capacity")
-        if present and (depth is None or not 1 <= depth <= 128):
-            errors.append(
-                f"row {row_number}: front word requires an unread non-overwritten slot"
-            )
-    if not present and parsed["unassociated_front_word"] not in {None, 0}:
-        errors.append(
-            f"row {row_number}: absent front word must carry zero placeholder"
         )
 
 
@@ -3064,14 +2894,12 @@ def validate_csv(path: Path, context: CsvValidationContext) -> CsvValidationResu
             _check_edges(context.contract, row, row_count, errors)
             if context.contract == "count_observations_v1":
                 _check_count_observation(row, row_count, errors)
-            if context.contract == "pps_snapshots_v1":
+            if context.contract == "pps_snapshots_v2":
                 _check_pps_snapshot(row, row_count, errors)
             if context.contract == "accepted_pps_spans_v1":
                 _check_accepted_pps_span_v1(row, row_count, errors)
             if context.contract == "forwarded_monitor_snapshots_v1":
                 _check_forwarded_monitor_snapshot(row, row_count, errors)
-            if context.contract == "association_loss_decisions_v2":
-                _check_association_loss_decision_v2(row, row_count, errors)
             if context.contract == "health_v1":
                 _check_health(row, row_count, errors)
             if context.contract == "dac_steps_v1":

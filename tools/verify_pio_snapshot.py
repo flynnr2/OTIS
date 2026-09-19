@@ -437,18 +437,9 @@ def verify_repository_installation(
         "pio_divider_one": "sm_config_set_clkdiv(&config, 1.0f);",
         "initial_pc":
             "static_cast<uint>(backend.program_offset) + otis_pps_snapshot_initial_pc",
-        "dma_rx_dreq": "pio_get_dreq(backend.pio, sm, false)",
-        "dma_word_size":
-            "channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_32);",
-        "dma_high_priority":
-            "channel_config_set_high_priority(&dma_config, true);",
-        "dma_ring_addressing":
-            "channel_config_set_ring(&dma_config, true, kSnapshotRingAddressBits);",
-        "aligned_ring":
-            "alignas(512) volatile uint32_t snapshot_ring[kSnapshotRingCapacity]",
+        "fifo_interrupt": "pio_get_rx_fifo_not_empty_interrupt_source",
         "rxstall_fatal": "OTIS_PPS_SNAPSHOT_STATUS_PIO_RXSTALL",
-        "dma_error_fatal": "OTIS_PPS_SNAPSHOT_STATUS_DMA_ERROR",
-        "dma_stopped_fatal": "OTIS_PPS_SNAPSHOT_STATUS_DMA_STOPPED",
+        "bounded_transport": "otis_pps_fifo_drain",
     }
     missing = [name for name, fragment in required_backend_fragments.items() if fragment not in backend]
     if missing:
@@ -496,69 +487,7 @@ def verify_repository_installation(
         "input_synchronizers": "enabled",
         "autopush_bits": 32,
         "joined_rx_fifo_words": FIFO_DEPTH,
-        "dma_ring_words": 128,
-    }
-
-
-def verify_dma_ring_model() -> dict[str, object]:
-    """Exercise the production ring's producer/consumer arithmetic."""
-
-    capacity = 128
-    mask = capacity - 1
-    ring = [0] * capacity
-    producer = 0
-    consumer = 0
-
-    def write(value: int) -> None:
-        nonlocal producer
-        ring[producer & mask] = value
-        producer += 1
-
-    def drain() -> list[int]:
-        nonlocal consumer
-        depth = producer - consumer
-        if depth > capacity:
-            consumer = producer
-            raise ProofFailure("overwrite_detected")
-        values: list[int] = []
-        while consumer != producer:
-            values.append(ring[consumer & mask])
-            consumer += 1
-        return values
-
-    # Delayed foreground service remains lossless through exact capacity and
-    # crosses the wrapped SRAM address without changing producer ordinals.
-    for value in range(capacity):
-        write(value)
-    if producer - consumer != capacity or drain() != list(range(capacity)):
-        raise ProofFailure("exact-capacity DMA ring did not drain losslessly")
-    for value in range(capacity, capacity + 17):
-        write(value)
-    if drain() != list(range(capacity, capacity + 17)):
-        raise ProofFailure("DMA ring address wrap changed snapshot values")
-
-    # One word beyond capacity must be detected before any ambiguous slot is
-    # consumed. The backend discards all unread words and starts a new session.
-    producer = 0
-    consumer = 0
-    for value in range(capacity + 1):
-        write(value)
-    overwrite_detected = False
-    try:
-        drain()
-    except ProofFailure as exc:
-        if str(exc) != "overwrite_detected":
-            raise
-        overwrite_detected = True
-    if not overwrite_detected or consumer != producer:
-        raise ProofFailure("ring overwrite by one did not discard ambiguous data")
-
-    return {
-        "capacity_words": capacity,
-        "exact_capacity": "lossless",
-        "address_wrap": "lossless",
-        "overwrite_by_one": "detected; unread words discarded; rearm required",
-        "index_ownership": "DMA transfer count produces; foreground alone consumes",
+        "transport": "bounded_fifo_irq",
     }
 
 
@@ -654,7 +583,6 @@ def main(argv: list[str] | None = None) -> int:
     result["repository_installation"] = verify_repository_installation(
         args.backend_source, args.generated_header, args.firmware_manifest
     )
-    result["dma_ring"] = verify_dma_ring_model()
     result.update(
         {
             "program_words": [f"0x{word:04x}" for word in PROGRAM_WORDS],

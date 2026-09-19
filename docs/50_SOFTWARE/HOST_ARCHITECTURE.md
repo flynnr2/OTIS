@@ -137,3 +137,13 @@ excerpt and a source-ownership regression cover the previously escaped duplicate
 PPS emission and the first downstream zero-write decision. The fixture tests
 record ordering and host consumption; it does not claim to execute the physical
 cross-core scheduler or validate electrical timing.
+
+## Single reference producer
+
+Current raw replay consumes SNP v2: session and ordinal identify one immutable
+PIO count record, and its CPU service coordinate carries a recognition-time
+uncertainty. REF is emitted from that same record; it is not a second timing
+owner that must be joined by timestamp. Replay verifies the complete possible
+interval against the frozen tolerance and joins APS endpoints to their actual
+SNP records. DMA health, association-loss records and the independent reference
+queue are retired. Historical acquisitions retain their frozen readers.

@@ -39,12 +39,48 @@ FIRMWARE_COUNT_SOURCE = (
     Path(__file__).parents[1]
     / "firmware/arduino/otis_nano_rp2040_connect/otis_count_observation.cpp"
 )
-CORE0_CONFIG_PPS_KEYS = frozenset(
+LEGACY_CORE0_CONFIG_PPS_KEYS = frozenset(
     {
         "boundary_owner",
         "aperture_backend",
         "backend_qualified",
         "boundary_ring_capacity",
+    }
+)
+CURRENT_FRAMED_PPS_CONFIG_KEYS = frozenset(
+    {
+        "boundary_owner",
+        "aperture_backend",
+        "hardware_count_boundary",
+    }
+)
+
+_CURRENT_PPS_KEY_RENAMES = {
+    "backend_qualified": "hardware_count_boundary",
+    "valid": "raw_window_valid",
+    "state": "raw_window_state",
+    "last_reason": "raw_window_reason",
+    "association_state": "capture_state",
+    "association_loss_reason": "capture_loss_reason",
+    "association_loss_count": "capture_loss_count",
+    "association_loss_reference_sequence": "capture_loss_consumer_ordinal",
+    "snapshot_producer_sequence": "snapshot_producer_ordinal",
+    "snapshot_consumer_sequence": "snapshot_consumer_ordinal",
+    "snapshot_overwrite_count": "snapshot_ring_full_count",
+    "snapshot_dma_error_count": "snapshot_irq_budget_exhausted_count",
+    "snapshot_dma_stopped_count": "snapshot_timestamp_ambiguous_count",
+    "physical_pps_state": "capture_service_state",
+    "physical_pps_missing_count": "capture_service_stale_count",
+    "physical_pps_restored_count": "capture_service_resumed_count",
+    "physical_pps_reminder_count": "capture_service_reminder_count",
+}
+_RETIRED_PPS_KEYS = frozenset(
+    {
+        "association_recovery_count",
+        "boundary_ring_depth",
+        "boundary_ring_capacity",
+        "boundary_ring_dropped_count",
+        "snapshot_dma_channel",
     }
 )
 ACTIVE_END = 699
@@ -83,7 +119,7 @@ def _project_single_pps_writer(
         if not (
             in_config
             and row["component"] == "pps_gate"
-            and row["status_key"] in CORE0_CONFIG_PPS_KEYS
+            and row["status_key"] in LEGACY_CORE0_CONFIG_PPS_KEYS
         ):
             projected.append(deepcopy(row))
         if (
@@ -92,6 +128,26 @@ def _project_single_pps_writer(
             and row["status_value"] == "end"
         ):
             in_config = False
+    return _project_current_pps_schema(projected)
+
+
+def _project_current_pps_schema(
+    rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    projected: list[dict[str, str]] = []
+    for source in rows:
+        row = deepcopy(source)
+        if row["component"] == "pps_gate":
+            key = row["status_key"]
+            if key in _RETIRED_PPS_KEYS:
+                continue
+            row["status_key"] = _CURRENT_PPS_KEY_RENAMES.get(key, key)
+            if (
+                row["status_key"] == "aperture_backend"
+                and row["status_value"] == "pio_wait_cumulative_snapshot_dma_v1"
+            ):
+                row["status_value"] = "pio_wait_cumulative_snapshot_fifo_irq_v2"
+        projected.append(row)
     return projected
 
 
@@ -192,9 +248,13 @@ def _line(row: dict[str, str]) -> str:
 def _pps_rows(
     generation: int, *, sequence_base: int, anchor_ticks: int
 ) -> list[dict[str, str]]:
-    source = [
-        deepcopy(row) for row in _fixture_rows() if row["component"] == "pps_gate"
-    ]
+    source = _project_current_pps_schema(
+        [
+            deepcopy(row)
+            for row in _fixture_rows()
+            if row["component"] == "pps_gate"
+        ]
+    )
     assert source and source[0]["status_key"] == "snapshot"
     assert source[-1]["status_key"] == "startup_inhibit_active"
     for offset, row in enumerate(source):
@@ -290,10 +350,10 @@ def test_partial_pps_generation_cannot_merge_old_tail_into_zero_write_authority(
     for row in partial:
         if row["status_key"] == "fifo_continuity":
             row["status_value"] = "unavailable"
-        elif row["status_key"] == "association_state":
+        elif row["status_key"] == "capture_state":
             row["status_value"] = "lost"
         elif row["status_key"] in {
-            "association_loss_count",
+            "capture_loss_count",
             "physical_aperture_incomplete_count",
         }:
             row["status_value"] = "1"
@@ -303,8 +363,8 @@ def test_partial_pps_generation_cannot_merge_old_tail_into_zero_write_authority(
         if row["status_key"]
         not in {
             "fifo_continuity",
-            "association_state",
-            "association_loss_count",
+            "capture_state",
+            "capture_loss_count",
             "physical_aperture_incomplete_count",
         }
     ]
@@ -421,7 +481,7 @@ def test_core0_cannot_emit_into_timing_owned_status_cohorts() -> None:
     assert framed_pps.index('"snapshot", "begin"') < framed_pps.index(
         '"snapshot_generation"'
     )
-    for key in CORE0_CONFIG_PPS_KEYS:
+    for key in CURRENT_FRAMED_PPS_CONFIG_KEYS:
         assert f'"pps_gate", "{key}"' in framed_pps
         assert framed_pps.index(f'"pps_gate", "{key}"') < framed_pps.index(
             '"snapshot", "end"'

@@ -1,119 +1,83 @@
-# Single reference owner: bounded repair proposal
+# Single reference owner
 
-Status: feasibility established in a bounded model; **not implemented in the
-instrument**, not a campaign bundle and not permission for a physical run.
+Status: implementation under verification. Not yet a frozen bench candidate.
 Context: [September 13 association loss](../60_EXPERIMENTS/REFERENCE_ASSOCIATION_DISCONTINUITY_2026_09_13.md).
 
-## One decision before downstream use
+The authoritative path is:
 
-The operator's requested boundary is one reference-acceptance decision before
-an event reaches qualified measurement, phase estimation or control. Hardware
-must first preserve the raw candidate needed to make that decision. Rejected
-candidates remain raw diagnostic evidence and cannot independently advance
-qualification or actuation. Existing raw interval diagnostics may remain, but
-must not become a competing acceptance gate.
+`D14-recognized PIO D8 snapshot → immutable FIFO record → one acceptance gate → phase/frequency/control`
 
-The intended path is:
+The unchanged 15-instruction PIO program owns the count boundary. Core 1 drains
+its RX FIFO through a bounded interrupt into a software ring. A record owns its
+session, ordinal, raw counter, CPU service coordinate and timing uncertainty.
+An IRQ invocation is never a record identity. There is no DMA transport,
+independent GPIO reference queue, count-boundary queue, association timeout or
+automatic association rearm. REF is a presentation of the same PIO record;
+SNP v2 is sufficient to reconstruct its count and recognition-time evidence.
+D10 remains an unimplemented external-event seam with no reference authority.
+The D9/D6 monitor remains optional, separately queued and without authority.
 
-`PIO count capture → one immutable raw record → one acceptance gate → accepted span consumers`
+## Recognition time, not a fabricated edge timestamp
 
-The record owns its session, ordinal and raw oscillator count together. Phase,
-frequency, preview and control consumers receive the same selection result.
-No independent GPIO event queue decides which count belongs to a reference.
-GPIO evidence, if retained at all, is diagnostic only and cannot advance or
-veto reference authority. GNSS serial metadata retains its separate receiver
-qualification role; it does not become timing authority.
+The RP2040 timer is an implementation clock. `reference_timestamp_ticks` in
+SNP v2 is the CPU FIFO-service coordinate in `rp2040_monotonic_us32`, sampled
+after reading the word. It is not a hardware-latched D14 edge timestamp or a
+measurement of capture-to-service latency.
 
-## Preferred finite implementation
+Before observing an empty FIFO, the timing owner samples that same timer.
+The next committed snapshot therefore has a conservative recognition interval
+from the last known-empty coordinate (minus one microsecond) to its service
+coordinate. The one-microsecond allowance covers the unchanged IN/autopush
+publication at 133 MHz and integer timer quantization; it is not an assumed
+interrupt-latency limit. No empty observation means unknown uncertainty.
+A multiword service batch remains explicitly ambiguous. Raw words and actual
+service coordinates survive these findings.
 
-Keep the current 15-instruction PIO counting/snapshot program unchanged.
-Replace authoritative DMA drainage with the state machine's RX-FIFO-not-empty
-interrupt on Core 1. The pinned SDK provides this per-state-machine interrupt
-source. The interrupt drains already-latched, immutable FIFO count words into
-one bounded software ring. Identity advances once per FIFO word read, never
-once per IRQ invocation. Remove the mandatory GPIO reference stream, separate
-boundary queue and association guard from the authoritative path.
+This interval bounds the PIO snapshot recognition in integer microseconds,
+not the electrical D14 rising edge. The unchanged PIO program checks D14 while
+counting D8; a stopped or slow D8 can delay recognition. Neither a singleton
+FIFO nor a plausible D8 count proves an independent D14 pin timestamp. D8
+counts are never used to tighten this timing interval. That limitation remains
+visible and is not cured by a successful qualification run.
 
-This removes the independent-detector matching problem and the DMA-commit/IRQ
-race without adding instructions to the counting path. It does not move the
-count aperture into the CPU: no per-PPS stop, restart or late read of live X is
-allowed. The optional output monitor retains its own disabled IRQ source and
-its existing zero-authority status. Repository sources currently install no
-PIO CPU IRQ handler; the pinned linked image and libraries must still be
-checked before claiming exclusive ownership. Prefer a source-filtered shared
-handler if exclusivity cannot be established.
+For opening and closing intervals `[Lo,Uo]` and `[Lc,Uc]`, the possible elapsed
+interval is `[Lc-Uo,Uc-Lo]`. The frozen nominal interval and ±1.25 ms tolerance
+are unchanged. The single selector accepts only if the whole interval lies
+inside the permitted range. It excludes an early candidate only if the whole
+interval is early. A bracket crossing a decision boundary withdraws model
+qualification; it does not claim the physical PPS failed. The same rule applies
+during acquisition and host replay. Anchor freshness and post-DAC settling use
+the conservative lower coordinate. Frequency and phase continue to use raw D8
+count differences and nominal accepted reference periods; software service time
+is never substituted as their metrological denominator.
 
-## Required limits, not follow-up features
+## Bounded service and failure
 
-- Drain at most eight words per IRQ entry, the joined FIFO capacity. A source
-  still asserted after the bounded budget, software-ring exhaustion, or RXSTALL
-  must latch integrity loss and disable the source/state machine. Never return
-  into an unbounded level-triggered interrupt storm.
-- Preserve all words already read, with their actual identity. A stalled
-  autopush is not a committed FIFO word and must not acquire an invented record.
-- A batch already containing multiple words has ambiguous edge timestamps.
-  Preserve actual service coordinates and mark the batch; do not manufacture
-  spacing. Hold qualification at the common gate. Define exact fresh-session
-  recovery before implementation, without auto-resuming a broken campaign.
-- Even a singleton's CPU timestamp is a **PIO FIFO service timestamp**, not a
-  hardware-latched D14 timestamp or measured capture-to-service latency. One
-  queued word alone does not prove a latency bound. Current GPIO timestamps
-  are also ISR observations, but their source semantics cannot silently carry
-  over. Update producer, contracts, replay, freshness and tolerance consumers
-  together. The D8 count must not be used to pretend an independent local-clock
-  timestamp was captured.
-- Disable source and state machine before rearm; clear FIFO and stale pending
-  IRQ, reset ring/session with IRQ excluded, restore X/start PC, then enable
-  state machine and source. Prove that prior-session data cannot be published
-  under a new identity. If sharing a CPU IRQ, clearing/dispatch must respect
-  other sources.
-- Software storage of 128 records does not provide 128 hardware capture slots
-  while IRQs are masked. Only eight FIFO slots exist. Measure static RAM and
-  document the servicing envelope; remove obsolete queues rather than retain
-  both transport designs.
+Both a single ISR entry and repeated IRQ service before foreground progress
+are bounded. The hardware FIFO holds eight words, regardless of software ring
+capacity. RXSTALL, a full software ring or exhausted service budget stops the
+source and state machine. Read words retain their original values and identity;
+unread committed words remain available for diagnostic preservation. A blocked
+autopush is not invented as another observation. Runtime does not clear evidence
+or rearm automatically. Explicit reset/rearm requires a new nonzero session and
+cannot make the interrupted campaign continuous.
 
-## Feasibility checks performed
+Foreground diagnostics observe the same record owner. Adjacent raw CNT interval
+classification remains diagnostic; it cannot independently admit control.
+GNSS metadata separately qualifies receiver state. Capture uncertainty, host
+findings and receiver metadata are not interchangeable physical fault claims.
 
-`python tools/probe_pps_fifo_irq.py` reuses the existing instruction model with
-the unchanged 15 PIO words, a modeled 10 MHz oscillator and two-flop inputs.
-It demonstrates the proposed FIFO transport rule in five bounded cases:
+## Verification boundary
 
-1. Two ordinary boundaries produce two raw records.
-2. A one-system-cycle candidate at cycle 501 is missed by PIO and produces no
-   extra FIFO record; a separate hypothetical GPIO notification cannot create
-   an authoritative count through this transport.
-3. A wider PIO-recognized extra candidate remains a third raw record for the
-   common selector to assess; it is not silently discarded.
-4. Delayed IRQ service preserves both queued words and identities, while the
-   model explicitly marks their shared service batch timestamp-ambiguous.
-5. With service withheld, a ninth candidate encounters the eight-word FIFO's
-   RXSTALL condition; the model does not invent a ninth committed observation.
+Native tests exercise actual FIFO driver code using deterministic peripheral
+stubs, including source filtering, late arrivals, batch ambiguity, exhaustion,
+RXSTALL, session lifecycle and pending IRQs. Selector tests cover conservative
+interval admission, uncertainty, expiry and rollover. The first dependent
+phase/frequency/control decision must consume the same selected span. Current
+host fixtures and replay use the emitted SNP v2 contract.
 
-This is a transport feasibility model, **not the production ISR, native-driver
-regression, selector integration, interrupt-latency measurement or hardware
-qualification**. No existing qualification is promoted by it. The model's
-marking of ambiguity describes the proposed rule, not implemented behaviour.
-
-An alternative inserting non-waiting IRQ instructions after the two snapshot
-instructions was also sampled locally: 768 phase/duty cases at each of 10 and
-16 MHz had at most one edge of cumulative span error. That limited sweep is
-not the full digital proof. It also increases the program to 17 instructions;
-two separate copies would exceed PIO instruction RAM, and IRQ flags can coalesce.
-The FIFO-level approach avoids those extra changes and is preferred. Never use
-`irq wait`, which would make oscillator counting wait for CPU service.
-
-## Finite implementation gate
-
-Implement the replacement as one producer-to-consumer change. Native tests must
-exercise actual driver code for singleton, batch, refill, ring exhaustion,
-RXSTALL and pending IRQ across rearm, then pass the first clean record through
-the actual selector, count/phase/frequency and first control decision. Verify
-that GPIO-only events have no authority and PIO-recognized early candidates are
-excluded by the one selector. Include timestamp ambiguity/age cases rather than
-assuming a singleton is fresh.
-
-Then run the affected current release checks, exact-profile build/resource
-audit and genuine operational-path rehearsal. Only that complete replacement
-can become a bench candidate. Do not merge a half-connected alternate runtime,
-change the ±1.25 ms criterion implicitly, or start another 72-hour attempt to
-substitute for these deterministic checks.
+Before bench entry, complete the fixed firmware build/resource audit and the
+actual operational-path rehearsal. Neither a coherent host fixture nor the
+native peripheral stubs establish real interrupt timing, USB behavior or
+physical pulse recognition. Preserve the live pre-actuation gate for those
+remaining boundaries. No unchanged 72-hour restart substitutes for this work.

@@ -3,10 +3,10 @@
 
 #include "otis_reference_acceptance_policy.generated.h"
 
-// Native fixture uses the actual frozen selector and independent raw ordinals.
+// Native fixture uses the actual frozen selector and one raw record ordinal.
 struct ReferenceSelectionFixture {
   OtisReferenceAcceptance selector{OTIS_REFERENCE_ACCEPTANCE_POLICY};
-  OtisReferenceAcceptanceObservation raw{7u, 100u, 1100u, 0u, UINT32_MAX, 0u, 16u};
+  OtisReferenceAcceptanceObservation raw{7u, 100u, 100u, 0u, UINT32_MAX, 0u, 16u};
   uint64_t extended_ticks = 0u;
   OtisReferenceAcceptanceOutcome selection{};
 
@@ -19,7 +19,7 @@ struct ReferenceSelectionFixture {
     extended_ticks += ticks;
     raw.reference_timestamp_ticks = uint32_t(extended_ticks);
     ++raw.snapshot_sequence;
-    ++raw.reference_sequence;
+    raw.reference_sequence = raw.snapshot_sequence;
     raw.cumulative_down_counter -= edges;
     return observe();
   }

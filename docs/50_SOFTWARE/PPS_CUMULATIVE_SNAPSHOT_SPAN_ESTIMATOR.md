@@ -18,8 +18,9 @@ header. A current checkout's policy cannot substitute for frozen campaign inputs
 
 ## Raw observations and accepted spans
 
-Raw REF, SNP and adjacent CNT records remain unchanged. The selector operates
-once, after exact D14/SNP association. Eight in-window raw intervals establish
+Raw REF, SNP v2 and adjacent CNT preserve the captured words. The selector
+operates once on each immutable PIO-owned record; REF is a derivative display,
+not an independent association input. Eight in-window raw intervals establish
 an accepted anchor without retrospectively creating accepted spans. The first
 subsequent admitted edge closes accepted span 1.
 
@@ -32,7 +33,8 @@ fragments. Raw fragments can retain cadence-rejection flags while their
 complete accepted span remains valid.
 
 The inclusive tracking window is nominally 1,000,000 ± 1,250 local microsecond
-ticks from the last accepted anchor. An excluded candidate changes neither
+ticks from the last accepted anchor. Admission requires the entire possible
+PIO-recognition interval (including endpoint uncertainty) inside that window. An excluded candidate changes neither
 that anchor nor its deadline. The RP2040 interval is an admission coordinate,
 not the frequency denominator. An in-band spurious edge cannot be distinguished
 from a genuine PPS by this rule alone.

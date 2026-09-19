@@ -11,7 +11,7 @@ namespace {
 constexpr char kPhaseEstimatorId[] = OTIS_BUILD_PHASE_ESTIMATOR_ID;
 constexpr char kPhaseConfigurationSha256[] =
     OTIS_BUILD_PHASE_ESTIMATOR_SHA256;
-constexpr char kSourceBackend[] = "pio_wait_cumulative_snapshot_dma_v1";
+constexpr char kSourceBackend[] = "pio_wait_cumulative_snapshot_fifo_irq_v2";
 constexpr char kRawMethodId[] = OTIS_BUILD_PHASE_RAW_METHOD_ID;
 constexpr char kLiveSourceIdentity[] = "live_stream_unsealed";
 

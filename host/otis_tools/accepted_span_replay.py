@@ -6,20 +6,28 @@ from typing import Any
 from .raw_measurement_replay import (
     _RAW_REFERENCE_DOMAIN,
     _U32_MODULUS,
-    _ordered_reference_association,
     _raw_count_replay,
     _u32,
 )
 
-POLICY_PATH = "data_contracts/reference_acceptance_policy_v1.json"
-POLICY_ID = "otis_d14_accepted_reference_v1"
+POLICY_PATH = "data_contracts/reference_acceptance_policy_v2.json"
+POLICY_ID = "otis_d14_accepted_reference_v2"
 
 
 def _policy_values(policy: dict[str, Any]) -> tuple[int, int, int, int, int]:
     if (
         policy.get("policy_id") != POLICY_ID
-        or policy.get("schema_version") != 1
+        or policy.get("schema_version") != 2
         or policy.get("admission_coordinate_domain") != _RAW_REFERENCE_DOMAIN
+        or policy.get("admission_coordinate_semantics") != "fifo_cpu_service_coordinate"
+        or policy.get("timestamp_uncertainty_field") != "timestamp_uncertainty_ticks"
+        or policy.get("unknown_timestamp_uncertainty") != 0xFFFFFFFF
+        or policy.get("reference_sequence_equals_snapshot_sequence") is not True
+        or policy.get("qualification_requires_zero_snapshot_status") is not True
+        or policy.get("interval_min_rule") != "service_delta_minus_closing_uncertainty"
+        or policy.get("interval_max_rule") != "service_delta_plus_opening_uncertainty"
+        or policy.get("early_exclusion_rule") != "interval_max_below_lower_bound"
+        or policy.get("boundary_overlap_disposition") != "observation_age_ambiguous"
         or policy.get("reference_pin") != "D14"
         or policy.get("count_pin") != "D8"
         or policy.get("rejected_candidate_moves_anchor") is not False
@@ -65,15 +73,14 @@ def replay_accepted_spans(
     counts: list[dict[str, str]], spans: list[dict[str, str]], *,
     acceptance_policy: dict[str, Any], acceptance_policy_sha256: str,
 ) -> tuple[bool, dict[str, Any], list[dict[str, Any]]]:
-    """Verify retained APS rows without claiming recorder-missed acquisition."""
+    """Verify APS against the complete SNP service-coordinate interval."""
 
     errors: list[str] = []
     verified: list[dict[str, Any]] = []
     horizon: dict[str, Any] | None = None
     raw_report: dict[str, Any] = {
-        "exact": False,
-        "errors": ["raw count replay did not run"],
-        "error_count": 1,
+        "exact": False, "source_exact": False,
+        "errors": ["raw count replay did not run"], "error_count": 1,
     }
     try:
         lower, upper, maximum_excluded, nominal_intervals, maximum_edges = (
@@ -87,15 +94,14 @@ def replay_accepted_spans(
             raise ValueError("frozen acceptance-policy SHA-256 is malformed")
         if not spans:
             raise ValueError("accepted PPS span source is empty")
-        raw_exact, raw_report, raw_intervals = _raw_count_replay(
+        _, raw_report, raw_intervals = _raw_count_replay(
             snapshots, references, counts
         )
-        if not raw_exact:
+        if not raw_report.get("source_exact"):
             raise ValueError(
-                "adjacent raw source does not reconstruct: "
+                "adjacent SNP/CNT source does not reconstruct: "
                 + "; ".join(raw_report["errors"])
             )
-        associations = _ordered_reference_association(snapshots, references)
         positions: dict[tuple[int, int, int], list[int]] = {}
         interval_by_closing: dict[int, dict[str, Any]] = {}
         interval_index = 0
@@ -170,11 +176,10 @@ def replay_accepted_spans(
                 if row_number != 1 or opening_positions:
                     raise ValueError(f"APS row {row_number} has no unique retained opening SNP")
                 closing_snapshot = snapshots[closing_position]
-                closing_ref = references[associations[closing_position]]
                 if (
                     _u32(closing_snapshot, "reference_sequence")
                     != values["closing_reference_sequence"]
-                    or _u32(closing_ref, "timestamp_ticks")
+                    or _u32(closing_snapshot, "reference_timestamp_ticks")
                     != values["closing_reference_timestamp_ticks"]
                 ):
                     raise ValueError("late-attach APS closing evidence is contradictory")
@@ -199,43 +204,62 @@ def replay_accepted_spans(
             interval_positions = range(opening_position + 1, closing_position + 1)
             source_intervals = [interval_by_closing[position] for position in interval_positions]
             source_snapshots = snapshots[opening_position : closing_position + 1]
-            source_refs = [references[associations[index]] for index in range(
-                opening_position, closing_position + 1
-            )]
-            allowed_flags = int(acceptance_policy["allowed_reference_flags"])
-            if any(
-                _u32(snapshot, "status") != 0
-                or _u32(reference, "flags") & ~allowed_flags
-                for snapshot, reference in zip(source_snapshots, source_refs)
-            ):
+            statuses = [_u32(snapshot, "status") for snapshot in source_snapshots]
+            if any(status & ~0x3 for status in statuses):
                 raise ValueError(f"APS row {row_number} bridges a capture-integrity fault")
+            if any(status & 0x3 for status in statuses):
+                raise ValueError(
+                    f"APS row {row_number} bridges timestamp-ambiguous evidence"
+                )
+            if any(
+                _u32(snapshot, "timestamp_uncertainty_ticks") >= (1 << 31)
+                for snapshot in source_snapshots
+            ):
+                raise ValueError(f"APS row {row_number} has ambiguous timestamp uncertainty")
             if not all(item["count_exact"] for item in source_intervals):
                 raise ValueError(f"APS row {row_number} raw CNT range is not exact")
             opening_snapshot, closing_snapshot = source_snapshots[0], source_snapshots[-1]
-            opening_ref, closing_ref = source_refs[0], source_refs[-1]
             if (
                 _u32(opening_snapshot, "reference_sequence") != values["opening_reference_sequence"]
                 or _u32(closing_snapshot, "reference_sequence") != values["closing_reference_sequence"]
-                or _u32(opening_ref, "timestamp_ticks") != values["opening_reference_timestamp_ticks"]
-                or _u32(closing_ref, "timestamp_ticks") != values["closing_reference_timestamp_ticks"]
                 or values["source_count_first_sequence"] != source_intervals[0]["closing_sequence"]
                 or values["source_count_last_sequence"] != source_intervals[-1]["closing_sequence"]
             ):
                 raise ValueError(f"APS row {row_number} raw endpoint identity differs")
-            interval_ticks = (
+            service_delta = (
                 values["closing_reference_timestamp_ticks"]
                 - values["opening_reference_timestamp_ticks"]
             ) % _U32_MODULUS
-            if not lower <= interval_ticks <= upper:
-                raise ValueError(f"APS row {row_number} admission interval differs")
+            interval_min = service_delta - _u32(
+                closing_snapshot, "timestamp_uncertainty_ticks"
+            )
+            interval_max = service_delta + _u32(
+                opening_snapshot, "timestamp_uncertainty_ticks"
+            )
+            if interval_min < lower or interval_max > upper:
+                raise ValueError(
+                    f"APS row {row_number} complete admission interval differs"
+                )
             opening_ticks = values["opening_reference_timestamp_ticks"]
-            for intermediate in source_refs[1:-1]:
-                candidate_ticks = (
-                    _u32(intermediate, "timestamp_ticks") - opening_ticks
+            opening_uncertainty = _u32(
+                opening_snapshot, "timestamp_uncertainty_ticks"
+            )
+            for intermediate in source_snapshots[1:-1]:
+                candidate_delta = (
+                    _u32(intermediate, "reference_timestamp_ticks") - opening_ticks
                 ) % _U32_MODULUS
-                if candidate_ticks >= lower:
+                candidate_min = candidate_delta - _u32(
+                    intermediate, "timestamp_uncertainty_ticks"
+                )
+                candidate_max = candidate_delta + opening_uncertainty
+                if candidate_max >= lower:
+                    reason = (
+                        "overlaps the acceptance boundary"
+                        if candidate_min < lower
+                        else "is at or after the acceptance window"
+                    )
                     raise ValueError(
-                        f"APS row {row_number} excludes a candidate at or after the acceptance window"
+                        f"APS row {row_number} excludes a candidate that {reason}"
                     )
             if sum(item["counted_edges"] for item in source_intervals) != counted_edges:
                 raise ValueError(f"APS row {row_number} raw CNT sum differs")
@@ -262,8 +286,11 @@ def replay_accepted_spans(
                 elif identity[0] == old_session and identity[1] <= old_epoch:
                     raise ValueError(f"APS row {row_number} acceptance epoch moved backward")
             verified.append({
-                **values, "counted_edges": counted_edges,
-                "interval_ticks": interval_ticks,
+                **values,
+                "counted_edges": counted_edges,
+                "interval_ticks": service_delta,
+                "interval_min_ticks": interval_min,
+                "interval_max_ticks": interval_max,
                 "source_first_snapshot_position": opening_position,
                 "source_last_snapshot_position": closing_position,
                 "source_exact": True,
@@ -274,14 +301,18 @@ def replay_accepted_spans(
                 values["closing_reference_sequence"],
                 values["closing_reference_timestamp_ticks"],
             )
+        if not raw_report.get("reference_derivative_exact"):
+            errors.append("raw REF derivative integrity differs: " + "; ".join(raw_report["errors"]))
     except (KeyError, TypeError, ValueError) as error:
         errors.append(str(error))
-    exact = not errors and bool(verified)
+    exact = not errors and bool(verified) and bool(raw_report.get("exact"))
     return exact, {
-        "exact": exact, "accepted_span_count": len(verified),
+        "exact": exact,
+        "accepted_span_count": len(verified),
         "late_attach_horizon": horizon,
         "acceptance_policy_sha256": acceptance_policy_sha256,
         "raw_count_replay": raw_report,
         "raw_and_full_csv_preserved": True,
-        "errors": errors[:20], "error_count": len(errors),
+        "errors": errors[:20],
+        "error_count": len(errors),
     }, verified

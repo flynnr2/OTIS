@@ -51,7 +51,7 @@ int main() {
 
   ReferenceSelectionFixture trace;
   trace.raw.snapshot_sequence = UINT32_MAX - 300u;
-  trace.raw.reference_sequence = UINT32_MAX - 100u;
+  trace.raw.reference_sequence = trace.raw.snapshot_sequence;
   trace.extended_ticks = (1ull << 32) - 8500000u;
   trace.raw.reference_timestamp_ticks = uint32_t(trace.extended_ticks);
   trace.acquire();

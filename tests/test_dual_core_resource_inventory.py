@@ -28,8 +28,7 @@ def test_inventory_matches_every_implemented_queue_and_ring() -> None:
         "evidence",
         "telemetry",
         "phase_preview",
-        "capture_ring",
-        "pps_count_boundary_ring",
+        "pps_snapshot_ring",
     }
     header = (FIRMWARE / "otis_dual_core_partition.h").read_text()
     implementation = (FIRMWARE / "otis_dual_core_partition.cpp").read_text()
@@ -40,7 +39,7 @@ def test_inventory_matches_every_implemented_queue_and_ring() -> None:
         assert resource["recovery"]
         symbol = resource["capacity_symbol"].removesuffix("-1")
         source = header if "QUEUE_DEPTH" in symbol else (
-            FIRMWARE / "otis_config.h"
+            FIRMWARE / "otis_pps_snapshot_backend.cpp"
         ).read_text()
         if symbol in GENERATED_CAPACITIES:
             declared = GENERATED_CAPACITIES[symbol]
@@ -59,8 +58,7 @@ def test_inventory_matches_every_implemented_queue_and_ring() -> None:
         assert resource["capacity"] == expected
         assert resource["implementation"] in (
             implementation
-            + (FIRMWARE / "otis_capture_ring.cpp").read_text()
-            + (FIRMWARE / "otis_pps_count_boundary_ring.cpp").read_text()
+            + (FIRMWARE / "otis_pps_snapshot_backend.cpp").read_text()
         )
     assert value["transport"]["maximum_supported_tx_obstruction_ms"] == 2000
 

@@ -53,6 +53,7 @@ void otis_emit_pps_snapshot(uint32_t session,
                             uint32_t cumulative_down_counter,
                             uint32_t reference_sequence,
                             uint64_t reference_timestamp_ticks,
+                            uint32_t timestamp_uncertainty_ticks,
                             uint32_t status,
                             const char *backend);
 void otis_emit_forwarded_monitor_snapshot(uint32_t session,

@@ -92,7 +92,7 @@ explicit rules. Do not merely clear lifetime error counters to resume.
 The prospective native candidate now fixes an inclusive ±1.25 ms window,
 eight acquisition intervals, at most eight excluded early candidates per
 accepted span, and no qualification sum across acceptance epochs. See the
-[reference acceptance contract](../../data_contracts/reference_acceptance_v1.md)
+[reference acceptance contract](../../data_contracts/reference_acceptance_v2.md)
 and its machine-readable policy. These criteria remain unpromoted to the live
 path until the complete firmware/host cutover and its verification are done;
 they do not reinterpret the closed attempt.

@@ -1,8 +1,9 @@
 # PPS Hardware-Snapshot Replacement Architecture
 
-> Historical implementation decision. The replacement described here is now
-> the only D14/D8 count mechanism in current firmware. Stages and compatibility
-> work below describe the completed migration and are not current build modes.
+> Historical DMA implementation decision, retained as a dated record.
+> The current FIFO IRQ transport supersedes its drainage and GPIO association
+> sections; see [SINGLE_REFERENCE_OWNER_REPAIR](SINGLE_REFERENCE_OWNER_REPAIR.md).
+> The 15-word PIO capture program remains unchanged.
 
 Status: implemented; digital proof passed; observe-only bench qualification accepted 2026-08-01 with documented limitations
 Decision date: 2026-07-31

@@ -56,7 +56,7 @@ def test_pps_diagnostics_core_has_no_service_plane_dependencies() -> None:
         assert prohibited not in source
 
     assert "otis_monotonic_us32_interval" in source
-    assert "latest_physical_pps" in source
+    assert "latest_capture_service" in source
     assert "latest_snapshot_produced" in source
     assert "latest_snapshot_drained" in source
     assert "latest_measurement_reconstructed" in source
@@ -64,14 +64,37 @@ def test_pps_diagnostics_core_has_no_service_plane_dependencies() -> None:
     assert "latest_control_observed" in source
 
 
-def test_pps_watchdog_samples_now_after_copying_irq_mailbox() -> None:
+def test_capture_watchdog_samples_now_after_backend_service_coordinate() -> None:
     source = COUNT_OBSERVATION.read_text(encoding="utf-8")
     backend = source[source.index("bool otis_count_observation_service") :]
 
-    mailbox_copy = backend.index("otis_capture_irq_get_reference_stats")
-    mailbox_note = backend.index("otis_pps_diagnostics_note_physical_pps")
+    mailbox_copy = backend.index("otis_pps_snapshot_backend_get_stats")
+    mailbox_note = backend.index("otis_pps_diagnostics_note_capture_service")
     now_sample = backend.index("uint64_t now_ticks = otis_monotonic_us32_now();")
     watchdog_poll = backend.index("otis_pps_diagnostics_poll")
 
     assert mailbox_copy < mailbox_note < now_sample < watchdog_poll
-    assert "manufacturing a false physical-missing transition" in backend
+    assert "reports stale FIFO service only" in backend
+
+
+def test_count_control_eligibility_comes_only_from_common_acceptance() -> None:
+    source = COUNT_OBSERVATION.read_text(encoding="utf-8")
+
+    assert "otis_capture_irq" not in source
+    assert "update_control_gate" not in source
+    predicate = """runtime_state->tcxo.valid_for_control =
+      !runtime_state->tcxo.startup_inhibit_active &&
+      accepted_reference_status.tracking &&
+      accepted_reference_status.anchor_current;"""
+    assert source.count(predicate) == 2
+    assert "accepted_reference_status.anchor_current &&" not in source
+    assert '"capture_state"' in source
+    assert 'capture_state = counter_ok ? "clean" : "lost"' in source
+    assert '"capture_loss_count"' in source
+    assert '"capture_loss_reason"' in source
+    assert '"snapshot_producer_ordinal"' in source
+    assert '"snapshot_consumer_ordinal"' in source
+    assert '"snapshot_producer_sequence"' not in source
+    assert '"snapshot_consumer_sequence"' not in source
+    assert "association_" not in source
+    assert "snapshot_dma" not in source
