@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -48,6 +49,9 @@ from host.otis_tools.firmware_host_contract import (
     wire_value_error,
 )
 from host.otis_tools.prewrite_readiness_contract import (
+    HEALTH_INTEGRITY_EXACT,
+    GNSS_PREWRITE_EXACT,
+    SETUP_AUTHORITY_EXACT,
     canonical_prewrite_fixture,
     evaluate_prewrite_readiness,
 )
@@ -776,3 +780,26 @@ def test_every_command_form_has_arguments_and_a_first_consumer() -> None:
         assert form["acknowledgement"]
         assert form["first_consumer"]
     assert RECORD_SCHEMA_VERSIONS["active_hybrid_decisions_v3"] == 3
+
+
+def test_prewrite_required_nonactive_keys_have_firmware_producers() -> None:
+    # Independent of canonical_prewrite_fixture: a fixture built from host
+    # expectations alone previously fabricated four absent firmware fields.
+    source = "\n".join(path.read_text() for path in FIRMWARE.iterdir()
+                       if path.suffix in {".ino", ".cpp"})
+    emitted = set(re.findall(r'(?:emit_status\w*|publish_dual_core_\w*status\w*|rows\.\w+)\([^;]*?"([a-z0-9_]+)"\s*,\s*"([a-z0-9_]+)"', source))
+    required = set(HEALTH_INTEGRITY_EXACT) | set(GNSS_PREWRITE_EXACT)
+    required = {key for key in required if key[0] != "adaptive_hybrid"}
+    assert required <= emitted, sorted(required - emitted)
+
+
+@pytest.mark.parametrize("key,expected", list(HEALTH_INTEGRITY_EXACT.items()) + list(SETUP_AUTHORITY_EXACT.items()))
+def test_prewrite_integrity_and_setup_gates_remain_fail_closed(key, expected) -> None:
+    health = canonical_prewrite_fixture(expected_identity={}, planned_live_stimulus_code=0xA808)
+    arguments = dict(expected_identity={}, planned_live_stimulus_code=0xA808,
+                     active_row_count=0, dac_row_count=0)
+    assert evaluate_prewrite_readiness(health, **arguments).ready
+    del health[key]
+    assert not evaluate_prewrite_readiness(health, **arguments).ready
+    health[key] = "1" if expected == "0" else "wrong"
+    assert not evaluate_prewrite_readiness(health, **arguments).ready

@@ -247,10 +247,9 @@ class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
             "dual_core_partition": health.get(("dual_core", "partition_fault")),
             "dual_core_fail_static": health.get(("dual_core", "fail_static")),
             "active_fail_static": health.get(("adaptive_hybrid", "fail_static")),
-            "capture_dropped": health.get(("capture", "dropped_count")),
-            "boundary_dropped": health.get(
-                ("capture", "pps_count_boundary_dropped_count")
-            ),
+            "capture_faults": health.get(("capture", "error_flags")),
+            "snapshot_ring_full": health.get(("capture", "snapshot_ring_full_count")),
+            "irq_budget_exhausted": health.get(("capture", "irq_budget_exhausted_count")),
             "telemetry_dropped": health.get(("dual_core", "telemetry_dropped")),
         }
         if faults["dual_core_partition"] not in {None, "none"}:
@@ -261,7 +260,7 @@ class ControlSupervisorBase(AdaptiveHybridTransactionSupervisor):
         for key in ("dual_core_fail_static", "active_fail_static"):
             if faults[key] == "true":
                 raise ValueError(f"live {key} asserted")
-        for key in ("capture_dropped", "boundary_dropped"):
+        for key in ("capture_faults", "snapshot_ring_full", "irq_budget_exhausted"):
             if faults[key] not in {None, "0"}:
                 raise ValueError(f"live {key} is {faults[key]}")
         if not self._telemetry_drop_runtime_healthy(faults["telemetry_dropped"]):

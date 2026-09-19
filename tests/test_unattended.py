@@ -84,3 +84,19 @@ def test_monitor_loss_does_not_terminate_detached_owner(tmp_path):
     while not marker.exists() and time.monotonic() < deadline:
         time.sleep(0.02)
     assert marker.read_text() == "done"
+
+
+def test_fresh_checkout_creates_parent_before_space_check(tmp_path, monkeypatch):
+    run_dir = tmp_path / "fresh-checkout" / "runs" / "run"
+    seen = []
+    def disk_usage(path):
+        assert path == run_dir.parent and path.is_dir()
+        seen.append(path)
+        return type("Usage", (), {"free": 0})()
+    monkeypatch.setattr(unattended.shutil, "disk_usage", disk_usage)
+    monkeypatch.setattr(unattended.subprocess, "Popen", lambda *a, **k: pytest.fail("low-space launch spawned"))
+    with pytest.raises(ValueError, match="50 GiB"):
+        unattended.launch(["--run-dir", str(run_dir)])
+    assert seen == [run_dir.parent]
+    assert not run_dir.exists()
+    assert not run_dir.with_name("run.unattended").exists()

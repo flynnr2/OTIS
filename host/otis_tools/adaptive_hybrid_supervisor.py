@@ -1695,7 +1695,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         mismatches.extend(output_mismatches)
         return PrewriteReadiness(
             contract_id=(
-                f"{self.programme.key}_active_hybrid_prewrite_runtime_contract_v1"
+                f"{self.programme.key}_active_hybrid_prewrite_runtime_contract_v2"
             ),
             ready=not missing and not mismatches,
             missing=tuple(dict.fromkeys(missing)),
