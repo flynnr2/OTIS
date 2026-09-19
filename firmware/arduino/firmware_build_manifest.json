@@ -68,7 +68,10 @@
     "version": "5.0.0-9576866",
     "compiler": "arm-none-eabi-g++",
     "compiler_version": "16.1.0",
-    "installed_sha256": "2f5dd0d916934d55f12f5ca70848b62dcad447a819baab1563e0799c4aee3910"
+    "installed_sha256_by_host": {
+      "arm64-apple-darwin": "cd81889182bd89b30a63c3ddfff14a27098dfae86bd695183211221734e01071",
+      "x86_64-apple-darwin": "2f5dd0d916934d55f12f5ca70848b62dcad447a819baab1563e0799c4aee3910"
+    }
   },
   "resource_budget": {
     "dynamic_memory_total_bytes": 262144,

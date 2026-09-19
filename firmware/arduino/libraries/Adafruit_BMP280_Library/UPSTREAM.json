@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/adafruit/Adafruit_BMP280_Library",
+  "tag": "3.0.0",
+  "commit": "4af9a4e49a7e2134def094aa0b7dc5a94387155c",
+  "files": {
+    "Adafruit_BMP280.cpp": "2d86f53835150ab7b2b8cd717c83d607e390101f9e43e39b9bcf6ecd4c60d5b1",
+    "Adafruit_BMP280.h": "2e38bf2c8e95c476fec265dbdf7edbe7a4c09e268dd1cb74b6e26106a2c24cef",
+    "LICENSE.txt": "db709ee090549b1a0984bff6d5aaf33072515790aa0bf9b3d79009b3ac8ab551",
+    "library.properties": "3fd46b6be2e95ddabc5aaf499d757d6ad7b786e6fa102055c895e569555d2d51"
+  },
+  "local_changes": "I/O error latch and coherent readSample adapter; see libraries/README.md"
+}

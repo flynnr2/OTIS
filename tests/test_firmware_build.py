@@ -102,7 +102,8 @@ def test_source_input_inventory_includes_the_binding_implementation() -> None:
     assert not any(path.suffix == ".md" for path in paths)
 
 
-def test_builder_generates_every_current_semantic_identity_from_bound_bytes() -> None:
+@pytest.mark.parametrize("compiler_host", ["arm64-apple-darwin", "x86_64-apple-darwin"])
+def test_builder_generates_every_current_semantic_identity_from_bound_bytes(compiler_host: str) -> None:
     manifest = build_firmware.load_manifest()
     source = build_firmware.capture_source_state(manifest)
     environment = {
@@ -110,7 +111,7 @@ def test_builder_generates_every_current_semantic_identity_from_bound_bytes() ->
         "board_id": "test_board",
         "board_name": "test board",
         "core_installed_sha256": manifest["target"]["core_installed_sha256"],
-        "toolchain_installed_sha256": manifest["toolchain"]["installed_sha256"],
+        "toolchain_installed_sha256": manifest["toolchain"]["installed_sha256_by_host"][compiler_host],
         "core_path": "/test/core",
         "toolchain_path": "/test/toolchain",
         "compiler_identity": "test_compiler",
@@ -118,6 +119,8 @@ def test_builder_generates_every_current_semantic_identity_from_bound_bytes() ->
     provenance = build_firmware.build_provenance(
         manifest, environment, source, "0123456789abcdef"
     )
+    assert provenance["toolchain"]["host"] == compiler_host
+    assert provenance["toolchain"]["installed_sha256"] == environment["toolchain_installed_sha256"]
     header = build_firmware.provenance_header(provenance)
     generated_values = build_firmware.generated_provenance_values(provenance)
 
@@ -297,7 +300,7 @@ def test_build_provenance_excludes_repository_head_context() -> None:
         "board_id": "test_board",
         "board_name": "test board",
         "core_installed_sha256": manifest["target"]["core_installed_sha256"],
-        "toolchain_installed_sha256": manifest["toolchain"]["installed_sha256"],
+        "toolchain_installed_sha256": manifest["toolchain"]["installed_sha256_by_host"]["x86_64-apple-darwin"],
         "core_path": "/test/core",
         "toolchain_path": "/test/toolchain",
         "compiler_identity": "test_compiler",
@@ -311,3 +314,9 @@ def test_build_provenance_excludes_repository_head_context() -> None:
         == source["firmware_audit_revision"]
     )
     assert provenance["source"]["sha256"] == provenance["firmware_inputs"]["set_sha256"]
+
+
+def test_unreviewed_compiler_package_is_rejected():
+    toolchain = build_firmware.load_manifest()["toolchain"]
+    with pytest.raises(build_firmware.BuildError, match="no approved host package"):
+        build_firmware.compiler_package_host(toolchain, "0" * 64)
