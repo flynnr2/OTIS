@@ -162,9 +162,9 @@ EXPECTED_BASE_FQBN = "rp2040:rp2040:arduino_nano_connect"
 EXPECTED_COMPILE_FQBN = "rp2040:rp2040:arduino_nano_connect:freq=133"
 
 PROGRESS_DOMAIN = "accepted_D14_D8_apertures"
-ENDPOINT_CONTRACT = "qualified_D14_D8_aperture_count_v2"
+ENDPOINT_CONTRACT = "host_monotonic_observation_with_accepted_aperture_progress_v1"
 AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES = (
-    ADAPTIVE_HYBRID_PROGRAMME.absolute_wall_limit_s
+    ADAPTIVE_HYBRID_PROGRAMME.qualified_d14_aperture_count
     - ADAPTIVE_HYBRID_PROGRAMME.correction_response_reserve_d14_apertures
 )
 CORRECTION_RESPONSE_RESERVE_APERTURES = 1_511
@@ -237,7 +237,7 @@ _LIMITS = MappingProxyType(
             authority_closure_trigger="automatic_application_limit_reached",
             success_terminal="adaptive_hybrid_endurance_complete",
             zero_natural_correction_outcome=(
-                "zero_natural_corrections_valid_at_qualified_endpoint"
+                "zero_natural_corrections_valid_at_scheduled_endpoint"
             ),
         ),
     }

@@ -184,8 +184,8 @@ def classify_scientific_outcome(
     """Classify the scientific outcome from the frozen endpoint evidence.
 
     A passing offline-integrity check is deliberately insufficient here.  The
-    finite campaign succeeds only at the exact accepted-D14/D8-aperture
-    endpoint declared by the programme and bench-attempt envelope.
+    unattended observation completes only at its exact host monotonic endpoint.
+    Accepted D14/D8 measurement coverage remains a separate evidence quantity.
     """
 
     exact, decision, result, _ = _normalize_terminal(

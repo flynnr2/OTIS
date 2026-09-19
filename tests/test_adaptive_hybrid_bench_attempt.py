@@ -227,7 +227,7 @@ def test_long_run_closes_only_at_the_application_limit():
     assert state["firmware_correction_count"]["maximum"] == 144
     assert document["terminal_semantics"][
         "zero_natural_correction_outcome"
-    ] == "zero_natural_corrections_valid_at_qualified_endpoint"
+    ] == "zero_natural_corrections_valid_at_scheduled_endpoint"
     assert {key: document["monitoring_semantics"][key] for key in ("authoritative_source", "accepted_D14_D8_aperture_milestones", "first_application_milestone_nonterminal", "host_monitor_may_decide_terminal")} == {
         "authoritative_source": "retained_supervisor_state_and_capture_evidence",
         "accepted_D14_D8_aperture_milestones": list(

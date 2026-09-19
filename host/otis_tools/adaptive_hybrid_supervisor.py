@@ -30,6 +30,7 @@ from .adaptive_hybrid_contract import (
     CAUSAL_STATE_SCHEMA_VERSION,
     UNATTENDED_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
+    ENDPOINT_CONTRACT,
     UNATTENDED_CLOSURE_RESERVE_S,
     AdaptiveHybridProgramme,
     BenchAttemptEnvelope,
@@ -3132,7 +3133,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             accepted_D14_D8_apertures=aperture_progress,
             admission_deadline_delta=deadline,
             progress_domain="accepted_D14_D8_apertures",
-            endpoint_contract="qualified_D14_D8_aperture_count_v2",
+            endpoint_contract=ENDPOINT_CONTRACT,
             new_ARM_authority=False,
             attempt_extension_permitted=False,
         )
