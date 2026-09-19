@@ -243,6 +243,7 @@ void configure_selected_capabilities(void) {
                               OtisBootCapabilityRequirement::Required);
 }
 
+void update_adaptive_hybrid_regulation_health();
 void emit_selected_capability_status();
 void emit_resource_ownership_status();
 void emit_protocol_banner_if_serial_ready();
