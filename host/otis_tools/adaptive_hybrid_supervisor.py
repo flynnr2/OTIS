@@ -13,6 +13,7 @@ import json
 import os
 import secrets
 import time
+import traceback
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -1289,7 +1290,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
 
     def _command(self, command: str) -> None:
         self._assert_command_admitted(command)
-        deadline_ns = self._pending_ack_deadline()
+        lease_during_hold = command.startswith("ACTIVE LEASE ") and self.state.get("host_verification_hold") is not None
+        deadline_ns = None if lease_during_hold else self._pending_ack_deadline()
         if deadline_ns is not None:
             with self._causal_observation(
                 ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S, deadline_ns=deadline_ns
@@ -1314,7 +1316,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     def _renew_lease(self) -> None:
         if getattr(self, "_normal_command_ack_pending", False):
             raise ValueError("normal command acknowledgement is unresolved")
-        self._check_wait_deadline(self._pending_ack_deadline())
+        # A retained evidence deadline stays expired; it must not disable the
+        # separate operation that renews previously admitted capture ownership.
+        if self.state.get("host_verification_hold") is None:
+            self._check_wait_deadline(self._pending_ack_deadline())
         # The base implementation advances the durable lease sequence before
         # submitting the command.  Check census first so a rejected startup
         # cannot leave a fictitious retained lease sequence.
@@ -1323,6 +1328,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         super()._renew_lease()
         self._last_lease_monotonic_ns = time.monotonic_ns()
+
+    def _service_capture_lease(self) -> None:
+        """Service existing ownership from both the normal and fallback loops."""
+        if (self._startup_census_admitted()
+            and (getattr(self, "_last_lease_monotonic_ns", None) is None
+                 or time.monotonic_ns() - self._last_lease_monotonic_ns
+                 >= int(LEASE_PERIOD_S * 1_000_000_000))):
+            self._check_capture_transport_state()
+            self._renew_lease()
 
     def _fresh_startup_state_exact(
         self, health: dict[tuple[str, str], str]
@@ -1893,6 +1907,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "source": source,
             "last_source": source,
             "error_type": type(error).__name__,
+            "traceback": "".join(traceback.format_exception(error)),
             "error": str(error),
             "last_error": str(error),
             "occurrence_count": 1,
@@ -3035,17 +3050,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         if not faults:
             return False
 
-        if self._recover_adaptive_hybrid_aperture_extension(
-            health=health,
-            origin_session=origin_session,
-            current_session=current_session,
-            baseline=baseline,
-            observed_counters=observed_counters,
-            changed_counters=changed_counters,
-            faults=faults,
-        ):
-            return False
-
+        # No post-origin recovery is authorized by this frozen campaign.
+        # Retain the discontinuity for review without invoking retired helpers.
         self.state["arm_pending"] = False
         self.state["arm_sent_at_utc"] = None
         self._arm_sent_monotonic_ns = None
@@ -3822,16 +3828,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                         self._command("DAC?")
                         self._establish_startup_census()
                         last_query = time.monotonic()
-                    if (
-                        self._startup_census_admitted()
-                        and (
-                            getattr(self, "_last_lease_monotonic_ns", None) is None
-                            or time.monotonic_ns() - self._last_lease_monotonic_ns
-                            >= int(LEASE_PERIOD_S * 1_000_000_000)
-                        )
-                    ):
-                        self._check_capture_transport_state()
-                        self._renew_lease()
+                    self._service_capture_lease()
                     if now - last_query >= QUERY_PERIOD_S:
                         current = self._current_health()
                         generation = int(
@@ -3871,7 +3868,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                             self._maybe_finish(health, time.monotonic_ns())
                             if self.state["terminal"] is None:
                                 self._maybe_start_or_arm(health)
-                except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                except Exception as exc:  # A verifier bug must not abandon lease service.
                     self._enter_host_verification_hold(
                         exc, source="live_supervisor_diagnostic_cycle"
                     )
