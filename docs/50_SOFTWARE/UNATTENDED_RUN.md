@@ -42,7 +42,9 @@ This does not promise survival of logout, reboot, power failure, or disk failure
 
 The observer reads capture/supervisor snapshots every two seconds. It retains
 state transitions, evidence staleness (15 seconds), completed responses,
-qualified-aperture checkpoints, review holds and low storage. It has no command
+qualified-aperture checkpoints, review holds and low storage. It also detects
+stalled supervisor lease service independently of continuing raw capture; its
+bound includes the existing snapshot, command-acknowledgement and lease budgets. It has no command
 path. `heartbeat.json` exposes observer freshness; `status.json` and
 `transitions.jsonl` retain meaningful changes. `owner.log` and `monitor.log`
 retain process output. Monitor/publication errors do not kill/restart the owner.

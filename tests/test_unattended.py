@@ -18,6 +18,7 @@ def test_observer_records_unanswered_hold_without_changing_owner(tmp_path, monke
     capture = {"bytes_written": 100, "updated_monotonic_ns": now,
                "capture_active": True, "serial_open": True}
     owner = {"qualified_d14_accepted_apertures": 259200,
+             "lease_sequence": 1,
              "host_verification_hold": {"source": "verifier", "error": "review", "request_sequence": 2},
              "terminal": None}
     (tmp_path / CAPTURE_STATE).write_text(json.dumps(capture))
@@ -30,6 +31,12 @@ def test_observer_records_unanswered_hold_without_changing_owner(tmp_path, monke
     later = observer.sample()
     assert not later["capture_fresh"] and not later["raw_evidence_advancing"]
     assert later["review_hold"]["request_sequence"] == 2
+    now += 30_000_000_000
+    capture.update(bytes_written=200, updated_monotonic_ns=now)
+    (tmp_path / CAPTURE_STATE).write_text(json.dumps(capture))
+    stalled_owner = observer.sample()
+    assert stalled_owner["capture_fresh"] and stalled_owner["raw_evidence_advancing"]
+    assert not stalled_owner["supervisor_ownership_service_advancing"]
     assert json.loads((tmp_path / SUPERVISOR_STATE).read_text()) == owner
 
 

@@ -16,12 +16,14 @@ import time
 from pathlib import Path
 
 from .adaptive_hybrid_contract import (
+    ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S,
+    NORMAL_COMMAND_ACK_TIMEOUT_S,
     QUALIFIED_APERTURE_MILESTONES,
     UNATTENDED_MONITOR_INTERVAL_S,
     UNATTENDED_STALE_AFTER_S,
     UNATTENDED_STORAGE_RESERVE_BYTES,
 )
-from .adaptive_hybrid_transactions import SUPERVISOR_STATE, _atomic_json
+from .adaptive_hybrid_transactions import LEASE_PERIOD_S, SUPERVISOR_STATE, _atomic_json
 from .capture_device import CAPTURE_STATE
 
 
@@ -39,11 +41,18 @@ class Observer:
         self.run_dir = run_dir
         self.last_bytes = None
         self.last_progress_ns = time.monotonic_ns()
+        self.last_lease = None
+        self.last_owner_progress_ns = self.last_progress_ns
 
     def sample(self) -> dict:
         now = time.monotonic_ns()
         capture = read_object(self.run_dir / CAPTURE_STATE)
         owner = read_object(self.run_dir / SUPERVISOR_STATE)
+        lease = owner.get("lease_sequence")
+        if type(lease) is int and lease != self.last_lease:
+            self.last_lease = lease
+            self.last_owner_progress_ns = now
+        owner_budget_ns = int((ACTIVE_SNAPSHOT_COMPLETION_TIMEOUT_S + NORMAL_COMMAND_ACK_TIMEOUT_S + 2 * LEASE_PERIOD_S) * 1_000_000_000)
         byte_count = capture.get("bytes_written")
         if type(byte_count) is int and byte_count != self.last_bytes:
             self.last_bytes = byte_count
@@ -56,6 +65,11 @@ class Observer:
         free = shutil.disk_usage(self.run_dir).free
         return {
             "capture_fresh": fresh,
+            "supervisor_ownership_service_advancing": (
+                type(lease) is int and now - self.last_owner_progress_ns < owner_budget_ns
+            ),
+            "last_confirmed_code": owner.get("terminal_static_code"),
+            "arm_pending": owner.get("arm_pending"),
             "raw_evidence_advancing": now - self.last_progress_ns < stale_ns,
             "capture_active": capture.get("capture_active"),
             "serial_open": capture.get("serial_open"),
