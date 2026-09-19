@@ -577,6 +577,20 @@ def _authoritative_capture_health_faults(
     return faults
 
 
+def require_fresh_inhibited_attempt(
+    runtime_context: AdaptiveHybridRuntimeContext, run_dir: Path,
+) -> None:
+    """Reject restart before mutating state or acquiring a new capture owner."""
+    retained = run_dir / "reports/adaptive_hybrid_supervisor_state.json"
+    if runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE and (
+        retained.exists() or retained.is_symlink()
+    ):
+        raise ValueError(
+            "inhibited zero-write attempt cannot resume retained supervisor state; "
+            "its monotonic observation window must not restart"
+        )
+
+
 class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     """ADAPTIVE_HYBRID live authority layered on the proven active-control transport."""
 
@@ -602,6 +616,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self._startup_census_process_nonce = secrets.randbits(32) or 1
         if not isinstance(runtime_context, AdaptiveHybridRuntimeContext):
             raise ValueError("ADAPTIVE_HYBRID supervisor requires a validated runtime context")
+        require_fresh_inhibited_attempt(runtime_context, requested_run_dir)
         if any(name in kwargs for name in ("spec", "identities", "expected_build_identity")):
             raise ValueError("ADAPTIVE_HYBRID static inputs must come from one runtime context")
         spec, identities = runtime_spec(runtime_context)

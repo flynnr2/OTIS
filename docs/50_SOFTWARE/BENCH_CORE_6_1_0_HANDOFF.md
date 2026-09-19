@@ -6,6 +6,11 @@ The bench Mac reproduces that exact image, flashes once and runs it. Installing
 the pinned local build dependencies and the entry point's automatic identity
 checks are part of compilation/entry, not a second engineering campaign.
 
+Do not repeat source engineering, the release suite, specification creation or
+rehearsal on the bench. Return a concrete pre-upload identity/build mismatch to
+the development Mac without editing the frozen inputs. Use a local Python 3.10+
+environment with the repository dependencies installed.
+
 Use Arduino-Pico **6.1.0**, Arduino CLI **1.4.1**, and the compiler package and
 Nano 133 MHz FQBN pinned in `firmware/arduino/firmware_build_manifest.json`.
 The prepared Intel image uses the approved x86_64 macOS compiler. It was built
@@ -18,7 +23,9 @@ of both native compiler packages does not make their images interchangeable.
 `inhibited_zero_write` now freezes **300 seconds** in the host monotonic clock,
 starting at supervisor construction after the sole capture process is ready.
 Compilation, upload and earlier manifest creation do not consume that window.
-UTC changes and repeated status queries cannot move its deadline. This is a
+UTC changes and repeated status queries cannot move its deadline. A retained
+supervisor state rejects re-entry before serial acquisition; an interrupted
+attempt cannot restart its five-minute clock. This is a
 five-minute observation window, not a claim of 300 qualified D14/D8 intervals;
 closure follows the first eligible supervisor poll at or after the deadline.
 

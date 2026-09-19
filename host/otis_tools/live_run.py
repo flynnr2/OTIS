@@ -22,6 +22,7 @@ from .active_status_contract import (
 from .adaptive_hybrid_supervisor import (
     AdaptiveHybridSupervisor,
     prepare_runtime_context,
+    require_fresh_inhibited_attempt,
 )
 from .adaptive_hybrid_transactions import SUPERVISOR_STATE, _atomic_json
 from .adaptive_hybrid_transport import read_capture_transport_state
@@ -547,6 +548,7 @@ def run_experiment(
     elif capture_command is not None:
         raise ValueError("physical runtime uses the manifest-bound capture worker")
     runtime_context = prepare_runtime_context(manifest)
+    require_fresh_inhibited_attempt(runtime_context, run_dir)
     expected_capture_command = _default_capture_command(device, run_dir, manifest)
     if capture_command is not None and capture_command != expected_capture_command:
         raise ValueError(

@@ -252,7 +252,12 @@ def test_live_entry_rejects_changed_host_tool_bytes_before_starting_capture(
         "load_manifest",
         lambda _run_dir: SimpleNamespace(path=manifest_path, data=manifest),
     )
-    monkeypatch.setattr(live_run, "prepare_runtime_context", lambda _manifest: object())
+    monkeypatch.setattr(
+        live_run, "prepare_runtime_context",
+        lambda _manifest: SimpleNamespace(
+            bench_attempt=SimpleNamespace(purpose="contingent_72_hour_hybrid_control")
+        ),
+    )
     monkeypatch.setattr(live_run, "load_run_spec", lambda _path: frozen_spec)
 
     def reject_toolset(spec: object) -> None:

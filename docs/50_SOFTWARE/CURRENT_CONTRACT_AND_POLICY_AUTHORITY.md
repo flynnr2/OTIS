@@ -102,7 +102,9 @@ The inhibited zero-write purpose has a fixed 300-second observation window.
 Its start is the supervisor's monotonic-clock observation during construction,
 after the capture worker reports ready. Census and reference startup consume
 that window; manifest preparation and firmware upload do not. No query,
-qualification milestone or UTC adjustment can restart it. This is host elapsed
+qualification milestone or UTC adjustment can restart it. A retained inhibited
+supervisor state rejects a resumed invocation before a new capture worker starts;
+the existing state and any existing owner remain untouched. This is host elapsed
 observation duration, not 300 accepted D14/D8 apertures or oscillator timing.
 At the endpoint, exact healthy static/no-authority evidence permits normal
 capture closure without an abort. Missing or contradictory evidence retains a
