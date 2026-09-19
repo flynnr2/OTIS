@@ -57,7 +57,7 @@ def test_boundary_routes_same_accepted_selection_to_both_previews() -> None:
     health = boundary.index("update_adaptive_hybrid_regulation_health();")
     frequency = boundary.index("otis_frequency_regulation_live_on_reference_selection(")
     assert phase < health < frequency
-    health_start = sketch.index("void update_adaptive_hybrid_regulation_health(")
+    health_start = re.search(r"void update_adaptive_hybrid_regulation_health\([^)]*\)\s*\{", sketch).start()
     health_end = sketch.index("\nvoid ", health_start)
     health_body = sketch[health_start:health_end]
     assert "health.gnss_metadata_valid = dual_core_receiver_qualified_for_control();" in health_body
