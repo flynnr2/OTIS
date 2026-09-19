@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
@@ -55,3 +54,26 @@ def test_duplicate_launch_refuses_before_process_creation(tmp_path, monkeypatch)
     monkeypatch.setattr(unattended.subprocess, "Popen", lambda *a, **k: pytest.fail("duplicate launch spawned"))
     with pytest.raises(FileExistsError):
         unattended.launch(["--rehearse", "--run-dir", str(tmp_path / "run")])
+
+
+def test_monitor_loss_does_not_terminate_detached_owner(tmp_path):
+    import subprocess
+    marker = tmp_path / "owner-finished"
+    directory = tmp_path / "monitor"
+    directory.mkdir()
+    code = (
+        "import pathlib,sys; from host.otis_tools.unattended import supervise; "
+        "supervise([sys.executable,'-c',"
+        "\"import time,pathlib; time.sleep(1); pathlib.Path(__import__('sys').argv[1]).write_text('done')\","
+        "sys.argv[1]],pathlib.Path(sys.argv[2])/'run',pathlib.Path(sys.argv[2]))"
+    )
+    monitor = subprocess.Popen([sys.executable, "-c", code, str(marker), str(directory)], start_new_session=True)
+    deadline = time.monotonic() + 5
+    while not (directory / "started.json").exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert (directory / "started.json").exists()
+    monitor.terminate()
+    monitor.wait(timeout=2)
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert marker.read_text() == "done"

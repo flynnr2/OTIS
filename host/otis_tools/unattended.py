@@ -16,10 +16,10 @@ import time
 from pathlib import Path
 
 from .adaptive_hybrid_contract import (
+    QUALIFIED_APERTURE_MILESTONES,
     UNATTENDED_MONITOR_INTERVAL_S,
     UNATTENDED_STALE_AFTER_S,
     UNATTENDED_STORAGE_RESERVE_BYTES,
-    QUALIFIED_APERTURE_MILESTONES,
 )
 from .adaptive_hybrid_transactions import SUPERVISOR_STATE, _atomic_json
 from .capture_device import CAPTURE_STATE
@@ -28,7 +28,7 @@ from .capture_device import CAPTURE_STATE
 def read_object(path: Path) -> dict:
     value = json.loads(path.read_text())
     if not isinstance(value, dict):
-        raise ValueError(f"expected object: {path}")
+        raise TypeError(f"expected object: {path}")
     return value
 
 
@@ -78,21 +78,27 @@ def supervise(command: list[str], run_dir: Path, directory: Path) -> int:
     with (directory / "owner.log").open("ab", buffering=0) as output:
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=output,
                                  stderr=subprocess.STDOUT, start_new_session=True)
-    _atomic_json(directory / "started.json", {
-        "monitor_pid": os.getpid(), "owner_pid": child.pid,
-        "run_directory": str(run_dir), "automatic_restart": False,
-    })
-    # Mac sleep prevention belongs to this local process, not the Codex task.
+    try:
+        _atomic_json(directory / "started.json", {
+            "monitor_pid": os.getpid(), "owner_pid": child.pid,
+            "run_directory": str(run_dir), "automatic_restart": False,
+        })
+    except OSError as error:
+        print(f"launch publication unavailable: {error}", file=sys.stderr, flush=True)
+    # Sleep prevention follows the owner even if this observer is lost.
     if sys.platform == "darwin":
-        subprocess.Popen(["/usr/bin/caffeinate", "-ims", "-w", str(os.getpid())],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
+        try:
+            subprocess.Popen(["/usr/bin/caffeinate", "-ims", "-w", str(child.pid)],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except OSError as error:
+            print(f"sleep prevention unavailable: {error}", file=sys.stderr, flush=True)
     previous = None
     while True:
         code = child.poll()
         try:
             state = observer.sample()
-        except (OSError, ValueError, TypeError) as error:
+        except (OSError, ValueError, TypeError, AttributeError) as error:
             state = {"observation_unavailable": str(error), "review_required": True}
         state["owner_exit_code"] = code
         if state != previous:
@@ -136,7 +142,7 @@ def launch(run_args: list[str]) -> dict:
     directory.mkdir(parents=True, exist_ok=False)  # One-use launch guard.
     with (directory / "monitor.log").open("ab", buffering=0) as output:
         worker = subprocess.Popen(
-            [sys.executable, "-m", __name__, "--worker", str(directory), *run_args],
+            [sys.executable, "-m", "host.otis_tools.unattended", "--worker", str(directory), *run_args],
             stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
             start_new_session=True,
         )
