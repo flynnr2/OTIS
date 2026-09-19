@@ -97,16 +97,21 @@ assert that their output binaries must be byte-identical.
 
 ## Verification record — 2026-09-19
 
-- Full current repository suite: **745 passed** (365.58 s).
-- Focused device, GNSS and builder checks after the final code changes:
-  **19 passed**; these include the bounded BMP busy-state failure and downstream
-  GNSS snapshot eligibility checks.
-- Fixed image build using the unchanged pinned core and Intel compiler package:
-  **pass**, including exact binary marker/provenance and resource audits.
-- Flash program: **229,144 bytes**; static RAM: **154,216 bytes**; remaining
-  runtime RAM budget: **107,928 bytes**, above the required 104,858-byte reserve.
-- Only the initial Apple Silicon diagnostic build used a different compiler hash.
-  It is superseded for software build verification by the successful exact-pin
-  build in local `build/adafruit-release/`; neither build is a physical result.
+Verification after integration with current main at `72fe9e3`:
+
+- Full current repository suite: **720 passed** (107.90 s).
+- Focused device, GNSS and builder checks: **23 passed**, including rejection
+  of unapproved compiler bytes and selected-host provenance for both packages.
+- Fixed image builds with **both approved compiler packages passed**, including
+  exact binary marker/provenance and resource audits. Both ran on the M2 Mac;
+  the Intel compiler ran through Rosetta. The bench Mac itself was not exercised.
+- Both builds bind clean firmware audit revision
+  `5e83dd417a3270a79eb432f695b9507770e797fb` and the same firmware input-set hash
+  `32c3fc6504e0a3c411928fcd347de237d43aa21ab6ffce25193751c411673210`.
+- Each build uses **229,384 bytes** of program storage and **154,216 bytes** of
+  static RAM, leaving **107,928 bytes** for runtime, above the 104,858-byte reserve.
+- The earlier pre-rebase 745-test run and Intel-only/diagnostic builds are
+  superseded by this current-main verification. Approved native builds now
+  replace the temporary compiler-pin workaround.
 - No firmware upload, receiver command, DAC write or physical acquisition was
   performed. The new bundle still needs operational rehearsal before bench use.
