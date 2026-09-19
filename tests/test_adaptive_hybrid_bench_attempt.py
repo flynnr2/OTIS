@@ -5,6 +5,7 @@ import pytest
 
 from host.otis_tools.adaptive_hybrid_contract import (
     ABSOLUTE_WALL_LIMIT_S,
+    ADAPTIVE_HYBRID_PROGRAMME,
     ARM_SUBMISSION_LIMIT,
     AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES,
     CAUSAL_STATE_CONTRACT_ID,
@@ -322,3 +323,10 @@ def test_json_number_cannot_substitute_for_boolean():
 
     with pytest.raises(ValueError):
         validate_bench_attempt_envelope(candidate)
+
+
+def test_unattended_duration_does_not_change_characterized_board_or_dac_envelope():
+    assert EXPECTED_BOARD_SERIAL == "503533748A919118"
+    assert EXPECTED_HARDWARE_ID == "503533748A919118"
+    assert ADAPTIVE_HYBRID_PROGRAMME.minimum_code == 0xA800
+    assert ADAPTIVE_HYBRID_PROGRAMME.maximum_code == 0xAB00

@@ -3540,6 +3540,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 **self.state["inhibited_observation_window"],
                 "observed_terminal_monotonic_ns": observed_terminal_monotonic_ns,
             }
+        if (self.runtime_context.bench_attempt.purpose == UNATTENDED_72_HOUR_HYBRID_CONTROL
+                and self.state.get("host_verification_hold") is not None):
+            self.state["terminal"].update(
+                result="scheduled_stop",
+                reason="adaptive_hybrid_scheduled_stop_review_required",
+                unresolved_review=self.state["host_verification_hold"],
+            )
         self._save()
 
     def _maybe_finish_bench_attempt(
@@ -3581,13 +3588,6 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 health, endpoint=str(terminals["success_terminal"]),
                 observed_terminal_monotonic_ns=now_monotonic_ns,
             )
-            if self.state.get("host_verification_hold") is not None:
-                self.state["terminal"].update(
-                    result="scheduled_stop",
-                    reason="adaptive_hybrid_scheduled_stop_review_required",
-                    unresolved_review=self.state["host_verification_hold"],
-                )
-                self._save()
         else:
             self._enter_host_verification_hold(
                 ValueError("endurance endpoint lacks exact disarmed static evidence"),

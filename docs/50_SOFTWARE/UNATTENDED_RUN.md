@@ -3,8 +3,8 @@
 Preparation is offline on the development Mac. Physical launch is conditional on
 satisfactory review of the latest bench experiment and explicit bench entry.
 No firmware upload, reset, serial acquisition or DAC operation is performed here.
-The current controller is retained; its finite application/movement budget
-is retained at 144 applications / 3,024 codes cumulative movement. Its step, cadence, characterized envelope,
+The current controller retains its budget of 144 applications and 3,024 codes
+cumulative movement. Its step, cadence, characterized envelope,
 metadata requalification and transaction proof requirements are unchanged.
 
 ## Operating contract
@@ -69,7 +69,7 @@ same detached wrapper and let the launching process exit.
 
 Accelerated host deadline tests establish endpoint and no-restart behavior;
 they do not establish elapsed physical duration. Firmware native regressions
-cover the changed budget and original policy paths. A PTY cannot establish real
+cover the unchanged budget and original policy paths. A PTY cannot establish real
 USB, firmware cross-core service, reference quality, or plant response. Retain the
 live pre-actuation gates. Scientific qualification comes from the bench evidence.
 
