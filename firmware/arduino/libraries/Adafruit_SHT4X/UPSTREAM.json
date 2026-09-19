@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/adafruit/Adafruit_SHT4X",
+  "tag": "1.0.5",
+  "commit": "76a06edfa280a699da1c2f311bdeccb0bd5cee92",
+  "files": {
+    "Adafruit_SHT4x.cpp": "ecd16328c3b6f4279466c1f57125763545d28c7186fb64f0083b02960ba94570",
+    "Adafruit_SHT4x.h": "bde30a9820a0051f8ca7c6ff6f502f527f1aa3aec62aae0affadda5923fe604e",
+    "library.properties": "41d6732b574357859574caeecb1955336dd1b2af0a3d7f752a94717b155bd3c7",
+    "license.txt": "4b6bb6d827e9da638841bf575c6068b83aaaf0d9508e892d3ea27e2525b070e8"
+  },
+  "local_changes": "none"
+}

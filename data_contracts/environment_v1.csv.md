@@ -39,3 +39,11 @@ Environmental observations are sampled context, not raw timing events. Do not
 encode temperature, humidity, or pressure as `EVT`, `REF`, or `CNT` rows unless
 a sensor output is deliberately connected to the timing fabric as a signal with
 edge or gate semantics.
+
+## Current producer
+
+The [Adafruit integration](../docs/50_SOFTWARE/ADAFRUIT_DEVICE_INTEGRATION.md)
+retains this schema, units and observation domain. SHT transport/CRC failure and
+BMP transport/calibration/sample failure do not emit valid measurements. Missing
+rows must not be interpreted as zero or unchanged environmental conditions.
+Adafruit event timestamps do not replace OTIS's declared observation coordinate.

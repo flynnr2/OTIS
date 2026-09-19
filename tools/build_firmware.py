@@ -40,6 +40,9 @@ from tools.generate_reference_acceptance_policy import (
 DEFAULT_MANIFEST = REPO_ROOT / "firmware" / "arduino" / "firmware_build_manifest.json"
 SKETCH = REPO_ROOT / "firmware" / "arduino" / "otis_nano_rp2040_connect"
 BUILDER_PATH = Path(__file__).resolve()
+LIBRARIES = REPO_ROOT / "firmware" / "arduino" / "libraries"
+VENDORED_LIBRARY_NAMES = ("Adafruit_BMP280_Library", "Adafruit_BusIO", "Adafruit_GPS",
+                          "Adafruit_SHT4X", "Adafruit_Sensor")
 CONFIG_HEADER = SKETCH / "otis_config.h"
 GENERATED_HEADER_NAME = "otis_build_manifest.generated.h"
 IMAGE_ID = "adaptive_hybrid_regulation"
@@ -422,10 +425,16 @@ def load_manifest() -> dict[str, Any]:
     for section, name in (
         (target, "core_archive_sha256"),
         (target, "core_installed_sha256"),
-        (toolchain, "installed_sha256"),
     ):
         if not HEX64_PATTERN.fullmatch(str(section.get(name, ""))):
             raise BuildError(f"{name} must be a lowercase SHA-256")
+    hosts = toolchain.get("installed_sha256_by_host")
+    if not isinstance(hosts, dict) or set(hosts) != {
+        "arm64-apple-darwin", "x86_64-apple-darwin"
+    } or any(not HEX64_PATTERN.fullmatch(str(value)) for value in hosts.values()):
+        raise BuildError("toolchain must pin both Mac host packages by SHA-256")
+    if len(set(hosts.values())) != len(hosts):
+        raise BuildError("toolchain host identities must be distinct")
     budget = manifest["resource_budget"]
     required_budget = {
         "dynamic_memory_total_bytes",
@@ -497,6 +506,15 @@ def _build_properties(board_details: dict[str, Any]) -> dict[str, str]:
             key, value = item.split("=", 1)
             properties[key] = value
     return properties
+
+
+def compiler_package_host(toolchain: dict[str, Any], installed_sha256: str) -> str:
+    # Identify the actual compiler package, not the Python process architecture.
+    # This also records Intel builds on Apple Silicon under Rosetta correctly.
+    for host, digest in toolchain["installed_sha256_by_host"].items():
+        if installed_sha256 == digest:
+            return host
+    raise BuildError("compiler toolchain installed bytes match no approved host package")
 
 
 def verify_environment(
@@ -585,9 +603,8 @@ def verify_environment(
     core_hash = _require_installed_hash(
         "Arduino core", Path(platform_root), str(target["core_installed_sha256"])
     )
-    toolchain_hash = _require_installed_hash(
-        "compiler toolchain", Path(tool_root), str(toolchain["installed_sha256"])
-    )
+    toolchain_hash = installed_tree_hash(Path(tool_root))
+    compiler_host = compiler_package_host(toolchain, toolchain_hash)
     compiler_path = Path(tool_root) / "bin" / str(toolchain["compiler"])
     if str(toolchain["compiler"]) != f"{compiler_prefix}-g++":
         raise BuildError("board compiler executable differs from the manifest")
@@ -600,6 +617,7 @@ def verify_environment(
         "board_name": str(details["name"]),
         "core_installed_sha256": core_hash,
         "toolchain_installed_sha256": toolchain_hash,
+        "compiler_host": compiler_host,
         "core_path": str(Path(platform_root).resolve()),
         "toolchain_path": str(Path(tool_root).resolve()),
         "compiler_identity": (
@@ -629,6 +647,27 @@ def _git_identity(
     return commit, "dirty" if status else "clean"
 
 
+def vendored_library_paths() -> tuple[Path, ...]:
+    """Verify reviewed dependency bytes before allowing Arduino resolution."""
+    paths: list[Path] = []
+    for name in VENDORED_LIBRARY_NAMES:
+        directory = LIBRARIES / name
+        identity = directory / "UPSTREAM.json"
+        metadata = json.loads(identity.read_text(encoding="utf-8"))
+        expected = metadata["files"]
+        actual = {p.relative_to(directory).as_posix() for p in directory.rglob("*")
+                  if p.is_file() and p != identity}
+        if actual != set(expected):
+            raise BuildError(f"vendored library file inventory differs: {name}")
+        for relative, digest in expected.items():
+            path = directory / relative
+            if path.is_symlink() or sha256(path.read_bytes()).hexdigest() != digest:
+                raise BuildError(f"vendored library bytes differ: {name}/{relative}")
+            paths.append(path)
+        paths.append(identity)
+    return tuple(paths)
+
+
 def source_input_paths(
     manifest: dict[str, Any],
     *,
@@ -652,6 +691,7 @@ def source_input_paths(
                 and path.suffix in FIRMWARE_SOURCE_SUFFIXES
             }
             | {
+                *vendored_library_paths(),
                 DEFAULT_MANIFEST.resolve(),
                 builder_path.resolve(),
                 FIRMWARE_HOST_BINDING_HELPER.resolve(),
@@ -837,6 +877,10 @@ def build_provenance(
     }
     toolchain_identity = {
         **manifest["toolchain"],
+        "installed_sha256": environment["toolchain_installed_sha256"],
+        "host": compiler_package_host(
+            manifest["toolchain"], environment["toolchain_installed_sha256"]
+        ),
         "compiler_identity": environment["compiler_identity"],
     }
     invocation_payload = {
@@ -1087,10 +1131,10 @@ def build_firmware(
             "--output-dir",
             str(artifacts_dir),
             "--build-property",
-            (
-                "compiler.cpp.extra_flags="
-                f"-DOTIS_BUILD_SESSION_ID=0x{provenance['invocation']['build_session_id']}ULL"
-            ),
+            "compiler.cpp.extra_flags="
+            f"-DOTIS_BUILD_SESSION_ID=0x{provenance['invocation']['build_session_id']}ULL",
+            *(argument for name in VENDORED_LIBRARY_NAMES
+              for argument in ("--library", str(LIBRARIES / name))),
             str(temporary_sketch),
         ]
         result = _run(command, check=False)

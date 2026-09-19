@@ -3,6 +3,11 @@
 Current HEAD has one fixed `adaptive_hybrid_regulation` image and no historical
 programme execution surface. The most important present limitations are:
 
+- the Adafruit sensor/GNSS migration has no physical qualification yet. Its
+  library boundary and stricter GNSS acceptance are documented in
+  [Adafruit device integration](ADAFRUIT_DEVICE_INTEGRATION.md). Both native Mac
+  compiler packages are pinned separately; neither compilation nor emulated bus
+  checks establish physical sensor or receiver qualification;
 - PR #177's older-Mac startup failure and PR #178's progressing-rehearsal
   cutoff exposed host scaffolding defects. The successor removes duplicated
   lifetime, monitoring and finalization responsibilities; its local verification

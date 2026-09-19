@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/adafruit/Adafruit_GPS",
+  "tag": "1.9.0",
+  "commit": "307428f53931791799f169d07fdbf9c4c478fc15",
+  "files": {
+    "library.properties": "2cb13759fcca506f70cc71fae8224dfb0dae2350b932042e58d9861e2ef2c2ab",
+    "license.txt": "4b6bb6d827e9da638841bf575c6068b83aaaf0d9508e892d3ea27e2525b070e8",
+    "src/Adafruit_GNSS.cpp": "345f035682b6a6a8d360cd316ea78b9487112d54b43adb48f80bb1c743ebfc3f",
+    "src/Adafruit_GNSS.h": "8772444f439bac997c4c317ce9d3158eb80cb7c18621450444be1fe8cd967ee2",
+    "src/Adafruit_GPS.cpp": "c6baae2c79282d7e6102f1be270411f98ca5ed76463349f82e25ab984049dd4d",
+    "src/Adafruit_GPS.h": "15d71b2bfd06bf063de3f77895fd486c15dfe01b48dc1af0159112e1b215f0e0",
+    "src/Adafruit_NMEA.cpp": "d59a3d58f249075066e093ffd7f4828bb3edc525f479eef79271889f0feba7b4",
+    "src/Adafruit_NMEA.h": "8804abfd7f2a2096a7b14bff69b4e34c538c39fd77ee7bb913399c893bc60f0b",
+    "src/Adafruit_PMTK.h": "8e3f35e59bf9723bff2fe17916532e589213af632d49e3991f4dc2b47d9e2ba7",
+    "src/NMEA_build.cpp": "cd6c16a2eded5fc387d92f198a21af924c8dd19f77d440120e108aa9bd3bc141",
+    "src/NMEA_data.cpp": "0e1c4a7b427d59b5fd478b10bf7e120d6bf9ce4f632861b3dbb934f93d94091d",
+    "src/NMEA_data.h": "50f120e5dcd006958ec25756e9e3cbad58ab7baac2fc29bc8bdac2945e153492",
+    "src/NMEA_parse.cpp": "5c8d3f2755772d7416e34820c7e4d7a09f0bc01861c9cb1361e0dc2e340c5186"
+  },
+  "local_changes": "none"
+}

@@ -4,6 +4,12 @@ Status: current implementation contract. The historical filename is retained
 for stable references. The 3000 ms metadata-freshness value remains subject to
 the sealed live receiver evidence.
 
+## Device library
+
+Current firmware uses the pinned Adafruit GPS library's transport-independent
+NMEA validation and GNSS decoder. OTIS retains serial ownership, PMTK transactions,
+fault evidence and causal qualification. See [integration and acceptance changes](ADAFRUIT_DEVICE_INTEGRATION.md).
+
 ## Scope and authority
 
 This service qualifies contemporaneous receiver health beside the independent
