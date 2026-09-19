@@ -94,3 +94,32 @@ exercises normal closure without abort; exact nanosecond boundary tests cover
 the 300-second deadline. These establish host behavior, not real firmware
 interrupt service, USB delivery, receiver state or physical timing quality.
 The finite bench observation provides that remaining physical evidence.
+
+## Development-Mac verification — 2026-09-19
+
+- Release suite: 737 passed. Final timing-provenance/compile checks: 45 passed;
+  restart-preservation/runtime checks after review: 51 passed.
+- Approved Intel compiler through Rosetta: fixed image and resource audit
+  passed; the public `compile` command reproduced identical provenance and UF2
+  bytes from the frozen specification in a second build directory.
+- Unchanged PIO proof: 7,936 cases, 55,552 intervals, -1/0/+1 edge boundary
+  errors, four-clock longest opposite-WAIT path.
+- Unaccelerated simulated normal completion: 300,023,068,875 host monotonic
+  nanoseconds, `healthy_stop`, no SETUP/ARM/ABORT, complete capture and passing
+  `diagnostic_complete` analysis. This preceded the restart-rejection guard;
+  its original specification and evidence remain preserved. A post-closure
+  helper used the wrong terminal field name; the corrected offline lookup
+  finalized the unchanged evidence without repeating acquisition.
+- After the guard, a fresh exact specification and real-process obstruction /
+  independent-abort / closure / analysis / seal / registration rehearsal passed.
+  The normal closure path was repeated with only its deadline accelerated after
+  census and raw-origin admission; retained coordinates expose that acceleration.
+  The guard's rejected-restart regression proves no new capture launch, no state
+  rewrite and no deadline renewal. The earlier full-duration timing evidence
+  was not relabeled as belonging to the refreshed host toolset.
+
+The delivered bundle retains the build, reproduction receipt, current rehearsal
+receipt/package, current accelerated closure evidence, earlier full-duration
+package, verification logs and exact identities. Its `HANDOFF.json` records the
+checkout revision. A no-I/O entry validation also verifies relocated artifacts;
+this is preflight, separately from the actual process rehearsals above.
