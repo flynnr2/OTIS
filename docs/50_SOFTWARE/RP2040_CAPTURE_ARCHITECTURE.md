@@ -89,3 +89,8 @@ never interpreted as zero or clean.
 See `PPS_OWNERSHIP_ARCHITECTURE.md`,
 `SINGLE_REFERENCE_OWNER_REPAIR.md`, and
 `COUNT_OBSERVATION_MEASUREMENT_CONTRACT.md` for the detailed D14/D8 contracts.
+
+The [current capture assessment](PPS_CAPTURE_CURRENT_ASSESSMENT_2026_09_19.md)
+separates the D8-dependent delay before D14 recognition from the fixed one-clock
+recognition-to-X-copy path. Its conditional synchronized-input bound does not
+provide a hardware timer marker or change raw SNP/REF or LAT availability.

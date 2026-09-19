@@ -210,3 +210,30 @@ no separate actuation is necessary merely to observe software latency. Independe
 edge/service instrumentation is required before claiming a hardware-to-service
 latency bound. No flash or physical acquisition was performed for the offline
 implementation.
+
+## Follow-up to the reported five-minute 6.1.0 observation
+
+The operator reported healthy capture/replay and zero writes, but recurring
+output-queue delays around synchronous status reports and two startup-only
+selector-to-first-consumer outliers. Those supplied figures remain reported
+bench evidence until the sealed package is independently inspected.
+
+- [Periodic output repair](PERIODIC_STATUS_SERVICE_REPAIR.md): freeze one view,
+  serialize one complete row at a time through the existing arbiter, and use
+  bounded native USB admission. Stages 3/4 retain their overlapping endpoints.
+- [Startup review](STARTUP_ESTIMATOR_SERVICE_REVIEW.md): the first two count
+  transitions format 64/71 status rows; defer that work until after first phase
+  consumption. No estimator-execution time is inferred from stage 2.
+- [Current capture assessment](PPS_CAPTURE_CURRENT_ASSESSMENT_2026_09_19.md):
+  retain the PIO aperture, prove recognition-to-X-copy is one PIO clock and add
+  current 10 MHz/count and conditional 4–9-clock input-dwell proofs. The
+  conditional SM-input bound is not a measured physical-edge or timer latency;
+  hardware-to-service remains unavailable (`hw=0`).
+
+The combined prepared handoff records the new image's own resources, identities,
+release verification and host rehearsals. Physical improvements remain for the
+single finite inhibited bench observation; successful prior acquisition is not
+repeated to repair an offline consumer.
+
+The exact follow-up build and focused bench instructions are recorded in
+[the service/capture handoff](SERVICE_CAPTURE_BENCH_HANDOFF.md).

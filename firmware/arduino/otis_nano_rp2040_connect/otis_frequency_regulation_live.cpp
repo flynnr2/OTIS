@@ -696,41 +696,52 @@ bool otis_frequency_regulation_live_transport_pending(void) {
   return false;
 }
 
-void otis_frequency_regulation_live_emit_status(OtisStatusEmitContext *context) {
-  otis_status_emit(context, "frequency_regulation", "estimator_method",
+void otis_frequency_regulation_live_get_status(OtisFrequencyRegulationStatus *status) {
+  status->dropped_frames = __atomic_load_n(&dropped_frames, __ATOMIC_ACQUIRE);
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  status->queue_high_water = stats.evidence_high_water;
+}
+
+void otis_frequency_regulation_live_status_rows(
+    OtisStatusRows &rows, const OtisFrequencyRegulationStatus &status) {
+  rows.text("frequency_regulation", "estimator_method",
                    kEstimatorMethod, OTIS_SEVERITY_INFO,
                    OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  otis_status_emit(context, "frequency_regulation", "policy_hash", kPolicyHash,
+  rows.text("frequency_regulation", "policy_hash", kPolicyHash,
                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  otis_status_emit(context, "frequency_regulation", "plant_model_hash",
+  rows.text("frequency_regulation", "plant_model_hash",
                    kPlantModelHash, OTIS_SEVERITY_INFO,
                    OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  otis_status_emit(context, "frequency_regulation", "control_ready", "false",
+  rows.text("frequency_regulation", "control_ready", "false",
                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  otis_status_emit(context, "frequency_regulation", "actuation_enabled", "false",
+  rows.text("frequency_regulation", "actuation_enabled", "false",
                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  otis_status_emit(context, "frequency_regulation", "actuation_authorized", "false",
+  rows.text("frequency_regulation", "actuation_authorized", "false",
                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  otis_status_emit(context, "frequency_regulation", "actionable", "false",
+  rows.text("frequency_regulation", "actionable", "false",
                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
   char value[16];
   snprintf(value, sizeof(value), "%ld",
            static_cast<long>(kActiveLiveUpdateCodes));
-  otis_status_emit(context, "frequency_regulation", "active_live_update_codes", value,
+  rows.text("frequency_regulation", "active_live_update_codes", value,
                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
-  const uint32_t dropped =
-      __atomic_load_n(&dropped_frames, __ATOMIC_ACQUIRE);
+  const uint32_t dropped = status.dropped_frames;
   snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(dropped));
-  otis_status_emit(context, "frequency_regulation", "telemetry_dropped_frames", value,
+  rows.text("frequency_regulation", "telemetry_dropped_frames", value,
                    dropped == 0u ? OTIS_SEVERITY_INFO : OTIS_SEVERITY_WARN,
                    dropped == 0u ? OTIS_FLAG_NONE
                                   : OTIS_FLAG_SOURCE_HEALTH_SUSPECT);
-  uint32_t queue_high_water = queue.high_water();
-  OtisDualCoreQueueStats queue_stats = {};
-  otis_dual_core_get_stats(&queue_stats);
-  queue_high_water = queue_stats.evidence_high_water;
+  const uint32_t queue_high_water = status.queue_high_water;
   snprintf(value, sizeof(value), "%lu",
            static_cast<unsigned long>(queue_high_water));
-  otis_status_emit(context, "frequency_regulation", "queue_high_water", value,
+  rows.text("frequency_regulation", "queue_high_water", value,
                    OTIS_SEVERITY_INFO, OTIS_FLAG_NONE);
+}
+
+void otis_frequency_regulation_live_emit_status(OtisStatusEmitContext *context) {
+  OtisFrequencyRegulationStatus status = {};
+  otis_frequency_regulation_live_get_status(&status);
+  OtisStatusRows rows(context);
+  otis_frequency_regulation_live_status_rows(rows, status);
 }

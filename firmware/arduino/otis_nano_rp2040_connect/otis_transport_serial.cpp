@@ -35,6 +35,25 @@ size_t otis_transport_write_bytes(const uint8_t *data, size_t length) {
   return note_written(Serial.write(data, length));
 }
 
+size_t otis_transport_try_write_canonical(const uint8_t *data, size_t length) {
+  if (data == nullptr || length == 0u) return 0u;
+  if (!mutex_try_enter(&USB.mutex, nullptr)) return 0u;
+  size_t written = 0u;
+  if (tud_cdc_connected()) {
+    const size_t available = tud_cdc_write_available();
+    size_t chunk = length < available ? length : available;
+    if (chunk > 192u) chunk = 192u;
+    if (chunk != 0u) {
+      written = tud_cdc_write(data, static_cast<uint32_t>(chunk));
+      // TinyUSB's flush only attempts to schedule one endpoint transfer; it
+      // does not wait for USB or call tud_task. Include a short final packet.
+      if (written != 0u) tud_cdc_write_flush();
+    }
+  }
+  mutex_exit(&USB.mutex);
+  return note_written(written);
+}
+
 bool otis_transport_try_write_diagnostic(const uint8_t *data, size_t length) {
   // Pinned Arduino-Pico 6.1.0: USBClass::usbIRQ and SerialUSB serialize
   // TinyUSB state under USB.mutex. CoreMutex(false) is NOT nonblocking on

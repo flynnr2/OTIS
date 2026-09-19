@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tools.verify_pio_snapshot import (
     run_phase_sweep,
     verify_fault_paths,
     verify_program_structure,
     verify_repository_installation,
+    verify_sampled_recognition_bound,
     verify_timing_paths,
 )
-
 
 ROOT = Path(__file__).resolve().parents[1]
 FW = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
@@ -44,10 +46,21 @@ def test_checked_in_pio_program_and_installed_configuration_match_proof() -> Non
     assert installed["input_synchronizers"] == "enabled"
 
 
-def test_boundary_quantisation_does_not_accumulate_across_clean_spans() -> None:
-    sweep = run_phase_sweep()
+@pytest.mark.parametrize("oscillator_hz", [16_000_000, 10_000_000])
+def test_boundary_quantisation_does_not_accumulate_across_clean_spans(oscillator_hz: int) -> None:
+    sweep = run_phase_sweep(oscillator_hz=oscillator_hz)
     assert sweep["maximum_tested_span_intervals"] == 7
     assert set(sweep["multi_interval_boundary_error_edges"]) <= {-1, 0, 1}
+
+
+def test_current_dwell_bound_covers_every_armed_state_and_depends_on_d8() -> None:
+    bound = verify_sampled_recognition_bound()
+    assert bound["armed_states"] == 50
+    assert bound["sampled_d14_to_recognition_max_clocks"] == 9
+    assert bound["sampled_d14_to_snapshot_max_clocks"] == 10
+    assert bound["recognition_to_snapshot_clocks"] == 1
+    slower = verify_sampled_recognition_bound(maximum_dwell=18)
+    assert slower["sampled_d14_to_snapshot_max_clocks"] > 10
 
 
 def test_stop_onset_full_fifo_startup_and_counter_wrap_fail_closed() -> None:
