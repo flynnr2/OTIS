@@ -27,7 +27,7 @@ The CPU does **not** create event time.
 # Conceptual Layering
 
 ```text
-PIO / DMA          deterministic timing fabric
+PIO                deterministic count-boundary fabric
 Core 1             protected timing and discipline core
 Core 0             service, I/O and instrumentation core
 OTIS Host          archival, replay, dashboards, analysis
@@ -40,7 +40,7 @@ explicitly: Arduino `setup()` / `loop()` execute the Core 0 service plane and
 `setup1()` / `loop1()` execute the Core 1 timing plane.  This convention is an
 architectural invariant, not a scheduler hint.
 
-Core 1 owns PIO/DMA setup and draining, raw reference/snapshot/count sequence
+Core 1 owns PIO setup and bounded FIFO IRQ drainage, raw reference/snapshot/count sequence
 construction, reference continuity, estimators, preview/control state and
 actuator-request generation.  Core 0 owns USB transport and command framing,
 GNSS parsing, environment I2C, telemetry export, run control and physical DAC
@@ -56,10 +56,10 @@ make receiver progress depend on host attachment.
 The concrete queues and interrupt rings are fixed-size and allocation-free.
 The mechanically checked normative inventory is
 `firmware/arduino/otis_nano_rp2040_connect/otis_resource_inventory.json`.
-It covers all six cross-core queues plus the capture and PPS/count-boundary
-rings, including producer, consumer, capacity, loss policy, permitted absence,
-and recovery. Every cross-core queue is SPSC: Core 0 is the sole producer of
-the service queue and Core 1 is the sole producer of the other five. Core 0
+It covers all seven cross-core queues and the single PPS snapshot ring,
+including producer, consumer, capacity, loss policy, permitted absence, and
+recovery. Every cross-core queue is SPSC: Core 0 is the sole producer of the
+service queue and Core 1 is the sole producer of the other six. Core 0
 drains Core 1 boot telemetry directly to the wire exactly once; it never
 republishes a consumed record.
 
@@ -277,9 +277,9 @@ GNSS PPS
     ↓
 disciplined reference oscillator
     ↓
-PIO / DMA timing fabric
+PIO count-boundary fabric
     ↓
-hardware-latched event timestamps
+raw counter snapshots and bounded recognition coordinates
     ↓
 Core 1 timing semantics and discipline
     ↓

@@ -1,6 +1,7 @@
 # Single reference owner
 
-Status: implementation under verification. Not yet a frozen bench candidate.
+Status: implemented; offline release checks and exact-bundle host rehearsal pass.
+Physical qualification remains pending. See the [release record](../60_EXPERIMENTS/SINGLE_REFERENCE_OWNER_RELEASE_2026_09_19.md).
 Context: [September 13 association loss](../60_EXPERIMENTS/REFERENCE_ASSOCIATION_DISCONTINUITY_2026_09_13.md).
 
 The authoritative path is:
