@@ -577,6 +577,20 @@ def _authoritative_capture_health_faults(
     return faults
 
 
+def require_fresh_inhibited_attempt(
+    runtime_context: AdaptiveHybridRuntimeContext, run_dir: Path,
+) -> None:
+    """Reject restart before mutating state or acquiring a new capture owner."""
+    retained = run_dir / "reports/adaptive_hybrid_supervisor_state.json"
+    if runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE and (
+        retained.exists() or retained.is_symlink()
+    ):
+        raise ValueError(
+            "inhibited zero-write attempt cannot resume retained supervisor state; "
+            "its monotonic observation window must not restart"
+        )
+
+
 class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
     """ADAPTIVE_HYBRID live authority layered on the proven active-control transport."""
 
@@ -602,6 +616,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         self._startup_census_process_nonce = secrets.randbits(32) or 1
         if not isinstance(runtime_context, AdaptiveHybridRuntimeContext):
             raise ValueError("ADAPTIVE_HYBRID supervisor requires a validated runtime context")
+        require_fresh_inhibited_attempt(runtime_context, requested_run_dir)
         if any(name in kwargs for name in ("spec", "identities", "expected_build_identity")):
             raise ValueError("ADAPTIVE_HYBRID static inputs must come from one runtime context")
         spec, identities = runtime_spec(runtime_context)
@@ -653,15 +668,26 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
         self.runtime_context = runtime_context
         owner_now_ns = time.monotonic_ns()
-        wall_elapsed_s = max(
-            0.0, time.time() - _parse_utc_epoch(runtime_context.wall_origin_utc)
-        )
         wall_limit_s = int(
             runtime_context.bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]
         )
-        self._wall_deadline_monotonic_ns = owner_now_ns + int(
-            max(0.0, wall_limit_s - wall_elapsed_s) * 1_000_000_000
-        )
+        self._inhibited_observation_started_monotonic_ns: int | None = None
+        if runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE:
+            # run_experiment constructs this owner after the capture worker is
+            # ready. Census/reference startup counts within this fixed window;
+            # manifest preparation, upload and UTC adjustments do not. Queries
+            # and qualification never restart or extend the deadline.
+            self._inhibited_observation_started_monotonic_ns = owner_now_ns
+            self._wall_deadline_monotonic_ns = (
+                owner_now_ns + wall_limit_s * 1_000_000_000
+            )
+        else:
+            wall_elapsed_s = max(
+                0.0, time.time() - _parse_utc_epoch(runtime_context.wall_origin_utc)
+            )
+            self._wall_deadline_monotonic_ns = owner_now_ns + int(
+                max(0.0, wall_limit_s - wall_elapsed_s) * 1_000_000_000
+            )
         self._setup_requested_monotonic_ns: int | None = None
         self._setup_confirmed_monotonic_ns: int | None = None
         self._arm_sent_monotonic_ns: int | None = None
@@ -698,6 +724,17 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     f"ADAPTIVE_HYBRID retained supervisor {key} differs from the manifest"
                 )
             self.state[key] = value
+        if self._inhibited_observation_started_monotonic_ns is not None:
+            self.state["inhibited_observation_window"] = {
+                "clock_domain": "host_monotonic_ns",
+                "origin": runtime_context.bench_attempt.as_dict()["timing"][
+                    "wall_limit_origin"
+                ],
+                "owner_pid": os.getpid(),
+                "owner_nonce": self._startup_census_process_nonce,
+                "started_monotonic_ns": self._inhibited_observation_started_monotonic_ns,
+                "deadline_monotonic_ns": self._wall_deadline_monotonic_ns,
+            }
         self.state.setdefault("qualified_origin_estimate_id", None)
         self.state.setdefault("qualified_origin_timestamp_ticks", None)
         self.state.setdefault("qualified_origin_session_id", None)
@@ -3485,7 +3522,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         )
 
     def _set_healthy_endpoint(
-        self, health: dict[tuple[str, str], str], *, endpoint: str
+        self, health: dict[tuple[str, str], str], *, endpoint: str,
+        observed_terminal_monotonic_ns: int | None = None,
     ) -> None:
         preliminary = "pending_offline_scientific_analysis"
         self.state["terminal"] = {
@@ -3495,6 +3533,13 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "last_confirmed_code": self.state["terminal_static_code"],
             "utc": _utc_now(),
         }
+        if self.runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE:
+            # Raw same-process host coordinates make the observation duration
+            # reviewable without projecting UTC or firmware time into it.
+            self.state["terminal"]["observation_window"] = {
+                **self.state["inhibited_observation_window"],
+                "observed_terminal_monotonic_ns": observed_terminal_monotonic_ns,
+            }
         self._save()
 
     def _maybe_finish_bench_attempt(
@@ -3516,7 +3561,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                 and self._inhibited_zero_write_terminal_ready(health)
             ):
                 self._set_healthy_endpoint(
-                    health, endpoint=str(terminals["success_terminal"])
+                    health, endpoint=str(terminals["success_terminal"]),
+                    observed_terminal_monotonic_ns=now_monotonic_ns,
                 )
             elif wall_reached:
                 self._enter_host_verification_hold(

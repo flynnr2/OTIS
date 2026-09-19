@@ -56,9 +56,9 @@ electrically idle-high; it is not returned to a high-impedance GPIO input.
 
 | Item | Current value | Evidence |
 |---|---|---|
-| GPS TX | Nano D0 / RP2040 GPIO1 / UART0 RX | Installed Philhower `rp2040` 6.0.0 Nano variant: `D0=(1u)`, `PIN_SERIAL1_RX=D0` |
+| GPS TX | Nano D0 / RP2040 GPIO1 / UART0 RX | Installed Philhower `rp2040` 6.1.0 Nano variant: `D0=(1u)`, `PIN_SERIAL1_RX=D0` |
 | GPS RX | Nano D1 / RP2040 GPIO0 / UART0 TX | Installed variant: `D1=(0u)`, `PIN_SERIAL1_TX=D1`; resource registry and source guards |
-| Installed variant header SHA-256 | `fefffebb1fef775340027d415e0943448bfee3e8a43e0e89a8b9e84041032e3e` | `/Users/richardflynn/Library/Arduino15/packages/rp2040/hardware/rp2040/6.0.0/variants/arduino_nano_connect/pins_arduino.h` |
+| Installed variant header SHA-256 | `fefffebb1fef775340027d415e0943448bfee3e8a43e0e89a8b9e84041032e3e` | `/Users/richardflynn/Library/Arduino15/packages/rp2040/hardware/rp2040/6.1.0/variants/arduino_nano_connect/pins_arduino.h` |
 | UART framing | UART0, 8 data bits, no parity, 1 stop bit | PA1616S and Nano implementation |
 | Baud policy | Ordinary 115200 profiles: one `PMTK251,115200` at reset-default 9600, then one idempotent repeat at retained-operational 115200, with 1200 ms receiver-side settle after each physical UART drain; then fixed 115200 with no scan or promotion retry. Characterization profile: 9600, 19200, 38400, 57600, 115200. | Receiver power cycle establishes the only default state, 9600; ordinary firmware establishes and thereafter retains 115200. Other rates remain characterization-only states and do not widen the operational boot transaction. |
 | Selected operational baud | 115200 | Completed baud-envelope composite: 23,100 confirmed-online seconds, zero UART fault deltas, peak raw-ring high water 208/1024 |

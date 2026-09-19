@@ -324,6 +324,8 @@ def _effective_authority(
         ],
         "absolute_wall_clock_limit_s": timing["absolute_wall_limit_s"],
         "wall_limit_role": timing["wall_limit_role"],
+        **({"wall_limit_origin": timing["wall_limit_origin"]}
+           if "wall_limit_origin" in timing else {}),
         "maximum_outstanding_requests": limits["maximum_outstanding_requests"],
         "authority_initially_closed": envelope["causal_state"]["authority_closed"][
             "initial"
@@ -762,8 +764,10 @@ def _runtime_campaign_section(
             "absolute_wall_clock_limit_s": timing["absolute_wall_limit_s"],
             "qualified_origin": "first_fresh_selected_D14_D8_estimate_after_setup_and_settling"
             if bench.limits.setup_application_limit
-            else "first_fresh_selected_D14_D8_estimate_after_firmware_entry",
-            "wall_clock_origin": "run_manifest.started_at_utc",
+            else "first_coherent_no_setup_accepted_D14_D8_aperture_origin",
+            "wall_clock_origin": timing.get(
+                "wall_limit_origin", "run_manifest.started_at_utc"
+            ),
             "wall_limit_role": timing["wall_limit_role"],
             "no_extension": True,
         },
