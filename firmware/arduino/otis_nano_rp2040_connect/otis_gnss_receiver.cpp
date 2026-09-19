@@ -2,6 +2,8 @@
 
 #include "otis_config.h"
 
+#include <Adafruit_GNSS.h>
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,37 +14,12 @@ bool elapsed_at_least(uint32_t now, uint32_t then, uint32_t interval) {
   return static_cast<uint32_t>(now - then) >= interval;
 }
 
-bool field_has_digits(const char *value, size_t required) {
-  if (value == nullptr) return false;
-  for (size_t index = 0u; index < required; ++index) {
-    if (value[index] == '\0' || !isdigit(static_cast<unsigned char>(value[index])))
-      return false;
-  }
-  return true;
-}
-
-bool valid_utc_field(const char *value) {
-  if (!field_has_digits(value, 6u)) return false;
-  return value[6] == '\0' || value[6] == '.';
-}
-
-bool valid_date_field(const char *value) {
-  return field_has_digits(value, 6u) && value[6] == '\0';
-}
-
 void copy_field(char *destination, size_t capacity, const char *source) {
   if (destination == nullptr || capacity == 0u) return;
   size_t length = source == nullptr ? 0u : strlen(source);
   if (length >= capacity) length = capacity - 1u;
   if (length > 0u) memcpy(destination, source, length);
   destination[length] = '\0';
-}
-
-int hex_value(char value) {
-  if (value >= '0' && value <= '9') return value - '0';
-  if (value >= 'A' && value <= 'F') return value - 'A' + 10;
-  if (value >= 'a' && value <= 'f') return value - 'a' + 10;
-  return -1;
 }
 
 void copy_fault_sentence_type(const OtisGnssReceiver *receiver,
@@ -217,126 +194,104 @@ void note_recognized_message(OtisGnssReceiver *receiver, uint32_t now_ms) {
   receiver->last_message_ms = now_ms;
 }
 
-bool parse_rmc(OtisGnssReceiver *receiver, char **fields, size_t count,
-               uint32_t now_ms) {
-  if (count < 10u || strlen(fields[0]) < 5u) return false;
-  note_recognized_message(receiver, now_ms);
-  receiver->rmc_seen = true;
-  receiver->rmc_count++;
-  receiver->last_rmc_ms = now_ms;
-  receiver->rmc_repair_epoch = receiver->parser_fault_epoch;
-  receiver->rmc_valid = strlen(fields[2]) == 1u && fields[2][0] == 'A';
-  receiver->rmc_utc_available = valid_utc_field(fields[1]);
-  receiver->utc_available =
-      receiver->rmc_utc_available && receiver->gga_utc_available;
-  receiver->date_available = valid_date_field(fields[9]);
-  copy_field(receiver->talker, sizeof(receiver->talker), fields[0]);
-  copy_field(receiver->utc, sizeof(receiver->utc), fields[1]);
-  copy_field(receiver->date, sizeof(receiver->date), fields[9]);
-  return true;
+// Adafruit owns NMEA validation and standard GNSS decoding. OTIS owns
+// qualification epochs and raw field text; no library transport or cached fix
+// is allowed to refresh another sentence's evidence.
+nmea_span_t navigation_field(nmea_span_t fields, uint8_t index) {
+  nmea_span_t field = {nullptr, 0u};
+  for (uint8_t i = 0u; i < index; ++i)
+    field = Adafruit_NMEA::nextField(fields);
+  return field;
 }
 
-bool parse_gga(OtisGnssReceiver *receiver, char **fields, size_t count,
-               uint32_t now_ms) {
-  if (count < 9u || strlen(fields[0]) < 5u) return false;
-  uint8_t fix_quality = 0u;
-  uint8_t satellites = 0u;
-  if (!parse_u8(fields[6], 8u, &fix_quality) ||
-      !parse_u8(fields[7], 99u, &satellites))
-    return false;
-  note_recognized_message(receiver, now_ms);
-  receiver->gga_seen = true;
-  receiver->gga_count++;
-  receiver->last_gga_ms = now_ms;
-  receiver->gga_repair_epoch = receiver->parser_fault_epoch;
-  receiver->fix_quality = fix_quality;
-  receiver->satellites = satellites;
-  receiver->gga_utc_available = valid_utc_field(fields[1]);
-  receiver->utc_available =
-      receiver->rmc_utc_available && receiver->gga_utc_available;
-  copy_field(receiver->talker, sizeof(receiver->talker), fields[0]);
-  copy_field(receiver->hdop, sizeof(receiver->hdop), fields[8]);
-  return true;
+void copy_span(char *destination, size_t capacity, nmea_span_t field) {
+  const size_t length = field.length < capacity - 1u ? field.length : capacity - 1u;
+  if (length) memcpy(destination, field.data, length);
+  destination[length] = '\0';
 }
 
-bool parse_gsa(OtisGnssReceiver *receiver, char **fields, size_t count,
-               uint32_t now_ms) {
-  if (count < 3u || strlen(fields[0]) < 5u) return false;
-  uint8_t fix_dimension = 0u;
-  if (!parse_u8(fields[2], 3u, &fix_dimension) || fix_dimension < 1u)
+bool navigation_u8(nmea_span_t field, uint8_t maximum, uint8_t *value) {
+  const nmea_decimal_t decoded = Adafruit_NMEA::parseDecimal(field);
+  if (decoded.status != NMEA_NUMBER_VALID || decoded.decimalPlaces != 0u ||
+      decoded.coefficient < 0 || decoded.coefficient > maximum)
     return false;
-  // GSA Mode 2 is the explicit no-fix/2D/3D dimension. It is deliberately
-  // kept distinct from GGA fix quality and from the one-pulse-per-second pin.
-  receiver->gsa_seen = true;
-  receiver->gsa_count++;
-  receiver->last_gsa_ms = now_ms;
-  receiver->gsa_repair_epoch = receiver->parser_fault_epoch;
-  receiver->fix_dimension = fix_dimension;
+  *value = static_cast<uint8_t>(decoded.coefficient);
   return true;
 }
 
 void parse_complete_line(OtisGnssReceiver *receiver, uint32_t now_ms,
-                         uint64_t service_extended_ticks) {
+                   uint64_t service_extended_ticks) {
   receiver->line[receiver->line_length] = '\0';
-  if (receiver->line_length < 7u || receiver->line[0] != '$') {
-    receiver->truncated_count++;
+  const nmea_sentence_t sentence =
+      Adafruit_NMEA::validate(receiver->line, receiver->line_length);
+  if (sentence.status != NMEA_FRAME_VALID || receiver->line[0] != '$') {
+    const bool checksum = sentence.status == NMEA_FRAME_BAD_CHECKSUM;
+    if (checksum) receiver->checksum_failure_count++;
+    else receiver->truncated_count++;
     note_parser_fault(receiver, now_ms, service_extended_ticks,
-                      OtisGnssParserFaultClass::LineShape);
-    return;
-  }
-  char *star = strrchr(receiver->line, '*');
-  if (star == nullptr || star != receiver->line + receiver->line_length - 3u) {
-    receiver->truncated_count++;
-    note_parser_fault(receiver, now_ms, service_extended_ticks,
-                      OtisGnssParserFaultClass::LineShape);
-    return;
-  }
-  const int upper = hex_value(star[1]);
-  const int lower = hex_value(star[2]);
-  if (upper < 0 || lower < 0) {
-    receiver->truncated_count++;
-    note_parser_fault(receiver, now_ms, service_extended_ticks,
-                      OtisGnssParserFaultClass::LineShape);
-    return;
-  }
-  uint8_t checksum = 0u;
-  for (char *cursor = receiver->line + 1; cursor < star; ++cursor)
-    checksum ^= static_cast<uint8_t>(*cursor);
-  const uint8_t expected = static_cast<uint8_t>((upper << 4) | lower);
-  if (checksum != expected) {
-    receiver->checksum_failure_count++;
-    note_parser_fault(receiver, now_ms, service_extended_ticks,
-                      OtisGnssParserFaultClass::Checksum);
+                      checksum ? OtisGnssParserFaultClass::Checksum
+                               : OtisGnssParserFaultClass::LineShape);
     return;
   }
   receiver->checksum_valid_count++;
-  *star = '\0';
-  char *fields[24] = {};
-  size_t field_count = 0u;
-  if (!split_fields(receiver->line + 1, fields, 24u, &field_count) ||
-      field_count == 0u) {
+  if (sentence.address.length != 5u || sentence.address.data[0] == 'P') return;
+  const nmea_span_t type = {sentence.address.data + 2, 3u};
+  const bool rmc = memcmp(type.data, "RMC", 3u) == 0;
+  const bool gga = memcmp(type.data, "GGA", 3u) == 0;
+  const bool gsa = memcmp(type.data, "GSA", 3u) == 0;
+  if (!rmc && !gga && !gsa) return;
+
+  const gnss_position_t position = Adafruit_GNSS::parsePosition(sentence);
+  bool valid = gsa
+      ? Adafruit_GNSS::validateNavigation(type, sentence.fields).status ==
+            GNSS_SENTENCE_VALID
+      : position.validation.status == GNSS_SENTENCE_VALID;
+  uint8_t satellites = 0u, dimension = 0u;
+  if (gga)
+    valid = valid && position.fixQualityStatus == NMEA_NUMBER_VALID &&
+            position.fixQuality <= 8u &&
+            navigation_u8(navigation_field(sentence.fields, 7u), 99u, &satellites);
+  if (gsa)
+    valid = valid && navigation_u8(navigation_field(sentence.fields, 2u), 3u,
+                                   &dimension) && dimension >= 1u;
+  if (!valid) {
     receiver->truncated_count++;
     note_parser_fault(receiver, now_ms, service_extended_ticks,
                       OtisGnssParserFaultClass::FieldShape);
     return;
   }
-  const size_t type_length = strlen(fields[0]);
-  const char *type = type_length >= 3u ? fields[0] + type_length - 3u : "";
-  bool parsed = true;
-  if (strcmp(type, "RMC") == 0) {
-    parsed = parse_rmc(receiver, fields, field_count, now_ms);
-  } else if (strcmp(type, "GGA") == 0) {
-    parsed = parse_gga(receiver, fields, field_count, now_ms);
-  } else if (strcmp(type, "GSA") == 0) {
-    parsed = parse_gsa(receiver, fields, field_count, now_ms);
+
+  if (rmc) {
+    note_recognized_message(receiver, now_ms);
+    receiver->rmc_seen = true;
+    receiver->rmc_count++;
+    receiver->last_rmc_ms = now_ms;
+    receiver->rmc_repair_epoch = receiver->parser_fault_epoch;
+    receiver->rmc_valid = position.fixStatus == NMEA_NUMBER_VALID && position.fix;
+    receiver->rmc_utc_available = position.time.status == NMEA_NUMBER_VALID;
+    receiver->date_available = position.date.status == NMEA_NUMBER_VALID;
+    copy_span(receiver->utc, sizeof(receiver->utc), navigation_field(sentence.fields, 1u));
+    copy_span(receiver->date, sizeof(receiver->date), navigation_field(sentence.fields, 9u));
+  } else if (gga) {
+    note_recognized_message(receiver, now_ms);
+    receiver->gga_seen = true;
+    receiver->gga_count++;
+    receiver->last_gga_ms = now_ms;
+    receiver->gga_repair_epoch = receiver->parser_fault_epoch;
+    receiver->fix_quality = position.fixQuality;
+    receiver->satellites = satellites;
+    receiver->gga_utc_available = position.time.status == NMEA_NUMBER_VALID;
+    copy_span(receiver->hdop, sizeof(receiver->hdop), navigation_field(sentence.fields, 8u));
   } else {
-    return;
+    receiver->gsa_seen = true;
+    receiver->gsa_count++;
+    receiver->last_gsa_ms = now_ms;
+    receiver->gsa_repair_epoch = receiver->parser_fault_epoch;
+    receiver->fix_dimension = dimension;
   }
-  if (!parsed) {
-    receiver->truncated_count++;
-    note_parser_fault(receiver, now_ms, service_extended_ticks,
-                      OtisGnssParserFaultClass::FieldShape);
-    return;
+  if (rmc || gga) {
+    copy_span(receiver->talker, sizeof(receiver->talker), sentence.address);
+    receiver->utc_available = receiver->rmc_utc_available && receiver->gga_utc_available;
   }
   note_good_line_metrics(receiver, now_ms, service_extended_ticks);
 }
@@ -641,19 +596,13 @@ void note_command_ack(OtisGnssLink *link, char **fields, size_t field_count,
 
 void process_link_line(OtisGnssLink *link, uint32_t now_ms) {
   link->line[link->line_length] = '\0';
-  if (link->line_length < 7u || link->line[0] != '$') return;
-  char *star = strrchr(link->line, '*');
-  if (star == nullptr || star != link->line + link->line_length - 3u) return;
-  const int upper = hex_value(star[1]);
-  const int lower = hex_value(star[2]);
-  if (upper < 0 || lower < 0) return;
-  uint8_t checksum = 0u;
-  for (char *cursor = link->line + 1; cursor < star; ++cursor)
-    checksum ^= static_cast<uint8_t>(*cursor);
-  if (checksum != static_cast<uint8_t>((upper << 4) | lower)) {
-    link->checksum_failure_count++;
+  const nmea_sentence_t sentence =
+      Adafruit_NMEA::validate(link->line, link->line_length);
+  if (sentence.status != NMEA_FRAME_VALID || link->line[0] != '$') {
+    if (sentence.status == NMEA_FRAME_BAD_CHECKSUM) link->checksum_failure_count++;
     return;
   }
+  char *star = strrchr(link->line, '*');
 
   link->checksum_valid_count++;
   link->valid_frame_seen = true;

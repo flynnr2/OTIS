@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/adafruit/Adafruit_Sensor",
+  "tag": "1.1.15",
+  "commit": "0a9127a1e886ff1adb4c1b6f5958b24108d55aa6",
+  "files": {
+    "Adafruit_Sensor.cpp": "e6cc18df0ce4dd1894b224b232d3b589536cac8ed201025f6e900facd40e7bcb",
+    "Adafruit_Sensor.h": "7f3a6d8889e9d852aecf1c64cdab9d66d801101ae03a9af28e86021245b04c64",
+    "LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "library.properties": "9898dcd235542e85f504cc0d1c5bff9e99f17602607dae944075fdcab6831d37"
+  },
+  "local_changes": "none"
+}

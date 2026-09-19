@@ -25,6 +25,7 @@ FAST_TESTS = (
     "tests/test_metadata_selected_response_frontier.py",
     "tests/test_pps_snapshot_contract.py",
     "tests/test_gnss_receiver.py",
+    "tests/test_adafruit_devices.py",
     "tests/test_forwarded_clock_output_guards.py",
     "tests/test_forwarded_clock_monitor_backend.py",
     "tests/test_active_transaction_contract.py",

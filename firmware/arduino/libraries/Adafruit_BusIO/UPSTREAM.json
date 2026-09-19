@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/adafruit/Adafruit_BusIO",
+  "tag": "1.17.4",
+  "commit": "3b8364267c3ee6e16bad91bc2101aefbd5b5915f",
+  "files": {
+    "Adafruit_BusIO_Register.cpp": "9a0af578ea07956296834f4505e5b134ad7e1cc22ac9c9d84a640a07a94f870b",
+    "Adafruit_BusIO_Register.h": "91560f9fc1b8cda42ab039ccdfe0abf92bf09c425a6142ff54af099809b9d47a",
+    "Adafruit_GenericDevice.cpp": "c26d9c1207c3626fb95884f01cc1f8179fcd7c2c6b0583fff25187c4f2c814d2",
+    "Adafruit_GenericDevice.h": "b12c364e359a0aba6aabc440bc64e375b825214a2835fa1bf38ac709f9e25546",
+    "Adafruit_I2CDevice.cpp": "317c342821f1df676a0e034f65685b4d6bf240d2ab8dcea91d18f1e063326d37",
+    "Adafruit_I2CDevice.h": "88b843d7a44e3f974950d883649e5682f21d9f8ce135daff3a42d015f7cd27e7",
+    "Adafruit_I2CRegister.h": "8318d1f65d5468742c0aa48bd50a7e3bd4ddf02e3eba11bc01ad50cf9c20bc67",
+    "Adafruit_SPIDevice.cpp": "f846ee438eee41bef174c6dbe1f689f7ccbbd732ca4261c7b9e9337b1e5d08b5",
+    "Adafruit_SPIDevice.h": "58ff1433718cef7317638403160d5dd918d92c0f7b4204fb08ad401751d74508",
+    "LICENSE": "86e9fafdb50d2a85d8fef369b4635b5a1b89160603e5b1f95484df0804b49508",
+    "library.properties": "1f1c13c18d84a15f71e8e833aeaf1ada2d505cc915485174167ea661ed085194"
+  },
+  "local_changes": "none"
+}

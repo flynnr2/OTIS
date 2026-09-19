@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
 
 
-def test_fixed_operational_gnss_path_is_native_verified(tmp_path: Path) -> None:
+@pytest.mark.parametrize("harness", ["gnss_operational_baud_harness.cpp",
+                                     "adafruit_gnss_harness.cpp"])
+def test_fixed_operational_gnss_path_is_native_verified(tmp_path: Path, harness: str) -> None:
     compiler = shutil.which("c++")
     if compiler is None:
         pytest.skip("host C++ compiler is unavailable")
@@ -30,7 +32,10 @@ def test_fixed_operational_gnss_path_is_native_verified(tmp_path: Path) -> None:
             "-DOTIS_GNSS_HOST_TEST",
             "-I",
             str(FIRMWARE),
-            str(ROOT / "tests/cpp/gnss_operational_baud_harness.cpp"),
+            "-I", str(ROOT / "firmware/arduino/libraries/Adafruit_GPS/src"),
+            str(ROOT / "firmware/arduino/libraries/Adafruit_GPS/src/Adafruit_GNSS.cpp"),
+            str(ROOT / "firmware/arduino/libraries/Adafruit_GPS/src/Adafruit_NMEA.cpp"),
+            str(ROOT / "tests/cpp" / harness),
             str(FIRMWARE / "otis_gnss_receiver.cpp"),
             str(FIRMWARE / "otis_gnss_uart_rx.cpp"),
             "-o",

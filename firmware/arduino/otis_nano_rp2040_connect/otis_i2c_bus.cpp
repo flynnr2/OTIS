@@ -11,6 +11,8 @@ bool i2c_bus_initialized = false;
 bool otis_i2c_bus_begin(void) {
   if (!i2c_bus_initialized) {
     Wire.begin();
+    // Bound each shared-bus operation; sensor faults must not stall service.
+    Wire.setTimeout(10u);
     i2c_bus_initialized = true;
   }
   return true;
