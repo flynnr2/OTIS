@@ -152,6 +152,20 @@ def _owner_events(run_dir: Path) -> list[dict[str, object]]:
     return events
 
 
+def _startup_reference_wait_proved(run_dir: Path) -> bool:
+    events = _owner_events(run_dir)
+    def first(suffix):
+        return next((i for i, event in enumerate(events)
+                     if str(event.get("event", "")).endswith(suffix)), None)
+    entered = first("startup_reference_wait_entered")
+    recovered = first("startup_reference_wait_requalified")
+    arms = [i for i, event in enumerate(events)
+            if event.get("event") == "command_submitted"
+            and str(event.get("command", "")).startswith("ACTIVE ARM ")]
+    return (entered is not None and recovered is not None and bool(arms)
+            and entered < recovered < arms[0])
+
+
 def _owner_startup_census_admitted(run_dir: Path) -> bool:
     return any(
         event.get("event") == "adaptive_hybrid_regulation_startup_census_established"
@@ -334,6 +348,7 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
     required_boundaries = required_rehearsal_boundaries(spec)
     control_rehearsal = "two_progressive_transactions_complete" in required_boundaries
     emulator = DeterministicPtyInstrument(master, runtime, ADAPTIVE_HYBRID_PROGRAMME)
+    emulator.exercise_startup_reference_wait = control_rehearsal
     scheduler_error: list[BaseException] = []
     inject_review_hold = threading.Event()
     review_hold_proved = False
@@ -462,6 +477,7 @@ def rehearse(*, spec_path: Path, run_dir: Path, receipt_path: Path | None = None
                 and analysis_checks.get("transactions_exact") is True
             ),
             "metadata_hold_nonterminal_and_requalified": _owner_metadata_hold_requalified(run_dir),
+            "startup_reference_wait_recovers_before_first_ARM": _startup_reference_wait_proved(run_dir),
             "unanswered_review_retains_capture_and_lease_without_new_authority": review_hold_proved,
         })
     boundary_results.update({

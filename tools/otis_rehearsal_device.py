@@ -1065,6 +1065,8 @@ class DeterministicPtyInstrument:
         self.query_nonce = 1
         self.capture_lease_received = False
         self.setup = False
+        self.exercise_startup_reference_wait = False
+        self.startup_reference_acquiring = False
         self.selected_interval_count = 0
         self.transaction_index = 0
         self.evidence_phase = "evidence_clear"
@@ -1321,6 +1323,9 @@ class DeterministicPtyInstrument:
             health[("dac", "applied_code_known")] = "true"
             health[("dac", "last_write_ok")] = "true"
             health[("dac", "last_applied_code")] = str(self._applied_code())
+        if self.startup_reference_acquiring:
+            active.update(reference_acceptance_state="acquiring", accepted_anchor_current="false",
+                          setup_reference_eligible="false", state="REFERENCE_HOLD")
         return {
             **{
                 key: value
@@ -1424,8 +1429,8 @@ class DeterministicPtyInstrument:
                 % (1 << 32)
             ),
             ("pps_gate", "reference_acceptance_policy_sha256"): self.reference_acceptance_binding["policy_sha256"],
-            ("pps_gate", "reference_acceptance_state"): "tracking",
-            ("pps_gate", "accepted_anchor_current"): "true",
+            ("pps_gate", "reference_acceptance_state"): "acquiring" if self.startup_reference_acquiring else "tracking",
+            ("pps_gate", "accepted_anchor_current"): "false" if self.startup_reference_acquiring else "true",
             ("pps_gate", "fifo_continuity"): "continuous",
             ("pps_gate", "capture_state"): "clean",
         }
@@ -1854,6 +1859,20 @@ class DeterministicPtyInstrument:
         # the supervisor can latch the fresh arm-progress epoch.
         self._later(2.5, self._make_armable)
 
+    def _lose_startup_reference(self) -> None:
+        self.startup_reference_acquiring = True
+        self._emit_snapshot()
+        self._later(2.5, self._complete_setup_span)
+
+    def _complete_setup_span(self) -> None:
+        self.startup_reference_acquiring = False
+        decision = self.fixture.first_transaction.request_decision
+        self._emit_source_through(int(decision["source_closing_accepted_boundary_ordinal"]))
+        estimate = self._emit_selected_estimate(decision)
+        self._emit_control_preview(estimate, decision)
+        self._emit_snapshot()
+        self._later(2.5, self._make_armable)
+
     def _make_armable(self) -> None:
         if self.stop_event.is_set():
             return
@@ -1888,14 +1907,11 @@ class DeterministicPtyInstrument:
                 ACTIVE_HYBRID_MAINTENANCE_V2_FIELDS,
                 [self.fixture.policy_activation],
             )
-            decision = self.fixture.first_transaction.request_decision
-            self._emit_source_through(int(decision["source_closing_accepted_boundary_ordinal"]))
-            estimate = self._emit_selected_estimate(decision)
-            self._emit_control_preview(estimate, decision)
-            self._emit_snapshot()
-            # The real supervisor must first consume this low-progress setup
-            # generation before the same epoch becomes armable at 600.
-            self._later(2.5, self._make_armable)
+            if self.exercise_startup_reference_wait:
+                self._emit_snapshot()
+                self._later(2.5, self._lose_startup_reference)
+            else:
+                self._complete_setup_span()
             return
         if command.startswith("ACTIVE ARM "):
             if self.evidence_phase != "evidence_clear" or self.transaction_index >= 2:

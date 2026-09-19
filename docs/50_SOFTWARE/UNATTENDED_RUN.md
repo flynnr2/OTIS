@@ -118,3 +118,29 @@ campaign. This correction does not clear its hold, hot-reload its supervisor,
 authorize teardown, extend its deadline or authorize a replacement launch. A
 new frozen host spec and operational rehearsal are required. Preserve the
 existing owner until an explicit operator disposition.
+
+## Reference loss before the first qualified origin
+
+A post-SETUP D14 reacquisition may wait without creating an irrevocable verifier
+hold only before any qualified origin or ARM submission. The exact session,
+confirmed setup code, DAC epoch 1, zero corrections/movement, clear transaction
+and PHASE_QUALIFY state are required. Only acquiring/tracking and current-anchor
+qualification differences are tolerated; missing/cohort/freshness, FIFO, capture,
+partition, identity and actuator discrepancies remain review-required. Reference
+loss/incomplete-aperture counters remain raw evidence, never reset or hidden.
+
+The host records a startup reference wait and inhibits ARM until a complete fresh
+600-accepted-sample estimate, coherent with both current acceptance epochs and the
+retained session/DAC epoch, establishes the first qualified origin. Its closing
+coordinate must be at least a full estimator interval after the retained loss
+frontier in the declared wrapping counter domain. No interval from another epoch
+is added, and no existing verifier hold is cleared. The original host deadline
+and ARM closure reserve remain fixed. A subsequent discontinuity after the origin
+still requires review; this is deliberately a startup repair, not general
+mid-transaction recovery or permission to join qualified epochs.
+
+The actual host PTY rehearsal now injects a startup reference qualification loss,
+then requires recovery before its first ARM and two completed transactions.
+A provenance-linked small fixture from the 19 September bench record separately
+checks epoch changes and rejection of non-reference faults. The PTY models status
+loss, not physical D14 loss; retained real telemetry covers the observed event.
