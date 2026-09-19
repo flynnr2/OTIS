@@ -14,7 +14,7 @@ from host.otis_tools.adaptive_hybrid_analyze import (
 )
 from host.otis_tools.adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
-    CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
     envelope_for_purpose,
     programme_from_mapping,
@@ -173,7 +173,7 @@ def test_terminal_normalization_rejects_fabricated_zero_write_success() -> None:
             terminal,
             ADAPTIVE_HYBRID_PROGRAMME,
             bench_attempt=envelope_for_purpose(
-                CONTINGENT_72_HOUR_HYBRID_CONTROL
+                UNATTENDED_72_HOUR_HYBRID_CONTROL
             ).as_dict(),
         ),
         _normalize_terminal(
@@ -198,12 +198,12 @@ def test_terminal_normalization_rejects_fabricated_zero_write_success() -> None:
 def test_terminal_normalization_uses_exact_72_hour_success() -> None:
     long_run_terminal = {
         "result": "healthy_stop",
-        "reason": ADAPTIVE_HYBRID_PROGRAMME.qualified_endpoint_reason,
+        "reason": "adaptive_hybrid_endurance_complete",
         "preliminary_decision": "pending_offline_scientific_analysis",
         "last_confirmed_code": 0xA84D,
     }
     bench_attempt = envelope_for_purpose(
-        CONTINGENT_72_HOUR_HYBRID_CONTROL
+        UNATTENDED_72_HOUR_HYBRID_CONTROL
     ).as_dict()
 
     exact, decision, _, _ = _normalize_terminal(
@@ -212,7 +212,7 @@ def test_terminal_normalization_uses_exact_72_hour_success() -> None:
         bench_attempt=bench_attempt,
     )
     assert exact is True
-    assert decision == "adaptive_hybrid_qualified_complete"
+    assert decision == "adaptive_hybrid_endurance_complete"
 
     exact, decision, _, _ = _normalize_terminal(
         {
@@ -266,13 +266,15 @@ def test_capture_refuses_to_invent_a_manifest_or_default_inventory(tmp_path: Pat
         _split_targets(tmp_path)
 
 
-@pytest.mark.parametrize("apertures,outcome", [(259200, "qualified_complete"), (259199, "undetermined"), (259201, "undetermined"), (None, "undetermined")])
-def test_only_exact_qualified_endpoint_is_a_pass(apertures, outcome):
-    terminal = {"result": "healthy_stop", "reason": "adaptive_hybrid_qualified_complete",
-                "preliminary_decision": "pending_offline_scientific_analysis", "last_confirmed_code": 0xA84D}
+@pytest.mark.parametrize("observed,outcome", [(259200000000000, "endurance_complete"), (259199999999999, "undetermined"), (None, "undetermined")])
+def test_endurance_requires_full_exact_host_window(observed, outcome):
+    terminal = {"result": "healthy_stop", "reason": "adaptive_hybrid_endurance_complete",
+                "preliminary_decision": "pending_offline_scientific_analysis", "last_confirmed_code": 0xA84D,
+                "observation_window": {"clock_domain": "host_monotonic_ns", "started_monotonic_ns": 0,
+                "deadline_monotonic_ns": 259200000000000, "observed_terminal_monotonic_ns": observed}}
     assert classify_scientific_outcome(terminal, ADAPTIVE_HYBRID_PROGRAMME,
-        bench_attempt=envelope_for_purpose(CONTINGENT_72_HOUR_HYBRID_CONTROL).as_dict(),
-        qualified_d14_accepted_apertures=apertures) == outcome
+        bench_attempt=envelope_for_purpose(UNATTENDED_72_HOUR_HYBRID_CONTROL).as_dict(),
+        qualified_d14_accepted_apertures=259200) == outcome
 
 
 @pytest.mark.parametrize(

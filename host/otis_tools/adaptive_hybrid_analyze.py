@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .adaptive_hybrid_contract import (
-    CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
     AdaptiveHybridProgramme,
     programme_from_mapping,
@@ -154,6 +154,16 @@ def _normalize_terminal(
             and primary is None
         )
         return exact, programme.qualified_endpoint_reason if exact else None, result, reason
+    if result == "scheduled_stop":
+        exact = (
+            validated_bench_attempt is not None
+            and validated_bench_attempt.purpose == UNATTENDED_72_HOUR_HYBRID_CONTROL
+            and reason == "adaptive_hybrid_scheduled_stop_review_required"
+            and isinstance(terminal.get("unresolved_review"), dict)
+            and type(terminal.get("last_confirmed_code")) is int
+            and programme.minimum_code <= terminal["last_confirmed_code"] <= programme.maximum_code
+        )
+        return exact, None, result, reason
     if result in {"nonpass", "aborted"}:
         exact = (
             isinstance(primary, str)
@@ -174,8 +184,8 @@ def classify_scientific_outcome(
     """Classify the scientific outcome from the frozen endpoint evidence.
 
     A passing offline-integrity check is deliberately insufficient here.  The
-    finite campaign succeeds only at the exact accepted-D14/D8-aperture
-    endpoint declared by the programme and bench-attempt envelope.
+    unattended observation completes only at its exact host monotonic endpoint.
+    Accepted D14/D8 measurement coverage remains a separate evidence quantity.
     """
 
     exact, decision, result, _ = _normalize_terminal(
@@ -192,16 +202,22 @@ def classify_scientific_outcome(
     if result == "healthy_stop":
         if validated_bench_attempt.purpose == INHIBITED_ZERO_WRITE:
             return "diagnostic_complete"
-        if validated_bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+        if validated_bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             return "undetermined"
-        if (
-            type(qualified_d14_accepted_apertures) is int
-            and qualified_d14_accepted_apertures
-            == programme.qualified_d14_aperture_count
-            and decision == programme.qualified_endpoint_reason
+        window = terminal.get("observation_window", {})
+        start = window.get("started_monotonic_ns")
+        deadline = window.get("deadline_monotonic_ns")
+        observed = window.get("observed_terminal_monotonic_ns")
+        if not (
+            window.get("clock_domain") == "host_monotonic_ns"
+            and all(type(value) is int for value in (start, deadline, observed))
+            and deadline - start == programme.absolute_wall_limit_s * 1_000_000_000
+            and observed >= deadline
+            and decision == "adaptive_hybrid_endurance_complete"
         ):
-            return "qualified_complete"
-        return "undetermined"
+            return "undetermined"
+        # Operational endurance and qualified aperture coverage remain distinct.
+        return "endurance_complete"
     if result == "aborted":
         return "interrupted_incomplete"
     if (

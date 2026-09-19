@@ -15,6 +15,7 @@ REGISTRY_CONTRACT = "otis_evidence_registry_v1"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _OUTCOMES = {
     "qualified_complete",
+        "endurance_complete",
     "bounded_nonpass",
     "interrupted_incomplete",
     "diagnostic_complete",

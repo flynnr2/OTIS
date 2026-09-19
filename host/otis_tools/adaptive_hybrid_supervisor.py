@@ -28,8 +28,10 @@ from .adaptive_hybrid_contract import (
     ADAPTIVE_HYBRID_PROGRAMME,
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
-    CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
+    ENDPOINT_CONTRACT,
+    UNATTENDED_CLOSURE_RESERVE_S,
     AdaptiveHybridProgramme,
     BenchAttemptEnvelope,
     programme_from_mapping,
@@ -582,11 +584,11 @@ def require_fresh_inhibited_attempt(
 ) -> None:
     """Reject restart before mutating state or acquiring a new capture owner."""
     retained = run_dir / "reports/adaptive_hybrid_supervisor_state.json"
-    if runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE and (
+    if runtime_context.bench_attempt.purpose in {INHIBITED_ZERO_WRITE, UNATTENDED_72_HOUR_HYBRID_CONTROL} and (
         retained.exists() or retained.is_symlink()
     ):
         raise ValueError(
-            "inhibited zero-write attempt cannot resume retained supervisor state; "
+            "finite attempt cannot resume retained supervisor state; "
             "its monotonic observation window must not restart"
         )
 
@@ -672,22 +674,10 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             runtime_context.bench_attempt.as_dict()["timing"]["absolute_wall_limit_s"]
         )
         self._inhibited_observation_started_monotonic_ns: int | None = None
-        if runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE:
-            # run_experiment constructs this owner after the capture worker is
-            # ready. Census/reference startup counts within this fixed window;
-            # manifest preparation, upload and UTC adjustments do not. Queries
-            # and qualification never restart or extend the deadline.
-            self._inhibited_observation_started_monotonic_ns = owner_now_ns
-            self._wall_deadline_monotonic_ns = (
-                owner_now_ns + wall_limit_s * 1_000_000_000
-            )
-        else:
-            wall_elapsed_s = max(
-                0.0, time.time() - _parse_utc_epoch(runtime_context.wall_origin_utc)
-            )
-            self._wall_deadline_monotonic_ns = owner_now_ns + int(
-                max(0.0, wall_limit_s - wall_elapsed_s) * 1_000_000_000
-            )
+        # Both finite purposes start after capture readiness in this process.
+        # A stopped owner cannot recreate the deadline through reattachment.
+        self._inhibited_observation_started_monotonic_ns = owner_now_ns
+        self._wall_deadline_monotonic_ns = owner_now_ns + wall_limit_s * 1_000_000_000
         self._setup_requested_monotonic_ns: int | None = None
         self._setup_confirmed_monotonic_ns: int | None = None
         self._arm_sent_monotonic_ns: int | None = None
@@ -984,7 +974,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     "inhibited zero-write causal state grants application authority"
                 )
             return
-        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+        if bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             raise ValueError("unsupported authority-bearing bench attempt")
         if authority_closed:
             required_closure_fields = {
@@ -1071,7 +1061,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         """Persist each physical application frontier before phase-3 ACK."""
 
         bench_attempt = self.runtime_context.bench_attempt
-        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+        if bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             raise ValueError(
                 "inhibited zero-write attempt observed an ACT application"
             )
@@ -1907,6 +1897,9 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "last_error": str(error),
             "occurrence_count": 1,
             "review_status": "operator_review_required",
+            "reviewer_required_for_capture": False,
+            "unanswered_escalation_action": "retain_capture_hold_new_authority",
+            "timeout_approval_permitted": False,
             "new_authority": False,
             "capture_and_serial_owner_retained": True,
             "evidence_ack_policy": "continue_exact_withhold_unverifiable",
@@ -3117,8 +3110,14 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             return True
         if self.state.get("bench_attempt_arm_admission_closed"):
             return True
-        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+        if bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             raise ValueError("unknown physical bench-attempt authority state")
+        if time.monotonic_ns() >= self._wall_deadline_monotonic_ns - UNATTENDED_CLOSURE_RESERVE_S * 1_000_000_000:
+            self.state["bench_attempt_arm_admission_closed"] = True
+            self.state["bench_attempt_arm_admission_closed_utc"] = _utc_now()
+            self.state["bench_attempt_arm_admission_reason"] = "fixed_host_endpoint_closure_reserve"
+            self._save()
+            return True
         aperture_progress = self._qualified_d14_apertures(health)
         deadline = (
             bench_attempt.limits.automatic_application_admission_deadline_apertures
@@ -3134,7 +3133,7 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             accepted_D14_D8_apertures=aperture_progress,
             admission_deadline_delta=deadline,
             progress_domain="accepted_D14_D8_apertures",
-            endpoint_contract="qualified_D14_D8_aperture_count_v2",
+            endpoint_contract=ENDPOINT_CONTRACT,
             new_ARM_authority=False,
             attempt_extension_permitted=False,
         )
@@ -3374,6 +3373,8 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
         # leave no ghost ARM sequence or pending transaction behind.
         self._validate_bench_attempt_arm_admissions()
 
+        if self._close_bench_arm_admission_if_required(health):
+            return
         self.state["authorization_sequence"] = sequence
         self.state["arm_pending"] = True
         self.state["arm_sent_at_utc"] = arm_sent_at_utc
@@ -3533,13 +3534,20 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
             "last_confirmed_code": self.state["terminal_static_code"],
             "utc": _utc_now(),
         }
-        if self.runtime_context.bench_attempt.purpose == INHIBITED_ZERO_WRITE:
+        if self.runtime_context.bench_attempt.purpose in {INHIBITED_ZERO_WRITE, UNATTENDED_72_HOUR_HYBRID_CONTROL}:
             # Raw same-process host coordinates make the observation duration
             # reviewable without projecting UTC or firmware time into it.
             self.state["terminal"]["observation_window"] = {
                 **self.state["inhibited_observation_window"],
                 "observed_terminal_monotonic_ns": observed_terminal_monotonic_ns,
             }
+        if (self.runtime_context.bench_attempt.purpose == UNATTENDED_72_HOUR_HYBRID_CONTROL
+                and self.state.get("host_verification_hold") is not None):
+            self.state["terminal"].update(
+                result="scheduled_stop",
+                reason="adaptive_hybrid_scheduled_stop_review_required",
+                unresolved_review=self.state["host_verification_hold"],
+            )
         self._save()
 
     def _maybe_finish_bench_attempt(
@@ -3570,118 +3578,31 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     source="bench_attempt_wall_endpoint_observer",
                 )
             return True
-        if bench_attempt.purpose != CONTINGENT_72_HOUR_HYBRID_CONTROL:
+        if bench_attempt.purpose != UNATTENDED_72_HOUR_HYBRID_CONTROL:
             raise ValueError("unsupported physical bench-attempt terminal semantics")
-        # The authority-bearing envelope is an exact projection of the sole
-        # 72-hour programme. Its early setup/application milestones are not
-        # alternate terminals; continue into the programme-owned qualified
-        # aperture and wall endpoints below.
-        return False
+        # Qualified progress is evidence, never a replacement for elapsed
+        # endurance duration. 72 accepted hours is a nonterminal checkpoint.
+        if not wall_reached:
+            return True
+        if self._healthy_terminal_ready(health):
+            self._set_healthy_endpoint(
+                health, endpoint=str(terminals["success_terminal"]),
+                observed_terminal_monotonic_ns=now_monotonic_ns,
+            )
+        else:
+            self._enter_host_verification_hold(
+                ValueError("endurance endpoint lacks exact disarmed static evidence"),
+                source="unattended_wall_endpoint",
+            )
+        return True
 
     def _maybe_finish(
         self,
         health: dict[tuple[str, str], str],
         now_monotonic_ns: int,
     ) -> None:
-        if self.state["terminal"] is not None:
-            return
-        if self._maybe_finish_bench_attempt(health, now_monotonic_ns):
-            return
-
-        qualification_deadline_s = self.programme.qualification_deadline_s
-        setup_confirmed_ns = self._setup_confirmed_monotonic_ns
-        if (
-            qualification_deadline_s is not None
-            and type(setup_confirmed_ns) is int
-            and self.state.get("qualification_started_utc") is None
-        ):
-            if now_monotonic_ns - setup_confirmed_ns >= int(
-                qualification_deadline_s * 1_000_000_000
-            ):
-                reason = f"{self.programme.key}_qualification_deadline_expired"
-                self._enter_host_verification_hold(
-                    ValueError(reason), source="qualification_deadline_observer"
-                )
-            return
-
-        if self.programme.qualified_d14_aperture_count is not None:
-            qualified_d14_apertures = self._qualified_d14_apertures(health)
-            endpoint_reached = (
-                qualified_d14_apertures is not None
-                and qualified_d14_apertures
-                >= self.programme.qualified_d14_aperture_count
-            )
-        else:
-            qualified_elapsed_ticks = self._qualified_elapsed_ticks(health)
-            qualified_target_ticks = (
-                self.programme.qualified_duration_s
-                * RP2040_MONOTONIC_US_PER_SECOND
-            )
-            endpoint_reached = (
-                qualified_elapsed_ticks is not None
-                and qualified_elapsed_ticks >= qualified_target_ticks
-            )
-        if (
-            self.programme.qualified_d14_aperture_count is None
-            and endpoint_reached
-            and self.state.get("qualified_endpoint_extended_timestamp_ticks")
-            is None
-        ):
-            self.state["qualified_endpoint_extended_timestamp_ticks"] = self.state.get(
-                "qualified_frontier_extended_ticks"
-            )
-            self._save()
-        hold = self.state.get("host_verification_hold")
-        if (
-            endpoint_reached
-            and isinstance(hold, dict)
-        ):
-            if hold.get("qualified_endpoint_observed_utc") is None:
-                hold["qualified_endpoint_observed_utc"] = _utc_now()
-                hold["qualified_endpoint_review_required"] = True
-                self._save()
-                self._programme_event(
-                    "host_verification_hold_qualified_endpoint_observed",
-                    applied_code=self.state.get("terminal_static_code"),
-                    firmware_state=health.get(("adaptive_hybrid", "state")),
-                    evidence_phase=health.get(("adaptive_hybrid", "evidence_phase")),
-                    review_status="operator_review_required",
-                    capture_continues=True,
-                )
-            return
-        if (
-            endpoint_reached
-            and self._healthy_terminal_ready(health)
-        ):
-            self._set_healthy_endpoint(
-                health,
-                endpoint=self.programme.qualified_endpoint_reason,
-            )
-            return
-
-        if now_monotonic_ns >= self._wall_deadline_monotonic_ns:
-            if self._healthy_terminal_ready(health):
-                self.state["terminal"] = {
-                    "result": "nonpass",
-                    "reason": (
-                        f"{self.programme.key}_"
-                        f"{self.programme.authorized_absolute_wall_limit_s // 3600}h_absolute_wall_endpoint"
-                    ),
-                    "primary_decision": _programme_terminal_decision(
-                        self.programme, "_right_censored_incomplete"
-                    ),
-                    "last_confirmed_code": self.state["terminal_static_code"],
-                    "utc": _utc_now(),
-                }
-                self._save()
-            else:
-                reason = (
-                    f"{self.programme.key}_"
-                    "wall_endpoint_without_clear_static_terminal"
-                )
-                self._enter_host_verification_hold(
-                    ValueError(reason), source="wall_endpoint_observer"
-                )
+        if self.state["terminal"] is None:
+            self._maybe_finish_bench_attempt(health, now_monotonic_ns)
 
     def _record_abort_terminal(self, reason: str) -> None:
         terminal: dict[str, object] = {
@@ -3844,6 +3765,15 @@ class AdaptiveHybridSupervisor(AdaptiveHybridSupervisorBase):
                     if not self._startup_census_admitted():
                         time.sleep(0.2)
                         continue
+                    # At the authorized endpoint, an unrelated retained diagnostic
+                    # cannot veto closure if static/disarmed evidence is exact.
+                    # Evaluate this before the diagnostic path that raised it.
+                    if (self.state.get("host_verification_hold") is not None
+                            and time.monotonic_ns() >= self._wall_deadline_monotonic_ns):
+                        self._maybe_finish(health, time.monotonic_ns())
+                        if self.state.get("terminal") is not None:
+                            self._emit_terminal_once()
+                            return 2  # Review pending; no scientific failure claim.
                     if not self._abort_on_authoritative_capture_discontinuity(health):
                         self._check_fail_static_health(health)
                         self._process_transactions()

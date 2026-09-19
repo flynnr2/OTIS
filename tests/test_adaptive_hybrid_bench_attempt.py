@@ -5,13 +5,14 @@ import pytest
 
 from host.otis_tools.adaptive_hybrid_contract import (
     ABSOLUTE_WALL_LIMIT_S,
+    ADAPTIVE_HYBRID_PROGRAMME,
     ARM_SUBMISSION_LIMIT,
     AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES,
     CAUSAL_STATE_CONTRACT_ID,
     CAUSAL_STATE_SCHEMA_VERSION,
     CONTRACT_ID,
     CORRECTION_RESPONSE_RESERVE_APERTURES,
-    CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
     EXPECTED_BASE_FQBN,
     EXPECTED_BOARD_SERIAL,
     EXPECTED_COMPILE_FQBN,
@@ -79,7 +80,7 @@ def _replace_path(value, path, replacement):
             },
         ),
         (
-            CONTINGENT_72_HOUR_HYBRID_CONTROL,
+            UNATTENDED_72_HOUR_HYBRID_CONTROL,
             {
                 "setup_application_limit": 1,
                 "automatic_application_limit": 144,
@@ -118,7 +119,7 @@ def test_exact_closed_purpose_envelopes(purpose, expected_limits):
 
 def test_device_identity_is_exactly_frozen():
     identity = envelope_for_purpose(
-        CONTINGENT_72_HOUR_HYBRID_CONTROL
+        UNATTENDED_72_HOUR_HYBRID_CONTROL
     ).as_dict()[
         "device_identity"
     ]
@@ -136,7 +137,7 @@ def test_device_identity_is_exactly_frozen():
 
 
 @pytest.mark.parametrize(
-    "purpose", [INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL]
+    "purpose", [INHIBITED_ZERO_WRITE, UNATTENDED_72_HOUR_HYBRID_CONTROL]
 )
 def test_timing_is_in_exact_d14_d8_apertures_with_separate_wall_bound(purpose):
     timing = envelope_for_purpose(purpose).as_dict()["timing"]
@@ -156,16 +157,16 @@ def test_timing_is_in_exact_d14_d8_apertures_with_separate_wall_bound(purpose):
     if purpose == INHIBITED_ZERO_WRITE:
         assert timing["wall_limit_origin"] == "supervisor_monotonic_start_after_capture_ready"
     else:
-        assert "wall_limit_origin" not in timing
+        assert timing["wall_limit_origin"] == "supervisor_monotonic_start_after_capture_ready"
     assert timing["wall_limit_role"] == (
-        "separate_hard_bound_not_decision_counter"
+        "fixed_host_observation_endpoint"
     )
     assert all("16" not in key for key in timing)
 
 
 def test_long_run_application_admission_deadline_is_exact():
     timing = envelope_for_purpose(
-        CONTINGENT_72_HOUR_HYBRID_CONTROL
+        UNATTENDED_72_HOUR_HYBRID_CONTROL
     ).as_dict()["timing"]
     assert timing["automatic_application_admission_deadline_delta"] == (
         AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES
@@ -173,7 +174,7 @@ def test_long_run_application_admission_deadline_is_exact():
 
 
 @pytest.mark.parametrize(
-    "purpose", [INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL]
+    "purpose", [INHIBITED_ZERO_WRITE, UNATTENDED_72_HOUR_HYBRID_CONTROL]
 )
 def test_causal_state_closes_authority_and_disagreement_holds_for_review(purpose):
     document = envelope_for_purpose(purpose).as_dict()
@@ -209,7 +210,7 @@ def test_causal_state_closes_authority_and_disagreement_holds_for_review(purpose
 
 def test_long_run_closes_only_at_the_application_limit():
     document = envelope_for_purpose(
-        CONTINGENT_72_HOUR_HYBRID_CONTROL
+        UNATTENDED_72_HOUR_HYBRID_CONTROL
     ).as_dict()
     state = document["causal_state"]
 
@@ -226,8 +227,8 @@ def test_long_run_closes_only_at_the_application_limit():
     assert state["firmware_correction_count"]["maximum"] == 144
     assert document["terminal_semantics"][
         "zero_natural_correction_outcome"
-    ] == "zero_natural_corrections_valid_at_qualified_endpoint"
-    assert document["monitoring_semantics"] == {
+    ] == "zero_natural_corrections_valid_at_scheduled_endpoint"
+    assert {key: document["monitoring_semantics"][key] for key in ("authoritative_source", "accepted_D14_D8_aperture_milestones", "first_application_milestone_nonterminal", "host_monitor_may_decide_terminal")} == {
         "authoritative_source": "retained_supervisor_state_and_capture_evidence",
         "accepted_D14_D8_aperture_milestones": list(
             QUALIFIED_APERTURE_MILESTONES
@@ -252,7 +253,7 @@ def test_envelope_value_is_frozen():
     envelope = envelope_for_purpose(INHIBITED_ZERO_WRITE)
 
     with pytest.raises(FrozenInstanceError):
-        envelope.purpose = CONTINGENT_72_HOUR_HYBRID_CONTROL
+        envelope.purpose = UNATTENDED_72_HOUR_HYBRID_CONTROL
 
 
 def test_only_two_purposes_are_accepted():
@@ -261,7 +262,7 @@ def test_only_two_purposes_are_accepted():
 
 
 @pytest.mark.parametrize(
-    "purpose", [INHIBITED_ZERO_WRITE, CONTINGENT_72_HOUR_HYBRID_CONTROL]
+    "purpose", [INHIBITED_ZERO_WRITE, UNATTENDED_72_HOUR_HYBRID_CONTROL]
 )
 def test_every_leaf_mutation_is_rejected_even_with_recomputed_hash(purpose):
     original = envelope_for_purpose(purpose).as_dict()
@@ -285,7 +286,7 @@ def test_every_leaf_mutation_is_rejected_even_with_recomputed_hash(purpose):
 
 def test_unknown_missing_and_stale_identity_are_rejected():
     original = envelope_for_purpose(
-        CONTINGENT_72_HOUR_HYBRID_CONTROL
+        UNATTENDED_72_HOUR_HYBRID_CONTROL
     ).as_dict()
 
     unknown = deepcopy(original)
@@ -312,7 +313,7 @@ def test_unknown_missing_and_stale_identity_are_rejected():
 
 def test_json_number_cannot_substitute_for_boolean():
     candidate = envelope_for_purpose(
-        CONTINGENT_72_HOUR_HYBRID_CONTROL
+        UNATTENDED_72_HOUR_HYBRID_CONTROL
     ).as_dict()
     candidate["authority"]["automatic_retry_permitted"] = 0
     unsigned = {
@@ -322,3 +323,10 @@ def test_json_number_cannot_substitute_for_boolean():
 
     with pytest.raises(ValueError):
         validate_bench_attempt_envelope(candidate)
+
+
+def test_unattended_duration_does_not_change_characterized_board_or_dac_envelope():
+    assert EXPECTED_BOARD_SERIAL == "503533748A919118"
+    assert EXPECTED_HARDWARE_ID == "503533748A919118"
+    assert ADAPTIVE_HYBRID_PROGRAMME.minimum_code == 0xA800
+    assert ADAPTIVE_HYBRID_PROGRAMME.maximum_code == 0xAB00

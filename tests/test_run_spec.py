@@ -8,7 +8,7 @@ import pytest
 
 from host.otis_tools import evidence_package, run_spec
 from host.otis_tools.adaptive_hybrid_contract import (
-    CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    UNATTENDED_72_HOUR_HYBRID_CONTROL,
     INHIBITED_ZERO_WRITE,
 )
 from host.otis_tools.firmware_artifact import validate_frozen_firmware_artifact
@@ -21,7 +21,7 @@ from tests.run_spec_fixtures import (
 
 def test_run_spec_is_inert_immutable_and_portable(monkeypatch, tmp_path: Path) -> None:
     spec = build_synthetic_spec(
-        monkeypatch, tmp_path, purpose=CONTINGENT_72_HOUR_HYBRID_CONTROL
+        monkeypatch, tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL
     )
     document = spec.document()
     assert document["contract"] == "otis_run_spec_v1"
@@ -31,7 +31,7 @@ def test_run_spec_is_inert_immutable_and_portable(monkeypatch, tmp_path: Path) -
     }
     assert (
         document["campaign"]["bench_attempt"]["purpose"]
-        == CONTINGENT_72_HOUR_HYBRID_CONTROL
+        == UNATTENDED_72_HOUR_HYBRID_CONTROL
     )
     assert set(document["firmware"]) == {"artifact"}
     assert (
@@ -68,7 +68,7 @@ def test_simulated_record_is_pty_only_and_projects_zero_physical_authority(
     monkeypatch, tmp_path: Path
 ) -> None:
     spec = build_synthetic_spec(
-        monkeypatch, tmp_path, purpose=CONTINGENT_72_HOUR_HYBRID_CONTROL
+        monkeypatch, tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL
     )
     record = run_spec.create_run_record(
         spec,
@@ -145,7 +145,7 @@ def test_entry_requires_sealed_exact_rehearsal_and_is_consumed_before_record(
     monkeypatch, tmp_path: Path
 ) -> None:
     spec = build_synthetic_spec(
-        monkeypatch, tmp_path, purpose=CONTINGENT_72_HOUR_HYBRID_CONTROL
+        monkeypatch, tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL
     )
     receipt = _receipt(spec, tmp_path / "rehearsal")
     monkeypatch.setattr(run_spec, "verify_current_host_toolset", lambda _spec: None)
@@ -222,7 +222,7 @@ def test_rehearsal_receipt_rejects_a_physical_package(
     monkeypatch, tmp_path: Path
 ) -> None:
     spec = build_synthetic_spec(
-        monkeypatch, tmp_path, purpose=CONTINGENT_72_HOUR_HYBRID_CONTROL
+        monkeypatch, tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL
     )
     receipt = _receipt(spec, tmp_path / "rehearsal")
     artifact = validate_frozen_firmware_artifact(spec.firmware)
@@ -257,7 +257,7 @@ def test_rehearsal_receipt_rejects_package_or_boundary_substitution(
     monkeypatch, tmp_path: Path
 ) -> None:
     spec = build_synthetic_spec(
-        monkeypatch, tmp_path, purpose=CONTINGENT_72_HOUR_HYBRID_CONTROL
+        monkeypatch, tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL
     )
     receipt = _receipt(spec, tmp_path / "rehearsal")
     monkeypatch.setattr(run_spec, "verify_current_host_toolset", lambda _spec: None)
@@ -319,7 +319,7 @@ def test_entry_rejects_boundary_report_not_matching_sealed_inventory(
     monkeypatch, tmp_path: Path
 ) -> None:
     spec = build_synthetic_spec(
-        monkeypatch, tmp_path, purpose=CONTINGENT_72_HOUR_HYBRID_CONTROL
+        monkeypatch, tmp_path, purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL
     )
     package_path = tmp_path / "rehearsal"
     receipt = _receipt(spec, package_path)
@@ -451,7 +451,7 @@ def test_firmware_artifact_identity_is_portable_across_recorded_paths(
 
 def test_rehearsal_boundaries_are_purpose_specific(monkeypatch, tmp_path: Path) -> None:
     controlled = build_synthetic_spec(
-        monkeypatch, tmp_path / "controlled", purpose=CONTINGENT_72_HOUR_HYBRID_CONTROL
+        monkeypatch, tmp_path / "controlled", purpose=UNATTENDED_72_HOUR_HYBRID_CONTROL
     )
     inhibited = build_synthetic_spec(
         monkeypatch, tmp_path / "inhibited", purpose=INHIBITED_ZERO_WRITE

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from host.otis_tools.adaptive_hybrid_contract import CONTINGENT_72_HOUR_HYBRID_CONTROL
+from host.otis_tools.adaptive_hybrid_contract import UNATTENDED_72_HOUR_HYBRID_CONTROL
 from host.otis_tools.adaptive_hybrid_supervisor import (
     AdaptiveHybridSupervisor,
     prepare_runtime_context,
@@ -18,7 +18,7 @@ from tests.run_spec_fixtures import build_synthetic_spec
 def construct_simulated_supervisor(
     run_dir: Path,
     *,
-    purpose: str = CONTINGENT_72_HOUR_HYBRID_CONTROL,
+    purpose: str = UNATTENDED_72_HOUR_HYBRID_CONTROL,
 ) -> AdaptiveHybridSupervisor:
     """Build the real constructor boundary without opening a device."""
     if not (run_dir / "run_manifest.json").exists():

@@ -286,7 +286,7 @@ or deadline expiry, not for observation latency alone.
   and let firmware apply its own bounded fail-static policy without using that
   as permission for the host to tear down capture.
 - A host or harness finding has no abort, teardown, or failed-campaign
-  authority by itself. Alert the controlling Codex turn, retain the evidence,
+  authority by itself. Alert the controlling Codex turn when available, retain the evidence,
   and require explicit review and approval before any such action. After
   review, abort only when firmware evidence establishes a defect requiring a
   code repair, the test is scientifically invalid, or the operator explicitly
@@ -303,12 +303,28 @@ or deadline expiry, not for observation latency alone.
   fault or milestone interval. Process existence and a silent runner terminal
   prove only liveness; they do not establish capture freshness, scientific
   progress, control transactions, or milestone completion.
-- Keep the controlling Codex turn active with bounded polling until an
-  unattended physical run reaches a terminal state. A background watcher that
-  Codex is no longer consuming is not active monitoring. Answer intervening
-  operator questions in commentary and continue the same control turn; do not
-  yield a final response while the run remains active unless an independent
-  recurring monitor has been explicitly requested and verified.
+- Keep the controlling Codex turn active during physical acquisition unless
+  the operator has explicitly authorized and verified local unattended
+  supervision. That mode must survive loss of the invoking terminal, require no
+  model/API budget, monitor authoritative state and evidence freshness, and
+  retain transitions and unresolved escalations independently of notifications.
+  The firmware safety path and sole host command owner remain unchanged.
+- Freeze unattended authority before entry: ordinary steering, exact pending
+  acknowledgements, admitted lease service and specifically rehearsed recovery
+  may proceed without a reviewer. Missing reviewer responses never grant new
+  authority through a timeout and never authorize abort or capture teardown.
+  Unknown decision-bearing discrepancies retain capture and the last confirmed
+  code while holding affected authority. Only fresh causal requalification may
+  resume a documented recoverable hold; do not auto-clear a review hold.
+- An explicitly authorized scheduled endpoint may close capture despite a
+  retained diagnostic only when the final static/disarmed actuator and transaction
+  state are independently exact. Retain the unresolved review in the terminal;
+  do not classify it as scientific success or failure. Unverifiable final state
+  keeps the protective hold and recording.
+- Rehearse unanswered escalations beyond a real lease cycle and verify capture
+  progress, retained pending identity, no new SETUP/ARM, and independent abort.
+  A monitor failure must not kill or restart the control owner. No blind owner
+  restart, reset, flash, command replay, or deadline renewal is permitted.
 - Make unattended monitors report state transitions, decision-bearing
   milestones, terminal faults, and stale evidence rather than transient query
   snapshots. If a monitor is too noisy or defective, replace it before stopping
