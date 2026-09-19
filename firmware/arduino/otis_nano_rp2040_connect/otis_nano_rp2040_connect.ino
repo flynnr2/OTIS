@@ -63,6 +63,8 @@ constexpr uint32_t kCountControlReadyCleanWindows =
 OtisRuntimeState runtime_state;
 OtisReferenceAcceptanceLive reference_acceptance(OTIS_REFERENCE_ACCEPTANCE_POLICY);
 OtisStatusEmitContext status_emit_context;
+void service_periodic_status_transport(void);
+void abandon_periodic_status(void);
 // Core 0 freezes one view per periodic generation; new values cannot replace
 // unsent fields. Each row yields the loop and shares the existing frame arbiter.
 struct OtisPeriodicStatusView {
