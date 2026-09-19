@@ -77,8 +77,14 @@ prerequisite. The bench uses its native Intel Arduino installation and the same
 manifest checks. Focused build-contract, USB diagnostic-admission,
 hardware-resource ownership and queue-resource inventory tests passed: 27 tests.
 
-A fresh exact fixed firmware build and resource audit remain required after
-final integration, followed by the authorized finite inhibited bench run.
+The integrated fixed Intel-compiler image passed compilation, binary-contract
+verification and the resource audit: 227,952 program bytes, 154,664 static RAM
+bytes and 107,480 runtime RAM bytes (2,622 bytes above the required reserve).
+Build session: `6100190920260001`; firmware audit revision:
+`308fc13` (full revision retained in the build manifest). UF2 SHA-256:
+`eceadd16188a9bfce20c7ed83fc82800dbc5f15a2a1300d83631cfc3615bd7ee`.
+The bench reproduces this image through the prepared specification; see
+[the handoff](BENCH_CORE_6_1_0_HANDOFF.md).
 The source comparison and native tests are offline evidence, not physical
 timing qualification. Firmware upload and acquisition are not performed by
 this migration subtask. Preserve the resulting binary/build manifest and

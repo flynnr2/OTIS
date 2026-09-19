@@ -170,7 +170,8 @@ AUTOMATIC_APPLICATION_ADMISSION_DEADLINE_APERTURES = (
 CORRECTION_RESPONSE_RESERVE_APERTURES = 1_511
 FIRST_DEPENDENT_DECISION_RESERVE_APERTURES = 600
 ABSOLUTE_WALL_LIMIT_S = ADAPTIVE_HYBRID_PROGRAMME.absolute_wall_limit_s
-INHIBITED_ZERO_WRITE_ABSOLUTE_WALL_LIMIT_S = 7_200
+INHIBITED_ZERO_WRITE_ABSOLUTE_WALL_LIMIT_S = 300
+INHIBITED_ZERO_WRITE_WALL_ORIGIN = "supervisor_monotonic_start_after_capture_ready"
 ARM_OPPORTUNITY_INTERVAL_S = 600
 ARM_SUBMISSION_LIMIT = ABSOLUTE_WALL_LIMIT_S // ARM_OPPORTUNITY_INTERVAL_S
 QUALIFIED_APERTURE_MILESTONES = (21_600, 86_400, 172_800, 259_200)
@@ -321,6 +322,8 @@ class BenchAttemptEnvelope:
                 ),
                 "absolute_wall_limit_s": limits.absolute_wall_limit_s,
                 "wall_limit_role": "separate_hard_bound_not_decision_counter",
+                **({"wall_limit_origin": INHIBITED_ZERO_WRITE_WALL_ORIGIN}
+                   if self.purpose == INHIBITED_ZERO_WRITE else {}),
             },
             "causal_state": {
                 "schema_version": CAUSAL_STATE_SCHEMA_VERSION,

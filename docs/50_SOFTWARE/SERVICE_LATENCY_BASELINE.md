@@ -135,7 +135,7 @@ python3 -m host.otis_tools.service_latency path/to/raw.log
 
 Records from historical firmware remain bound to their original revision.
 
-## Recorded offline verification (2026-09-19)
+## Original 6.0.0 offline verification (2026-09-19)
 
 The current release suite passed **731 tests** in 108.42 seconds. After the
 final empty-drain overhead reduction, 25 affected diagnostic, identity,
@@ -199,9 +199,11 @@ input margin or IRQ response time. Deterministic rollover, session, duplicate,
 batch, queue-congestion, histogram and drop tests prove software behavior;
 native timer doubles do not measure instrumentation time on the target.
 
-The shortest remaining physical gate is an explicitly authorized, frozen-bundle
-operational rehearsal and finite observation under ordinary and obstructed output
-load. Retain canonical D14/D8 continuity and new diagnostics together, verify
+Preparation now follows [the 6.1.0 bench handoff](BENCH_CORE_6_1_0_HANDOFF.md):
+perform preflight and synthetic operational rehearsals on the development Mac,
+then reproduce the image, flash once and run the five-minute inhibited observation
+on the bench Mac. Physical USB obstruction is a separate future experiment;
+the prepared host rehearsal already exercises synthetic transport obstruction. Retain canonical D14/D8 continuity and new diagnostics together, verify
 exact message identities and bounded drop behavior, and measure service/instrumentation
 overhead on the actual Nano. Preserve existing pre-actuation eligibility gates;
 no separate actuation is necessary merely to observe software latency. Independent

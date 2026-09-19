@@ -114,6 +114,11 @@ def test_inhibited_wall_endpoint_closes_capture_and_analyzes_without_abort(
     assert live["capture_exit"] == 0
     assert live["terminal"]["result"] == "healthy_stop"
     assert live["terminal"]["reason"] == "inhibited_zero_write_complete"
+    window = live["terminal"]["observation_window"]
+    assert window["deadline_monotonic_ns"] - window["started_monotonic_ns"] == 300_000_000_000
+    # The acceleration remains visible: this fixture proves graceful closure,
+    # not a five-minute physical acquisition or elapsed-duration claim.
+    assert window["started_monotonic_ns"] <= window["observed_terminal_monotonic_ns"] < window["deadline_monotonic_ns"]
     assert not any(
         command.startswith(("ACTIVE SETUP ", "ACTIVE ARM "))
         or command == "ACTIVE ABORT"

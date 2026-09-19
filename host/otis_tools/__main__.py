@@ -25,6 +25,10 @@ def main(argv: list[str] | None = None) -> int:
     spec.add_argument("firmware_manifest", type=Path)
     spec.add_argument("--purpose", required=True, choices=("inhibited_zero_write", "contingent_72_hour_hybrid_control"))
     spec.add_argument("--output", required=True, type=Path)
+    compile_command = commands.add_parser("compile", help="Reproduce and verify the frozen firmware without hardware I/O")
+    compile_command.add_argument("spec", type=Path)
+    compile_command.add_argument("--output-dir", required=True, type=Path)
+    compile_command.add_argument("--arduino-cli", default="arduino-cli")
     rehearse = commands.add_parser("rehearse", help="Exercise the complete host path with a simulated device")
     rehearse.add_argument("spec", type=Path)
     rehearse.add_argument("--run-dir", required=True, type=Path)
@@ -63,6 +67,13 @@ def main(argv: list[str] | None = None) -> int:
         from .run_spec import build_run_spec
         spec = build_run_spec(firmware_manifest_path=args.firmware_manifest, purpose=args.purpose, output_path=args.output)
         result = {"spec": str(spec.path), "sha256": spec.sha256, "hardware_authority": False}
+    elif args.command == "compile":
+        from .firmware_artifact import reproduce_firmware, validate_frozen_firmware_artifact
+        from .run_spec import load_run_spec
+        frozen = load_run_spec(args.spec)
+        artifact = validate_frozen_firmware_artifact(frozen.document()["firmware"]["artifact"])
+        result = reproduce_firmware(artifact, output_dir=args.output_dir,
+                                    arduino_cli=args.arduino_cli)
     elif args.command == "rehearse":
         from tools.rehearse_host import rehearse
         result = rehearse(spec_path=args.spec, run_dir=args.run_dir)

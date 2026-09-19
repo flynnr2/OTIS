@@ -49,6 +49,7 @@ def _causal_state(purpose: str) -> dict[str, object]:
 
 def _bare_supervisor(purpose: str, run_dir: Path) -> supervisor_module.AdaptiveHybridSupervisor:
     supervisor = construct_simulated_supervisor(run_dir, purpose=purpose)
+    observation_window = supervisor.state.get("inhibited_observation_window")
     supervisor.state = {
         "host_verification_hold": None,
         "bench_attempt_causal_state": _causal_state(purpose),
@@ -74,6 +75,8 @@ def _bare_supervisor(purpose: str, run_dir: Path) -> supervisor_module.AdaptiveH
         "startup_census_process_nonce": 1,
         "initial_session_id": None,
     }
+    if observation_window is not None:
+        supervisor.state["inhibited_observation_window"] = observation_window
     # Downstream authority tests start after the separately covered solicited
     # startup census has admitted this synthetic supervisor.
     supervisor._startup_census_admitted = lambda: True
@@ -239,6 +242,11 @@ def test_zero_write_wall_endpoint_is_static_without_a_known_dac_code(
     )
 
     assert supervisor._maybe_finish_bench_attempt(
+        health, supervisor._wall_deadline_monotonic_ns - 1,
+    )
+    assert supervisor.state["terminal"] is None
+    assert holds == []
+    assert supervisor._maybe_finish_bench_attempt(
         health,
         supervisor._wall_deadline_monotonic_ns,
     )
@@ -248,6 +256,11 @@ def test_zero_write_wall_endpoint_is_static_without_a_known_dac_code(
     assert terminal["reason"] == "inhibited_zero_write_complete"
     assert terminal["preliminary_decision"] == "pending_offline_scientific_analysis"
     assert terminal["last_confirmed_code"] is None
+    window = terminal["observation_window"]
+    assert window["observed_terminal_monotonic_ns"] == supervisor._wall_deadline_monotonic_ns
+    assert window["deadline_monotonic_ns"] - window["started_monotonic_ns"] == 300_000_000_000
+    assert window["clock_domain"] == "host_monotonic_ns"
+    assert window["owner_nonce"] == supervisor._startup_census_process_nonce
     assert supervisor.state["terminal_static_code"] is None
     assert holds == []
 
@@ -1080,3 +1093,22 @@ def test_setup_timeout_becomes_review_hold_not_abort(tmp_path: Path) -> None:
             "setup_transaction_observer",
         )
     ]
+
+
+def test_inhibited_deadline_uses_exact_owner_clock_not_manifest_utc(tmp_path, monkeypatch):
+    origin_ns = 987654321012345
+    monkeypatch.setattr(supervisor_module.time, "monotonic_ns", lambda: origin_ns)
+    # The fixture's manifest date is deliberately far behind this host wall time.
+    monkeypatch.setattr(supervisor_module.time, "time", lambda: 9_000_000_000.0)
+    subject = construct_simulated_supervisor(tmp_path, purpose=INHIBITED_ZERO_WRITE)
+    assert subject._inhibited_observation_started_monotonic_ns == origin_ns
+    window = subject.state["inhibited_observation_window"]
+    assert window["started_monotonic_ns"] == origin_ns
+    assert window["deadline_monotonic_ns"] == origin_ns + 300_000_000_000
+    assert window["origin"] == "supervisor_monotonic_start_after_capture_ready"
+    assert subject._wall_deadline_monotonic_ns == origin_ns + 300_000_000_000
+    qualification = subject.acquisition_manifest[subject.programme.manifest_section]["qualification"]
+    assert qualification["wall_clock_origin"] == "supervisor_monotonic_start_after_capture_ready"
+    assert qualification["qualified_origin"] == "first_coherent_no_setup_accepted_D14_D8_aperture_origin"
+    monkeypatch.setattr(supervisor_module.time, "time", lambda: -9_000_000_000.0)
+    assert subject._wall_deadline_monotonic_ns == origin_ns + 300_000_000_000

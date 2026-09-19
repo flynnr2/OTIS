@@ -150,9 +150,13 @@ def test_timing_is_in_exact_d14_d8_apertures_with_separate_wall_bound(purpose):
         FIRST_DEPENDENT_DECISION_RESERVE_APERTURES
     )
     expected_wall_s = (
-        7_200 if purpose == INHIBITED_ZERO_WRITE else ABSOLUTE_WALL_LIMIT_S
+        300 if purpose == INHIBITED_ZERO_WRITE else ABSOLUTE_WALL_LIMIT_S
     )
     assert timing["absolute_wall_limit_s"] == expected_wall_s
+    if purpose == INHIBITED_ZERO_WRITE:
+        assert timing["wall_limit_origin"] == "supervisor_monotonic_start_after_capture_ready"
+    else:
+        assert "wall_limit_origin" not in timing
     assert timing["wall_limit_role"] == (
         "separate_hard_bound_not_decision_counter"
     )

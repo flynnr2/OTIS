@@ -98,12 +98,27 @@ The validator rejects the non-authorizing structural preflight and unverified
 claims to a process-level rehearsal. Historical campaign rehearsal code is not
 a compatibility fallback.
 
+The inhibited zero-write purpose has a fixed 300-second observation window.
+Its start is the supervisor's monotonic-clock observation during construction,
+after the capture worker reports ready. Census and reference startup consume
+that window; manifest preparation and firmware upload do not. No query,
+qualification milestone or UTC adjustment can restart it. This is host elapsed
+observation duration, not 300 accepted D14/D8 apertures or oscillator timing.
+At the endpoint, exact healthy static/no-authority evidence permits normal
+capture closure without an abort. Missing or contradictory evidence retains a
+review hold and the capture owner; it does not authorize an automatic abort.
+Final drainage, analysis and sealing follow the observation endpoint. Retained
+state and terminal evidence identify the host clock, owner PID/nonce, start,
+deadline and observed terminal in integer monotonic nanoseconds.
+
 The only current closed-loop physical purpose is
 `contingent_72_hour_hybrid_control`: 259,200 accepted D14/D8 apertures, at most
 144 natural applications, at most 3,024 codes of cumulative absolute movement,
 and a 280,800-second wall limit. Zero natural corrections is a valid endpoint
 when the controller remains healthily within its deadband. Setup, a first
 application, or an elapsed short prefix is not a success terminal.
+
+See [the bench handoff](BENCH_CORE_6_1_0_HANDOFF.md).
 
 ## Compatibility boundary
 
