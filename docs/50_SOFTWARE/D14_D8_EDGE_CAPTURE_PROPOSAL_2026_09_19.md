@@ -1,6 +1,9 @@
 # D14/D8 edge capture: proposal and implementation gap analysis
 
-Date: 2026-09-19. Status: proposal, not an implemented or qualified backend.
+Date: 2026-09-19. Status: historical design proposal, not an implemented fine-capture backend.
+The current Nano implementation and finite hardware-marker disposition are in
+[SERVICE_LATENCY_BASELINE.md](SERVICE_LATENCY_BASELINE.md). This proposal's GPIO/DMA
+endpoint inventory is historical and must not be used as current architecture.
 
 Scope: preserve the most useful hardware evidence of D14 PPS arrival relative
 to D8 oscillator edges, without software-dependent measurement timing. D10 is

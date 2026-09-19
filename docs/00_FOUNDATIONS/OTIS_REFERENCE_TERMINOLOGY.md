@@ -191,10 +191,12 @@ properties already established by the current supervised campaign.
 A diagnostic interval between a precisely identified capture event and a
 precisely identified software-service observation in a common or explicitly
 related clock domain. Its name must state the actual endpoints. Current OTIS
-can form D14 ISR-timestamp-to-foreground-service age in the RP2040 timer domain;
-that interval excludes physical-edge-to-ISR delay. The PIO D8 count snapshot
-does not provide a corresponding hardware timer latch, so this is not a
-measurement of PIO-latch-to-ISR latency.
+records FIFO-word-read service coordinates and later software-stage endpoints
+in the RP2040 timer domain. The independent D14 GPIO ISR has been removed.
+The PIO D8 count snapshot does not latch that timer; neither the service
+coordinate nor its conservative recognition bracket is a measured hardware
+start marker. Software-stage intervals exclude all delay before their named
+start and cannot be called physical-edge-to-service or PIO-latch-to-ISR latency.
 
 ### Host written
 

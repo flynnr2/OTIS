@@ -393,6 +393,120 @@
             ]
           }
         ]
+      },
+      "LAT": {
+        "forms": [
+          {
+            "field_wire_types": {
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "g",
+                "c",
+                "s",
+                "p",
+                "e",
+                "m",
+                "a",
+                "x",
+                "d",
+                "t",
+                "sat",
+                "hw"
+              ]
+            },
+            "fields": [
+              "v",
+              "g",
+              "c",
+              "s",
+              "p",
+              "e",
+              "m",
+              "a",
+              "x",
+              "d",
+              "t",
+              "sat",
+              "hw"
+            ]
+          },
+          {
+            "field_wire_types": {
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "g",
+                "c",
+                "s",
+                "p",
+                "hv",
+                "b0",
+                "b1",
+                "b2",
+                "b3",
+                "b4",
+                "b5",
+                "b6",
+                "b7"
+              ]
+            },
+            "fields": [
+              "v",
+              "g",
+              "c",
+              "s",
+              "p",
+              "hv",
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b4",
+              "b5",
+              "b6",
+              "b7"
+            ]
+          },
+          {
+            "field_wire_types": {
+              "diagnostic_schema_v1": [
+                "v"
+              ],
+              "uint32": [
+                "g",
+                "c",
+                "s",
+                "p",
+                "have",
+                "session",
+                "seq",
+                "start",
+                "end",
+                "u",
+                "status",
+                "domain"
+              ]
+            },
+            "fields": [
+              "v",
+              "g",
+              "c",
+              "s",
+              "p",
+              "have",
+              "session",
+              "seq",
+              "start",
+              "end",
+              "u",
+              "status",
+              "domain"
+            ]
+          }
+        ]
       }
     }
   },

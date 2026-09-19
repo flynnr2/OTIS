@@ -26,12 +26,12 @@ programme execution surface. The most important present limitations are:
   the frozen inclusive ±1.25 ms window after eight acquisition intervals. It
   cannot distinguish an impostor inside that window from the intended PPS.
   Exclusion preserves raw evidence and does not establish GNSS accuracy;
-- independent D14 IRQ references and PIO D8 snapshots can lose association
-  after an irregular reference observation. The September 13 investigation
-  retains one unread DMA front word in ASL schema 2 before recovery clears the
-  ring; this is unassociated diagnostic evidence, not a repair of the capture
-  limitation or proof of electrical cause. Remaining ring/FIFO words are not
-  serialized. See the [investigation](../60_EXPERIMENTS/REFERENCE_ASSOCIATION_DISCONTINUITY_2026_09_13.md);
+- the former independent GPIO/DMA association defect is superseded by the
+  [single reference owner](SINGLE_REFERENCE_OWNER_REPAIR.md). Its FIFO-service
+  coordinate is not a hardware D14 timestamp, and its recognition bracket can
+  withdraw qualification under delayed service. The September 13 retained
+  [investigation](../60_EXPERIMENTS/REFERENCE_ASSOCIATION_DISCONTINUITY_2026_09_13.md)
+  remains historical evidence;
 - CPU-observed expiry places control on hold while a paired hardware boundary
   is delayed. It does not prove a physical missing pulse. Source-coordinate
   ambiguity ends model qualification without inventing a missing timestamp;
@@ -63,9 +63,10 @@ programme execution surface. The most important present limitations are:
 - runner review-hold publication and supervisor consumption are separate
   recorded facts. If retained storage fails, controller inhibition cannot be
   claimed solely because the runner requested it;
-- existing capture-age observations measure D14 ISR timestamp to foreground
-  service. They exclude physical-edge-to-IRQ dispatch latency and cannot be
-  interpreted as PIO-latch-to-service latency;
+- software-stage observations begin at actual FIFO/service/queue observations.
+  No D14 GPIO ISR endpoint remains. Hardware-latch-to-service, electrical-edge
+  timing and fractional D8-cycle timing remain unavailable; see
+  [service-latency baseline](SERVICE_LATENCY_BASELINE.md);
 - a process rehearsal does not establish the older Mac's actual launch-context
   permission to access a USB bootloader volume; that exact context must be
   exercised before a physical campaign; and

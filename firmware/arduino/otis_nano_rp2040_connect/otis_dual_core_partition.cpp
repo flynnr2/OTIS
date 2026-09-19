@@ -6,6 +6,8 @@
 
 namespace {
 
+OtisObservationDiagnosticClock observation_diagnostic_clock = nullptr;
+
 OtisSpscQueue<OtisServiceMessage, OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH>
     service_to_timing;
 OtisSpscQueue<OtisObservationMessage, OTIS_OBSERVATION_QUEUE_DEPTH>
@@ -480,16 +482,46 @@ bool otis_dual_core_take_service(OtisServiceMessage *message) {
   return true;
 }
 
+void otis_dual_core_set_observation_diagnostic_clock(
+    OtisObservationDiagnosticClock reader) {
+  observation_diagnostic_clock = reader;
+}
+
 bool otis_dual_core_publish_observation(
     const OtisObservationMessage *message) {
-  if (message != nullptr && observation_to_service.try_push(*message))
+  if (message != nullptr && observation_to_service.try_push_with_precommit(
+          *message, [](OtisObservationMessage &slot) {
+            slot.queue_clock_valid = observation_diagnostic_clock != nullptr;
+            slot.queue_consumed_ticks = 0u;
+            slot.queue_clock_ambiguous = false;
+            const uint64_t precommit = slot.queue_clock_valid
+                ? observation_diagnostic_clock() : 0u;
+            slot.queue_precommit_ticks = static_cast<uint32_t>(precommit);
+            slot.queue_precommit_high = static_cast<uint32_t>(precommit >> 32);
+          }))
     return true;
   otis_dual_core_latch_fault(OtisPartitionFault::ObservationExhausted);
   return false;
 }
 
 bool otis_dual_core_take_observation(OtisObservationMessage *message) {
-  return observation_to_service.try_pop(message);
+  if (!observation_to_service.try_pop(message)) return false;
+  if (message->queue_clock_valid && observation_diagnostic_clock != nullptr) {
+    const uint64_t consumed = observation_diagnostic_clock();
+    const uint64_t precommit =
+        (static_cast<uint64_t>(message->queue_precommit_high) << 32) |
+        message->queue_precommit_ticks;
+    message->queue_consumed_ticks = static_cast<uint32_t>(consumed);
+    // The full hardware coordinate disambiguates even a complete low32 wrap.
+    // Long residence and clock restart are diagnostic-local ambiguity only.
+    message->queue_clock_ambiguous = consumed < precommit ||
+        consumed - precommit >= (UINT64_C(1) << 31);
+  } else {
+    message->queue_clock_valid = false;
+    message->queue_clock_ambiguous = false;
+    message->queue_consumed_ticks = 0u;
+  }
+  return true;
 }
 
 bool otis_dual_core_publish_monitor_observation(

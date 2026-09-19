@@ -1,8 +1,10 @@
 # PPS PIO Proof and Verification
 
-Status: Stage 1 digital proof passed; observe-only bench qualification accepted 2026-08-01; physical phase/duty margin not tested
-Mechanism: `pio_wait_cumulative_snapshot_dma_v1`
-Proof date: 2026-07-31
+Status: unchanged instruction aperture; current bounded FIFO transport verified offline.
+Historical DMA-backend observe-only qualification was accepted 2026-08-01;
+it does not qualify the current IRQ transport. Physical phase/duty margin remains untested.
+Mechanism: single-state-machine cumulative snapshot, bounded FIFO IRQ owner.
+Instruction proof date: 2026-07-31; current installation binding updated 2026-09-19.
 Proved clock/envelope: RP2040 `clk_sys` and PIO at 133 MHz, oscillator at
 16 MHz, integer duty-cycle stress points 35--65%
 
@@ -13,14 +15,14 @@ the repository's digital go/no-go gate. The later clean, fault, real-GPS,
 service-load, extended, and sealed overnight campaign was accepted on
 2026-08-01 as observe-only measurement-backend qualification. This result does
 not claim pad-level phase/duty margin: the installed ECS fixture cannot control
-that test. Existing evidence builds and the checked-in qualification candidate
-remain compiled with `OTIS_PPS_BOUNDARY_BACKEND_QUALIFIED=0`; changing an
-operational profile is separate from both evidence acceptance and actuation.
+that test. The historical evidence remains bound to its original image. Current firmware
+has one fixed image; the retired qualification profiles and compile-time
+backend selector are not current entry points.
 
 The proof is bound to the checked-in assembled words and to the firmware
 installation. If the program, initial PC, wrap points, pin mappings,
-synchronizers, FIFO/autopush configuration, PIO divider, system clock, or DMA
-ring configuration changes, `tools/verify_pio_snapshot.py` fails.
+synchronizers, FIFO/autopush configuration, PIO divider, system clock, or proved FIFO
+transport configuration changes, `tools/verify_pio_snapshot.py` fails.
 
 If a future version fails this gate, implementation stops. The documented
 fallback is an external synchronous counter/latch or CPLD. An ISR, DMA engine,
@@ -140,10 +142,11 @@ observable together, the just-counted oscillator rise is present in the
 snapshot and closes the interval ending at that PPS. This program-order rule is
 stable at both high-side paths.
 
-D14's GPIO IRQ is an independent REF observer and timestamp source. It does not
-stop, restart, inject into, sample, or reset the PIO counter. DMA transports an
-already-captured word. Neither ISR latency nor DMA/USB/foreground latency moves
-the PIO-owned aperture.
+The current FIFO IRQ reads already committed words and records the CPU service
+coordinate. It never triggers or changes a successful snapshot. REF derives
+from that same immutable record; no independent GPIO observer remains. Neither
+ISR nor USB/foreground latency moves the PIO-owned aperture. Exhaustion stops
+the source and preserves evidence as an explicit continuity fault.
 
 ## Counter wrap, start, reset, and session behavior
 
@@ -165,9 +168,9 @@ that bound is rejected.
 Startup begins at PC 11, conceptually in PPS-high state. A PPS low must first be
 recognized before the next high can create a snapshot. The first snapshot of a
 new session is an anchor only. Two adjacent, sequence-contiguous snapshots are
-required before CNT publication. PIO/DMA restart, continuity loss, association
-loss, or oscillator-stop recovery increments the session and repeats this
-two-snapshot rule. No interval crosses CPU-owned initialization or rearm.
+required before CNT publication. Explicit capture restart opens a new nonzero session and repeats this
+two-snapshot rule. Runtime does not automatically clear faults or rearm.
+No interval crosses CPU-owned initialization or rearm.
 
 ## Stopped-oscillator behavior
 
@@ -177,31 +180,24 @@ after a `WAIT` has completed, at most the already-entered finite path can run
 before the opposite wait parks; any resulting or resume-time late snapshot is
 not evidence of a timely PPS boundary.
 
-D14 therefore continues to report REF independently, but an unmatched REF or
-missing snapshot invalidates association. Recovery starts a new session and
-drops all old association and unread transport state. The first fresh snapshot
-is an anchor and its adjacent successor is the first CNT candidate. A word that
-appears after an unmatched REF, including one already present when a second REF
-is noticed, must never be paired retroactively with the earlier REF.
+The current single-owner path cannot emit an independent D14 REF while D8
+is stopped. A late recognized snapshot remains raw evidence; it is not proof
+of timely physical PPS arrival. The recognition bracket and selector preserve
+that limitation. See [current ownership](SINGLE_REFERENCE_OWNER_REPAIR.md).
 
-## FIFO, DMA, and memory ownership
+## FIFO and memory ownership
 
-The state machine's RX FIFOs are joined for eight 32-bit words. Autopush occurs
-at exactly 32 bits. One dynamically claimed, high-priority DMA channel is paced
-by the selected state machine's RX DREQ and writes a 128-word, 512-byte-aligned
-circular SRAM ring. The DMA transfer count, read with a stable-read/barrier
-protocol, is the producer ordinal; the wrapped address is not used as the sole
-progress indicator.
+The state machine's RX FIFOs are joined for eight 32-bit words; autopush occurs
+at exactly 32 bits. Core 1 drains at most eight words per service and permits
+at most one IRQ service between foreground polls. Its 128-record software ring
+retains session, ordinal, count, CPU coordinate and uncertainty. Foreground
+consumes records; it does not own the boundary. No DMA channel is claimed.
 
-DMA is transport only. It cannot inspect `X`, trigger the snapshot, define PPS,
-or repair a missing PIO event. Foreground owns consumption and association but
-does not own the boundary.
-
-A full joined RX FIFO stalls `IN`/autopush indefinitely. The proof deliberately
-fills all eight words and observes `RXSTALL`; this is outside the valid timing
-envelope. Firmware treats sticky `FDEBUG.RXSTALL`, DMA AHB error, unexpected DMA
-stop, or a producer-consumer distance above 128 as continuity loss and fails
-closed into a new session.
+A full joined FIFO stalls autopush and leaves the valid timing envelope. Sticky
+RXSTALL, exhausted service budget or software-ring capacity stops the source
+and state machine without clearing retained words. Explicit recovery requires
+a new session after evidence preservation. Native backend tests cover these
+failure paths separately from the continuously drained instruction proof.
 
 ## Installed configuration proved
 
@@ -212,9 +208,11 @@ The repository verifier asserts all of the following against production source:
 - PIO0, one state machine, program length 15, wrap 0--14, initial PC 11;
 - `IN_BASE=GPIO20` for oscillator `WAIT PIN` and `JMP_PIN=GPIO26` for PPS;
 - input synchronizer bypass bits cleared for both inputs;
-- shift-right, 32-bit autopush, joined RX FIFO, and PIO divider 1.0;
-- 32-bit, RX-DREQ-paced, high-priority DMA; and
-- 128-word aligned circular ring with fatal transport-fault handling.
+- shift-right, 32-bit autopush, joined RX FIFO and PIO divider 1.0; and
+- the bounded FIFO-drain transport and explicit RXSTALL handling.
+
+Native integration checks additionally exercise ring capacity, IRQ budgets,
+source filtering, loss preservation and explicit session transitions.
 
 ## Reproducing the proof
 
@@ -232,8 +230,9 @@ The second must compile the fixed image at the pinned 133 MHz board setting.
 
 ## Remaining physical characterization
 
-Sustained USB/serial/DMA load, long-duration continuity, and deliberate fault
-injection have passed in the accepted campaign. A controlled 16 MHz PPS phase
+Sustained USB/serial/DMA load, long-duration continuity and deliberate fault
+injection passed for the historical accepted DMA image. The current FIFO IRQ
+image requires its own authorized physical gate; offline checks are not that gate. A controlled 16 MHz PPS phase
 sweep with measured pad duty/edge quality and 35--65% stress remains not tested
 because the installed ECS fixture cannot generate it. It is a documented,
 non-blocking physical-margin limitation rather than a passed test. The supplied

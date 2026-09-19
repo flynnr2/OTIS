@@ -1,6 +1,13 @@
 #include "otis_transport_serial.h"
 
 #include <Arduino.h>
+#include <USB.h>
+#include <pico/mutex.h>
+#include <tusb.h>
+
+#if defined(USE_TINYUSB) || defined(NO_USB) || defined(__FREERTOS)
+#error "OTIS diagnostic transport requires the pinned bare-metal Arduino-Pico USB backend"
+#endif
 
 namespace {
 uint64_t written_bytes = 0u;
@@ -26,6 +33,28 @@ size_t otis_transport_write_cstr(const char *s) {
 
 size_t otis_transport_write_bytes(const uint8_t *data, size_t length) {
   return note_written(Serial.write(data, length));
+}
+
+bool otis_transport_try_write_diagnostic(const uint8_t *data, size_t length) {
+  // Pinned Arduino-Pico 6.0.0: USBClass::usbIRQ and SerialUSB serialize
+  // TinyUSB state under USB.mutex. CoreMutex(false) is NOT nonblocking on
+  // cross-core contention, so use a single native try-enter instead.
+  if (data == nullptr || length == 0u || length > UINT16_MAX) return false;
+  if (!mutex_try_enter(&USB.mutex, nullptr)) return false;
+  bool accepted = false;
+  constexpr uint32_t reserved_bytes = 64u;
+  if (tud_cdc_connected() &&
+      tud_cdc_write_available() >= length + reserved_bytes) {
+    // cdc_device.c writes at most UINT16_MAX to the FIFO. Capacity admission
+    // and this copy share the USB lock: neither another writer nor tud_task's
+    // disconnect/reset callbacks can interleave. The optional auto-flush inside
+    // tud_cdc_write only schedules an endpoint transfer; it does not poll.
+    const size_t written = tud_cdc_write(data, static_cast<uint32_t>(length));
+    note_written(written);
+    accepted = written == length;
+  }
+  mutex_exit(&USB.mutex);
+  return accepted;
 }
 
 size_t otis_transport_write_uint32(uint32_t v) {

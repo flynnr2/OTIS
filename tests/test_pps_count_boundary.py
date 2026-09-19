@@ -126,4 +126,4 @@ def test_no_independent_gpio_pairing_or_automatic_rearm():
     for retired in ("otis_capture_irq", "otis_capture_ring", "otis_pps_count_boundary_ring"):
         assert retired not in sketch
     assert "snapshot.timestamp_uncertainty_ticks" in drain
-    assert "emit_pps_count_boundary(observation, snapshot.status)" in drain
+    assert "emit_pps_count_boundary(observation, snapshot.status, first_consumption_ticks)" in drain

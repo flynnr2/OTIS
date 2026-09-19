@@ -93,5 +93,24 @@
       "maximum_consumer_absence": "eight_hardware_FIFO_words_without_IRQ_service; at_most_one_IRQ_and_eight_reads_per_foreground_poll",
       "recovery": "explicit_new_session_only_after_retaining_old_evidence"
     }
-  ]
+  ],
+  "service_latency": {
+    "authority": "diagnostic_only",
+    "timing_owner_streams": 6,
+    "serial_owner_streams": 4,
+    "bytes_per_stats": 200,
+    "bytes_per_sample": 24,
+    "mailbox_stats_copies": 1,
+    "serial_snapshot_copies": 1,
+    "format_buffer_bytes": 256,
+    "observation_metadata_bytes_per_slot": 16,
+    "maximum_rows_per_second": 4,
+    "maximum_row_bytes_exclusive": 256,
+    "histogram_version": 1,
+    "threshold_us": 1000,
+    "threshold_action": "none",
+    "export_loss_policy": "drop_whole_row_without_waiting",
+    "mailbox_ownership": "Core0 requests; Core1 fills; Core0 consumes; acquire-release single slot",
+    "hardware_marker": "unavailable"
+  }
 }

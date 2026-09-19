@@ -629,6 +629,14 @@ class CaptureDeviceRunner:
         try:
             text = line.decode("utf-8")
         except UnicodeDecodeError as exc:
+            if line.startswith(b"LAT,"):
+                _write_marker(
+                    raw_writer, "firmware_raw_only_diagnostic",
+                    line_number=self.lines_seen, record_type="LAT",
+                    disposition="raw_only_diagnostic_invalid",
+                    diagnostic_errors=[f"malformed UTF-8: {exc}"],
+                )
+                return
             self.malformed_utf8 += 1
             _log_event(logging.WARNING, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
             _write_marker(raw_writer, "malformed_utf8", line_number=self.lines_seen, error=str(exc))
@@ -673,6 +681,7 @@ class CaptureDeviceRunner:
         elif splitter.last_disposition in {
             "late_attach_boot_fragment",
             "raw_only_diagnostic",
+            "raw_only_diagnostic_invalid",
         }:
             _write_marker(
                 raw_writer,
@@ -680,6 +689,7 @@ class CaptureDeviceRunner:
                 line_number=self.lines_seen,
                 record_type=splitter.last_record_type,
                 disposition=splitter.last_disposition,
+                diagnostic_errors=list(splitter.last_diagnostic_errors),
             )
         if contract is not None:
             self.lines_parsed += 1

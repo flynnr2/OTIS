@@ -235,6 +235,16 @@ bool otis_dual_core_timing_owner_active(void);
 bool otis_dual_core_publish_service(const OtisServiceMessage *message);
 bool otis_dual_core_take_service(OtisServiceMessage *message);
 
+// Configure once while both cores are quiescent, before publication starts.
+// Reader must be bounded/nonblocking and read the shared native RP2040 timer
+// as coherent hardware time_us_64 (not a per-core software extension).
+// Null explicitly disables coordinates.
+// Partition reset preserves this boot-time configuration. Native tests inject
+// a reader; diagnostic clock availability never affects queue admission.
+using OtisObservationDiagnosticClock = uint64_t (*)(void);
+void otis_dual_core_set_observation_diagnostic_clock(
+    OtisObservationDiagnosticClock reader);
+
 // Core 1 producer / Core 0 consumer. Raw evidence is non-droppable.
 bool otis_dual_core_publish_observation(
     const OtisObservationMessage *message);
