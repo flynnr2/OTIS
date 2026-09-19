@@ -36,7 +36,7 @@ size_t otis_transport_write_bytes(const uint8_t *data, size_t length) {
 }
 
 bool otis_transport_try_write_diagnostic(const uint8_t *data, size_t length) {
-  // Pinned Arduino-Pico 6.0.0: USBClass::usbIRQ and SerialUSB serialize
+  // Pinned Arduino-Pico 6.1.0: USBClass::usbIRQ and SerialUSB serialize
   // TinyUSB state under USB.mutex. CoreMutex(false) is NOT nonblocking on
   // cross-core contention, so use a single native try-enter instead.
   if (data == nullptr || length == 0u || length > UINT16_MAX) return false;
