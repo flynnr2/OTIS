@@ -26,12 +26,12 @@ def test_hold_bypasses_one_deferred_normal_command_while_status_frame_pending(tm
     else:
         pytest.fail("command service function unterminated")
     (tmp_path / "serial_command_service.inc").write_text(source[start : position + 1])
-    binary = tmp_path / "pending_abort"
+    binary = tmp_path / "pending_hold"
     subprocess.run(
         [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
          "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
          f"-I{FW}", f"-I{tmp_path}",
-         str(ROOT / "tests/cpp/serial_command_pending_abort_harness.cpp"),
+         str(ROOT / "tests/cpp/serial_command_pending_hold_harness.cpp"),
          str(FW / "otis_serial_command.cpp"), "-o", str(binary)],
         check=True,
     )

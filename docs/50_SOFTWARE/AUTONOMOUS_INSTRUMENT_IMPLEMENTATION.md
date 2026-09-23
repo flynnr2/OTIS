@@ -76,6 +76,36 @@ millisecond rollover, complete paced configuration delivery through the actual
 two-row transport queue, and bounded behavior while USB is stalled. It does not
 require a continuously draining host for internal control.
 
+## PR integration verification
+
+The PR integrates `origin/main` through `012fd8b` and retains its deferred
+count-boundary reporting and expanded PIO proof. The autonomous transport keeps
+one complete-row writer, explicitly flushes short USB packets, and admits
+priority HOLD while a normal command is pending. Historical host supervisors
+and lease-based runners remain removed.
+
+The final merged full suite passes **394 tests** in 57.92 seconds, using
+`/tmp/otis-host-test-venv/bin/python -m pytest -q tests`. The earlier test run
+overlapped a test/harness rename; the stable-path full rerun passed.
+
+The exact image binds clean firmware revision
+`82f60eae9cbbfc7f6695cc47e9484f9191c65609`. Binary and resource audits passed:
+flash **173,888 bytes**, static RAM **150,824 bytes**, remaining RAM
+**111,320 bytes**. No resource ceiling was relaxed. Generated-contract checks
+and the expanded pinned-assembler PIO proof pass: **7,936 cases / 55,552
+intervals at each of 10 and 16 MHz**, plus the declared synchronized-input
+4..9-clock dwell model. These remain digital-model claims, not physical pin
+or service-latency qualification.
+
+| PR image identity | SHA-256 |
+| --- | --- |
+| Firmware input set | `e00d4d02522405321c16046f796127306a178d3d82d3d031f72fecde13ea1a39` |
+| UF2 | `60e94ea2cf4f43b4b7c0a14287940dbd6f4fd9c84f4d9bece0f965a7990d013d` |
+
+Local build artifacts are in `runs/autonomous-pr-build/`; the expanded proof and
+merged-suite logs are in `runs/autonomous-pr-verification/`. Neither directory
+is committed or claimed transferred to the bench.
+
 ## Remaining decisions and physical gates
 
 The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) is the
