@@ -655,12 +655,13 @@ void emit_bad_window_diagnostics(OtisRuntimeState *runtime_state,
 void update_startup_inhibit(OtisRuntimeState *runtime_state,
                             const OtisCountObservationConfig *config,
                             uint32_t now_ms) {
-  runtime_state->tcxo.startup_inhibit_elapsed_s =
-      (uint32_t)((now_ms - runtime_state->tcxo.startup_inhibit_start_ms) /
-                 1000u);
-  runtime_state->tcxo.startup_inhibit_active =
-      (uint32_t)(now_ms - runtime_state->tcxo.startup_inhibit_start_ms) <
-      config->startup_inhibit_ms;
+  (void)now_ms;
+  const uint64_t now_ticks=time_us_64();
+  const uint64_t elapsed_ticks=now_ticks>=runtime_state->tcxo.startup_inhibit_start_ticks ?
+      now_ticks-runtime_state->tcxo.startup_inhibit_start_ticks : 0u;
+  const uint64_t elapsed_s=elapsed_ticks/1000000ull;
+  runtime_state->tcxo.startup_inhibit_elapsed_s = elapsed_s>UINT32_MAX ? UINT32_MAX : uint32_t(elapsed_s);
+  runtime_state->tcxo.startup_inhibit_active = elapsed_ticks<uint64_t(config->startup_inhibit_ms)*1000ull;
 }
 
 void record_window_quality(OtisRuntimeState *runtime_state,

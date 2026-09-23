@@ -26,7 +26,7 @@ def test_repository_declares_exactly_one_fixed_firmware_image() -> None:
     assert manifest["builder_id"] == "otis_fixed_firmware_builder_v1"
     assert manifest["image"]["id"] == "adaptive_hybrid_regulation"
     assert manifest["image"]["firmware_version"] == (
-        "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
+        "OTIS_AUTONOMOUS_INSTRUMENT_V2"
     )
     assert "profiles" not in manifest
     assert manifest["profile_bindings"] == build_firmware.EXPECTED_PROFILE_BINDINGS

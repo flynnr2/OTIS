@@ -568,7 +568,7 @@ def test_ordinary_paths_limits_chatter_and_fail_static_are_parity_checked(
         commands.append(_decide_command(observation))
 
     limited = _controller()
-    limited.application_count = limited.policy.maximum_applications
+    limited.application_count = 144
     commands.extend(["INIT 43085 1", "SET_BUDGET 144 0"])
     first_limit = _observation(limited, 0, 0, 600)
     second_limit = _observation(limited, 600, 600, 1200)
@@ -614,11 +614,11 @@ def test_ordinary_paths_limits_chatter_and_fail_static_are_parity_checked(
     assert expected[2].reason == "outside_tight_ordinary_request_ready"
     assert expected[3].reason == "phase_degraded_frequency_only_request_ready"
     assert decision_rows[-4]["reason"] == "persistence_first_interval_hold"
-    assert decision_rows[-3]["reason"] == "global_application_budget_hold"
+    assert decision_rows[-3]["reason"] == "maintenance_request_ready"
     assert decision_rows[-2]["reason"] == "prospective_repeated_alternation"
     assert decision_rows[-2]["fail_static_reason"] == "prospective_repeated_alternation"
-    assert decision_rows[-1]["reason"] == "prospective_low_efficiency_path"
-    assert decision_rows[-1]["fail_static_reason"] == "prospective_low_efficiency_path"
+    assert decision_rows[-1]["reason"] == "outside_tight_ordinary_request_ready"
+    assert decision_rows[-1]["fail_static_reason"] == ""
 
 
 @pytest.mark.parametrize(

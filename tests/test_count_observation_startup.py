@@ -18,7 +18,7 @@ def test_startup_transition_status_follows_canonical_consumption(tmp_path: Path)
         '#pragma once\n#include <stdint.h>\nclass Stream;\n'
         '#define D10 5\n#define D14 26\n#define D8 20\n#define D9 21\n'
         '#define D6 18\n#define PIN_SERIAL1_RX 1\n#define PIN_SERIAL1_TX 0\n'
-        'uint32_t millis();\nuint32_t micros();\n'
+        'uint32_t millis();\nuint32_t micros();\nuint64_t time_us_64();\n'
     )
     (stubs / "hardware/structs/timer.h").write_text(
         '#pragma once\n#include <stdint.h>\n'

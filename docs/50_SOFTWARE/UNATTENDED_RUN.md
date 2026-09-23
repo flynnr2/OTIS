@@ -1,5 +1,10 @@
 # 72-hour unattended hybrid experiment
 
+Historical supervised operating contract. Current autonomous firmware and the
+recording host replace this runtime; these instructions apply only to their
+recorded revision. Current recording endpoints do not stop the instrument. See
+[AUTONOMOUS_INSTRUMENT_IMPLEMENTATION.md](AUTONOMOUS_INSTRUMENT_IMPLEMENTATION.md).
+
 Preparation is offline on the development Mac. Physical launch is conditional on
 satisfactory review of the latest bench experiment and explicit bench entry.
 No firmware upload, reset, serial acquisition or DAC operation is performed here.

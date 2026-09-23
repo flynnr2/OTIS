@@ -200,13 +200,10 @@ void otis_phase_preview_live_on_reference_selection(
   copy_text(message.phase_qualification_state,
             otis_reference_relative_phase_state_name(output.phase_state));
   copy_text(message.phase_reason, output.phase_reason);
-  if (!otis_dual_core_publish_phase_preview(&message)) {
-    active_snapshot = {};
-    otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewFault);
-    return;
-  }
+  const bool recorder_published =
+      otis_dual_core_publish_phase_preview(&message);
   active_snapshot.available = true;
-  active_snapshot.recorder_published = true;
+  active_snapshot.recorder_published = recorder_published;
   active_snapshot.phase_continuous =
       output.phase_state == OtisReferenceRelativePhaseState::Qualified;
   active_snapshot.phase_current = output.phase_accepted;
@@ -222,7 +219,8 @@ void otis_phase_preview_live_on_reference_selection(
   atomic_store_release(&last_phase_epoch, output.phase_epoch);
   atomic_store_release(&last_observation_sequence,
                        output.observation_sequence);
-  __atomic_add_fetch(&published_records, 1u, __ATOMIC_RELEASE);
+  if (recorder_published)
+    __atomic_add_fetch(&published_records, 1u, __ATOMIC_RELEASE);
 }
 
 void otis_phase_preview_live_note_reset(void) {

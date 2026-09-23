@@ -1,149 +1,105 @@
 # OTIS host architecture
 
-The host has five responsibilities: capture, supervise, monitor, analyse, and
-package. The instrument remains responsible for hardware timing, timestamp
-semantics, reference acceptance, and bounded actuator behaviour.
+Firmware is the operating instrument. It acquires D14/D8 timing evidence,
+qualifies the reference, selects the operating mode, makes controller decisions
+and owns the DAC. A host may attach to observe and record. Attachment never
+starts a campaign, resets the board, sets a DAC code or grants steering
+authority. Firmware operation continues when the host closes or fails.
 
-## Live ownership
+## One serial owner
 
-`live_run.run_experiment` is the foreground experiment owner. It launches one
-`capture_device` worker and runs the supervisor in the foreground. Capture exclusively reserves the run directory before opening evidence files.
-It owns serial, drains it continuously, retains the raw stream, and publishes
-observations. Raw bytes are written immediately, including unterminated input;
-queued host markers spill to disk instead of growing without bound. On an
-interrupted partial record, an explicit host marker identifies the synthetic
-line delimiter used to separate the retained tail from subsequent markers.
-The supervisor consumes those observations and owns discovery, authority,
-transactions, qualification, holds, and terminal decisions. It never opens serial.
+`python3 -m host.otis_tools record --device DEVICE --run-dir DIRECTORY` runs
+one recorder process. It constructs the serial port closed, sets DTR high for
+TinyUSB CDC carrier and RTS low, then opens it with an exclusive descriptor
+and bounded read/write timeouts. The 1200 baud reset rate is rejected. In the
+pinned RP2040 core, serial output requires DTR and reset is triggered only by
+1200 baud with DTR low. The board's actual behavior remains a physical
+integration check. The process reads up to 4 KiB at a time and appends every
+received byte to numbered `serial-*.raw` files. Unknown, malformed and partial
+records stay in raw evidence. Parser memory is bounded; derived status may be
+unavailable after a malformed record without altering the bytes.
 
-`adaptive_hybrid_monitor.snapshot` is a read-only view. It creates no worker,
-readiness receipt, command, hold-adoption handshake, or terminal. Monitor failure
-cannot change the experiment. Published state identifies missing observations as
-unknown, not healthy.
+The recorder rotates raw files at a configured approximate size boundary. It
+closes and hashes each segment and writes `recording_manifest.json` on exit.
+An exclusive `recorder.in_progress` reservation marks an active or interrupted
+directory. A new attachment uses a new directory and begins a new evidence
+segment; it never replays a past command. The recorder writes directly and has
+no unbounded in-memory evidence queue. A disk/write error ends recording and
+appears in `recorder_state.json` where storage remains writable. Operating
+system storage calls do not have a hard latency bound, so recorder availability
+and completeness are host evidence claims, not firmware safety premises.
 
-Capture has two bounded command inputs: normal commands and direct priority
-abort. The latter remains available when normal commands are obstructed. Both inputs
-are serviced by the capture worker: this does not promise delivery through a
-blocked operating-system serial or storage call. Firmware fail-static behaviour
-is the independent bound in that case. Abort
-submission, capture transmission, and the subsequent firmware snapshot are
-separate facts. The owner confirms delivery before capture closure. A local host
-failure enters a review hold; it does not manufacture abort permission.
+`--duration-s` closes only the recorder. It sends no mode command. The USB
+connection is an evidence and explicit command interface, never an internal
+actuation dispatch or lease. Host process death or disk failure cannot by
+itself change firmware mode.
 
-One acquisition retains one serial owner through its terminal. Offline work
-starts after closure, so no transition spool, serial-owner transfer, or second
-command path is required.
+## Status and explicit commands
 
-## One configuration
+`python3 -m host.otis_tools status DIRECTORY` reads the independent local
+snapshot. It reports host recording and serial state, bytes, line counts,
+observed record counts, last record age, status age, and the latest complete
+instrument status. Counts describe records observed by this host, not records
+the instrument generated. Missing, malformed or late status is unknown, never
+inferred healthy from process existence. The status command recalculates
+publication and instrument age from the saved monotonic coordinate, so a dead
+writer's last fresh flag cannot remain fresh.
 
-`run_spec.json` is inert and immutable. It binds the instrument image, host tool
-contents, one campaign envelope, authoritative inputs, record contracts, policy,
-and command limits. `run_manifest.json` is a small dynamic record: run identity,
-start, device, execution kind, retained relative spec binding, and explicit entry
-authorization where applicable. `run_loader` derives the shared scientific view
-in memory. It does not persist another configuration copy.
+`python3 -m host.otis_tools monitor DIRECTORY` is a separate read-only local
+process. It samples the atomic recorder state every five seconds, derives
+D14/D8 capture freshness from advancing REF, SNP and CNT counts, and writes
+material changes to rotated `monitor-events-*.jsonl` files. Mode, state,
+qualification holds, faults, applications, responses, commands, record loss,
+storage failure and stale status are material. Routine raw count and decision
+increments appear in hourly summaries instead of producing an event per PPS.
+The monitor stops after a closed recording manifest appears. Each event is
+flushed and synced; failed local delivery is reported on stderr and, if storage
+allows, in `monitor_delivery_failure.json`. An external notification channel
+is not configured, so these reports do not promise remote alerts.
 
-There are no bundle, proposal, activation, or expanding global-index validators
-in the acquisition path. Historical formats are read at their recorded revision.
-A copied package can be validated and analysed without reconstructing the
-original machine's directory layout.
+The recorder reduces only complete `adaptive_hybrid` STS cohorts bearing
+`OTIS_INSTRUMENT_STATUS_V2`, bounded by matching
+`snapshot_generation_begin` and `snapshot_generation_complete`. An incomplete
+generation cannot update mode-command identity. Instrument session and command
+sequence are read from this cohort. A changed session starts fresh command
+identity. The recorder retains new ICM receipts as raw evidence and publishes
+the latest understood receipt and pending request without treating host
+submission as firmware acceptance or DAC application.
 
-Physical entry is an explicit engineering operation in `bench_entry`. It checks
-the frozen spec, actual firmware/tool bytes, exact rehearsal receipt, operator
-instruction, board identity, and absence of an existing serial owner. Upload is
-optional and explicit; when requested it occurs once and retains full output.
-Before physical I/O, entry retains the exact validated specification and
-rehearsal receipt. A single diagnostic record records each entry phase and its
-failure without retrying. Upload uses a hashed, run-local read-only copy of the
-selected UF2, insulating it from changes to a build or cloud delivery path.
-The runtime itself never flashes, resets, restores a DAC value, or guesses the
-firmware's initial state.
+`python3 -m host.otis_tools mode DIRECTORY --session SESSION --mode MODE`
+submits one operator-selected mode request through a local Unix socket to the
+existing serial owner. `MODE` is 0 AUTO_DISCIPLINE, 1 OBSERVE_HOLD, 2
+FIXED_CODE or 3 CHARACTERIZE. FIXED_CODE also requires `--code`; CHARACTERIZE
+requires its bounded code and `--dwell-s`. AUTO may carry `--dwell-s` up to
+604800 for a firmware-owned timed transition to OBSERVE_HOLD; zero means
+indefinite AUTO. The caller supplies the expected
+session from status. The owner requires a fresh complete matching cohort,
+allocates the next sequence and emits
+`ACTIVE MODE <session> <sequence> <mode> <code> <dwell_s>` with decimal
+arguments. Its immediate result is `written_unconfirmed`; firmware ICM and
+later status establish acceptance and completion. The owner does not resend
+an ambiguous write. A pending request prevents another normal request; an
+explicit OBSERVE_HOLD can supersede it through firmware's reserved path.
 
-Startup discovery accepts a complete coherent identity snapshot before reference
-qualification. Independent ACTIVE and PPS publications need not be simultaneous. PPS fields
-are staged between the existing firmware begin/end markers and replaced as one
-cohort; omitted fields never inherit values from an older snapshot. The existing
-producer-clock coherence bound prevents fresh ACTIVE traffic from refreshing
-historical PPS evidence, including across the declared counter rollover.
-SETUP, ARM, and scientific progress require the appropriate fresh causal evidence;
-late or missing telemetry cannot grant authority. Qualification advances in the
-declared exact accepted-aperture domain. Host service deadlines use monotonic
-nanoseconds and cannot redefine instrument duration.
+The local socket is addressed by a hash of the absolute recording directory
+under the system temporary directory, avoiding the short Unix socket path
+limit on macOS. It is accessible only to the local user. Clients never open a
+second serial descriptor. There is no automatic arm, abort, lease, correction
+acknowledgement or host scientific decision worker.
 
-## Offline responsibilities
+## Evidence and verification boundary
 
-`adaptive_hybrid_analyze` independently reconstructs D14/D8 measurements,
-accepted spans, phase-source associations, transactions, responses, and controller
-history. Phase replay follows the producer's two-stage qualification: an exact
-qualified RPH may feed an initializing PHE until the 600-point frequency support
-exists, while an invalid RPH requires an invalid PHE. Raw D14/D8 replay is
-independent of whether a controller or estimator produced a record. Selected
-600-span estimates and overlapping 60-span diagnostic estimates have separate
-replay scopes. Diagnostics are reported locally and never populate the selected
-source map used by controller and transaction consumers. EST stream identity
-and CSV integrity remain explicit checks; a diagnostic numeric mismatch is not
-a failure of the selected estimator or canonical D14/D8 observations. Source
-windows are looked up by capture session, acceptance epoch and ordinal, so dense
-diagnostic output does not require a full APS scan for every estimate.
-An inhibited attachment can have valid measurements and no
-control decisions; emitted estimates and decisions still require exact source
-bindings. D10 remains optional external-event evidence and cannot veto D14/D8
-validity or control. Evidence integrity and scientific outcome are separate.
+The raw segment hashes bind what this recorder retained. They do not assert
+complete coverage of a period before attachment, while USB was obstructed,
+or across a firmware reset. Firmware status includes its own bounded delivery
+loss and current state summaries; these do not reconstruct discarded history.
+The historical campaign analyser and package format cannot be applied to a
+new instrument recording. Current numeric replay helpers remain available
+for an instrument V2 offline reader built against its new schema.
 
-`offline.finish_run` runs analysis once, retains a diagnostic report if it fails,
-and asks `evidence_package` to seal the closed acquisition. Packaging inventories
-relative regular-file paths and hashes. `evidence_registry` optionally records
-locations; registration failure cannot alter the package or scientific result.
-CLI exit status distinguishes failed operations from scientific outcomes. A
-review-required analysis or runtime failure returns nonzero with retained JSON;
-verification of a valid diagnostic package and a completed scientific non-pass
-can succeed.
-A subsequent analysis of sealed evidence writes a separate report linked to its
-source package. It never changes the old result or raw observations. Current
-analysis v2 reports retain both the analyzer-file hash and the complete host
-operational-toolset hash. Initial analysis requires the frozen toolset; a later
-external corrected analysis records its actual new toolset and the immutable
-source-package content hash.
-
-## Engineering verification
-
-`tools/rehearse_host.py` supplies a deterministic PTY instrument to the actual
-live owner and capture worker. It exercises startup publication order, progressive
-commands and acknowledgements, holds, obstruction, direct abort, closure, and
-the offline path. Boundary results must come from retained observations; a
-synthetic device makes no firmware cross-core or physical propagation claim.
-
-Firmware building and independent reproduction are explicit engineering tasks.
-Firmware identity follows actual firmware inputs and the pinned toolchain;
-repository/host revision is separate provenance. Ordinary acquisition, monitoring,
-analysis, and package validation never invoke a compiler.
-
-See [HOST_REPLACEMENT](../10_REFERENCE_ARCHITECTURE/HOST_REPLACEMENT.md) for the
-cutover scope. The replacement introduces no standalone firmware steering mode,
-hardware port, D10 witness role, or change to the characterized DAC envelope.
-
-## Configuration responses during status publication
-
-Core 1 alone publishes the PPS and ACTIVE snapshot fields. Core 0 may insert
-configuration, environment or other status records between complete queued
-records, but cannot republish fields in those two namespaces. CONFIG requests
-timing configuration from core 1. This removes ambiguous membership at the
-producer instead of adding host nesting rules or accepting duplicate values.
-The strict reducer remains unchanged.
-
-The operational PTY rehearsal deliberately inserts a representative core-0
-configuration response inside both PPS and ACTIVE cohorts. A retained physical
-excerpt and a source-ownership regression cover the previously escaped duplicate
-PPS emission and the first downstream zero-write decision. The fixture tests
-record ordering and host consumption; it does not claim to execute the physical
-cross-core scheduler or validate electrical timing.
-
-## Single reference producer
-
-Current raw replay consumes SNP v2: session and ordinal identify one immutable
-PIO count record, and its CPU service coordinate carries a recognition-time
-uncertainty. REF is emitted from that same record; it is not a second timing
-owner that must be joined by timestamp. Replay verifies the complete possible
-interval against the frozen tolerance and joins APS endpoints to their actual
-SNP records. DMA health, association-loss records and the independent reference
-queue are retired. Historical acquisitions retain their frozen readers.
+The PTY recorder tests exercise byte retention, complete-status discovery,
+session-bound command submission, storage failure, rotation and duration
+closure. A simulated serial endpoint cannot establish actual Nano RP2040
+serial-open reset behavior, firmware cross-core propagation or physical DAC
+behavior. Those require the exact-profile firmware integration checks and a
+separately authorized short bench gate.

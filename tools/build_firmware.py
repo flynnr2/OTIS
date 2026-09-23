@@ -46,7 +46,7 @@ VENDORED_LIBRARY_NAMES = ("Adafruit_BMP280_Library", "Adafruit_BusIO", "Adafruit
 CONFIG_HEADER = SKETCH / "otis_config.h"
 GENERATED_HEADER_NAME = "otis_build_manifest.generated.h"
 IMAGE_ID = "adaptive_hybrid_regulation"
-FIRMWARE_VERSION = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
+FIRMWARE_VERSION = "OTIS_AUTONOMOUS_INSTRUMENT_V2"
 BUILDER_VERSION = 1
 PROVENANCE_FORMAT = "otis_fixed_firmware_build_v2"
 EXPECTED_ARTIFACT_SUFFIXES = (".bin", ".elf", ".h", ".map", ".uf2")
@@ -89,7 +89,7 @@ REQUIRED_IMAGE_MARKERS = {
     "frequency_estimator": b"OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
     "phase_estimator": b"OTIS_RELATIVE_PHASE_ESTIMATOR_V1",
     "phase_raw_method": b"D14_ACCEPTED_SPAN_RELATIVE_PHASE_ACCUMULATOR_V1",
-    "active_status_contract": b"adaptive_hybrid_active_status_snapshot_v2",
+    "active_status_contract": b"OTIS_INSTRUMENT_STATUS_V2",
     "external_event_not_implemented": b"not_implemented",
 }
 FORBIDDEN_IMAGE_MARKERS = {

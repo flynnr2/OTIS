@@ -47,6 +47,7 @@ void otis_runtime_state_init(OtisRuntimeState *state) {
   state->tcxo.consecutive_bad_windows = 0;
   state->tcxo.total_bad_windows = 0;
   state->tcxo.startup_inhibit_start_ms = 0;
+  state->tcxo.startup_inhibit_start_ticks = 0;
   state->tcxo.startup_inhibit_elapsed_s = 0;
   state->tcxo.control_clean_window_count = 0;
   state->tcxo.startup_inhibit_active = true;

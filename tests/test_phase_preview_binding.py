@@ -312,7 +312,7 @@ def test_sketch_does_not_fabricate_a_pre_setup_code() -> None:
     assert "if (!dual_core_static_code.available)" not in static_state
     assert "TIGHT_DEADBAND_INITIAL" not in config
     assert "otis_phase_preview_live_begin();" in sketch
-    assert '"applied_code_bound"' in sketch
+    assert "otis_phase_preview_live_update_applied_code(applied_code,dac_epoch)" in sketch
     assert '"static_code"' not in sketch
     assert 'char current_code[16] = "";' in frequency_live
     assert '"%u", code->applied_code' in frequency_live

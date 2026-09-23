@@ -7,7 +7,6 @@
 #include "otis_reference_acceptance.h"
 #include "otis_adaptive_hybrid_regulation_live.h"
 #include "otis_status_emit.h"
-#include "otis_status_rows.h"
 
 struct OtisRegulationStaticCodeState {
   bool available;
@@ -38,13 +37,13 @@ void otis_frequency_regulation_live_on_dac_applied_epoch_exact(
     uint64_t application_ticks, uint32_t capture_session);
 bool otis_frequency_regulation_live_applied_epoch_exact(uint16_t applied_code,
                                                  uint32_t dac_epoch);
-// The caller supplies one native operational microsecond sample after its
+// The caller supplies one native time_us_64 operational sample after its
 // control-health refresh. Raw observation/estimate coordinates remain those
 // in observation; active decision ticks/seconds derive from this later sample.
 void otis_frequency_regulation_live_on_reference_selection(
     const OtisReferenceAcceptanceOutcome *selection,
     uint64_t closing_extended_ticks, uint32_t uptime_s,
-    uint64_t operational_decision_raw_ticks,
+    uint64_t operational_decision_ticks,
     const OtisRegulationStaticCodeState *static_code,
     OtisAdaptiveHybridRegulationLiveOutcome *active_outcome);
 void otis_frequency_regulation_live_on_capture_fault(const char *reason,
@@ -53,13 +52,6 @@ void otis_frequency_regulation_live_on_capture_fault(const char *reason,
 void otis_frequency_regulation_live_service_transport(void);
 bool otis_frequency_regulation_live_transport_busy(void);
 bool otis_frequency_regulation_live_transport_pending(void);
-struct OtisFrequencyRegulationStatus {
-  uint32_t dropped_frames;
-  uint32_t queue_high_water;
-};
-void otis_frequency_regulation_live_get_status(OtisFrequencyRegulationStatus *status);
-void otis_frequency_regulation_live_status_rows(
-    OtisStatusRows &rows, const OtisFrequencyRegulationStatus &status);
 void otis_frequency_regulation_live_emit_status(OtisStatusEmitContext *context);
 void otis_frequency_regulation_live_get_authority_state(
     OtisFrequencyRegulationAuthorityState *state);

@@ -788,7 +788,22 @@ With the current D8-driven PIO program it bounds snapshot recognition, not the
 electrical D14 transition when the oscillator is absent or slow. An unavailable
 or ambiguous bracket remains explicit and cannot qualify a reference.
 
-### Endurance completion and unanswered escalation
+## Autonomous instrument operation
+
+An operating mode is a firmware-owned policy selection. AUTO_DISCIPLINE permits
+qualified bounded corrections; OBSERVE_HOLD inhibits new writes while observing;
+FIXED_CODE establishes an explicit bounded code; CHARACTERIZE executes one finite
+step/dwell and enters HOLD. Host disconnect is not a mode transition.
+
+A boot session is the randomized 64-bit command identity for one firmware start.
+It is distinct from the measurement capture session. An application is a
+confirmed physical DAC fact; consumer confirmation establishes that frequency
+and phase measurement state incorporated that fact before dependent control.
+An output-loss counter describes delivery loss, not capture validity or an
+oscillator failure. Instrument execution coordinates in `rp2040_timer_us64` are
+CPU hardware-timer observations, not hardware-latched D14 edge timestamps.
+
+### Historical supervised endurance completion and unanswered escalation
 
 Endurance completion means the declared host monotonic observation window ended
 with exact disarmed terminal evidence. Accepted D14/D8 apertures and control

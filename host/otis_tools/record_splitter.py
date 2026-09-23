@@ -14,7 +14,10 @@ from .firmware_host_contract import (
     validate_record_wire_values,
 )
 
-RECORD_CONTRACTS = dict(RECORD_TYPE_TO_CONTRACT)
+RECORD_CONTRACTS = {
+    record_type: contract for record_type, contract in RECORD_TYPE_TO_CONTRACT.items()
+    if contract in CONTRACT_FIELDS
+}
 CONTRACT_HEADER_ROWS = {
     tuple(fields): contract for contract, fields in CONTRACT_FIELDS.items()
 }

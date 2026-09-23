@@ -413,25 +413,22 @@ def _measurement_replay(
         "selected_estimate_sources": selected_sources,
     }, estimates_by_id
 
-def replay_active_decision_measurement_sources(
+def replay_instrument_decision_sources(
     manifest: Any, measurement: dict[str, Any]
 ) -> dict[str, Any]:
-    """Bind every retained AHY decision to one reconstructed selected EST.
+    """Bind each IDC decision to one reconstructed D14/D8 selected source.
 
-    The raw measurement replay establishes an EST's D14/D8 source aperture;
-    this physical-only consumer proves the later operational decision consumed
-    that same selected estimate.  EST rows remain observational unless an AHY
-    record actually names their source span.
+    The raw 32-bit capture timestamp is explicitly projected onto the decision
+    64-bit RP2040 timer coordinate. A repeated source key, mismatched aperture,
+    DAC epoch or edge error, or a decision beyond the 60-second source bound
+    cannot make an exact decision claim.
     """
-
-    from .firmware_host_contract import bounded_modular_lag_matches
+    from .time_domains import bounded_us32_capture_to_us64_decision
 
     errors: list[str] = []
     joins: list[dict[str, Any]] = []
     try:
-        decisions = _read_csv(
-            _single_contract_path(manifest, "active_hybrid_decisions_v3")
-        )
+        decisions = _read_csv(_single_contract_path(manifest, "instrument_decision_v2"))
         sources = measurement.get("selected_estimate_sources")
         if not isinstance(sources, list):
             raise ValueError("selected measurement source summaries are unavailable")
@@ -439,57 +436,45 @@ def replay_active_decision_measurement_sources(
         for source in sources:
             if not isinstance(source, dict):
                 raise ValueError("selected measurement comparison is malformed")
-            session = source.get("source_capture_session")
-            epoch = source.get("source_acceptance_epoch")
-            opening = source.get("source_opening_accepted_boundary_ordinal")
-            closing = source.get("source_closing_accepted_boundary_ordinal")
-            if not all(type(value) is int for value in (session, epoch, opening, closing)):
-                continue
-            source_index.setdefault((session, epoch, opening, closing), []).append(source)
+            identity = tuple(source.get(key) for key in (
+                "source_capture_session", "source_acceptance_epoch",
+                "source_opening_accepted_boundary_ordinal",
+                "source_closing_accepted_boundary_ordinal",
+            ))
+            if all(type(value) is int for value in identity):
+                source_index.setdefault(identity, []).append(source)
         for decision in decisions:
             key: tuple[int, int, int, int] | None = None
+            source = None
             try:
-                key = (
-                    int(decision["capture_session"]),
-                    int(decision["source_acceptance_epoch"]),
-                    int(decision["source_opening_accepted_boundary_ordinal"]),
-                    int(decision["source_closing_accepted_boundary_ordinal"]),
-                )
+                key = tuple(int(decision[field]) for field in (
+                    "capture_session", "acceptance_epoch",
+                    "opening_accepted_boundary", "closing_accepted_boundary",
+                ))
                 candidates = source_index.get(key, [])
                 source = candidates[0] if len(candidates) == 1 else None
                 exact = (
                     source is not None
                     and source.get("pass") is True
-                    and decision.get("frequency_estimator_sha256")
-                    == source.get("estimator_sha256")
-                    and int(decision["dac_epoch"])
-                    == source.get("source_dac_epoch")
-                    and Decimal(decision["frequency_error_hz"])
-                    == Decimal(str(source["frequency_error_hz"]))
-                    and int(decision["accumulated_edge_error_counts"])
-                    == source.get("accumulated_edge_error_counts")
-                    and bounded_modular_lag_matches(
-                        "estimate_capture_precedes_operational_decision",
-                        source=int(source["estimator_timestamp_ticks"]),
-                        source_domain=str(source["time_domain"]),
-                        target=int(decision["decision_timestamp_ticks"]),
-                        target_domain=decision.get("time_domain", ""),
+                    and int(decision["dac_epoch"]) == source.get("source_dac_epoch")
+                    and int(decision["edge_error_counts"]) == source.get("accumulated_edge_error_counts")
+                    and source.get("time_domain") == "rp2040_monotonic_us32"
+                    and bounded_us32_capture_to_us64_decision(
+                        int(source["estimator_timestamp_ticks"]),
+                        int(decision["timestamp_ticks"]),
                     )
                 )
             except (KeyError, TypeError, ValueError, ArithmeticError):
-                source = None
                 exact = False
-            joins.append(
-                {
-                    "decision_sequence": decision.get("decision_sequence"),
-                    "source_key": list(key) if key is not None else None,
-                    "estimate_id": None if source is None else source.get("estimate_id"),
-                    "exact": exact,
-                }
-            )
+            joins.append({
+                "decision_sequence": decision.get("sequence"),
+                "source_key": list(key) if key is not None else None,
+                "estimate_id": None if source is None else source.get("estimate_id"),
+                "exact": exact,
+            })
             if not exact:
                 errors.append(
-                    f"AHY {decision.get('decision_sequence', '?')} has no unique exact selected EST source"
+                    f"IDC {decision.get('sequence', '?')} has no unique exact selected D14/D8 source"
                 )
     except (OSError, UnicodeError, csv.Error, KeyError, TypeError, ValueError) as error:
         errors.append(str(error))
@@ -509,7 +494,7 @@ def replay_active_decision_measurement_sources(
         "joins": joins,
         "errors": errors[:20],
         "error_count": len(errors),
-        "scope": "physical_AHY_to_selected_EST_source_timestamp_session_and_numeric_binding",
+        "scope": "instrument_IDC_to_selected_D14_D8_source_with_explicit_timer_projection",
     }
 
 

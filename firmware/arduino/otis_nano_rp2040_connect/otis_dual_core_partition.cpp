@@ -10,10 +10,13 @@ OtisObservationDiagnosticClock observation_diagnostic_clock = nullptr;
 
 OtisSpscQueue<OtisServiceMessage, OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH>
     service_to_timing;
+OtisSpscQueue<OtisServiceMessage, 1u> priority_hold_to_timing;
 OtisSpscQueue<OtisObservationMessage, OTIS_OBSERVATION_QUEUE_DEPTH>
     observation_to_service;
 OtisSpscQueue<OtisCriticalRecordMessage, OTIS_CRITICAL_QUEUE_DEPTH>
     critical_to_service;
+OtisSpscQueue<OtisInstrumentWrite, 1u> instrument_write_to_service;
+OtisSpscQueue<OtisInstrumentApplication, 1u> instrument_application_to_timing;
 
 // Evidence decisions can comprise several independently formatted records.
 // This ring differs from the other SPSC queues only in allowing the sole
@@ -135,6 +138,8 @@ class OtisEvidenceBurstQueue {
     return __atomic_load_n(&high_water_, __ATOMIC_ACQUIRE);
   }
 
+  bool staging() const { return staged_active_; }
+
  private:
   void update_high_water(uint32_t candidate) {
     uint32_t observed = __atomic_load_n(&high_water_, __ATOMIC_RELAXED);
@@ -165,6 +170,11 @@ OtisSpscQueue<OtisMonitorObservationMessage, OTIS_MONITOR_OBSERVATION_QUEUE_DEPT
 
 uint32_t telemetry_dropped = 0u;
 uint32_t monitor_observation_dropped = 0u;
+uint32_t observation_dropped = 0u;
+uint32_t evidence_dropped_frames = 0u;
+uint32_t evidence_dropped_bursts = 0u;
+uint32_t phase_preview_dropped = 0u;
+uint32_t critical_dropped = 0u;
 uint8_t partition_fault = static_cast<uint8_t>(OtisPartitionFault::None);
 bool fail_static = false;
 bool timing_owner_active = false;
@@ -223,13 +233,20 @@ void increment_saturating(uint32_t *value) {
   }
 }
 
-bool acknowledgement_matches(const OtisCrossCoreActuatorRequest &request,
-                             const OtisCrossCoreActuatorAck &ack) {
-  return ack.request_sequence == request.request_sequence &&
-         ack.decision_sequence == request.decision_sequence &&
-         ack.authorization_sequence == request.authorization_sequence &&
-         ack.nonce == request.nonce &&
-         ack.requested_code == request.requested_code;
+void add_saturating(uint32_t *value, uint32_t count) {
+  uint32_t observed = __atomic_load_n(value, __ATOMIC_RELAXED);
+  while (observed != UINT32_MAX) {
+    const uint32_t next = count > UINT32_MAX - observed
+                              ? UINT32_MAX : observed + count;
+    if (__atomic_compare_exchange_n(value, &observed, next, false,
+                                    __ATOMIC_RELAXED, __ATOMIC_RELAXED))
+      return;
+  }
+}
+
+void note_evidence_drop(uint32_t message_count) {
+  add_saturating(&evidence_dropped_frames, message_count);
+  increment_saturating(&evidence_dropped_bursts);
 }
 
 uint32_t service_sequence(const OtisServiceMessage &message) {
@@ -239,14 +256,9 @@ uint32_t service_sequence(const OtisServiceMessage &message) {
     case OtisServiceMessageKind::Environment:
       return message.environment.sequence;
     case OtisServiceMessageKind::AppliedDacState:
-    case OtisServiceMessageKind::ManualDacApplication:
       return message.dac.sequence;
     case OtisServiceMessageKind::RunControl:
       return message.run_control.sequence;
-    case OtisServiceMessageKind::ActuatorAcknowledgement:
-      return message.actuator_acknowledgement.request_sequence;
-    case OtisServiceMessageKind::SetupApplicationAcknowledgement:
-      return message.setup_acknowledgement.command_sequence;
   }
   return 0u;
 }
@@ -258,14 +270,9 @@ uint64_t service_ticks(const OtisServiceMessage &message) {
     case OtisServiceMessageKind::Environment:
       return message.environment.timestamp_ticks;
     case OtisServiceMessageKind::AppliedDacState:
-    case OtisServiceMessageKind::ManualDacApplication:
       return message.dac.published_ticks;
     case OtisServiceMessageKind::RunControl:
       return message.run_control.published_ticks;
-    case OtisServiceMessageKind::ActuatorAcknowledgement:
-      return message.actuator_acknowledgement.acknowledgement_ticks;
-    case OtisServiceMessageKind::SetupApplicationAcknowledgement:
-      return 0u;
   }
   return 0u;
 }
@@ -357,7 +364,13 @@ void freeze_service_fault(const OtisServiceMessage *message) {
   __atomic_store_n(&service_fault_published_ticks,
                    message == nullptr ? 0u : service_ticks(*message),
                    __ATOMIC_RELAXED);
-  __atomic_store_n(&service_fault_depth, service_to_timing.depth(),
+  const bool priority_hold = message != nullptr &&
+      message->kind == OtisServiceMessageKind::RunControl &&
+      message->run_control.kind == OtisRunControlKind::Mode &&
+      message->run_control.instrument_command.mode == OtisInstrumentMode::Hold;
+  __atomic_store_n(&service_fault_depth,
+                   priority_hold ? priority_hold_to_timing.depth()
+                                 : service_to_timing.depth(),
                    __ATOMIC_RELAXED);
   OtisServiceFaultCapsule breadcrumb = {};
   copy_timing_breadcrumb(&breadcrumb);
@@ -390,25 +403,26 @@ void freeze_service_fault(const OtisServiceMessage *message) {
   __atomic_store_n(&service_fault_valid, true, __ATOMIC_RELEASE);
 }
 
-void guard_fault(OtisActuatorTransactionGuard *guard, const char *reason,
-                 OtisPartitionFault fault) {
-  guard->state = OtisActuatorGuardState::Fault;
-  guard->reason = reason;
-  otis_dual_core_latch_fault(fault);
-}
-
 }  // namespace
 
 void otis_dual_core_partition_reset(void) {
   service_to_timing.reset();
+  priority_hold_to_timing.reset();
   observation_to_service.reset();
   critical_to_service.reset();
+  instrument_write_to_service.reset();
+  instrument_application_to_timing.reset();
   evidence_to_service.reset();
   telemetry_to_service.reset();
   phase_preview_to_service.reset();
   monitor_observation_to_service.reset();
   __atomic_store_n(&telemetry_dropped, 0u, __ATOMIC_RELAXED);
   __atomic_store_n(&monitor_observation_dropped, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&observation_dropped, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&evidence_dropped_frames, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&evidence_dropped_bursts, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&phase_preview_dropped, 0u, __ATOMIC_RELAXED);
+  __atomic_store_n(&critical_dropped, 0u, __ATOMIC_RELAXED);
   __atomic_store_n(&partition_fault,
                    static_cast<uint8_t>(OtisPartitionFault::None),
                    __ATOMIC_RELEASE);
@@ -450,7 +464,13 @@ bool otis_dual_core_timing_owner_active(void) {
 
 bool otis_dual_core_publish_service(const OtisServiceMessage *message) {
   increment_saturating(&service_publish_attempts);
-  if (message != nullptr && service_to_timing.try_push(*message)) {
+  const bool priority_hold =
+      message != nullptr && message->kind == OtisServiceMessageKind::RunControl &&
+      message->run_control.kind == OtisRunControlKind::Mode &&
+      message->run_control.instrument_command.mode == OtisInstrumentMode::Hold;
+  if (message != nullptr &&
+      (priority_hold ? priority_hold_to_timing.try_push(*message)
+                     : service_to_timing.try_push(*message))) {
     increment_saturating(&service_publish_successes);
     __atomic_store_n(&service_last_published_kind,
                      static_cast<uint8_t>(message->kind), __ATOMIC_RELAXED);
@@ -469,7 +489,8 @@ bool otis_dual_core_publish_service(const OtisServiceMessage *message) {
 bool otis_dual_core_take_service(OtisServiceMessage *message) {
   // The empty poll is the Core 1 hot path.  Do not add diagnostic atomic
   // traffic to it; account only actual cross-core transfers.
-  if (!service_to_timing.try_pop(message)) return false;
+  if (!priority_hold_to_timing.try_pop(message) &&
+      !service_to_timing.try_pop(message)) return false;
   increment_saturating(&service_take_successes);
   begin_timing_breadcrumb_write();
   __atomic_store_n(&service_last_taken_kind,
@@ -500,7 +521,7 @@ bool otis_dual_core_publish_observation(
             slot.queue_precommit_high = static_cast<uint32_t>(precommit >> 32);
           }))
     return true;
-  otis_dual_core_latch_fault(OtisPartitionFault::ObservationExhausted);
+  increment_saturating(&observation_dropped);
   return false;
 }
 
@@ -540,12 +561,37 @@ bool otis_dual_core_take_monitor_observation(
 bool otis_dual_core_publish_critical(
     const OtisCriticalRecordMessage *message) {
   if (message != nullptr && critical_to_service.try_push(*message)) return true;
-  otis_dual_core_latch_fault(OtisPartitionFault::CriticalExhausted);
+  increment_saturating(&critical_dropped);
   return false;
 }
 
 bool otis_dual_core_take_critical(OtisCriticalRecordMessage *message) {
   return critical_to_service.try_pop(message);
+}
+
+bool otis_dual_core_publish_instrument_write(const OtisInstrumentWrite *write) {
+  if (write != nullptr && instrument_write_to_service.try_push(*write))
+    return true;
+  otis_dual_core_latch_fault(OtisPartitionFault::InstrumentWriteExhausted);
+  return false;
+}
+
+bool otis_dual_core_take_instrument_write(OtisInstrumentWrite *write) {
+  return instrument_write_to_service.try_pop(write);
+}
+
+bool otis_dual_core_publish_instrument_application(
+    const OtisInstrumentApplication *application) {
+  if (application != nullptr &&
+      instrument_application_to_timing.try_push(*application))
+    return true;
+  otis_dual_core_latch_fault(OtisPartitionFault::ServiceToTimingExhausted);
+  return false;
+}
+
+bool otis_dual_core_take_instrument_application(
+    OtisInstrumentApplication *application) {
+  return instrument_application_to_timing.try_pop(application);
 }
 
 bool otis_dual_core_publish_evidence(
@@ -565,9 +611,16 @@ bool otis_dual_core_publish_evidence_burst(
       }
     }
   }
-  if (valid && evidence_to_service.try_push_burst(messages, message_count))
-    return true;
-  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+  if (!valid) {
+    otis_dual_core_latch_fault(OtisPartitionFault::EvidenceIntegrityFault);
+    return false;
+  }
+  if (evidence_to_service.staging()) {
+    otis_dual_core_latch_fault(OtisPartitionFault::EvidenceIntegrityFault);
+    return false;
+  }
+  if (evidence_to_service.try_push_burst(messages, message_count)) return true;
+  note_evidence_drop(message_count);
   return false;
 }
 
@@ -576,8 +629,16 @@ bool otis_dual_core_evidence_can_publish(uint32_t message_count) {
 }
 
 bool otis_dual_core_begin_evidence_burst(uint32_t message_count) {
+  if (message_count == 0u || message_count > OTIS_EVIDENCE_QUEUE_DEPTH) {
+    otis_dual_core_latch_fault(OtisPartitionFault::EvidenceIntegrityFault);
+    return false;
+  }
+  if (evidence_to_service.staging()) {
+    otis_dual_core_latch_fault(OtisPartitionFault::EvidenceIntegrityFault);
+    return false;
+  }
   if (evidence_to_service.begin_staged(message_count)) return true;
-  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+  note_evidence_drop(message_count);
   return false;
 }
 
@@ -587,13 +648,13 @@ bool otis_dual_core_append_evidence_burst(
       message->length < OTIS_EVIDENCE_FRAME_CAPACITY &&
       evidence_to_service.append_staged(*message))
     return true;
-  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceIntegrityFault);
   return false;
 }
 
 bool otis_dual_core_commit_evidence_burst(void) {
   if (evidence_to_service.commit_staged()) return true;
-  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceExhausted);
+  otis_dual_core_latch_fault(OtisPartitionFault::EvidenceIntegrityFault);
   return false;
 }
 
@@ -622,7 +683,6 @@ bool otis_dual_core_publish_boot_telemetry(
   if (message != nullptr && telemetry_to_service.try_push(*message))
     return true;
   increment_saturating(&telemetry_dropped);
-  otis_dual_core_latch_fault(OtisPartitionFault::BootTelemetryExhausted);
   return false;
 }
 
@@ -634,7 +694,7 @@ bool otis_dual_core_publish_phase_preview(
     const OtisPhasePreviewRecordMessage *message) {
   if (message != nullptr && phase_preview_to_service.try_push(*message))
     return true;
-  otis_dual_core_latch_fault(OtisPartitionFault::PhasePreviewQueueExhausted);
+  increment_saturating(&phase_preview_dropped);
   return false;
 }
 
@@ -693,18 +753,30 @@ void otis_dual_core_get_stats(OtisDualCoreQueueStats *stats) {
   *stats = {};
   stats->service_to_timing_depth = service_to_timing.depth();
   stats->service_to_timing_high_water = service_to_timing.high_water();
+  stats->priority_hold_depth = priority_hold_to_timing.depth();
+  stats->priority_hold_high_water = priority_hold_to_timing.high_water();
   stats->observation_depth = observation_to_service.depth();
   stats->observation_high_water = observation_to_service.high_water();
+  stats->observation_dropped =
+      __atomic_load_n(&observation_dropped, __ATOMIC_ACQUIRE);
   stats->critical_depth = critical_to_service.depth();
   stats->critical_high_water = critical_to_service.high_water();
+  stats->critical_dropped =
+      __atomic_load_n(&critical_dropped, __ATOMIC_ACQUIRE);
   stats->evidence_depth = evidence_to_service.depth();
   stats->evidence_high_water = evidence_to_service.high_water();
+  stats->evidence_dropped_frames =
+      __atomic_load_n(&evidence_dropped_frames, __ATOMIC_ACQUIRE);
+  stats->evidence_dropped_bursts =
+      __atomic_load_n(&evidence_dropped_bursts, __ATOMIC_ACQUIRE);
   stats->telemetry_depth = telemetry_to_service.depth();
   stats->telemetry_high_water = telemetry_to_service.high_water();
   stats->telemetry_dropped =
       __atomic_load_n(&telemetry_dropped, __ATOMIC_ACQUIRE);
   stats->phase_preview_depth = phase_preview_to_service.depth();
   stats->phase_preview_high_water = phase_preview_to_service.high_water();
+  stats->phase_preview_dropped =
+      __atomic_load_n(&phase_preview_dropped, __ATOMIC_ACQUIRE);
   stats->monitor_observation_depth = monitor_observation_to_service.depth();
   stats->monitor_observation_high_water =
       monitor_observation_to_service.high_water();
@@ -768,28 +840,18 @@ const char *otis_partition_fault_name(OtisPartitionFault fault) {
   switch (fault) {
     case OtisPartitionFault::None:
       return "none";
-    case OtisPartitionFault::BootTelemetryExhausted:
-      return "boot_telemetry_queue_exhausted";
     case OtisPartitionFault::BootHandshakeTimeout:
       return "boot_handshake_timeout";
     case OtisPartitionFault::ServiceToTimingExhausted:
       return "service_to_timing_queue_exhausted";
-    case OtisPartitionFault::ObservationExhausted:
-      return "raw_observation_queue_exhausted";
-    case OtisPartitionFault::CriticalExhausted:
-      return "critical_queue_exhausted";
-    case OtisPartitionFault::EvidenceExhausted:
-      return "evidence_queue_exhausted";
-    case OtisPartitionFault::PhasePreviewQueueExhausted:
-      return "phase_frequency_estimate_queue_exhausted";
+    case OtisPartitionFault::InstrumentWriteExhausted:
+      return "instrument_write_queue_exhausted";
+    case OtisPartitionFault::EvidenceIntegrityFault:
+      return "evidence_integrity_fault";
     case OtisPartitionFault::PhasePreviewFault:
       return "phase_frequency_estimate_processing_fault";
-    case OtisPartitionFault::TransportObstructed:
-      return "transport_obstructed";
-    case OtisPartitionFault::ActuatorTimeout:
-      return "actuator_acknowledgement_timeout";
-    case OtisPartitionFault::ActuatorAcknowledgementMismatch:
-      return "actuator_acknowledgement_mismatch";
+    case OtisPartitionFault::InstrumentApplicationMismatch:
+      return "instrument_application_mismatch";
   }
   return "unknown_partition_fault";
 }
@@ -838,120 +900,8 @@ const char *otis_service_message_kind_name(OtisServiceMessageKind kind) {
       return "environment";
     case OtisServiceMessageKind::AppliedDacState:
       return "applied_dac_state";
-    case OtisServiceMessageKind::ManualDacApplication:
-      return "manual_dac_application";
     case OtisServiceMessageKind::RunControl:
       return "run_control";
-    case OtisServiceMessageKind::ActuatorAcknowledgement:
-      return "actuator_acknowledgement";
-    case OtisServiceMessageKind::SetupApplicationAcknowledgement:
-      return "setup_application_acknowledgement";
   }
   return "unknown";
-}
-
-void otis_actuator_guard_init(OtisActuatorTransactionGuard *guard) {
-  if (guard == nullptr) return;
-  *guard = {};
-  guard->state = OtisActuatorGuardState::Idle;
-  guard->reason = "idle";
-}
-
-bool otis_actuator_guard_start(OtisActuatorTransactionGuard *guard,
-                               const OtisCrossCoreActuatorRequest *request,
-                               OtisActuatorMonotonicSeconds now_s) {
-  if (guard == nullptr || request == nullptr) return false;
-  if (guard->state != OtisActuatorGuardState::Idle &&
-      guard->state != OtisActuatorGuardState::Applied) {
-    guard_fault(guard, "request_while_transaction_pending",
-                OtisPartitionFault::ActuatorAcknowledgementMismatch);
-    return false;
-  }
-  if (!request->actionable || request->request_sequence == 0u ||
-      request->request_sequence <= guard->last_request_sequence ||
-      request->authorization_sequence <= guard->last_authorization_sequence ||
-      request->nonce == 0u ||
-      !otis_actuator_monotonic_deadline_is_future(
-          now_s, request->monotonic_deadline_s)) {
-    guard_fault(guard, "stale_duplicate_or_unauthorized_request",
-                OtisPartitionFault::ActuatorAcknowledgementMismatch);
-    return false;
-  }
-  guard->pending = *request;
-  guard->last_request_sequence = request->request_sequence;
-  guard->last_authorization_sequence = request->authorization_sequence;
-  guard->state = OtisActuatorGuardState::AwaitingAcceptance;
-  guard->reason = "awaiting_exact_acceptance";
-  return true;
-}
-
-bool otis_actuator_guard_acknowledge(
-    OtisActuatorTransactionGuard *guard,
-    const OtisCrossCoreActuatorAck *acknowledgement) {
-  if (guard == nullptr || acknowledgement == nullptr) return false;
-  if (!acknowledgement_matches(guard->pending, *acknowledgement)) {
-    if (guard->rejected_acknowledgements < UINT32_MAX)
-      guard->rejected_acknowledgements++;
-    guard_fault(guard, "nonmatching_actuator_acknowledgement",
-                OtisPartitionFault::ActuatorAcknowledgementMismatch);
-    return false;
-  }
-  if (guard->state == OtisActuatorGuardState::AwaitingAcceptance &&
-      acknowledgement->kind == OtisActuatorAckKind::Accepted &&
-      acknowledgement->accepted_code == guard->pending.requested_code) {
-    guard->state = OtisActuatorGuardState::AwaitingApplication;
-    guard->reason = "accepted_awaiting_exact_application";
-    return true;
-  }
-  if (guard->state == OtisActuatorGuardState::AwaitingApplication &&
-      acknowledgement->kind == OtisActuatorAckKind::Applied &&
-      acknowledgement->i2c_ok && !acknowledgement->clamped &&
-      !acknowledgement->ambiguous &&
-      acknowledgement->accepted_code == guard->pending.requested_code &&
-      acknowledgement->applied_code == guard->pending.requested_code) {
-    guard->state = OtisActuatorGuardState::Applied;
-    guard->reason = "exact_application_confirmed";
-    return true;
-  }
-  if (guard->rejected_acknowledgements < UINT32_MAX)
-    guard->rejected_acknowledgements++;
-  guard_fault(guard, "actuator_acknowledgement_phase_or_value_mismatch",
-              OtisPartitionFault::ActuatorAcknowledgementMismatch);
-  return false;
-}
-
-bool otis_actuator_guard_discard_exact_rejection(
-    OtisActuatorTransactionGuard *guard,
-    const OtisCrossCoreActuatorAck *acknowledgement,
-    uint16_t confirmed_applied_code) {
-  if (guard == nullptr || acknowledgement == nullptr ||
-      guard->state != OtisActuatorGuardState::AwaitingAcceptance ||
-      acknowledgement->kind != OtisActuatorAckKind::Rejected ||
-      acknowledgement->rejection_reason !=
-          OtisActuatorRejectionReason::MetadataHoldCancelledBeforeAcceptance ||
-      !acknowledgement_matches(guard->pending, *acknowledgement) ||
-      guard->pending.current_applied_code != confirmed_applied_code ||
-      acknowledgement->accepted_code != confirmed_applied_code ||
-      acknowledgement->applied_code != confirmed_applied_code ||
-      acknowledgement->i2c_ok || acknowledgement->clamped ||
-      acknowledgement->ambiguous)
-    return false;
-  guard->pending = {};
-  guard->state = OtisActuatorGuardState::Idle;
-  guard->reason = "exact_rejection_discarded_without_application";
-  return true;
-}
-
-bool otis_actuator_guard_check_deadline(OtisActuatorTransactionGuard *guard,
-                                        OtisActuatorMonotonicSeconds now_s) {
-  if (guard == nullptr) return false;
-  if ((guard->state == OtisActuatorGuardState::AwaitingAcceptance ||
-      guard->state == OtisActuatorGuardState::AwaitingApplication) &&
-      otis_actuator_monotonic_deadline_is_expired(
-          now_s, guard->pending.monotonic_deadline_s)) {
-    guard_fault(guard, "actuator_acknowledgement_deadline_expired",
-                OtisPartitionFault::ActuatorTimeout);
-    return false;
-  }
-  return guard->state != OtisActuatorGuardState::Fault;
 }

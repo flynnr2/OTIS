@@ -9,8 +9,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .adaptive_hybrid_contract import ADAPTIVE_HYBRID_PROGRAMME
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 POLICY_ID = "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"
 POLICY_PATH = REPO_ROOT / "profiles/discipline/adaptive_hybrid_regulation_v1.json"
@@ -39,7 +37,7 @@ class AdaptiveHybridPolicy:
     settling_exclusion_s: int
     maximum_applications: int
     maximum_cumulative_movement_codes: int
-    setup_code: int = ADAPTIVE_HYBRID_PROGRAMME.setup_code
+    setup_code: int
 
 
 def _sha256_file(path: Path) -> str:
@@ -98,7 +96,7 @@ def policy_from_mapping(
         or parameters != expected_parameters
         or authority
         != {
-            "arming_required": True,
+            "arming_required": False,
             "one_request_outstanding": True,
             "automatic_retry": False,
             "automatic_restore": False,
@@ -146,7 +144,7 @@ def policy_from_mapping(
         maximum_cumulative_movement_codes=int(
             limits["maximum_cumulative_absolute_movement_codes"]
         ),
-        setup_code=ADAPTIVE_HYBRID_PROGRAMME.setup_code,
+        setup_code=int(value["startup_code"]),
     )
 
 
@@ -321,11 +319,8 @@ class AdaptiveHybridPhasePriorityController:
         cap = min(
             self.policy.maximum_step_codes,
             nearest * 1_000_000_000_000 // (21_600 * 173_340_101),
-            max(
-                0,
-                self.policy.maximum_cumulative_movement_codes
-                - self.cumulative_movement_codes,
-            ),
+            max(0, self.policy.maximum_cumulative_movement_codes - self.cumulative_movement_codes)
+            if self.policy.maximum_cumulative_movement_codes else self.policy.maximum_step_codes,
         )
         return max(
             0,
@@ -400,7 +395,7 @@ class AdaptiveHybridPhasePriorityController:
             return "prospective_repeated_alternation"
         path = self.cumulative_movement_codes + abs(delta)
         net = abs(self.applied_code + delta - self.chatter_origin_code)
-        if path >= 42 and 4 * net <= path:
+        if self.policy.maximum_cumulative_movement_codes and path >= 42 and 4 * net <= path:
             return "prospective_low_efficiency_path"
         return None
 
@@ -504,7 +499,7 @@ class AdaptiveHybridPhasePriorityController:
                 pll=pll,
                 **projection,
             )
-        if self.application_count >= self.policy.maximum_applications:
+        if self.policy.maximum_applications and self.application_count >= self.policy.maximum_applications:
             return self._decision(
                 "global_application_budget_hold",
                 cap=cap,
@@ -515,7 +510,8 @@ class AdaptiveHybridPhasePriorityController:
                 **projection,
             )
         if (
-            self.cumulative_movement_codes + abs(delta)
+            self.policy.maximum_cumulative_movement_codes
+            and self.cumulative_movement_codes + abs(delta)
             > self.policy.maximum_cumulative_movement_codes
         ):
             return self._decision(
@@ -913,8 +909,8 @@ class AdaptiveHybridPhasePriorityController:
             raise HybridPolicyError(self.fail_static_reason)
         self.applied_code = applied_code
         self.dac_epoch = dac_epoch
-        self.application_count += 1
-        self.cumulative_movement_codes += abs(decision.requested_delta_codes)
+        self.application_count = min(0xFFFFFFFF, self.application_count + 1)
+        self.cumulative_movement_codes = min(0xFFFFFFFF, self.cumulative_movement_codes + abs(decision.requested_delta_codes))
         # Bind cadence to the decision that originated the application.  A
         # later observation while the request is pending is evidence only; it
         # must not move the actuator's causal application frontier.

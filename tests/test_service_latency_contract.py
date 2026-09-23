@@ -77,48 +77,12 @@ def test_noneligible_sample_retains_raw_ambiguous_coordinate():
 
 
 def test_malformed_latency_is_local_without_weakening_boot_contract(tmp_path):
-    import csv
-    import json
-    import tempfile
-
-    from host.otis_tools.capture_device import (
-        CaptureDeviceConfig,
-        CaptureDeviceRunner,
-        RawEvidenceWriter,
-    )
     from host.otis_tools.record_splitter import CsvRecordSplitter
-
-    runner = CaptureDeviceRunner(CaptureDeviceConfig("/dev/never-open", 115200, tmp_path))
     errors = []
-    splitter = CsvRecordSplitter({}, on_parser_error=runner._parser_error)
-
-    class Frontier:
-        def note_discrepancy(self, *args, **kwargs):
-            errors.append((args, kwargs))
-
-    # Real CSV error (field-size overflow), structural error, and malformed UTF-8.
-    lines = [b"LAT," + b"x" * 100 + b"\n", b"LAT,v=9,g=1\n", b"LAT,\xff\n"]
-    limit = csv.field_size_limit(64)
-    try:
-        with tempfile.TemporaryFile("w+b") as stream:
-            raw = RawEvidenceWriter(stream)
-            for line in lines:
-                raw.write_device(line)
-                runner._process_line(line, splitter, raw,
-                                     acquisition_frontier_tracker=Frontier())
-            raw.close()
-            stream.seek(0)
-            evidence = stream.read()
-    finally:
-        csv.field_size_limit(limit)
-    assert runner.parser_errors == 0 and runner.malformed_utf8 == 0
+    splitter = CsvRecordSplitter({}, on_parser_error=errors.append)
+    assert splitter.process_line("LAT,v=9,g=1") is None
+    assert splitter.last_disposition == "raw_only_diagnostic_invalid"
+    assert splitter.last_diagnostic_errors
     assert not errors
-    for line in lines:
-        assert line in evidence
-    markers = [json.loads(line.removeprefix(b"# OTIS_HOST "))
-               for line in evidence.splitlines() if line.startswith(b"# OTIS_HOST ")]
-    assert len(markers) == 3
-    assert all(m["disposition"] == "raw_only_diagnostic_invalid" for m in markers)
-    assert all(m["diagnostic_errors"] for m in markers)
     splitter.process_line("BOOT_WARN,v=2,key=serial_absent,wait_ms=250")
-    assert runner.parser_errors == 1 and splitter.last_disposition == "error"
+    assert errors and splitter.last_disposition == "error"

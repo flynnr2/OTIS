@@ -45,4 +45,7 @@ def test_core1_evidence_paths_do_not_use_libc_float_formatting() -> None:
         assert "%.12f" not in source
         assert "%.9f" not in source
         assert "%.15g" not in source
-        assert "otis_format_fixed(" in source
+        if name == "otis_frequency_regulation_live.cpp":
+            assert "otis_format_fixed(" in source
+        else:
+            assert "otis_adaptive_hybrid_wide_format_decimal(" in source

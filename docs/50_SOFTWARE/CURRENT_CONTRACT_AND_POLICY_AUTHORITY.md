@@ -1,145 +1,82 @@
 # Current Contract and Policy Authority
 
-Current HEAD supports one instrument path: `adaptive_hybrid_regulation`.
-Historical profiles, campaign registries, compatibility readers, and
-programme-specific authority records are not current authority.
+Current code supports one `adaptive_hybrid_regulation` image with one firmware
+operating owner. The host is an optional recorder and explicit command client.
+Historical programmes use their recorded revisions; no compatibility reader,
+lease, campaign supervisor or host actuation acknowledgement is retained.
 
 ## Bound identities
 
-- firmware image: `adaptive_hybrid_regulation`;
-- firmware/policy version: `OTIS_ADAPTIVE_HYBRID_REGULATION_V1`;
-- frequency estimator: `OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1`;
-- relative-phase estimator: `OTIS_RELATIVE_PHASE_ESTIMATOR_V1`;
-- plant model: `OTIS_PPS_GATED_OSCILLATOR_PLANT_V1`; and
-- active status: `adaptive_hybrid_active_status_snapshot_v1`; and
-- firmware/host protocol: `OTIS_FIRMWARE_HOST_CONTRACT_V1`.
+- Firmware: `OTIS_AUTONOMOUS_INSTRUMENT_V2`.
+- Instrument status: `OTIS_INSTRUMENT_STATUS_V2`.
+- Wire contract: `OTIS_FIRMWARE_HOST_CONTRACT_V2`.
+- Numerical hybrid policy: `OTIS_ADAPTIVE_HYBRID_REGULATION_V1`.
+- Frequency estimator: `OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1`.
+- Relative-phase estimator: `OTIS_RELATIVE_PHASE_ESTIMATOR_V1`.
+- Plant model: `OTIS_PPS_GATED_OSCILLATOR_PLANT_V1`.
 
-The machine-readable sources are the five files retained under `profiles/`
-and the seven current schemas under `schemas/`. The current wire authority is
-`data_contracts/otis_firmware_host_contract_v1.json`; its generated firmware
-projection is checked rather than maintained independently. The fixed firmware
-build identity and resource contract are in
-`firmware/arduino/firmware_build_manifest.json`.
+`data_contracts/otis_firmware_host_contract_v1.json` is the canonical wire
+source despite its retained filename. The generated firmware header is checked
+against it. Numerical profiles and schemas remain explicit sources; the fixed
+build and resource contract is `firmware/arduino/firmware_build_manifest.json`.
+The firmware publishes its protocol digest. Unknown or malformed output is
+retained as evidence and reported, never silently interpreted as a clean state.
 
-## Firmware/host attachment authority
+## Ownership and modes
 
-The wire contract is exact-current-only. It controls record tags, versions,
-ordered layouts and field encodings; command forms and ranges; typed ACTIVE
-snapshot values; raw-only boot-diagnostic envelopes; queue frontiers; and named
-cross-record relations. The firmware binary carries the canonical contract
-digest and emits it as `protocol.contract_id` and
-`protocol.contract_sha256`. A host must observe an exact match before setup or
-arm authority is available.
+Each firmware start selects AUTO_DISCIPLINE and writes `0xA84D` through the
+same bounded executor as subsequent applications. The physical result must be
+confirmed and propagated to both measurement consumers. Qualification precedes
+corrections. The range is `0xA800..0xAB00`, correction limit 21 codes, minimum
+applied cadence 1,800 seconds. Lifetime application/movement budgets are zero
+(disabled); their counters remain diagnostic evidence.
 
-`BOOT`, `BOOT_WARN`, `BOOT_FATAL`, and `BOOTDIAG` are typed raw-only diagnostic
-envelopes, not canonical measurement records. One bounded, uninterpreted
-late-attachment carrier fragment is admissible before the first recognized
-protocol line because attachment may begin at any byte of a pending boot
-diagnostic. These lines remain preserved in raw serial evidence and cannot affect
-measurement, setup, regulation, actuation, abort, or a run terminal.
+Explicit serial commands select AUTO_DISCIPLINE, OBSERVE_HOLD, FIXED_CODE or
+CHARACTERIZE. HOLD cancels an unreleased proposal and resolves an already
+released write within its original deadline. Characterization is one bounded
+step and finite dwell, ending in HOLD. Optional timed AUTO also ends in HOLD
+under the firmware timer. A recorder duration never requests that transition.
+Disconnect preserves mode; restart reapplies boot policy.
 
-Unknown, missing, extra, malformed or out-of-version protocol data is retained
-as raw evidence and enters a review-required diagnostic hold. Capture and the
-last confirmed DAC state are preserved; the discrepancy cannot silently become
-zero/default data and has no automatic abort or teardown authority. Detailed
-operation and generation instructions are in
-`data_contracts/otis_firmware_host_contract_v1.md`.
+Command identity uses a random 64-bit boot session distinct from the capture
+session. This prevents ordinary stale-command reuse across restarts without
+claiming mathematically collision-free persistent identity. Sequence and payload
+must match for a duplicate receipt; stale/conflicting requests have no effect.
+Core 0 matches the immutable request, prior DAC state, deadline and latest GNSS
+qualification before correction. An exact physical application remains recorded
+even if service later detects a deadline fault. Core 1 confirms both downstream
+consumers before admitting another decision.
 
-The September consolidation distinguishes capture coordinates from lifecycle
-decision coordinates. REF/SNP/CNT/EST retain their original D14/D8 source
-coordinates. Active decision ticks record the actual decision-production
-instant after the current metadata-health update, extended into the same
-session's `rp2040_monotonic_us64` domain. Display seconds are projected from
-that one exact operational sample. The decision must consume its exact source
-sequence span and follow the captured estimate by at most 60,000,000 local
-microseconds. A future, ambiguous or over-age source enters diagnostic hold;
-source timing is never replaced by host or CPU service timing.
+## Timing and evidence
 
-This is a prospective contract change. It prevents an asynchronous metadata
-transition followed by a queued estimate decision from producing backward
-lifecycle timestamps. Existing packages retain the earlier contract digest
-and must not be reinterpreted as if they used the new decision coordinate.
-Cadence comparisons continue in exact extended ticks; physical settling and
-measurement aperture construction retain their captured source coordinates.
+D14 alone supplies reference timing; D8 alone supplies oscillator counts.
+Same-receiver serial metadata qualifies D14 without replacing it. Recoverable
+metadata loss freezes correction debt and holds writes while valid capture and
+phase history continue; fresh metadata and causal support requalify control.
+D10 and D6 remain optional isolated diagnostics.
 
-The metadata transition plus complete selected response is a nine-frame
-composite evidence frontier. The output queue has sixteen slots so this entire
-frontier fits without concurrent Core 0 drainage, while preserving power-of-two
-indexing across the native queue cursor rollover. The fixed memory budget must
-still pass; increasing capacity is not permission to relax resource limits.
+Canonical measurement coordinates are unchanged. Instrument lifecycle events
+use `rp2040_timer_us64`, the hardware extended microsecond timer independent
+of accepted PPS progression. Never substitute it for a hardware D14 timestamp
+or compare unrelated domains without their explicit relation. Decision evidence
+retains its source identity separately from its service/decision coordinate.
 
-## Measurement authority
+ICM records command outcomes, IWR released writes, IAP physical outcomes, IDC
+controller decisions, IRS response diagnostics and IST state changes. Their
+ordered fields, identity joins and record sequence are defined by the canonical
+contract. Periodic status reports current mode, holds, faults and output loss.
+Raw observations are not rewritten by any controller result.
 
-D14 is the sole PPS/reference authority. D8 is the sole oscillator-count input
-used for regulation. GNSS metadata may qualify the receiver that supplies D14,
-but never replaces D14. A recoverable metadata anomaly holds new corrections
-at the last confirmed code while capture continues.
+Outbound USB loss never vetoes qualified internal control. Strict receiver/DAC
+service and actuator mailboxes remain integrity boundaries. Missing, partial or
+dropped records cannot support a continuous replay claim. There is no onboard
+durable spool. A recorder failure has no automatic stop or reset authority.
 
-D10/channel 0 is optional external-event evidence. D6 is diagnostic evidence.
-Neither can enter setup authority, D14/D8 validity, regulation eligibility,
-actuation, or a run terminal. The current firmware records that isolated D10
-capture is not yet implemented.
+## Verification boundary
 
-## Actuation authority
-
-The characterized DAC envelope is `0xA800..0xAB00`. Every requested and applied
-code must be joined to exact observation, policy, estimator, diagnostic gate,
-request sequence, acknowledgement, DAC epoch, and resulting state identities.
-An acknowledgement establishes producer acceptance only; activation and
-rehearsal must verify propagation through the first dependent decision.
-
-Repository state and passing offline tests do not authorize hardware use. Live
-operation additionally requires an exact frozen bundle, genuine operational-
-path rehearsal, and explicit operator authority.
-
-Current HEAD can create a live activation only from a separately sealed and
-registered current-process rehearsal that binds the exact bundle and proposal.
-The validator rejects the non-authorizing structural preflight and unverified
-claims to a process-level rehearsal. Historical campaign rehearsal code is not
-a compatibility fallback.
-
-The inhibited zero-write purpose has a fixed 300-second observation window.
-Its start is the supervisor's monotonic-clock observation during construction,
-after the capture worker reports ready. Census and reference startup consume
-that window; manifest preparation and firmware upload do not. No query,
-qualification milestone or UTC adjustment can restart it. A retained inhibited
-supervisor state rejects a resumed invocation before a new capture worker starts;
-the existing state and any existing owner remain untouched. This is host elapsed
-observation duration, not 300 accepted D14/D8 apertures or oscillator timing.
-At the endpoint, exact healthy static/no-authority evidence permits normal
-capture closure without an abort. Missing or contradictory evidence retains a
-review hold and the capture owner; it does not authorize an automatic abort.
-Final drainage, analysis and sealing follow the observation endpoint. Retained
-state and terminal evidence identify the host clock, owner PID/nonce, start,
-deadline and observed terminal in integer monotonic nanoseconds.
-
-The current closed-loop physical purpose is `unattended_72_hour_hybrid_control`.
-It authorizes at most 144 natural applications and 3,024 codes cumulative absolute
-movement inside the unchanged `0xA800..0xAB00` envelope, with the existing
-21-code maximum step and 1,800-second applied cadence. One setup remains separate.
-The finite operating window is 259,200 host monotonic seconds from supervisor
-construction after capture readiness. Accepted D14/D8 apertures are separately
-recorded; 259,200 apertures is a nonterminal measurement checkpoint. The host
-closes new ARM admission 2,111 seconds before its deadline (and retains the
-independent accepted-aperture admission ceiling). At the deadline only exact
-healthy disarmed evidence permits normal closure. A retained review request permits scheduled closure only when static/disarmed
-state is independently proven; the terminal remains review-required. Unknown
-actuator or transaction state retains recording beyond the endpoint without new
-authority or timeout approval.
-
-The analyzer reports `endurance_complete` only with the full declared monotonic
-window and exact terminal evidence, separately from its measurement-replay checks.
-This outcome is not a 72-hour qualified-measurement claim. Zero natural
-corrections remains legitimate. Re-entry against retained supervisor state is
-rejected before a new serial owner starts.
-
-See [the unattended contract and handoff](UNATTENDED_RUN.md).
-
-See [the bench handoff](BENCH_CORE_6_1_0_HANDOFF.md).
-
-## Compatibility boundary
-
-Git history and preserved experimental evidence are the compatibility
-mechanism. Current HEAD must not build, load, validate, or silently translate a
-retired programme identity. A historical result is interpreted with the exact
-revision and manifest that created it.
+See [the proposal](HOST_CONTROL_REPLACEMENT_PROPOSAL.md) and the detailed
+[fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md). The operator reserved
+long-term approval of that mapping. Offline/native tests and a compiled image
+do not qualify the real DAC, USB/UART, cross-core scheduling or physical plant.
+The next physical gate is a separately authorized short exact-image integration
+followed by the agreed 72-hour observation; a week is optional.

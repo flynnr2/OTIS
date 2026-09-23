@@ -124,3 +124,21 @@ void otis_memory_budget_emit_status(OtisStatusEmitContext *status_context) {
                    "live_observed_minimum_approximation",
                    OTIS_SEVERITY_INFO, OTIS_FLAG_CONFIGURATION_ASSUMPTION);
 }
+
+namespace {
+struct MemoryFieldSelection { OtisStatusEmitContext *destination; uint8_t requested; uint8_t ordinal; bool emitted; };
+void emit_selected_memory_field(void *raw,const char *component,const char *key,const char *value,const char *severity,uint32_t flags) {
+  auto *selection=static_cast<MemoryFieldSelection *>(raw);
+  if(selection->ordinal++==selection->requested) {
+    otis_status_emit(selection->destination,component,key,value,severity,flags);
+    selection->emitted=true;
+  }
+}
+}
+bool otis_memory_budget_emit_status_field(OtisStatusEmitContext *destination,uint8_t ordinal) {
+  MemoryFieldSelection selection={destination,ordinal,0,false};
+  OtisStatusEmitContext context={};
+  otis_status_emit_init_with_sink(&context,&selection,emit_selected_memory_field);
+  otis_memory_budget_emit_status(&context);
+  return selection.emitted;
+}

@@ -3,8 +3,8 @@
   "builder_id": "otis_fixed_firmware_builder_v1",
   "image": {
     "id": "adaptive_hybrid_regulation",
-    "firmware_version": "OTIS_ADAPTIVE_HYBRID_REGULATION_V1",
-    "purpose": "Fixed adaptive hybrid oscillator regulation with D14 reference authority, D8 count authority, GNSS qualification, D9 clock forwarding, fail-local D6 monitoring, and a reserved D10 external-event seam whose capture backend is not implemented."
+    "firmware_version": "OTIS_AUTONOMOUS_INSTRUMENT_V2",
+    "purpose": "Autonomous hybrid discipline on boot with serial-selected hold, fixed-code and finite characterization; D14 reference, D8 oscillator, D9 forwarding and optional recording host."
   },
   "capabilities": {
     "external_event_capture": {

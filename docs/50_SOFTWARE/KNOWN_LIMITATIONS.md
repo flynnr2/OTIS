@@ -1,83 +1,40 @@
 # Current Known Limitations
 
-Current HEAD has one fixed `adaptive_hybrid_regulation` image and no historical
-programme execution surface. The most important present limitations are:
+Current firmware implements autonomous boot and explicit serial-selected modes.
+The following limitations apply to this implementation candidate:
 
-- the Adafruit sensor/GNSS migration has no physical qualification yet. Its
-  library boundary and stricter GNSS acceptance are documented in
-  [Adafruit device integration](ADAFRUIT_DEVICE_INTEGRATION.md). Both native Mac
-  compiler packages are pinned separately; neither compilation nor emulated bus
-  checks establish physical sensor or receiver qualification;
-- PR #177's older-Mac startup failure and PR #178's progressing-rehearsal
-  cutoff exposed host scaffolding defects. The successor removes duplicated
-  lifetime, monitoring and finalization responsibilities; its local verification
-  is recorded in the [repair report](../60_EXPERIMENTS/CAUSAL_WAIT_REPAIR_2026_09_11.md).
-  Software simulation does not establish actual USB/bootloader permission or
-  physical firmware/plant behaviour on the older Mac;
-- the September consolidation repairs have native/host regressions but do not
-  yet establish physical qualification of metadata-hold history preservation,
-  pre-carrier queue ownership, or a changed reference-continuation policy;
-- raw snapshot/count replay now checks retained arithmetic and associations;
-  it does not prove capture completeness or the analog cause of the reported
-  D14 disturbances. Native integration exercises the real 600-accepted-span
-  frequency and phase consumers; the process rehearsal uses a synthetic
-  instrument and does not qualify the physical PIO/USB path;
-- the accepted-reference candidate admits the first trustworthy edge inside
-  the frozen inclusive ±1.25 ms window after eight acquisition intervals. It
-  cannot distinguish an impostor inside that window from the intended PPS.
-  Exclusion preserves raw evidence and does not establish GNSS accuracy;
-- the former independent GPIO/DMA association defect is superseded by the
-  [single reference owner](SINGLE_REFERENCE_OWNER_REPAIR.md). Its FIFO-service
-  coordinate is not a hardware D14 timestamp, and its recognition bracket can
-  withdraw qualification under delayed service. The September 13 retained
-  [investigation](../60_EXPERIMENTS/REFERENCE_ASSOCIATION_DISCONTINUITY_2026_09_13.md)
-  remains historical evidence;
-- CPU-observed expiry places control on hold while a paired hardware boundary
-  is delayed. It does not prove a physical missing pulse. Source-coordinate
-  ambiguity ends model qualification without inventing a missing timestamp;
-- the new APS/EST/phase/active wire contracts require a matching firmware and
-  host bundle. Current code has no compatibility reader for an earlier wire
-  version; historical packages use their recorded revision;
-- D10/channel 0 is reserved for external-event evidence, and the host contract
-  preserves ingest, storage, replay, and zero-authority isolation, but firmware
-  does not yet implement a capture backend that is safely isolated from D14;
-- the current 72-hour contingent hybrid programme is not physically qualified;
-  the completed inhibited zero-write acquisition established its own bounded
-  no-actuation claim only and does not qualify closed-loop control;
-- the current-only host implements the genuine process/FIFO/command/
-  acknowledgement/obstruction/abort/handoff/analysis/sealing rehearsal, but
-  live activation remains fail-closed unless the exact frozen bundle has a
-  successful sealed rehearsal and explicit operator authority; the separate
-  structural preflight remains non-authorizing;
-- D9/D6 evidence establishes digital forwarding/monitor behavior only; it does
-  not qualify analog waveform shape, jitter, loading, or independent frequency;
-- the supported instrument still requires a continuously drained sole-owner
-  host carrier for supervised steering. Internal receiver/DAC metadata service
-  now runs before carrier and pending-frame branches, but that does not enable
-  autonomous steering or preserve full replay through a transport fault;
-- startup census observes current firmware before lease or control admission.
-  It admits a proven fresh start. A pending acknowledgement from a previous
-  supervisor process cannot reuse its monotonic deadline and remains a review
-  hold; automatic restart continuation and arbitrary active-state campaign
-  adoption are not implemented. Unowned or incoherent state remains observational;
-- runner review-hold publication and supervisor consumption are separate
-  recorded facts. If retained storage fails, controller inhibition cannot be
-  claimed solely because the runner requested it;
-- software-stage observations begin at actual FIFO/service/queue observations.
-  No D14 GPIO ISR endpoint remains. Hardware-latch-to-service, electrical-edge
-  timing and fractional D8-cycle timing remain unavailable; see
-  [service-latency baseline](SERVICE_LATENCY_BASELINE.md);
-- a process rehearsal does not establish the older Mac's actual launch-context
-  permission to access a USB bootloader volume; that exact context must be
-  exercised before a physical campaign; and
-- source edits after this reset require a new exact build identity and the
-  proportionate rehearsal/physical gate before live use.
+- Physical autonomous operation has not been qualified. Native tests exercise
+  actual owner, adapter, parser, mailboxes and executor admission with simulated
+  device results; they cannot establish real I2C, PIO, UART, USB or plant behavior.
+- The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) remains
+  subject to the operator's reserved long-term review. There is no generic
+  clear-fault command; HOLD does not erase an integrity fault.
+- USB output is bounded and may be dropped while detached or obstructed. Control
+  continues from internal evidence. There is no durable onboard spool and no
+  claim of complete replay across a loss or host recording gap.
+- Boot session identity is random 64-bit, not persistent collision-free storage.
+  A restart intentionally writes `0xA84D` and selects AUTO; attachment does neither.
+- CHARACTERIZE currently supports one bounded step and finite dwell, ending in
+  HOLD. Compact telemetry and variable integer D9 output division are deferred.
+- D10 is reserved for isolated external-event evidence; a physically isolated
+  firmware capture backend remains unimplemented. D6 diagnostics cannot veto
+  D14/D8 control. D9 digital forwarding does not qualify analog waveform quality,
+  jitter, loading or independently referenced frequency.
+- The Adafruit device migration and core 6.1.0 image still need physical
+  integration on the actual bench. Library/build checks do not qualify buses.
+- Accepted-reference selection cannot distinguish an impostor edge within its
+  qualification window. FIFO-service coordinates are not hardware D14 timestamps;
+  recognition brackets can withdraw qualification after delayed service.
+- Host recording failures terminate recording truthfully without stopping the
+  instrument. External notification delivery is not an instrument control gate.
+- Earlier physical runs qualify only their frozen source, hardware and claims.
+  They do not establish the new autonomous 72-hour observation endpoint.
 
 The remaining entries preserve limitations of historical evidence. They are
 scientific context only and do not imply that their profiles, programme CLIs,
 compatibility readers, or authority exist on current HEAD.
 
-- The supported current instrument includes a continuously draining sole-owner
+- The historical supervised instrument included a continuously draining sole-owner
   host carrier. Indefinite hostless operation, an on-device durable spool, and
   continuity-preserving generalized detach/reattach are not implemented.
 - USB TX obstruction is bounded to 2,000 ms of total pending-frame time;

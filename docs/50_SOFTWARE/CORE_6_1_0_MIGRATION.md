@@ -1,5 +1,11 @@
 # Arduino-Pico 6.1.0 baseline migration
 
+The source/toolchain migration evidence below remains bound to its dated image.
+Current source additionally implements autonomous boot and has a different image
+identity and operating policy; the migration's inhibited-entry instructions do
+not apply to that image. See the [implementation record](AUTONOMOUS_INSTRUMENT_IMPLEMENTATION.md).
+
+
 Date: 2026-09-19. Target remains Arduino Nano RP2040 Connect at 133 MHz,
 `rp2040:rp2040:arduino_nano_connect:freq=133`. This is a core dependency
 migration, not a change to D14 reference authority, D8 oscillator authority,

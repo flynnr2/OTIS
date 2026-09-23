@@ -199,7 +199,12 @@ input margin or IRQ response time. Deterministic rollover, session, duplicate,
 batch, queue-congestion, histogram and drop tests prove software behavior;
 native timer doubles do not measure instrumentation time on the target.
 
-Preparation now follows [the 6.1.0 bench handoff](BENCH_CORE_6_1_0_HANDOFF.md):
+Current physical preparation follows the autonomous implementation's separately
+authorized integration gate. The [6.1.0 bench handoff](BENCH_CORE_6_1_0_HANDOFF.md)
+below its supersession notice records the earlier inhibited bundle only. Current
+firmware intentionally writes its boot code and can steer after qualification.
+
+Historical preparation followed [the 6.1.0 bench handoff](BENCH_CORE_6_1_0_HANDOFF.md):
 perform preflight and synthetic operational rehearsals on the development Mac,
 then reproduce the image, flash once and run the five-minute inhibited observation
 on the bench Mac. Physical USB obstruction is a separate future experiment;

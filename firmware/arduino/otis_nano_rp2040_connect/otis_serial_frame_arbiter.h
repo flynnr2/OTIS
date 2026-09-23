@@ -12,14 +12,14 @@ enum class OtisSerialFrameOwner : uint8_t {
   DualCoreEvidence = 1u,
   FrequencyRegulation = 2u,
   PhasePreview = 3u,
-  PeriodicStatus = 4u,
+  DirectRow = 4u,
 };
 
 struct OtisSerialFrameReadiness {
   bool dual_core_evidence;
   bool frequency_regulation;
   bool phase_preview;
-  bool periodic_status = false;
+  bool direct_row;
 };
 
 struct OtisSerialFrameArbiter {

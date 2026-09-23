@@ -8,4 +8,6 @@
 void otis_memory_budget_note_current_core(void);
 void otis_memory_budget_emit_status(OtisStatusEmitContext *status_context);
 
+// Emit one admitted field per service iteration; false marks the finite end.
+bool otis_memory_budget_emit_status_field(OtisStatusEmitContext *, uint8_t ordinal);
 #endif

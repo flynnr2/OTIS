@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from host.otis_tools.adaptive_hybrid_contract import ADAPTIVE_HYBRID_PROGRAMME
 from host.otis_tools.adaptive_hybrid_policy import (
     AdaptiveHybridDebt,
     AdaptiveHybridObservation,
@@ -16,9 +15,9 @@ from host.otis_tools.adaptive_hybrid_policy import (
 )
 
 
-def test_policy_setup_code_has_the_singleton_descriptor_as_its_source() -> None:
+def test_policy_setup_code_is_the_explicit_boot_policy() -> None:
     policy = load_policy()
-    assert policy.setup_code == ADAPTIVE_HYBRID_PROGRAMME.setup_code
+    assert policy.setup_code == 0xA84D
     assert policy.estimator_span_s == 600
     assert policy.settling_exclusion_s == 900
     assert policy.minimum_cadence_s == 1800
@@ -200,14 +199,14 @@ def test_rejection_is_not_incomplete_application_and_limits_hold() -> None:
     assert controller.fail_static_reason == "application_without_exact_first_consumer"
 
     limited = _controller()
-    limited.application_count = limited.policy.maximum_applications
+    limited.application_count = 144
     _, count_hold = _persistent(limited, counts=-1, phase=-4)
-    assert count_hold.reason == "global_application_budget_hold"
+    assert count_hold.reason == "maintenance_request_ready"
     movement = _controller()
-    movement.cumulative_movement_codes = movement.policy.maximum_cumulative_movement_codes
+    movement.cumulative_movement_codes = 3024
     _, movement_hold = _persistent(movement, counts=-1, phase=-4)
-    assert movement_hold.requested_delta_codes == 0
-    assert movement_hold.safe_cap_codes == 0
+    assert movement_hold.requested_delta_codes != 0
+    assert movement_hold.safe_cap_codes > 0
 
     cap = _controller()
     _, capped = _persistent(cap, counts=1, phase=0)
@@ -276,18 +275,16 @@ def test_ordinary_gates_are_range_aware_and_preserve_selected_safety_limits() ->
     ).reason == "cadence_hold"
 
     count_limited = _controller()
-    count_limited.application_count = count_limited.policy.maximum_applications
+    count_limited.application_count = 144
     assert count_limited.decide(
         _observation(count_limited, 0, 0, 600, counts=2, phase=0, tight_state="OUTSIDE")
-    ).reason == "global_application_budget_hold"
+    ).reason == "outside_tight_ordinary_request_ready"
 
     movement_limited = _controller()
-    movement_limited.cumulative_movement_codes = (
-        movement_limited.policy.maximum_cumulative_movement_codes - 1
-    )
+    movement_limited.cumulative_movement_codes = 3024
     assert movement_limited.decide(
         _observation(movement_limited, 0, 0, 600, counts=2, phase=0, tight_state="OUTSIDE")
-    ).reason == "global_cumulative_movement_budget_hold"
+    ).reason == "outside_tight_ordinary_request_ready"
 
     direction = _controller()
     assert direction.decide(
@@ -306,7 +303,7 @@ def test_ordinary_gates_are_range_aware_and_preserve_selected_safety_limits() ->
     inefficient.chatter_origin_code = inefficient.applied_code + 10
     assert inefficient.decide(
         _observation(inefficient, 0, 0, 600, counts=-2, phase=0, tight_state="OUTSIDE")
-    ).reason == "prospective_low_efficiency_path"
+    ).reason == "outside_tight_ordinary_request_ready"
 
 
 def test_gap_with_zero_or_opposite_sign_resets_tagged_debt() -> None:

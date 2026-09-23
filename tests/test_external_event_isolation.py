@@ -9,10 +9,10 @@ from types import SimpleNamespace
 from test_raw_measurement_replay import raw_measurement_rows, measurement_manifest_value
 
 from host.otis_tools import adaptive_hybrid_replay as replay_module
-from host.otis_tools.adaptive_hybrid_analyze import (
-    _authoritative_csvs_exact,
-    _d10_isolated,
-    _validate_manifest_csvs,
+from host.otis_tools.record_validation import (
+    authoritative_csvs_exact as _authoritative_csvs_exact,
+    d10_isolated as _d10_isolated,
+    validate_manifest_csvs as _validate_manifest_csvs,
 )
 from host.otis_tools.adaptive_hybrid_policy import (
     AdaptiveHybridObservation,
@@ -249,8 +249,6 @@ def test_absent_d10_does_not_claim_entry_into_d14_d8_replay() -> None:
 def test_control_interfaces_have_no_external_event_authority_fields() -> None:
     for relative in (
         "host/otis_tools/adaptive_hybrid_policy.py",
-        "host/otis_tools/adaptive_hybrid_transactions.py",
-        "host/otis_tools/adaptive_hybrid_supervisor.py",
     ):
         tree = ast.parse((ROOT / relative).read_text(encoding="utf-8"))
         identifiers = {

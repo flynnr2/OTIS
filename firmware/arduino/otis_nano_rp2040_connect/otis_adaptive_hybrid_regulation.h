@@ -38,6 +38,7 @@ struct OtisAdaptiveHybridPolicy {
   int32_t minimum_code;
   int32_t maximum_code;
   uint64_t minimum_cadence_s;
+  // Zero disables a finite campaign budget; it does not disable step/range guards.
   uint32_t maximum_applications;
   uint32_t maximum_cumulative_movement_codes;
   int32_t setup_code;

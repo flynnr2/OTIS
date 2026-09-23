@@ -1,5 +1,13 @@
 # Prepared Nano 6.1.0 bench entry
 
+Superseded for current source by the 23 September autonomous implementation.
+The instructions below bind only their original frozen supervised bundle. Do not
+use them to flash current code expecting inhibited/no-write startup: the new
+image writes `0xA84D` and selects AUTO. A new exact-image physical integration
+handoff must be separately prepared and authorized. See
+[AUTONOMOUS_INSTRUMENT_IMPLEMENTATION.md](AUTONOMOUS_INSTRUMENT_IMPLEMENTATION.md).
+
+
 The development Mac owns source changes, release checks, the fixed image/resource
 review, no-I/O preflight, frozen specification and operational-path rehearsals.
 The bench Mac reproduces that exact image, flashes once and runs it. Installing

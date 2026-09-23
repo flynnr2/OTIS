@@ -33,57 +33,11 @@ def test_generated_policy_and_fixed_build_binding():
     assert manifest["contract_bindings"]["reference_acceptance"] == "data_contracts/reference_acceptance_policy_v2.json"
 
 
-def test_core0_execute_checks_the_retained_measurement_identity(tmp_path):
-    """Compile the actual sole-writer release predicate, including modular spans."""
-    compiler = shutil.which("c++")
-    if compiler is None:
-        pytest.skip("native compiler unavailable")
+def test_core0_execute_admits_exact_identity_before_write():
+    """Physical execution uses the native-tested shared admission function."""
     firmware = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
     sketch = (firmware / "otis_nano_rp2040_connect.ino").read_text()
-    predicate = sketch.split("const bool exact_release =", 1)[1].split(";", 1)[0]
-    release = sketch.index("if (!exact_release)")
-    assert release < sketch.index("otis_regulation_actuator_apply_once(", release)
-    source = tmp_path / "execute_identity.cpp"
-    source.write_text('''
-#include <cassert>
-#include "otis_dual_core_contract.h"
-#include "otis_adaptive_hybrid_regulation.h"
-bool exact(const OtisCrossCoreActuatorRequest &request,
-           const OtisCrossCoreActuatorRequest &pending) {
-  return ''' + predicate + ''';
-}
-int main() {
-  OtisCrossCoreActuatorRequest pending{};
-  pending.session_id = 1;
-  pending.source_acceptance_epoch = 1;
-  pending.source_closing_accepted_boundary_ordinal = 600;
-  assert(exact(pending, pending));
-  auto request = pending;
-  request.source_acceptance_epoch = 2;
-  assert(!exact(request, pending));
-  request = pending;
-  request.session_id = 2;
-  assert(!exact(request, pending));
-  request = pending;
-  ++request.source_opening_accepted_boundary_ordinal;
-  ++request.source_closing_accepted_boundary_ordinal;
-  assert(!exact(request, pending));
-  pending.source_closing_accepted_boundary_ordinal = 599;
-  assert(!exact(pending, pending));
-  pending.source_closing_accepted_boundary_ordinal = 0;
-  pending.source_opening_accepted_boundary_ordinal = UINT32_MAX - 599;
-  assert(exact(pending, pending));
-  request = pending;
-  ++request.decision_reference_ticks;
-  assert(!exact(request, pending));
-  request = pending;
-  ++request.monotonic_deadline_s;
-  assert(!exact(request, pending));
-  pending.source_acceptance_epoch = 0;
-  assert(!exact(pending, pending));
-}
-''')
-    executable = tmp_path / "execute_identity"
-    subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                    "-I", str(firmware), str(source), "-o", str(executable)], check=True)
-    subprocess.run([str(executable)], check=True)
+    executor = sketch[sketch.index("void service_instrument_executor"):sketch.index("void note_observation_queue_service")]
+    assert executor.index("otis_gnss_receiver_get_snapshot") < executor.index("otis_instrument_executor_admit")
+    assert executor.index("otis_instrument_executor_admit") < executor.index("otis_dac_ad5693r_set_raw")
+    assert executor.index("otis_dac_ad5693r_set_raw") < executor.index("otis_dual_core_publish_instrument_application")

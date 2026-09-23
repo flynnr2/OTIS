@@ -568,7 +568,7 @@ def verify_repository_installation(
     image = manifest.get("image", {})
     if image.get("id") != "adaptive_hybrid_regulation":
         raise ProofFailure("fixed firmware manifest selects an unexpected image")
-    if image.get("firmware_version") != "OTIS_ADAPTIVE_HYBRID_REGULATION_V1":
+    if image.get("firmware_version") != "OTIS_AUTONOMOUS_INSTRUMENT_V2":
         raise ProofFailure("fixed firmware manifest selects an unexpected version")
 
     return {

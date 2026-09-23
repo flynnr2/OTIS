@@ -59,7 +59,7 @@ uint32_t tud_cdc_write_flush();
 SerialStub Serial;
 USBStub USB;
 bool locked, contention, connected = true;
-uint32_t capacity = 128u, attempts, exits, queries, writes;
+uint32_t capacity = 128u, attempts, exits, queries, writes, flushes;
 char copied[256];
 bool mutex_try_enter(mutex_t* m, uint32_t*) {
  assert(m == &USB.mutex); ++attempts;
@@ -73,7 +73,7 @@ uint32_t tud_cdc_write(const void* p, uint32_t n) {
  assert(locked && n <= capacity); ++writes;
  memcpy(copied, p, n); capacity -= n; return n;
 }
-uint32_t tud_cdc_write_flush() { assert(locked); return 0u; }
+uint32_t tud_cdc_write_flush() { assert(locked); ++flushes; return 0u; }
 int main() {
  const uint8_t row[] = "diagnostic\\n";
  const uint32_t n = sizeof(row) - 1u;
@@ -92,27 +92,43 @@ int main() {
  assert(exits == 2 && writes == 0 && !locked);
  capacity = n + 64u;
  assert(otis_transport_try_write_diagnostic(row, n));
- assert(exits == 3 && writes == 1 && capacity == 64u && !locked);
+ assert(exits == 3 && writes == 1 && flushes == 1u && capacity == 64u && !locked);
  assert(memcmp(copied, row, n) == 0);
  assert(otis_transport_written_bytes() == n);
  assert(!otis_transport_try_write_diagnostic(row, n));
  assert(writes == 1 && otis_transport_written_bytes() == n && !locked);
- // The pending canonical row yields on congestion or lock contention.
- uint8_t canonical[256]; memset(canonical, 'S', sizeof(canonical));
- const auto initial = otis_transport_written_bytes();
+ otis_transport_begin(115200u);
+ assert(otis_transport_write_cstr("STS,") == 4u);
+ assert(otis_transport_write_uint32(42u) == 2u);
+ assert(otis_transport_write_cstr("\\r\\n") == 2u);
+ assert(otis_transport_row_pending() && !otis_transport_row_active());
  contention = true;
- assert(otis_transport_try_write_canonical(canonical, 256u) == 0u);
- contention = false; capacity = 0u;
- assert(otis_transport_try_write_canonical(canonical, 256u) == 0u);
- assert(otis_transport_written_bytes() == initial);
- capacity = 256u;
- assert(otis_transport_try_write_canonical(canonical, 256u) == 192u);
- assert(capacity == 64u && !locked);
- assert(otis_transport_try_write_canonical(canonical + 192u, 64u) == 64u);
- assert(capacity == 0u && otis_transport_written_bytes() == initial + 256u);
- connected = false; capacity = 256u;
- assert(otis_transport_try_write_canonical(canonical, 256u) == 0u);
- assert(!locked && capacity == 256u);
+ otis_transport_service_row();
+ assert(otis_transport_row_active() && writes == 1u);
+ contention = false; capacity = 128u;
+ otis_transport_service_row();
+ assert(!otis_transport_row_pending() && writes == 2u && flushes == 2u);
+ assert(memcmp(copied, "STS,42\\r\\n", 8u) == 0);
+ for (unsigned i = 0u; i < 3u; ++i)
+   otis_transport_write_cstr("STS,queued\\r\\n");
+ assert(otis_transport_row_free_slots() == 0u);
+ assert(otis_transport_row_dropped() == 1u);
+ otis_transport_discard_rows();
+ assert(!otis_transport_row_pending());
+ assert(otis_transport_row_dropped() == 3u);
+ char too_long[1600];
+ memset(too_long, 'x', sizeof(too_long));
+ too_long[sizeof(too_long) - 1u] = '\\n';
+ assert(otis_transport_write_cstr("OK\\r\\n") == 4u);
+ for (unsigned i = 0u; i < sizeof(too_long); ++i)
+   otis_transport_write_char(too_long[i]);
+ assert(otis_transport_row_dropped() == 4u);
+ assert(otis_transport_row_pending());
+ capacity = 128u;
+ otis_transport_service_row();
+ assert(memcmp(copied, "OK\\r\\n", 4u) == 0);
+ assert(!otis_transport_row_pending());
+ assert(flushes == writes);
 }
 """)
     executable = tmp_path / "diagnostic_transport"
@@ -134,17 +150,19 @@ def test_diagnostic_admission_never_polls_or_uses_blocking_serial_wrapper():
         assert forbidden not in code
     assert code.count("mutex_try_enter(") == 1
     assert code.count("tud_cdc_write(") == 1
+    assert code.count("tud_cdc_write_flush(") == 1
     assert code.count("mutex_exit(") == 1
 
 
-def test_pending_canonical_usb_service_is_one_bounded_attempt():
+def test_pending_frame_usb_service_is_one_bounded_attempt():
     source = (FIRMWARE / "otis_transport_serial.cpp").read_text()
-    body = source.split("size_t otis_transport_try_write_canonical(", 1)[1]
+    body = source.split("size_t otis_transport_try_write_frame_chunk(", 1)[1]
     body = body.split("bool otis_transport_try_write_diagnostic", 1)[0]
     for forbidden in ("Serial.", "tud_task(", "CoreMutex", "while (", "for (",
                       "mutex_enter_blocking", "delay(", "sleep_"):
         assert forbidden not in body
     assert body.count("mutex_try_enter(") == 1
     assert body.count("tud_cdc_write(") == 1
+    assert body.count("tud_cdc_write_flush(") == 1
     assert body.count("mutex_exit(") == 1
-    assert "chunk > 192u" in body
+    assert "length > kMaximumFrameChunk" in body

@@ -5,124 +5,47 @@
     "field_framing": "unquoted_csv",
     "record_framing": "crlf_or_lf_physical_line",
     "text_escape": "percent_upper_hex_for_percent_comma_quote_cr_lf",
-    "unknown_record_type": "protocol_discrepancy_hold",
-    "unknown_schema_version": "protocol_discrepancy_hold"
+    "unknown_record_type": "retain_raw_observation_unavailable",
+    "unknown_schema_version": "retain_raw_observation_unavailable"
   },
   "commands": {
     "forms": {
-      "active_arm": {
-        "acknowledgement": "STS adaptive_hybrid.arm",
+      "active_mode": {
+        "acknowledgement": "ICM v2 receipt then STS command_completed",
         "arguments": [
           {
-            "maximum": 4294967295,
+            "maximum": 18446744073709551615,
             "minimum": 1,
-            "name": "authorization_sequence",
-            "wire_type": "uint32"
+            "name": "session",
+            "wire_type": "uint64"
           },
           {
             "maximum": 4294967295,
             "minimum": 1,
-            "name": "nonce",
+            "name": "sequence",
             "wire_type": "uint32"
           },
           {
-            "maximum": 4294967295,
-            "minimum": 1,
-            "name": "expires_s",
-            "wire_type": "uint32"
-          }
-        ],
-        "first_consumer": "firmware adaptive hybrid authority state",
-        "prefix": "ACTIVE ARM"
-      },
-      "active_evidence": {
-        "acknowledgement": "STS adaptive_hybrid.evidence_ack",
-        "arguments": [
-          {
-            "maximum": 4294967295,
-            "minimum": 1,
-            "name": "request_sequence",
-            "wire_type": "uint32"
-          },
-          {
-            "name": "phase",
-            "values": [
-              1,
-              2,
-              3,
-              4
-            ],
-            "wire_type": "enum_uint32"
-          }
-        ],
-        "first_consumer": "firmware transaction evidence phase state",
-        "prefix": "ACTIVE EVIDENCE"
-      },
-      "active_lease": {
-        "acknowledgement": "STS adaptive_hybrid.capture_lease",
-        "arguments": [
-          {
-            "maximum": 4294967295,
-            "minimum": 1,
-            "name": "capture_lease_sequence",
-            "wire_type": "uint32"
-          }
-        ],
-        "first_consumer": "firmware queue_dual_core_active_control(CaptureLease)",
-        "prefix": "ACTIVE LEASE"
-      },
-      "active_setup": {
-        "acknowledgement": "STS adaptive_hybrid_setup.phase plus exact identity fields",
-        "arguments": [
-          {
-            "maximum": 4294967295,
-            "minimum": 1,
-            "name": "authorization_sequence",
-            "wire_type": "uint32"
-          },
-          {
-            "maximum": 4294967295,
-            "minimum": 1,
-            "name": "status_generation",
-            "wire_type": "uint32"
-          },
-          {
-            "maximum": 4294967295,
-            "minimum": 1,
-            "name": "query_nonce",
-            "wire_type": "uint32"
-          },
-          {
-            "maximum": 4294967295,
-            "minimum": 1,
-            "name": "expires_s",
-            "wire_type": "uint32"
-          },
-          {
-            "maximum": 4294967295,
-            "minimum": 1,
-            "name": "session_id",
-            "wire_type": "uint32"
+            "maximum": 3,
+            "minimum": 0,
+            "name": "mode",
+            "wire_type": "uint8"
           },
           {
             "maximum": 65535,
             "minimum": 0,
-            "name": "setup_code",
+            "name": "code",
             "wire_type": "uint16"
           },
           {
-            "maximum": 65535,
-            "minimum": 1,
-            "name": "ordinal",
-            "wire_type": "uint16"
-          },
-          {
-            "name": "configuration_sha256",
-            "wire_type": "lower_hex_sha256"
+            "maximum": 604800,
+            "minimum": 0,
+            "name": "dwell_s",
+            "wire_type": "uint32"
           }
         ],
-        "first_consumer": "firmware setup authority guard",
-        "prefix": "ACTIVE SETUP"
+        "first_consumer": "firmware instrument owner",
+        "prefix": "ACTIVE MODE"
       },
       "active_snapshot": {
         "acknowledgement": "complete solicited active status generation",
@@ -134,13 +57,11 @@
             "wire_type": "uint32"
           }
         ],
-        "first_consumer": "host ActiveStatusLiveReducer",
+        "first_consumer": "firmware instrument status service",
         "prefix": "ACTIVE SNAPSHOT"
       }
     },
-    "priority_only": [
-      "ACTIVE ABORT"
-    ],
+    "priority_only": [],
     "simple": [
       "HELP",
       "CONFIG?",
@@ -148,18 +69,12 @@
       "DAC?",
       "DAC LIMITS?",
       "COUNT?",
-      "ACTIVE?",
-      "ACTIVE ABORT"
+      "ACTIVE?"
     ],
-    "timestamp_envelope": {
-      "prefix": "OTISQ1",
-      "timestamp": "positive_host_monotonic_ns",
-      "wire_scope": "host_fifo_only_not_sent_to_firmware"
-    },
     "unknown_command": "reject"
   },
   "compatibility": "exact_current_only",
-  "contract_id": "OTIS_FIRMWARE_HOST_CONTRACT_V1",
+  "contract_id": "OTIS_FIRMWARE_HOST_CONTRACT_V2",
   "frontiers": {
     "adaptive_hybrid_evidence": {
       "accepted_span": 1,
@@ -177,29 +92,22 @@
       "selected_suffix": 1
     },
     "adaptive_hybrid_status": {
-      "burst_count": 52,
+      "burst_count": 39,
       "envelope_count": 3,
-      "field_count": 49
+      "field_count": 36
     },
     "telemetry": {
+      "estimate_to_decision_maximum_lag_ticks": 60000000,
       "maximum_boot": 187,
-      "maximum_concurrent": 196,
+      "maximum_concurrent": 170,
       "nonactive_timing_health": 92,
       "queue_depth": 197
     }
   },
-  "mismatch_disposition": {
-    "automatic_abort_or_teardown": false,
-    "continue_capture": true,
-    "new_setup_or_arm_authority": false,
-    "preserve_last_confirmed_dac_code": true,
-    "preserve_parsed_attempt": true,
-    "preserve_raw_bytes": true,
-    "state": "review_required_diagnostic_hold"
-  },
+  "mismatch_disposition": "recording_or_analysis_failure_without_instrument_authority",
   "raw_only_diagnostics": {
     "disposition": "raw_evidence_only_never_control_or_terminal",
-    "first_consumer": "capture_device.raw_serial_log",
+    "first_consumer": "instrument_recorder.raw_segments",
     "late_attach_fragment": {
       "admissible_before_first_recognized_protocol_line_only": true,
       "content": "bounded_uninterpreted_carrier_fragment",
@@ -544,247 +452,6 @@
         "counted_edges"
       ]
     },
-    "active_hybrid_decisions_v3": {
-      "atom": [
-        "time_domain",
-        "run_identity",
-        "build_identity",
-        "image_identity",
-        "tight_state",
-        "state_before",
-        "state_after",
-        "authority_state",
-        "response_class",
-        "reason"
-      ],
-      "binary64_decimal": [
-        "frequency_error_hz",
-        "frequency_term_hz",
-        "phase_term_hz",
-        "combined_demand_hz",
-        "raw_combined_delta_codes"
-      ],
-      "bool": [
-        "phase_continuous",
-        "phase_current",
-        "phase_step_detected",
-        "phase_recorder_published",
-        "phase_materially_influenced",
-        "step_limited",
-        "range_clamped",
-        "cadence_limited",
-        "count_limited",
-        "cumulative_budget_limited",
-        "downstream_epoch_exact",
-        "actionable"
-      ],
-      "int32": [
-        "accumulated_edge_error_counts",
-        "requested_delta_codes",
-        "counterfactual_frequency_only_delta_codes"
-      ],
-      "int64": [
-        "relative_phase_cycles"
-      ],
-      "record_type": [
-        "record_type"
-      ],
-      "schema_version": [
-        "schema_version"
-      ],
-      "sha256": [
-        "frequency_estimator_sha256",
-        "phase_estimator_sha256",
-        "active_policy_sha256",
-        "response_policy_sha256"
-      ],
-      "uint16": [
-        "current_applied_code",
-        "phase_applied_code",
-        "requested_code",
-        "correction_count_before",
-        "cumulative_movement_before_codes",
-        "actual_applied_code"
-      ],
-      "uint32": [
-        "hybrid_record_sequence",
-        "decision_sequence",
-        "decision_timestamp_s",
-        "capture_session",
-        "phase_epoch",
-        "phase_observation_sequence",
-        "dac_epoch",
-        "phase_dac_epoch",
-        "request_sequence",
-        "acceptance_sequence",
-        "application_sequence",
-        "actual_dac_epoch",
-        "source_acceptance_epoch",
-        "source_opening_accepted_boundary_ordinal",
-        "source_closing_accepted_boundary_ordinal"
-      ],
-      "uint64": [
-        "decision_timestamp_ticks"
-      ]
-    },
-    "active_hybrid_maintenance_v2": {
-      "atom": [
-        "event",
-        "time_domain",
-        "run_identity",
-        "build_identity",
-        "image_identity",
-        "policy_id",
-        "transaction_event",
-        "maintenance_state_before",
-        "maintenance_state_after",
-        "frontier_relation",
-        "reason"
-      ],
-      "bool": [
-        "phase_valid",
-        "downstream_epoch_exact",
-        "request_pending_before",
-        "request_pending_after",
-        "response_pending_before",
-        "response_pending_after",
-        "metadata_hold_before",
-        "metadata_hold_after",
-        "actionable"
-      ],
-      "int128": [
-        "raw_fll_demand_picocodes",
-        "raw_pll_demand_picocodes",
-        "candidate_total_demand_picocodes"
-      ],
-      "int32": [
-        "requested_delta_codes"
-      ],
-      "int64": [
-        "committed_fll_debt_before_picocodes",
-        "committed_pll_debt_before_picocodes",
-        "committed_fll_debt_after_picocodes",
-        "committed_pll_debt_after_picocodes"
-      ],
-      "int8": [
-        "interval_sign"
-      ],
-      "record_type": [
-        "record_type"
-      ],
-      "schema_version": [
-        "schema_version"
-      ],
-      "sha256": [
-        "active_policy_sha256",
-        "frequency_estimator_sha256"
-      ],
-      "uint32": [
-        "current_applied_code",
-        "actual_applied_code",
-        "requested_code",
-        "evidence_burst_record_ordinal",
-        "evidence_burst_record_count",
-        "source_acceptance_epoch",
-        "source_opening_accepted_boundary_ordinal",
-        "source_closing_accepted_boundary_ordinal"
-      ],
-      "uint64": [
-        "maintenance_record_sequence",
-        "event_timestamp_ticks",
-        "capture_session",
-        "phase_epoch",
-        "phase_observation_sequence",
-        "current_dac_epoch",
-        "hybrid_record_sequence",
-        "decision_sequence",
-        "transaction_record_sequence",
-        "request_sequence",
-        "application_sequence",
-        "actual_dac_epoch",
-        "requalification_accepted_boundary_ordinal",
-        "evidence_burst_sequence"
-      ],
-      "uint8": [
-        "persistence_count_before",
-        "persistence_count_after",
-        "safe_cap_codes",
-        "requalification_window_count_before",
-        "requalification_window_count_after"
-      ]
-    },
-    "active_transactions_v3": {
-      "atom": [
-        "event",
-        "time_domain",
-        "run_identity",
-        "build_identity",
-        "image_identity",
-        "active_state",
-        "response_class",
-        "reason",
-        "evidence_state"
-      ],
-      "binary64_decimal": [
-        "pre_error_hz",
-        "post_error_hz",
-        "observed_response_hz",
-        "cumulative_response_hz"
-      ],
-      "bool": [
-        "i2c_ok",
-        "clamped",
-        "ambiguous",
-        "estimator_history_reset",
-        "actionable"
-      ],
-      "int32": [
-        "requested_delta_codes"
-      ],
-      "record_type": [
-        "record_type"
-      ],
-      "schema_version": [
-        "schema_version"
-      ],
-      "sha256": [
-        "estimator_sha256",
-        "model_sha256",
-        "active_policy_sha256",
-        "response_policy_sha256",
-        "numerical_policy_sha256"
-      ],
-      "uint16": [
-        "current_applied_code",
-        "requested_code",
-        "correction_ordinal",
-        "cumulative_after_codes",
-        "accepted_code",
-        "applied_code",
-        "application_sequence",
-        "correction_count",
-        "cumulative_movement_codes",
-        "consecutive_indeterminate"
-      ],
-      "uint32": [
-        "transaction_record_sequence",
-        "session_id",
-        "authorization_sequence",
-        "nonce",
-        "request_sequence",
-        "decision_sequence",
-        "decision_timestamp_s",
-        "accepted_timestamp_s",
-        "application_timestamp_s",
-        "dac_epoch",
-        "source_acceptance_epoch",
-        "source_opening_accepted_boundary_ordinal",
-        "source_closing_accepted_boundary_ordinal"
-      ],
-      "uint64": [
-        "event_timestamp_ticks"
-      ]
-    },
     "control_previews_v1": {
       "atom": [
         "decision_id",
@@ -1040,6 +707,175 @@
         "timestamp_ticks"
       ]
     },
+    "instrument_application_v2": {
+      "atom": [
+        "timestamp_domain"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint64": [
+        "record_sequence",
+        "session",
+        "capture_session",
+        "sequence",
+        "dac_epoch",
+        "requested_code",
+        "applied_code",
+        "attempted",
+        "ok",
+        "accepted",
+        "rejection",
+        "timestamp_ticks"
+      ]
+    },
+    "instrument_command_v2": {
+      "atom": [
+        "receipt",
+        "timestamp_domain"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint64": [
+        "record_sequence",
+        "session",
+        "sequence",
+        "mode",
+        "code",
+        "dwell_s",
+        "command_completed",
+        "timestamp_ticks"
+      ]
+    },
+    "instrument_decision_v2": {
+      "atom": [
+        "reason"
+      ],
+      "int128": [
+        "raw_fll_picocodes",
+        "raw_pll_picocodes"
+      ],
+      "int64": [
+        "delta_codes",
+        "edge_error_counts",
+        "relative_phase_cycles",
+        "debt_fll_picocodes",
+        "debt_pll_picocodes"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint64": [
+        "record_sequence",
+        "session",
+        "capture_session",
+        "sequence",
+        "timestamp_ticks",
+        "acceptance_epoch",
+        "opening_accepted_boundary",
+        "closing_accepted_boundary",
+        "dac_epoch",
+        "applied_code",
+        "requested_code",
+        "phase_epoch",
+        "phase_valid",
+        "tight_inside",
+        "authority_valid",
+        "settled",
+        "metadata_qualified"
+      ]
+    },
+    "instrument_response_v2": {
+      "atom": [
+        "reason",
+        "timestamp_domain"
+      ],
+      "int64": [
+        "delta_codes"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint64": [
+        "record_sequence",
+        "session",
+        "capture_session",
+        "sequence",
+        "dac_epoch",
+        "classification",
+        "timestamp_ticks",
+        "acceptance_epoch",
+        "opening_accepted_boundary",
+        "closing_accepted_boundary"
+      ]
+    },
+    "instrument_state_v2": {
+      "atom": [
+        "mode",
+        "requested_mode",
+        "state",
+        "reason",
+        "timestamp_domain"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint64": [
+        "record_sequence",
+        "session",
+        "capture_session",
+        "acceptance_epoch",
+        "accepted_boundary",
+        "metadata_sequence",
+        "reference_hold",
+        "metadata_hold",
+        "response_incomplete",
+        "applied_code",
+        "dac_epoch",
+        "timestamp_ticks"
+      ]
+    },
+    "instrument_write_v2": {
+      "atom": [
+        "timestamp_domain"
+      ],
+      "record_type": [
+        "record_type"
+      ],
+      "schema_version": [
+        "schema_version"
+      ],
+      "uint64": [
+        "record_sequence",
+        "session",
+        "capture_session",
+        "sequence",
+        "dac_epoch",
+        "prior_code",
+        "requested_code",
+        "prior_known",
+        "kind",
+        "deadline_ticks",
+        "decision_sequence",
+        "command_sequence"
+      ]
+    },
     "phase_estimator_outputs_v2": {
       "atom": [
         "source_relative_phase_observation",
@@ -1251,229 +1087,6 @@
       "timestamp_fields": [
         "opening_reference_timestamp_ticks",
         "closing_reference_timestamp_ticks"
-      ]
-    },
-    "active_hybrid_decisions_v3": {
-      "domain_fields": [
-        "time_domain"
-      ],
-      "fields": [
-        "record_type",
-        "schema_version",
-        "hybrid_record_sequence",
-        "decision_sequence",
-        "decision_timestamp_ticks",
-        "time_domain",
-        "decision_timestamp_s",
-        "run_identity",
-        "build_identity",
-        "image_identity",
-        "capture_session",
-        "source_acceptance_epoch",
-        "source_opening_accepted_boundary_ordinal",
-        "source_closing_accepted_boundary_ordinal",
-        "frequency_estimator_sha256",
-        "frequency_error_hz",
-        "accumulated_edge_error_counts",
-        "tight_state",
-        "phase_estimator_sha256",
-        "phase_epoch",
-        "phase_observation_sequence",
-        "relative_phase_cycles",
-        "phase_continuous",
-        "phase_current",
-        "phase_step_detected",
-        "phase_recorder_published",
-        "current_applied_code",
-        "dac_epoch",
-        "phase_applied_code",
-        "phase_dac_epoch",
-        "state_before",
-        "state_after",
-        "frequency_term_hz",
-        "phase_term_hz",
-        "combined_demand_hz",
-        "raw_combined_delta_codes",
-        "requested_delta_codes",
-        "requested_code",
-        "counterfactual_frequency_only_delta_codes",
-        "phase_materially_influenced",
-        "step_limited",
-        "range_clamped",
-        "cadence_limited",
-        "count_limited",
-        "cumulative_budget_limited",
-        "correction_count_before",
-        "cumulative_movement_before_codes",
-        "authority_state",
-        "request_sequence",
-        "acceptance_sequence",
-        "application_sequence",
-        "response_class",
-        "actual_applied_code",
-        "actual_dac_epoch",
-        "downstream_epoch_exact",
-        "reason",
-        "active_policy_sha256",
-        "response_policy_sha256",
-        "actionable"
-      ],
-      "first_consumer": "adaptive_hybrid_supervisor",
-      "implicit_time_domain": null,
-      "record_types": [
-        "AHY"
-      ],
-      "schema_version": 3,
-      "sequence_field": "hybrid_record_sequence",
-      "session_field": "capture_session",
-      "timestamp_fields": [
-        "decision_timestamp_ticks"
-      ]
-    },
-    "active_hybrid_maintenance_v2": {
-      "domain_fields": [
-        "time_domain"
-      ],
-      "fields": [
-        "record_type",
-        "schema_version",
-        "maintenance_record_sequence",
-        "event",
-        "event_timestamp_ticks",
-        "time_domain",
-        "run_identity",
-        "build_identity",
-        "image_identity",
-        "policy_id",
-        "active_policy_sha256",
-        "capture_session",
-        "source_acceptance_epoch",
-        "source_opening_accepted_boundary_ordinal",
-        "source_closing_accepted_boundary_ordinal",
-        "frequency_estimator_sha256",
-        "phase_epoch",
-        "phase_observation_sequence",
-        "phase_valid",
-        "current_applied_code",
-        "current_dac_epoch",
-        "hybrid_record_sequence",
-        "decision_sequence",
-        "transaction_record_sequence",
-        "transaction_event",
-        "request_sequence",
-        "application_sequence",
-        "actual_applied_code",
-        "actual_dac_epoch",
-        "downstream_epoch_exact",
-        "maintenance_state_before",
-        "maintenance_state_after",
-        "frontier_relation",
-        "interval_sign",
-        "persistence_count_before",
-        "persistence_count_after",
-        "raw_fll_demand_picocodes",
-        "raw_pll_demand_picocodes",
-        "candidate_total_demand_picocodes",
-        "safe_cap_codes",
-        "requested_delta_codes",
-        "requested_code",
-        "committed_fll_debt_before_picocodes",
-        "committed_pll_debt_before_picocodes",
-        "committed_fll_debt_after_picocodes",
-        "committed_pll_debt_after_picocodes",
-        "request_pending_before",
-        "request_pending_after",
-        "response_pending_before",
-        "response_pending_after",
-        "metadata_hold_before",
-        "metadata_hold_after",
-        "requalification_window_count_before",
-        "requalification_window_count_after",
-        "requalification_accepted_boundary_ordinal",
-        "evidence_burst_sequence",
-        "evidence_burst_record_ordinal",
-        "evidence_burst_record_count",
-        "reason",
-        "actionable"
-      ],
-      "first_consumer": "adaptive_hybrid_replay",
-      "implicit_time_domain": null,
-      "record_types": [
-        "AHM"
-      ],
-      "schema_version": 2,
-      "sequence_field": "maintenance_record_sequence",
-      "session_field": "capture_session",
-      "timestamp_fields": [
-        "event_timestamp_ticks"
-      ]
-    },
-    "active_transactions_v3": {
-      "domain_fields": [
-        "time_domain"
-      ],
-      "fields": [
-        "record_type",
-        "schema_version",
-        "transaction_record_sequence",
-        "event",
-        "event_timestamp_ticks",
-        "time_domain",
-        "run_identity",
-        "build_identity",
-        "image_identity",
-        "session_id",
-        "authorization_sequence",
-        "nonce",
-        "request_sequence",
-        "decision_sequence",
-        "source_acceptance_epoch",
-        "source_opening_accepted_boundary_ordinal",
-        "source_closing_accepted_boundary_ordinal",
-        "decision_timestamp_s",
-        "current_applied_code",
-        "requested_delta_codes",
-        "requested_code",
-        "correction_ordinal",
-        "cumulative_after_codes",
-        "pre_error_hz",
-        "accepted_code",
-        "accepted_timestamp_s",
-        "applied_code",
-        "application_sequence",
-        "application_timestamp_s",
-        "i2c_ok",
-        "clamped",
-        "ambiguous",
-        "dac_epoch",
-        "estimator_history_reset",
-        "correction_count",
-        "cumulative_movement_codes",
-        "post_error_hz",
-        "observed_response_hz",
-        "cumulative_response_hz",
-        "consecutive_indeterminate",
-        "active_state",
-        "response_class",
-        "reason",
-        "estimator_sha256",
-        "model_sha256",
-        "active_policy_sha256",
-        "response_policy_sha256",
-        "numerical_policy_sha256",
-        "actionable",
-        "evidence_state"
-      ],
-      "first_consumer": "adaptive_hybrid_transactions",
-      "implicit_time_domain": null,
-      "record_types": [
-        "ACT"
-      ],
-      "schema_version": 3,
-      "sequence_field": "transaction_record_sequence",
-      "session_field": "session_id",
-      "timestamp_fields": [
-        "event_timestamp_ticks"
       ]
     },
     "control_previews_v1": {
@@ -1742,6 +1355,215 @@
         "timestamp_ticks"
       ]
     },
+    "instrument_application_v2": {
+      "domain_fields": [
+        "timestamp_domain"
+      ],
+      "fields": [
+        "record_type",
+        "schema_version",
+        "record_sequence",
+        "session",
+        "capture_session",
+        "sequence",
+        "dac_epoch",
+        "requested_code",
+        "applied_code",
+        "attempted",
+        "ok",
+        "accepted",
+        "rejection",
+        "timestamp_ticks",
+        "timestamp_domain"
+      ],
+      "first_consumer": "recorder raw evidence; offline replay",
+      "implicit_time_domain": null,
+      "record_types": [
+        "IAP"
+      ],
+      "schema_version": 2,
+      "sequence_field": "record_sequence",
+      "session_field": "session",
+      "timestamp_fields": [
+        "timestamp_ticks"
+      ]
+    },
+    "instrument_command_v2": {
+      "domain_fields": [
+        "timestamp_domain"
+      ],
+      "fields": [
+        "record_type",
+        "schema_version",
+        "record_sequence",
+        "session",
+        "sequence",
+        "mode",
+        "code",
+        "dwell_s",
+        "receipt",
+        "command_completed",
+        "timestamp_ticks",
+        "timestamp_domain"
+      ],
+      "first_consumer": "recorder raw evidence; offline replay",
+      "implicit_time_domain": null,
+      "record_types": [
+        "ICM"
+      ],
+      "schema_version": 2,
+      "sequence_field": "record_sequence",
+      "session_field": "session",
+      "timestamp_fields": [
+        "timestamp_ticks"
+      ]
+    },
+    "instrument_decision_v2": {
+      "domain_fields": [],
+      "fields": [
+        "record_type",
+        "schema_version",
+        "record_sequence",
+        "session",
+        "capture_session",
+        "sequence",
+        "timestamp_ticks",
+        "acceptance_epoch",
+        "opening_accepted_boundary",
+        "closing_accepted_boundary",
+        "dac_epoch",
+        "applied_code",
+        "delta_codes",
+        "requested_code",
+        "edge_error_counts",
+        "phase_epoch",
+        "relative_phase_cycles",
+        "phase_valid",
+        "tight_inside",
+        "authority_valid",
+        "settled",
+        "metadata_qualified",
+        "raw_fll_picocodes",
+        "raw_pll_picocodes",
+        "debt_fll_picocodes",
+        "debt_pll_picocodes",
+        "reason"
+      ],
+      "first_consumer": "recorder raw evidence; offline replay",
+      "implicit_time_domain": "rp2040_timer_us64",
+      "record_types": [
+        "IDC"
+      ],
+      "schema_version": 2,
+      "sequence_field": "record_sequence",
+      "session_field": "session",
+      "timestamp_fields": [
+        "timestamp_ticks"
+      ]
+    },
+    "instrument_response_v2": {
+      "domain_fields": [
+        "timestamp_domain"
+      ],
+      "fields": [
+        "record_type",
+        "schema_version",
+        "record_sequence",
+        "session",
+        "capture_session",
+        "sequence",
+        "dac_epoch",
+        "delta_codes",
+        "classification",
+        "reason",
+        "timestamp_ticks",
+        "acceptance_epoch",
+        "opening_accepted_boundary",
+        "closing_accepted_boundary",
+        "timestamp_domain"
+      ],
+      "first_consumer": "recorder raw evidence; offline replay",
+      "implicit_time_domain": null,
+      "record_types": [
+        "IRS"
+      ],
+      "schema_version": 2,
+      "sequence_field": "record_sequence",
+      "session_field": "session",
+      "timestamp_fields": [
+        "timestamp_ticks"
+      ]
+    },
+    "instrument_state_v2": {
+      "domain_fields": [
+        "timestamp_domain"
+      ],
+      "fields": [
+        "record_type",
+        "schema_version",
+        "record_sequence",
+        "session",
+        "capture_session",
+        "mode",
+        "requested_mode",
+        "state",
+        "reason",
+        "acceptance_epoch",
+        "accepted_boundary",
+        "metadata_sequence",
+        "reference_hold",
+        "metadata_hold",
+        "response_incomplete",
+        "applied_code",
+        "dac_epoch",
+        "timestamp_ticks",
+        "timestamp_domain"
+      ],
+      "first_consumer": "recorder raw evidence; offline replay",
+      "implicit_time_domain": null,
+      "record_types": [
+        "IST"
+      ],
+      "schema_version": 2,
+      "sequence_field": "record_sequence",
+      "session_field": "session",
+      "timestamp_fields": [
+        "timestamp_ticks"
+      ]
+    },
+    "instrument_write_v2": {
+      "domain_fields": [
+        "timestamp_domain"
+      ],
+      "fields": [
+        "record_type",
+        "schema_version",
+        "record_sequence",
+        "session",
+        "capture_session",
+        "sequence",
+        "dac_epoch",
+        "prior_code",
+        "requested_code",
+        "prior_known",
+        "kind",
+        "deadline_ticks",
+        "decision_sequence",
+        "command_sequence",
+        "timestamp_domain"
+      ],
+      "first_consumer": "recorder raw evidence; offline replay",
+      "implicit_time_domain": null,
+      "record_types": [
+        "IWR"
+      ],
+      "schema_version": 2,
+      "sequence_field": "record_sequence",
+      "session_field": "session",
+      "timestamp_fields": [
+        "deadline_ticks"
+      ]
+    },
     "phase_estimator_outputs_v2": {
       "domain_fields": [],
       "fields": [
@@ -1913,45 +1735,6 @@
   },
   "relations": [
     {
-      "divisor": 1000000,
-      "id": "active_decision_whole_seconds_from_exact_ticks",
-      "kind": "integer_projection",
-      "on_violation": "firmware_fail_static",
-      "rounding": "floor",
-      "source": "active_hybrid_decisions_v3.decision_timestamp_ticks",
-      "source_domain": "rp2040_monotonic_us64",
-      "target": "active_hybrid_decisions_v3.decision_timestamp_s"
-    },
-    {
-      "id": "estimate_capture_precedes_operational_decision",
-      "kind": "bounded_modular_lag",
-      "maximum_lag_ticks": 60000000,
-      "modulus": 4294967296,
-      "on_violation": "diagnostic_hold",
-      "required_identity": [
-        {
-          "source": "estimates_v3.capture_session",
-          "target": "active_hybrid_decisions_v3.capture_session"
-        },
-        {
-          "source": "estimates_v3.source_acceptance_epoch",
-          "target": "active_hybrid_decisions_v3.source_acceptance_epoch"
-        },
-        {
-          "source": "estimates_v3.source_opening_accepted_boundary_ordinal",
-          "target": "active_hybrid_decisions_v3.source_opening_accepted_boundary_ordinal"
-        },
-        {
-          "source": "estimates_v3.source_closing_accepted_boundary_ordinal",
-          "target": "active_hybrid_decisions_v3.source_closing_accepted_boundary_ordinal"
-        }
-      ],
-      "source": "estimates_v3.estimator_timestamp_ticks",
-      "source_domain": "rp2040_monotonic_us32",
-      "target": "active_hybrid_decisions_v3.decision_timestamp_ticks",
-      "target_domain": "rp2040_monotonic_us64"
-    },
-    {
       "id": "active_status_generation_is_atomic",
       "kind": "monotonic_sequence",
       "on_violation": "diagnostic_hold",
@@ -1961,7 +1744,7 @@
         "keys_exactly_once",
         "complete"
       ],
-      "source": "adaptive_hybrid_active_status_snapshot_v2"
+      "source": "OTIS_INSTRUMENT_STATUS_V2"
     },
     {
       "absent": "defer",
@@ -1973,23 +1756,6 @@
       "health_interpretation": "delta_from_frozen_baseline",
       "id": "lifetime_counters_are_not_current_health",
       "kind": "lifetime_counter"
-    },
-    {
-      "durable": "later_authority_released",
-      "id": "authority_release_is_latched",
-      "kind": "latched_until",
-      "transient": "current_transaction_checkpoint"
-    },
-    {
-      "id": "decision_replay_uses_post_decision_frontier",
-      "kind": "causal_frontier",
-      "required_identity": [
-        "session",
-        "request_sequence",
-        "decision_sequence",
-        "evidence_sequence",
-        "dac_epoch"
-      ]
     },
     {
       "baseline": "first_pre_error_hz",
@@ -2042,7 +1808,7 @@
   ],
   "schema_version": 1,
   "status_snapshots": {
-    "adaptive_hybrid_active_status_snapshot_v2": {
+    "OTIS_INSTRUMENT_STATUS_V2": {
       "component": "adaptive_hybrid",
       "duplicate_key": "protocol_discrepancy_hold",
       "envelope": {
@@ -2055,57 +1821,44 @@
         "complete": "uint32",
         "contract": "atom"
       },
-      "first_consumer": "active_status_live_state.ActiveStatusLiveReducer",
+      "first_consumer": "recorder.InstrumentStatus",
       "keys": [
-        "enabled",
-        "run_identity",
-        "build_identity",
-        "image_identity",
-        "estimator_sha256",
-        "model_sha256",
-        "active_policy_sha256",
-        "response_policy_sha256",
-        "numerical_policy_sha256",
+        "query_nonce",
+        "session_id",
+        "capture_session",
+        "mode",
+        "requested_mode",
         "state",
         "reason",
-        "evidence_pending",
-        "evidence_phase",
-        "capture_lease_live",
-        "manual_start_confirmed",
-        "arm_eligible",
-        "fail_static",
-        "setup_gnss_eligible",
-        "setup_reference_eligible",
-        "setup_partition_healthy",
-        "gnss_metadata_hold_active",
-        "gnss_metadata_hold_transaction_pending",
-        "gnss_metadata_hold_entry_sequence",
-        "gnss_metadata_requalification_sequence",
-        "gnss_qualified_accepted_ordinal",
-        "reference_acceptance_policy_sha256",
-        "reference_acceptance_state",
+        "fault",
+        "applied_code",
+        "confirmed_applied_code_known",
+        "dac_epoch",
+        "command_sequence",
+        "command_completed",
+        "operating_end_ticks",
+        "write_sequence",
+        "write_state",
+        "total_applications",
+        "cumulative_movement",
+        "counters_saturated",
+        "instrument_ticks",
+        "instrument_ticks_domain",
         "acceptance_epoch",
         "accepted_boundary_ordinal",
-        "accepted_anchor_current",
-        "hybrid_state",
-        "hybrid_reason",
-        "first_phase_checkpoint_passed",
-        "phase_nonzero_application_count",
-        "phase_material_application_count",
-        "frequency_only_application_count",
-        "session_id",
-        "query_nonce",
-        "uptime_s",
-        "evidence_request_sequence",
-        "expected_setup_code",
-        "confirmed_applied_code_known",
-        "confirmed_applied_code",
-        "correction_count",
-        "cumulative_movement_codes",
-        "dac_epoch",
-        "selected_interval_count",
-        "automatic_retry",
-        "automatic_restore"
+        "reference_hold",
+        "metadata_hold",
+        "response_incomplete",
+        "active_policy_sha256",
+        "model_sha256",
+        "build_identity",
+        "observation_dropped",
+        "evidence_dropped",
+        "phase_preview_dropped",
+        "telemetry_dropped",
+        "critical_dropped",
+        "direct_rows_dropped",
+        "delivery_coverage"
       ],
       "missing_key": "protocol_discrepancy_hold",
       "ordering": "exact",
@@ -2114,67 +1867,46 @@
       "unknown_key": "protocol_discrepancy_hold",
       "value_wire_types": {
         "atom": [
-          "run_identity",
-          "build_identity",
-          "image_identity",
+          "mode",
+          "requested_mode",
           "state",
           "reason",
-          "evidence_phase",
-          "hybrid_state",
-          "hybrid_reason",
-          "reference_acceptance_state"
+          "fault",
+          "instrument_ticks_domain",
+          "active_policy_sha256",
+          "model_sha256",
+          "build_identity",
+          "delivery_coverage"
         ],
         "bool": [
-          "enabled",
-          "evidence_pending",
-          "capture_lease_live",
-          "manual_start_confirmed",
-          "arm_eligible",
-          "fail_static",
-          "setup_gnss_eligible",
-          "setup_reference_eligible",
-          "setup_partition_healthy",
-          "gnss_metadata_hold_active",
-          "gnss_metadata_hold_transaction_pending",
-          "first_phase_checkpoint_passed",
           "confirmed_applied_code_known",
-          "automatic_retry",
-          "automatic_restore",
-          "accepted_anchor_current"
+          "counters_saturated",
+          "reference_hold",
+          "metadata_hold",
+          "response_incomplete"
         ],
-        "hex_uint16": [
-          "expected_setup_code"
-        ],
-        "sha256": [
-          "estimator_sha256",
-          "model_sha256",
-          "active_policy_sha256",
-          "response_policy_sha256",
-          "numerical_policy_sha256",
-          "reference_acceptance_policy_sha256"
-        ],
-        "uint16": [
-          "phase_nonzero_application_count",
-          "phase_material_application_count",
-          "frequency_only_application_count",
-          "correction_count",
-          "cumulative_movement_codes",
-          "selected_interval_count"
-        ],
-        "uint16_or_unavailable": [
-          "confirmed_applied_code"
-        ],
-        "uint32": [
-          "gnss_metadata_hold_entry_sequence",
-          "gnss_metadata_requalification_sequence",
-          "gnss_qualified_accepted_ordinal",
+        "uint64": [
+          "query_nonce",
+          "session_id",
+          "capture_session",
+          "applied_code",
+          "dac_epoch",
+          "command_sequence",
+          "command_completed",
+          "operating_end_ticks",
+          "write_sequence",
+          "write_state",
+          "total_applications",
+          "cumulative_movement",
+          "instrument_ticks",
           "acceptance_epoch",
           "accepted_boundary_ordinal",
-          "session_id",
-          "query_nonce",
-          "uptime_s",
-          "evidence_request_sequence",
-          "dac_epoch"
+          "observation_dropped",
+          "evidence_dropped",
+          "phase_preview_dropped",
+          "telemetry_dropped",
+          "critical_dropped",
+          "direct_rows_dropped"
         ]
       }
     }

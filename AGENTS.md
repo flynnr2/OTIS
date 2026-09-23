@@ -101,10 +101,18 @@ lasting preference changes.
   to take over an existing transaction. An explicitly authorized campaign
   firmware upload remains a separate operation from ordinary attachment.
 - Keep instrument operating policy separate from serial evidence detail.
+  The agreed replacement direction is autonomous hybrid discipline on boot,
+  with explicit serial-selected observation/hold, fixed-code and finite
+  characterization modes under one firmware owner, plus an optional recording
+  host. Use `docs/50_SOFTWARE/HOST_CONTROL_REPLACEMENT_PROPOSAL.md` for the
+  accepted cutover; do not rebuild the retired mandatory host decision worker.
   Future compact output, full replay, characterization, and integer output
-  division must not create competing control owners. These are design
-  directions, not permission to silently enable autonomous steering or waive
-  the current campaign's leases, acknowledgements, or evidence requirements.
+  division must not create competing control owners. The operator authorized
+  autonomous implementation and removal of backward compatibility. Ordinary
+  operation has no campaign leases, budgets or host correction acknowledgements.
+  Physical deployment remains separate; preserve historical evidence under its
+  original contract. Long-term adoption of the detailed fault mapping awaits
+  the operator's reserved review.
 - Existing D10 implementation scaffolding, test artefacts, and prospective
   wire formats may be replaced completely; no backward compatibility is
   required. Preserve D10's intended external-event role and isolation from
@@ -308,21 +316,23 @@ or deadline expiry, not for observation latency alone.
   supervision. That mode must survive loss of the invoking terminal, require no
   model/API budget, monitor authoritative state and evidence freshness, and
   retain transitions and unresolved escalations independently of notifications.
-  The firmware safety path and sole host command owner remain unchanged.
-- Freeze unattended authority before entry: ordinary steering, exact pending
-  acknowledgements, admitted lease service and specifically rehearsed recovery
-  may proceed without a reviewer. Missing reviewer responses never grant new
+  Firmware remains the operating owner; the optional recorder remains the sole
+  host serial owner. Ordinary operation needs no host lease or acknowledgement.
+- Freeze unattended authority before entry: firmware steering and specifically
+  rehearsed causal recovery may proceed without a reviewer. Historical supervised
+  bundles retain their exact pending-acknowledgement and lease rules. Missing
+  reviewer responses never grant new
   authority through a timeout and never authorize abort or capture teardown.
   Unknown decision-bearing discrepancies retain capture and the last confirmed
   code while holding affected authority. Only fresh causal requalification may
   resume a documented recoverable hold; do not auto-clear a review hold.
-- An explicitly authorized scheduled endpoint may close capture despite a
-  retained diagnostic only when the final static/disarmed actuator and transaction
-  state are independently exact. Retain the unresolved review in the terminal;
-  do not classify it as scientific success or failure. Unverifiable final state
-  keeps the protective hold and recording.
-- Rehearse unanswered escalations beyond a real lease cycle and verify capture
-  progress, retained pending identity, no new SETUP/ARM, and independent abort.
+- An ordinary recorder endpoint closes recording without changing instrument
+  mode. An experiment requiring a static actuator endpoint must preload that
+  firmware-owned transition and verify its exact outcome. Retain unresolved
+  diagnostics; a recording endpoint is not scientific success or failure.
+- Rehearse unanswered escalations across the relevant firmware decision and
+  pending-write boundaries; verify capture progress, retained exact identity
+  and explicit HOLD operation.
   A monitor failure must not kill or restart the control owner. No blind owner
   restart, reset, flash, command replay, or deadline renewal is permitted.
 - Make unattended monitors report state transitions, decision-bearing

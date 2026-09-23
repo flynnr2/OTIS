@@ -15,6 +15,25 @@ from typing import Iterable, Mapping
 RP2040_MONOTONIC_US32_MODULUS = 1 << 32
 
 
+def bounded_us32_capture_to_us64_decision(
+    capture_ticks: int, decision_ticks: int, *, maximum_lag_ticks: int = 60_000_000
+) -> bool:
+    """Project a raw 32-bit RP2040 microsecond coordinate behind a 64-bit one.
+
+    The two coordinates must come from the same RP2040 timer source. The newest
+    non-future projection is the only one that can satisfy a lag below one wrap.
+    """
+    modulus = RP2040_MONOTONIC_US32_MODULUS
+    if (type(capture_ticks) is not int or type(decision_ticks) is not int
+            or not 0 <= capture_ticks < modulus or not 0 <= decision_ticks <= (1 << 64) - 1
+            or not 0 <= maximum_lag_ticks < modulus):
+        return False
+    projected = (decision_ticks // modulus) * modulus + capture_ticks
+    if projected > decision_ticks:
+        projected -= modulus
+    return projected >= 0 and decision_ticks - projected <= maximum_lag_ticks
+
+
 @dataclass(frozen=True)
 class TimeDomain:
     name: str
@@ -38,6 +57,18 @@ class TimeDomain:
 
 
 TIME_DOMAINS: Mapping[str, TimeDomain] = {
+    "rp2040_timer_us64": TimeDomain(
+        name="rp2040_timer_us64",
+        nominal_hz=1_000_000,
+        counter_width_bits=64,
+        modulus_ticks=None,
+        rollover="strict_nonwrapping",
+        source_counter_hz=1_000_000,
+        quantum_ticks=1,
+        quantum_ns=1_000,
+        coordinate_semantics="native_local_non_metrological",
+        provenance="rp2040_time_us_64",
+    ),
     "rp2040_monotonic_us32": TimeDomain(
         name="rp2040_monotonic_us32",
         nominal_hz=1_000_000,

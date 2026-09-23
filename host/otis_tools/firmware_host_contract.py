@@ -25,7 +25,7 @@ GENERATED_CPP_HEADER_PATH = (
     / "firmware/arduino/otis_nano_rp2040_connect/"
     "otis_firmware_host_contract.generated.h"
 )
-EXPECTED_CONTRACT_ID = "OTIS_FIRMWARE_HOST_CONTRACT_V1"
+EXPECTED_CONTRACT_ID = "OTIS_FIRMWARE_HOST_CONTRACT_V2"
 RELATION_KINDS = frozenset(
     {
         "integer_projection",
@@ -914,7 +914,7 @@ def render_cpp_header() -> str:
             f"#define OTIS_EVIDENCE_METADATA_RESPONSE_FRONTIER {evidence['metadata_response_frontier']}u",
             f"#define OTIS_EVIDENCE_REQUEST_FAIL_FRONTIER {evidence['request_fail_frontier']}u",
             f"#define OTIS_EVIDENCE_QUEUE_DEPTH {evidence['queue_depth']}u",
-            f"#define OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS {RELATIONS['estimate_capture_precedes_operational_decision']['maximum_lag_ticks']}ull",
+            f"#define OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS {telemetry['estimate_to_decision_maximum_lag_ticks']}ull",
             f"#define OTIS_TELEMETRY_NONACTIVE_TIMING_HEALTH_COUNT {telemetry['nonactive_timing_health']}u",
             f"#define OTIS_TELEMETRY_MAXIMUM_CONCURRENT_COUNT {telemetry['maximum_concurrent']}u",
             f"#define OTIS_TELEMETRY_MAXIMUM_BOOT_COUNT {telemetry['maximum_boot']}u",
