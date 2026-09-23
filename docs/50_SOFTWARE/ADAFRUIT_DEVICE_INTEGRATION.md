@@ -84,10 +84,10 @@ Keep Arduino's compiler/board packages in each Mac's local `~/Library/Arduino15`
 and build caches local. Adafruit libraries are source code targeting RP2040 and
 are shared in the repository. Do not swap native compiler packages in shared
 Documents or sync Arduino's installed package directory between unlike hosts.
-Install the manifest's exact RP2040 core 6.0.0 on each Mac with Boards Manager or:
+Install the manifest's exact RP2040 core 6.1.0 on each Mac with Boards Manager or:
 
 ```sh
-arduino-cli core install rp2040:rp2040@6.0.0 --additional-urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+arduino-cli core install rp2040:rp2040@6.1.0 --additional-urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
 ```
 
 Then use the ordinary `tools/build_firmware.py` entry point. Arduino selects the

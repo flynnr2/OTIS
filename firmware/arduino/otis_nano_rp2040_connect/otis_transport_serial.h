@@ -7,7 +7,11 @@
 bool otis_transport_begin(uint32_t baud);
 size_t otis_transport_write_char(char c);
 size_t otis_transport_write_cstr(const char *s);
-size_t otis_transport_write_bytes(const uint8_t *data, size_t length);
+// Sole foreground frame owner only. One USB mutex try-enter and one bounded
+// FIFO copy; returns accepted byte count. Retain the same frame and offset
+// until complete, so a stalled USB endpoint cannot interleave rows.
+size_t otis_transport_try_write_frame_chunk(const uint8_t *data,
+                                            size_t length);
 // Optional row admission on the pinned bare-metal Arduino-Pico USB backend.
 // One nonblocking USB-mutex attempt and one FIFO copy; reserve 64 bytes for
 // canonical traffic. False drops the row without retry, wait, or fault.
@@ -18,9 +22,18 @@ size_t otis_transport_write_bytes(const uint8_t *data, size_t length);
 // discard accepted bytes later. No completion/delivery guarantee is implied.
 bool otis_transport_try_write_diagnostic(const uint8_t *data, size_t length);
 size_t otis_transport_write_uint32(uint32_t v);
+// Nonblocking estimate after a USB mutex try-enter; reserves diagnostic room.
 size_t otis_transport_available_for_write(void);
 void otis_transport_flush_if_needed(void);
 bool otis_transport_ready(void);
 uint64_t otis_transport_written_bytes(void);
+// Core 0 direct CSV emitters assemble newline-terminated rows in bounded
+// storage. The sole serial frame arbiter services one row until complete.
+bool otis_transport_row_pending(void);
+bool otis_transport_row_active(void);
+uint32_t otis_transport_row_free_slots(void);
+void otis_transport_service_row(void);
+void otis_transport_discard_rows(void);
+uint32_t otis_transport_row_dropped(void);
 
 #endif

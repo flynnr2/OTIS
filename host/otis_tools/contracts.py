@@ -558,25 +558,30 @@ CONTRACT_SCHEMA_VERSIONS = {
     "tight_deadband_decisions_v1": 1,
 }
 
-# Detailed validators remain explicit below. Their layouts and versions are
-# mechanically subordinate to the current firmware/host contract authority.
-if CONTRACT_FIELDS != {
-    name: list(fields) for name, fields in AUTHORITY_RECORD_FIELDS.items()
-}:
-    raise RuntimeError(
-        "host record layouts differ from otis_firmware_host_contract_v1"
-    )
-if CONTRACT_RECORD_TYPES != {
-    name: set(record_types)
-    for name, record_types in AUTHORITY_RECORD_TYPES.items()
-}:
-    raise RuntimeError(
-        "host record tags differ from otis_firmware_host_contract_v1"
-    )
-if CONTRACT_SCHEMA_VERSIONS != AUTHORITY_RECORD_SCHEMA_VERSIONS:
-    raise RuntimeError(
-        "host schema versions differ from otis_firmware_host_contract_v1"
-    )
+# The current authority declares the new instrument records. Retired host
+# transaction/decision/maintenance contracts have no current live reader;
+# historical packages are interpreted at their recorded revision.
+RETIRED_CONTROL_CONTRACTS = frozenset({
+    "active_transactions_v3", "active_hybrid_decisions_v3",
+    "active_hybrid_maintenance_v2",
+})
+_declared_fields = CONTRACT_FIELDS
+_declared_types = CONTRACT_RECORD_TYPES
+_declared_versions = CONTRACT_SCHEMA_VERSIONS
+CURRENT_RECORDS = {
+    name: record for name, record in FIRMWARE_HOST_RECORDS.items()
+    if name not in RETIRED_CONTROL_CONTRACTS
+}
+for _name in _declared_fields.keys() & CURRENT_RECORDS.keys():
+    if (_declared_fields[_name] != list(AUTHORITY_RECORD_FIELDS[_name])
+            or _declared_types[_name] != set(AUTHORITY_RECORD_TYPES[_name])
+            or _declared_versions[_name] != AUTHORITY_RECORD_SCHEMA_VERSIONS[_name]):
+        raise RuntimeError(f"current {_name} layout differs from firmware/host authority")
+CONTRACT_FIELDS = {name: list(AUTHORITY_RECORD_FIELDS[name]) for name in CURRENT_RECORDS}
+CONTRACT_RECORD_TYPES = {name: set(AUTHORITY_RECORD_TYPES[name]) for name in CURRENT_RECORDS}
+CONTRACT_SCHEMA_VERSIONS = {
+    name: AUTHORITY_RECORD_SCHEMA_VERSIONS[name] for name in CURRENT_RECORDS
+}
 
 SEQUENCE_FIELDS = {
     "raw_events_v1": "event_seq",
@@ -660,43 +665,32 @@ SESSION_FIELDS = {
     "phase_estimator_outputs_v2": "capture_session",
 }
 
-if SEQUENCE_FIELDS != {
-    name: str(record["sequence_field"])
-    for name, record in FIRMWARE_HOST_RECORDS.items()
-}:
-    raise RuntimeError(
-        "host sequence fields differ from otis_firmware_host_contract_v1"
-    )
-if TIMESTAMP_FIELDS != {
-    name: tuple(record["timestamp_fields"])
-    for name, record in FIRMWARE_HOST_RECORDS.items()
-}:
-    raise RuntimeError(
-        "host timestamp fields differ from otis_firmware_host_contract_v1"
-    )
-if DOMAIN_FIELDS != {
-    name: tuple(record["domain_fields"])
-    for name, record in FIRMWARE_HOST_RECORDS.items()
-}:
-    raise RuntimeError(
-        "host domain fields differ from otis_firmware_host_contract_v1"
-    )
-if CONTRACT_IMPLICIT_TIME_DOMAINS != {
+_declared_sequences = SEQUENCE_FIELDS
+_declared_timestamps = TIMESTAMP_FIELDS
+_declared_domains = DOMAIN_FIELDS
+_declared_implicit_domains = CONTRACT_IMPLICIT_TIME_DOMAINS
+_declared_sessions = SESSION_FIELDS
+for _name in _declared_sequences.keys() & CURRENT_RECORDS.keys():
+    _record = CURRENT_RECORDS[_name]
+    if (_declared_sequences[_name] != _record["sequence_field"]
+            or _declared_timestamps[_name] != tuple(_record["timestamp_fields"])
+            or _declared_domains[_name] != tuple(_record["domain_fields"])
+            or _declared_implicit_domains.get(_name) != _record["implicit_time_domain"]
+            or _declared_sessions.get(_name) != _record["session_field"]):
+        raise RuntimeError(f"current {_name} progression differs from firmware/host authority")
+SEQUENCE_FIELDS = {name: str(record["sequence_field"]) for name, record in CURRENT_RECORDS.items()}
+TIMESTAMP_FIELDS = {name: tuple(record["timestamp_fields"]) for name, record in CURRENT_RECORDS.items()}
+DOMAIN_FIELDS = {name: tuple(record["domain_fields"]) for name, record in CURRENT_RECORDS.items()}
+CONTRACT_IMPLICIT_TIME_DOMAINS = {
     name: str(record["implicit_time_domain"])
-    for name, record in FIRMWARE_HOST_RECORDS.items()
+    for name, record in CURRENT_RECORDS.items()
     if record["implicit_time_domain"] is not None
-}:
-    raise RuntimeError(
-        "host implicit domains differ from otis_firmware_host_contract_v1"
-    )
-if SESSION_FIELDS != {
+}
+SESSION_FIELDS = {
     name: str(record["session_field"])
-    for name, record in FIRMWARE_HOST_RECORDS.items()
+    for name, record in CURRENT_RECORDS.items()
     if record["session_field"] is not None
-}:
-    raise RuntimeError(
-        "host session fields differ from otis_firmware_host_contract_v1"
-    )
+}
 
 FLAG_KNOWN_MASK_V1 = 0xFFFF
 VALID_EDGES = {"R", "F", "B"}

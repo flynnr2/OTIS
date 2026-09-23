@@ -95,6 +95,37 @@ int main() {
  assert(otis_transport_written_bytes() == n);
  assert(!otis_transport_try_write_diagnostic(row, n));
  assert(writes == 1 && otis_transport_written_bytes() == n && !locked);
+ otis_transport_begin(115200u);
+ assert(otis_transport_write_cstr("STS,") == 4u);
+ assert(otis_transport_write_uint32(42u) == 2u);
+ assert(otis_transport_write_cstr("\\r\\n") == 2u);
+ assert(otis_transport_row_pending() && !otis_transport_row_active());
+ contention = true;
+ otis_transport_service_row();
+ assert(otis_transport_row_active() && writes == 1u);
+ contention = false; capacity = 128u;
+ otis_transport_service_row();
+ assert(!otis_transport_row_pending() && writes == 2u);
+ assert(memcmp(copied, "STS,42\\r\\n", 8u) == 0);
+ for (unsigned i = 0u; i < 3u; ++i)
+   otis_transport_write_cstr("STS,queued\\r\\n");
+ assert(otis_transport_row_free_slots() == 0u);
+ assert(otis_transport_row_dropped() == 1u);
+ otis_transport_discard_rows();
+ assert(!otis_transport_row_pending());
+ assert(otis_transport_row_dropped() == 3u);
+ char too_long[1600];
+ memset(too_long, 'x', sizeof(too_long));
+ too_long[sizeof(too_long) - 1u] = '\\n';
+ assert(otis_transport_write_cstr("OK\\r\\n") == 4u);
+ for (unsigned i = 0u; i < sizeof(too_long); ++i)
+   otis_transport_write_char(too_long[i]);
+ assert(otis_transport_row_dropped() == 4u);
+ assert(otis_transport_row_pending());
+ capacity = 128u;
+ otis_transport_service_row();
+ assert(memcmp(copied, "OK\\r\\n", 4u) == 0);
+ assert(!otis_transport_row_pending());
 }
 """)
     executable = tmp_path / "diagnostic_transport"

@@ -3,8 +3,8 @@
   "builder_id": "otis_fixed_firmware_builder_v1",
   "image": {
     "id": "adaptive_hybrid_regulation",
-    "firmware_version": "OTIS_ADAPTIVE_HYBRID_REGULATION_V1",
-    "purpose": "Fixed adaptive hybrid oscillator regulation with D14 reference authority, D8 count authority, GNSS qualification, D9 clock forwarding, fail-local D6 monitoring, and a reserved D10 external-event seam whose capture backend is not implemented."
+    "firmware_version": "OTIS_AUTONOMOUS_INSTRUMENT_V2",
+    "purpose": "Autonomous hybrid discipline on boot with serial-selected hold, fixed-code and finite characterization; D14 reference, D8 oscillator, D9 forwarding and optional recording host."
   },
   "capabilities": {
     "external_event_capture": {
@@ -58,9 +58,9 @@
     "fqbn": "rp2040:rp2040:arduino_nano_connect:freq=133",
     "core_provider": "rp2040",
     "core_architecture": "rp2040",
-    "core_version": "6.0.0",
-    "core_archive_sha256": "d2163a321748be872a29cb99ead739840990d3ddf0935de756eb52f9fc2b5d46",
-    "core_installed_sha256": "ad07711b86d0e75a602b9d656a8d1a37733913f8f0995b4bb2008db414d42c33"
+    "core_version": "6.1.0",
+    "core_archive_sha256": "63e69c45285e25ccd8acaf87db16c25ff67d834776bd3ce1b582ecc7782527dc",
+    "core_installed_sha256": "638bc436b7b00a9a4421c9b3c8d60f0aca0b9a31fa152e7c1b87b4ba489c9cdc"
   },
   "toolchain": {
     "packager": "rp2040",

@@ -39,15 +39,12 @@ def test_protocol_banner_waits_for_serial_and_remains_one_shot() -> None:
 
     assert "runtime_state.boot.protocol_banner_emitted" in body
     assert "!otis_transport_ready()" in body
-    assert body.index('otis_transport_write_cstr("\\r\\n")') < body.index(
-        "emit_boot_records_if_serial_ready()"
+    assert "otis_transport_row_free_slots()==0" in body
+    assert "emitOtisBootSummary(diagnostic_rows" in body
+    assert body.index("emitRp2040BootDiag(diagnostic_rows)") < body.index(
+        "runtime_state.boot.protocol_banner_emitted=true"
     )
-    assert body.index("emitRp2040BootDiag(Serial)") < body.index(
-        "otis_emit_csv_headers()"
-    )
-    assert body.index("otis_emit_csv_headers()") < body.index(
-        "runtime_state.boot.protocol_banner_emitted = true"
-    )
+    assert "Serial" not in body
     loop_body = source[source.index("void loop()") :]
     assert loop_body.index("emit_protocol_banner_if_serial_ready()") < (
         loop_body.index("service_serial_commands()")

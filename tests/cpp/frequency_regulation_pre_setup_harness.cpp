@@ -145,7 +145,7 @@ int main() {
   warmup_boundary_seen = true;
   settling_until_s = 0u;
   exact_settling_deadline_available = false;
-  constexpr uint64_t kFaultBoundaryTicks = 58841999878ull;
+  constexpr uint64_t kFaultBoundaryTicks = 4353809199878ull;
   constexpr uint64_t kPriorBoundaryTicks = kFaultBoundaryTicks - 1000000ull;
   assert(otis_monotonic_us_extension_seed(
       &timer_extension, kPriorBoundaryTicks, 1u));
@@ -173,12 +173,12 @@ int main() {
   otis_frequency_regulation_live_on_reference_selection(
       &selection, kFaultBoundaryTicks,
       // Deliberately a different whole second from the operational sample.
-      58843u, kOperationalDecisionTicks % OTIS_RP2040_MONOTONIC_US32_MODULUS,
+      uint32_t(kOperationalDecisionTicks/1000000ull)+1u, kOperationalDecisionTicks,
       &exact_code, &active_outcome);
   assert(captured_active_decision_count == 1u);
   assert(captured_active_decision_ticks == kOperationalDecisionTicks);
   assert(captured_active_decision_ticks > kMetadataTransitionTicks);
-  assert(captured_active_decision.timestamp_s == 58842u);
+  assert(captured_active_decision.timestamp_s == kOperationalDecisionTicks/1000000ull);
   assert(captured_active_decision.source_acceptance_epoch == 1u);
   assert(captured_active_decision.source_opening_accepted_boundary_ordinal == 0u);
   assert(captured_active_decision.source_closing_accepted_boundary_ordinal == 600u);
@@ -208,7 +208,7 @@ int main() {
       otis_phase_preview_live_on_reference_selection(&trace.selection, trace.extended_ticks, false);
     otis_frequency_regulation_live_on_reference_selection(&trace.selection,
         trace.extended_ticks, uint32_t(trace.extended_ticks / 1000000u),
-        uint32_t(trace.extended_ticks + 100u), &exact_code, &active_outcome);
+        trace.extended_ticks + 100u, &exact_code, &active_outcome);
   };
   consume();
   trace.advance(500000u, 5000000u);

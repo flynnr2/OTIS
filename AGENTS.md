@@ -101,10 +101,18 @@ lasting preference changes.
   to take over an existing transaction. An explicitly authorized campaign
   firmware upload remains a separate operation from ordinary attachment.
 - Keep instrument operating policy separate from serial evidence detail.
+  The agreed replacement direction is autonomous hybrid discipline on boot,
+  with explicit serial-selected observation/hold, fixed-code and finite
+  characterization modes under one firmware owner, plus an optional recording
+  host. Use `docs/50_SOFTWARE/HOST_CONTROL_REPLACEMENT_PROPOSAL.md` for the
+  accepted cutover; do not rebuild the retired mandatory host decision worker.
   Future compact output, full replay, characterization, and integer output
-  division must not create competing control owners. These are design
-  directions, not permission to silently enable autonomous steering or waive
-  the current campaign's leases, acknowledgements, or evidence requirements.
+  division must not create competing control owners. The operator authorized
+  autonomous implementation and removal of backward compatibility. Ordinary
+  operation has no campaign leases, budgets or host correction acknowledgements.
+  Physical deployment remains separate; preserve historical evidence under its
+  original contract. Long-term adoption of the detailed fault mapping awaits
+  the operator's reserved review.
 - Existing D10 implementation scaffolding, test artefacts, and prospective
   wire formats may be replaced completely; no backward compatibility is
   required. Preserve D10's intended external-event role and isolation from
@@ -126,6 +134,15 @@ lasting preference changes.
   scope boundaries unless the operator explicitly changes project direction.
 
 ## Repository and documentation discipline
+
+- Use `~/Documents/OTIS_DATA/` as the shared development-Mac / bench-Mac
+  exchange location. Before a bench handoff, copy the prepared bundles,
+  manifests/JSON, checksums and current bench prompt there, and name the exact
+  shared paths in the prompt. Return completed bench evidence and result
+  summaries through that location as well. Keep active acquisition local to
+  `runs/`, preserve frozen evidence, and distinguish a verified local copy from
+  confirmed arrival on the other Mac. If access is blocked, report that plainly;
+  do not claim the handoff was copied or synchronized.
 
 - Treat `.gitignore` as an architectural storage boundary. Never force-add an
   ignored file, bypass ignore rules, or weaken them temporarily to stage an

@@ -9,21 +9,14 @@ from host.otis_tools import adaptive_hybrid_replay as replay
 
 
 def _manifest() -> SimpleNamespace:
-    return SimpleNamespace(
-        root=Path("/unused"),
-        files=[
-            {
-                "contract": "active_hybrid_decisions_v3",
-                "path": "active_hybrid_decisions_v3.csv",
-            }
-        ],
-    )
+    return SimpleNamespace(root=Path("/unused"), files=[
+        {"contract": "instrument_decision_v2", "path": "instrument_decision_v2.csv"},
+    ])
 
 
 def _source() -> dict[str, object]:
     return {
         "estimate_id": "est:frequency_regulation:pps_gated_frequency:000001",
-        "estimator_sha256": "a" * 64,
         "source_capture_session": 7,
         "source_acceptance_epoch": 2,
         "source_opening_accepted_boundary_ordinal": 101,
@@ -31,7 +24,6 @@ def _source() -> dict[str, object]:
         "estimator_timestamp_ticks": 700_000_000,
         "time_domain": "rp2040_monotonic_us32",
         "source_dac_epoch": 7,
-        "frequency_error_hz": "0.001666666667",
         "accumulated_edge_error_counts": 1,
         "pass": True,
     }
@@ -39,93 +31,60 @@ def _source() -> dict[str, object]:
 
 def _decision(**changes: str) -> dict[str, str]:
     row = {
-        "decision_sequence": "11",
-        "capture_session": "7",
-        "source_acceptance_epoch": "2",
-        "source_opening_accepted_boundary_ordinal": "101",
-        "source_closing_accepted_boundary_ordinal": "701",
-        "frequency_estimator_sha256": "a" * 64,
-        "frequency_error_hz": "0.001666666667",
-        "accumulated_edge_error_counts": "1",
-        "decision_timestamp_ticks": "700000123",
-        "time_domain": "rp2040_monotonic_us64",
-        "dac_epoch": "7",
+        "sequence": "11", "capture_session": "7",
+        "acceptance_epoch": "2", "opening_accepted_boundary": "101",
+        "closing_accepted_boundary": "701", "edge_error_counts": "1",
+        "timestamp_ticks": "700000123", "dac_epoch": "7",
     }
     row.update(changes)
     return row
 
 
-def _replay(
-    monkeypatch: pytest.MonkeyPatch,
-    decisions: list[dict[str, str]],
-    sources: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
+def _replay(monkeypatch: pytest.MonkeyPatch, decisions: list[dict[str, str]],
+            sources: list[dict[str, object]] | None = None) -> dict[str, object]:
     monkeypatch.setattr(replay, "_read_csv", lambda _path: decisions)
-    return replay.replay_active_decision_measurement_sources(
-        _manifest(),
-        {"selected_estimate_sources": [_source()] if sources is None else sources},
+    return replay.replay_instrument_decision_sources(
+        _manifest(), {"selected_estimate_sources": [_source()] if sources is None else sources}
     )
 
 
-def test_offline_decision_source_join_requires_exact_raw_selected_estimate(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_instrument_decision_source_join_requires_exact_raw_selected_estimate(monkeypatch) -> None:
     result = _replay(monkeypatch, [_decision()])
-
     assert result["exact"] is True
     assert result["decision_count"] == 1
     assert result["consumed_selected_source_count"] == 1
     assert result["unconsumed_selected_source_count"] == 0
-    assert result["joins"] == [
-        {
-            "decision_sequence": "11",
-            "source_key": [7, 2, 101, 701],
-            "estimate_id": _source()["estimate_id"],
-            "exact": True,
-        }
-    ]
+    assert result["joins"] == [{
+        "decision_sequence": "11", "source_key": [7, 2, 101, 701],
+        "estimate_id": _source()["estimate_id"], "exact": True,
+    }]
 
 
-@pytest.mark.parametrize(
-    "changes",
-    [
-        {"source_closing_accepted_boundary_ordinal": "702"},
-        {"decision_timestamp_ticks": "760000001"},
-        {"capture_session": "8"},
-        {"source_acceptance_epoch": "3"},
-        {"frequency_estimator_sha256": "b" * 64},
-        {"dac_epoch": "8"},
-        {"frequency_error_hz": "0.001666666668"},
-        {"accumulated_edge_error_counts": "2"},
-    ],
-)
-def test_offline_decision_source_join_rejects_missing_future_cross_session_or_numeric_source(
-    monkeypatch: pytest.MonkeyPatch, changes: dict[str, str]
+@pytest.mark.parametrize("changes", [
+    {"closing_accepted_boundary": "702"},
+    {"timestamp_ticks": "760000001"},
+    {"capture_session": "8"},
+    {"acceptance_epoch": "3"},
+    {"dac_epoch": "8"},
+    {"edge_error_counts": "2"},
+])
+def test_instrument_source_join_rejects_missing_future_cross_session_or_numeric_source(
+    monkeypatch, changes,
 ) -> None:
     result = _replay(monkeypatch, [_decision(**changes)])
-
     assert result["exact"] is False
     assert result["consumed_selected_source_count"] == 0
     assert result["error_count"] == 1
-    assert result["joins"][0]["exact"] is False
 
 
-def test_offline_decision_source_join_rejects_an_unproven_selected_source(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = {**_source(), "pass": False, "source_exact": False}
-    result = _replay(monkeypatch, [_decision()], [source])
-
-    assert result["exact"] is False
-    assert result["joins"][0]["estimate_id"] == source["estimate_id"]
-    assert result["joins"][0]["exact"] is False
+def test_instrument_source_join_rejects_unproven_or_duplicated_source(monkeypatch) -> None:
+    source = {**_source(), "pass": False}
+    assert _replay(monkeypatch, [_decision()], [source])["exact"] is False
+    assert _replay(monkeypatch, [_decision()], [_source(), _source()])["exact"] is False
 
 
-def test_offline_decision_source_join_allows_unused_estimates_and_zero_ahy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_instrument_source_join_allows_unused_estimates_and_zero_decisions(monkeypatch) -> None:
     result = _replay(monkeypatch, [])
-
     assert result["exact"] is True
     assert result["decision_count"] == 0
     assert result["selected_source_count"] == 1
@@ -133,12 +92,9 @@ def test_offline_decision_source_join_allows_unused_estimates_and_zero_ahy(
     assert result["unconsumed_selected_source_count"] == 1
 
 
-def test_offline_decision_source_join_rejects_orphan_decision_without_estimate(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_instrument_source_join_rejects_orphan_decision(monkeypatch) -> None:
     result = _replay(monkeypatch, [_decision()], [])
-
     assert result["exact"] is False
     assert result["selected_source_count"] == 0
     assert result["joins"][0]["estimate_id"] is None
-    assert result["errors"] == ["AHY 11 has no unique exact selected EST source"]
+    assert result["errors"] == ["IDC 11 has no unique exact selected D14/D8 source"]

@@ -46,7 +46,8 @@ The goal is disciplined, comprehensible engineering.
 The finished instrument should be usable without understanding its engineering
 campaign machinery. Power on, allow acquisition and discipline, use the output;
 attach a host when recording or inspection is useful. This is the intended
-experience, not a claim that autonomous startup is already implemented.
+experience, now implemented as an offline-verified candidate pending physical
+qualification.
 
 Be ruthless about accumulated scaffolding. A component must protect timing
 correctness, preserve necessary evidence, or make an experiment easier to run.
@@ -93,6 +94,19 @@ The project assumes:
 Architectural discussions should continuously ask:
 
 "What actually establishes timing truth?"
+
+---
+
+# Development and Bench Exchange
+
+The development Mac and bench Mac exchange prepared bundles, manifests, JSON,
+checksums, prompts and completed evidence through `~/Documents/OTIS_DATA/`.
+A bench handoff must name the actual shared delivery directory and a return
+location there. Copy and verify the prepared files before reporting delivery;
+a verified local copy does not prove synchronization has reached the other Mac.
+Keep active acquisition in the repository's local `runs/` directory and copy
+completed evidence without changing its records or seals. State access or
+transfer failures explicitly rather than substituting an unshared local path.
 
 ---
 
@@ -175,9 +189,17 @@ provide its output without requiring a host to run the control loop. A host
 attaches to an instrument that may already be acquiring, steering, held, or
 faulted; it discovers that state before requesting authority or a transition.
 Connecting a recorder is not an implicit reset or a claim that the actuator
-starts at a known code. The current acknowledged campaign protocol remains
-binding until a standalone operating policy is explicitly implemented and
-qualified.
+starts at a known code. Historical acknowledged campaigns retain their original
+contracts; they do not impose leases on the autonomous runtime.
+
+The accepted implementation uses autonomous hybrid discipline as the
+boot default, with explicit serial-selected operating modes under the same
+firmware owner. A basic host records; connecting or closing that recorder does
+not change operating mode. The [consolidated replacement proposal](../50_SOFTWARE/HOST_CONTROL_REPLACEMENT_PROPOSAL.md)
+brings this work forward and supersedes the proposed mandatory host decision
+worker. Offline implementation and physical qualification are separate gates;
+ordinary use requires no campaign leases, per-correction host acknowledgements
+or Codex. The detailed fault mapping still needs its reserved operator review.
 
 Compact serial evidence and full replay are different reporting contracts,
 not different owners of timing or control. Characterization and future output

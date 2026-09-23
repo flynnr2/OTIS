@@ -24,7 +24,6 @@ def test_metadata_dispatch_survives_every_transport_path(tmp_path):
         compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
         "-I", str(FIRMWARE), "-I", str(tmp_path),
         str(ROOT / "tests/cpp/core0_metadata_service_harness.cpp"),
-        str(FIRMWARE / "otis_transport_liveness.cpp"),
         "-o", str(executable),
     ], check=True)
     subprocess.run([str(executable)], check=True)

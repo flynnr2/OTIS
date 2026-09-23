@@ -68,7 +68,7 @@ void start_trace(ReferenceSelectionFixture *trace, uint32_t capture_session,
   otis_frequency_regulation_live_on_reference_selection(
       &trace->selection, trace->extended_ticks,
       uint32_t(trace->extended_ticks / 1000000ull),
-      uint32_t(trace->extended_ticks + 100u), code, &outcome);
+      trace->extended_ticks + 100u, code, &outcome);
 }
 
 void advance_and_consume(ReferenceSelectionFixture *trace,
@@ -81,7 +81,7 @@ void advance_and_consume(ReferenceSelectionFixture *trace,
   otis_frequency_regulation_live_on_reference_selection(
       &trace->selection, trace->extended_ticks,
       uint32_t(trace->extended_ticks / 1000000ull),
-      uint32_t(trace->extended_ticks + 100u), code, &outcome);
+      trace->extended_ticks + 100u, code, &outcome);
 }
 
 void produce_selected_decision(ReferenceSelectionFixture *trace,
@@ -134,7 +134,7 @@ int main() {
   otis_frequency_regulation_live_on_reference_selection(
       &estimator_gap, startup.extended_ticks,
       uint32_t(startup.extended_ticks / 1000000ull),
-      uint32_t(startup.extended_ticks + 100u), &unknown_code,
+      startup.extended_ticks + 100u, &unknown_code,
       &estimator_gap_outcome);
   assert(estimator.selected_count == 0u);
   assert(!selected_estimator_valid && !selected_model_applicable);
@@ -155,7 +155,7 @@ int main() {
   otis_frequency_regulation_live_on_reference_selection(
       &startup.selection, startup.extended_ticks,
       uint32_t(startup.extended_ticks / 1000000ull),
-      uint32_t(startup.extended_ticks + 100u), &unknown_code, &outcome);
+      startup.extended_ticks + 100u, &unknown_code, &outcome);
   assert(estimator.selected_count == 0u);
   assert(!selected_estimator_valid && !selected_model_applicable);
   assert(controller.state == OtisFrequencyRegulationState::SetupInhibit);

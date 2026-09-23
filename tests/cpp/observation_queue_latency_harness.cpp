@@ -55,8 +55,11 @@ int main() {
   const uint32_t admitted_reads = clock_reads;
   assert(!otis_dual_core_publish_observation(&source));
   assert(clock_reads == admitted_reads);
-  // Full canonical queue retains its pre-existing non-droppable fault policy.
-  assert(otis_dual_core_fail_static());
+  // Outbound congestion loses a record without invalidating the capture owner.
+  OtisDualCoreQueueStats stats = {};
+  otis_dual_core_get_stats(&stats);
+  assert(stats.observation_dropped == 1u);
+  assert(!otis_dual_core_fail_static());
   for (uint32_t i = 0u; i < OTIS_OBSERVATION_QUEUE_DEPTH; ++i) {
     now_us = 1000u + i;
     assert(otis_dual_core_take_observation(&taken));

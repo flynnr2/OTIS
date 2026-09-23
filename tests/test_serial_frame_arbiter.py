@@ -41,12 +41,14 @@ def test_dual_core_loop_dispatches_exactly_one_chunked_writer() -> None:
     )
     dispatch = sketch[
         sketch.index("bool service_dual_core_serial_frame_transport(void)") :
-        sketch.index("void discard_dual_core_outputs_after_transport_fault", sketch.index("bool service_dual_core_serial_frame_transport(void)"))
+        sketch.index("void note_pre_carrier_discard", sketch.index("bool service_dual_core_serial_frame_transport(void)"))
     ]
     assert "switch (owner)" in dispatch
     assert dispatch.count("service_dual_core_evidence_transport();") == 1
     assert dispatch.count("otis_frequency_regulation_live_service_transport();") == 1
     assert dispatch.count("otis_phase_preview_transport_service();") == 1
+    assert dispatch.count("otis_transport_service_row();") == 1
+    assert "case OtisSerialFrameOwner::DirectRow:" in dispatch
 
     loop = sketch[sketch.index("void loop()") :]
     guard_end = loop.index("service_dual_core_outputs();")

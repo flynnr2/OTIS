@@ -443,7 +443,7 @@ bool otis_frequency_regulation_live_applied_epoch_exact(uint16_t applied_code,
 void otis_frequency_regulation_live_on_reference_selection(
     const OtisReferenceAcceptanceOutcome *selection,
     uint64_t closing_extended_ticks, uint32_t uptime_s,
-    uint64_t operational_decision_raw_ticks,
+    uint64_t operational_decision_ticks,
     const OtisRegulationStaticCodeState *static_code,
     OtisAdaptiveHybridRegulationLiveOutcome *active_outcome) {
   if (active_outcome != nullptr) *active_outcome = {};
@@ -478,15 +478,16 @@ void otis_frequency_regulation_live_on_reference_selection(
   // after refreshing metadata health, so an asynchronous lifecycle transition
   // can never be followed by a backdated decision from a delayed capture.
   uint64_t active_decision_timestamp_ticks = 0u;
-  if (boundary_extended &&
-      operational_decision_raw_ticks < OTIS_RP2040_MONOTONIC_US32_MODULUS) {
-    const uint64_t elapsed_since_capture = otis_monotonic_us32_interval(
-        observation->reference_timestamp_ticks, operational_decision_raw_ticks);
-    if (elapsed_since_capture + observation->timestamp_uncertainty_ticks <=
-            OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS &&
-        current_boundary_extended_ticks <= UINT64_MAX - elapsed_since_capture)
-      active_decision_timestamp_ticks =
-          current_boundary_extended_ticks + elapsed_since_capture;
+  if (boundary_extended && operational_decision_ticks>=current_boundary_extended_ticks) {
+    // The decision timer is already native 64-bit. Compare a bounded source
+    // age with the independently retained low32 capture coordinate; never
+    // reconstruct an operational deadline from a PPS-dependent extension.
+    const uint64_t elapsed_since_capture=operational_decision_ticks-current_boundary_extended_ticks;
+    const uint32_t modular_capture_age=uint32_t(operational_decision_ticks)-observation->reference_timestamp_ticks;
+    if (elapsed_since_capture<=OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS &&
+        elapsed_since_capture==modular_capture_age &&
+        observation->timestamp_uncertainty_ticks<=OTIS_ESTIMATE_TO_DECISION_MAXIMUM_LAG_TICKS-elapsed_since_capture)
+      active_decision_timestamp_ticks=operational_decision_ticks;
   }
   const uint32_t active_decision_timestamp_s = static_cast<uint32_t>(
       active_decision_timestamp_ticks / kCaptureTicksPerSecond);
@@ -546,19 +547,12 @@ void otis_frequency_regulation_live_on_reference_selection(
     // The discontinuity has no selected EST to bind to a CTL record.
     return;
   }
-  if (span.diagnostic_available &&
-      !emit_estimate(false, span, static_code, observation->reference_timestamp_ticks)) {
-    selected_estimator_valid = false;
-    selected_model_applicable = false;
-    return;
-  }
+  if (span.diagnostic_available)
+    emit_estimate(false, span, static_code, observation->reference_timestamp_ticks);
   if (span.selected_available) {
     const uint32_t selected_estimate_seq = estimate_seq;
-    if (!emit_estimate(true, span, static_code, observation->reference_timestamp_ticks)) {
-      selected_estimator_valid = false;
-      selected_model_applicable = false;
-      return;
-    }
+    // EST transport loss affects replay coverage, not the in-memory estimate.
+    emit_estimate(true, span, static_code, observation->reference_timestamp_ticks);
     const bool applicable = code_context_valid(static_code);
     OtisFrequencyRegulationInput input = controller_input(
         uptime_s, span.selected_frequency_hz - kNominalFrequencyHz, true,
@@ -573,7 +567,7 @@ void otis_frequency_regulation_live_on_reference_selection(
     otis_frequency_regulation_engine_evaluate(&controller, &input, &decision);
     selected_estimator_valid = true;
     selected_model_applicable = applicable;
-    const bool tight_evidence_queued = emit_tight_deadband(
+    emit_tight_deadband(
         decision, selected_estimate_seq, observation->reference_timestamp_ticks,
         observation->capture_session, current_dac_epoch,
         span.selected_accumulated_edge_error_counts);
@@ -586,8 +580,7 @@ void otis_frequency_regulation_live_on_reference_selection(
         decision.frequency_error_hz,
         true,
         applicable,
-        decision.preview_available && tight_evidence_queued &&
-            decision.tight_deadband_decision_available &&
+        decision.preview_available && decision.tight_deadband_decision_available &&
             decision.tight_deadband.frequency_controller_eligible,
         decision.preview_available,
     };
@@ -624,13 +617,14 @@ void otis_frequency_regulation_live_on_reference_selection(
     active_decision.phase_recorder_published =
         phase_source_matches && phase_snapshot.recorder_published;
     OtisAdaptiveHybridRegulationLiveOutcome local_active_outcome;
-    otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
-        &active_decision, active_decision_timestamp_ticks,
-        &local_active_outcome);
-    if (active_outcome != nullptr &&
-        !(active_outcome->request_created || active_outcome->faulted ||
-          active_outcome->response_recorded))
-      *active_outcome = local_active_outcome;
+    if (active_decision_timestamp_ticks!=0)
+      otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(
+        &active_decision, active_decision_timestamp_ticks, &local_active_outcome);
+    else {
+      local_active_outcome={};
+      local_active_outcome.reason="operational_decision_domain_or_freshness_ineligible";
+    }
+    if (active_outcome != nullptr) *active_outcome=local_active_outcome;
     emit_control(decision, static_code, observation->reference_timestamp_ticks,
                  selected_estimate_seq);
   }

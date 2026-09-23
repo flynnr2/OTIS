@@ -5,6 +5,16 @@ contingent 72-hour attempt. This is the current execution sequence. The older
 `OTIS_CANONICAL_WORK_PROGRAMME.md` is an exploratory catalogue, not an approved
 hardware migration or an obligation to implement every suggestion.
 
+20 September priority update: the operator has brought firmware-owned autonomous
+startup and host simplification forward as one replacement before another
+extended steering attempt. The [consolidated proposal](../50_SOFTWARE/HOST_CONTROL_REPLACEMENT_PROPOSAL.md)
+supersedes earlier sequencing below that deferred autonomous operation and the
+intermediate mandatory host decision-worker design. Serial-selected operating
+modes remain part of the instrument. On 23 September the replacement was
+implemented for offline verification, with no backward compatibility. Physical
+integration and long-term fault-mapping review remain separate outstanding
+gates; this does not authorize flashing or a new physical run.
+
 ## Scope and working baseline
 
 Complete a comprehensible, resilient timing instrument on the existing RP2040

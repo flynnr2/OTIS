@@ -172,7 +172,7 @@ def test_pps_gated_counter_consumes_single_pio_owner() -> None:
     assert "const OtisPpsCountBoundaryObservation &observation" in count_call
     assert "observation.pps_timestamp_ticks =" not in count_call
     assert "observation.cumulative_down_counter =" not in count_call
-    assert "otis_monotonic_us32_now()" in emit_body[
+    assert "time_us_64()" in emit_body[
         emit_body.index("otis_frequency_regulation_live_on_reference_selection("):
     ]
 

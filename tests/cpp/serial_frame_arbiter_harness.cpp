@@ -32,7 +32,7 @@ struct Producer {
   }
 };
 
-Producer *find(std::array<Producer, 3> *producers,
+Producer *find(std::array<Producer, 4> *producers,
                OtisSerialFrameOwner owner) {
   for (Producer &producer : *producers)
     if (producer.owner == owner) return &producer;
@@ -40,11 +40,12 @@ Producer *find(std::array<Producer, 3> *producers,
 }
 
 OtisSerialFrameReadiness readiness(
-    const std::array<Producer, 3> &producers) {
+    const std::array<Producer, 4> &producers) {
   return {
       producers[0].pending(),
       producers[1].pending(),
       producers[2].pending(),
+      producers[3].pending(),
   };
 }
 
@@ -53,21 +54,20 @@ void test_partial_owner_is_exclusive_and_direct_output_waits() {
   const std::string regulation = "EST," + std::string(90u, 'I') + "\r\n";
   const std::string phase_preview = "RPH," + std::string(100u, 'R') + "\r\n" +
                             "PHE," + std::string(100u, 'H') + "\r\n";
-  std::array<Producer, 3> producers = {{
+  std::array<Producer, 4> producers = {{
       {OtisSerialFrameOwner::DualCoreEvidence, {evidence}},
       {OtisSerialFrameOwner::FrequencyRegulation, {regulation}},
       {OtisSerialFrameOwner::PhasePreview, {phase_preview}},
+      {OtisSerialFrameOwner::DirectRow, {}},
   }};
   const std::array<size_t, 6> capacities = {64u, 0u, 31u, 192u, 7u, 4096u};
   OtisSerialFrameArbiter arbiter = {};
   otis_serial_frame_arbiter_reset(&arbiter);
   std::string wire;
-  bool direct_pending = false;
-  bool direct_written = false;
   OtisSerialFrameOwner partial_owner = OtisSerialFrameOwner::None;
 
   for (size_t iteration = 0u; iteration < 200u; ++iteration) {
-    if (iteration == 2u) direct_pending = true;
+    if (iteration == 2u) producers[3].groups.push_back("STS,1,direct\r\n");
     OtisSerialFrameOwner owner =
         otis_serial_frame_arbiter_claim(&arbiter, readiness(producers));
     if (owner != OtisSerialFrameOwner::None) {
@@ -85,17 +85,12 @@ void test_partial_owner_is_exclusive_and_direct_output_waits() {
       }
       continue;
     }
-    if (direct_pending) {
-      wire += "STS,1,direct\r\n";
-      direct_pending = false;
-      direct_written = true;
-    }
     bool any_pending = false;
     for (const Producer &producer : producers) any_pending |= producer.pending();
-    if (!any_pending && !direct_pending) break;
+    if (!any_pending) break;
   }
 
-  assert(direct_written);
+  assert(!producers[3].pending());
   assert(wire == evidence + regulation + phase_preview +
                      "STS,1,direct\r\n");
   assert(otis_serial_frame_arbiter_owner(&arbiter) ==
@@ -103,10 +98,11 @@ void test_partial_owner_is_exclusive_and_direct_output_waits() {
 }
 
 void test_round_robin_releases_between_complete_groups() {
-  std::array<Producer, 3> producers = {{
+  std::array<Producer, 4> producers = {{
       {OtisSerialFrameOwner::DualCoreEvidence, {"EST,first\r\n", "EST,second\r\n"}},
       {OtisSerialFrameOwner::FrequencyRegulation, {"CTL,one\r\n"}},
       {OtisSerialFrameOwner::PhasePreview, {"RPH,PHE\r\n"}},
+      {OtisSerialFrameOwner::DirectRow, {}},
   }};
   OtisSerialFrameArbiter arbiter = {};
   otis_serial_frame_arbiter_reset(&arbiter);

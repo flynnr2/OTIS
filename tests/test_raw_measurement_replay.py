@@ -11,7 +11,7 @@ import pytest
 from host.otis_tools import adaptive_hybrid_replay as replay
 from host.otis_tools import raw_measurement_replay as raw
 from host.otis_tools.accepted_span_replay import POLICY_PATH, accepted_window_ref
-from host.otis_tools.adaptive_hybrid_analyze import _validate_manifest_csvs
+from host.otis_tools.record_validation import validate_manifest_csvs as _validate_manifest_csvs
 from host.otis_tools.authoritative_inputs import (
     collect_authoritative_inputs,
     validate_authoritative_inputs,
@@ -426,29 +426,6 @@ def test_declared_timestamp_ambiguous_batch_is_reconstructable_but_not_usable():
     assert intervals[0]["observation_age_ambiguous"] is True
 
 
-def test_actual_operational_rehearsal_bootstrap_has_one_replayable_aperture():
-    from tools.otis_rehearsal_device import DeterministicPtyInstrument
-
-    instrument = object.__new__(DeterministicPtyInstrument)
-    instrument.raw_interval_adjustments = {}
-    instrument.runtime = {"authoritative_inputs": measurement_manifest_value()["authoritative_inputs"]}
-    instrument.reference_acceptance_binding = measurement_manifest_value()["reference_acceptance"]
-    emitted = []
-    instrument._emit_rows = lambda fields, rows: emitted.extend(rows)
-    instrument._emit_initial_observations()
-    assert [int(row["event_seq"]) for row in emitted
-            if row["record_type"] in {"EVT", "REF"}] == [1000, 1001, 1002]
-    exact, report, intervals = raw._raw_count_replay(
-        [row for row in emitted if row["record_type"] == "SNP"],
-        [row for row in emitted if row["record_type"] == "REF"],
-        [row for row in emitted if row["record_type"] == "CNT"],
-    )
-    assert exact, report
-    assert len(intervals) == 1
-    assert intervals[0]["counted_edges"] == 10_000_000
-    assert intervals[0]["measurement_valid"]
-
-
 def test_unpaired_terminal_ref_is_retained_without_claiming_capture_completeness(monkeypatch):
     rows = raw_measurement_rows()
     terminal_ref = deepcopy(rows["ref.csv"][-1])
@@ -786,34 +763,31 @@ def test_estimate_stream_corruption_reaches_consumed_estimate_verdict(
 
 
 @pytest.mark.parametrize(("decision_dac_epoch", "expected_exact"), [("1", True), ("2", False)])
-def test_active_decision_binds_selected_estimate_dac_epoch(
+def test_instrument_decision_binds_selected_estimate_dac_epoch(
     monkeypatch, decision_dac_epoch, expected_exact,
 ):
     rows = raw_measurement_rows()
     _, measurement, _ = run_measurement(monkeypatch, rows)
     decision = {
-        "decision_sequence": "1",
+        "sequence": "1",
         "capture_session": "1",
-        "source_acceptance_epoch": "1",
-        "source_opening_accepted_boundary_ordinal": "0",
-        "source_closing_accepted_boundary_ordinal": "600",
-        "frequency_estimator_sha256": "a" * 64,
-        "frequency_error_hz": "0.000000000000",
-        "accumulated_edge_error_counts": "0",
-        "decision_timestamp_ticks": "600000123",
-        "time_domain": "rp2040_monotonic_us64",
+        "acceptance_epoch": "1",
+        "opening_accepted_boundary": "0",
+        "closing_accepted_boundary": "600",
+        "edge_error_counts": "0",
+        "timestamp_ticks": "600000123",
         "dac_epoch": decision_dac_epoch,
     }
     monkeypatch.setattr(replay, "_read_csv", lambda _path: [decision])
     manifest = SimpleNamespace(
         root=Path("/unused"),
         files=[{
-            "contract": "active_hybrid_decisions_v3",
-            "path": "active_hybrid_decisions_v3.csv",
+            "contract": "instrument_decision_v2",
+            "path": "instrument_decision_v2.csv",
         }],
     )
 
-    result = replay.replay_active_decision_measurement_sources(manifest, measurement)
+    result = replay.replay_instrument_decision_sources(manifest, measurement)
 
     assert result["exact"] is expected_exact
     assert result["joins"][0]["exact"] is expected_exact

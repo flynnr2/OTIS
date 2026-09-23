@@ -13,7 +13,7 @@ def test_live_memory_budget_is_observed_on_each_execution_core() -> None:
     config = (FIRMWARE / "otis_config.h").read_text(encoding="utf-8")
 
     assert sketch.count("otis_memory_budget_note_current_core();") == 4
-    assert "otis_memory_budget_emit_status(&status_emit_context);" in sketch
+    assert "otis_memory_budget_emit_status_field(&status_emit_context," in sketch
     assert "rp2040.getFreeStack()" in source
     assert "rp2040.getFreeHeap()" in source
     assert '"live_observed_minimum_approximation"' in source

@@ -77,7 +77,7 @@ void otis_phase_preview_transport_service(void) {
   const size_t remaining = frame_length - frame_sent;
   size_t chunk = remaining < available ? remaining : available;
   if (chunk > kTransportChunkLimit) chunk = kTransportChunkLimit;
-  frame_sent += otis_transport_write_bytes(
+  frame_sent += otis_transport_try_write_frame_chunk(
       reinterpret_cast<const uint8_t *>(frame) + frame_sent, chunk);
   if (frame_sent != frame_length) return;
 

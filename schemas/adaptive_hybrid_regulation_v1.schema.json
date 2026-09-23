@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schema_version",
+    "startup_code",
     "policy_id",
     "status",
     "oscillator_identity",
@@ -22,6 +23,7 @@
   ],
   "properties": {
     "schema_version": {"const": 1},
+    "startup_code": {"const": 43085},
     "policy_id": {"const": "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"},
     "status": {"const": "selected_production_policy"},
     "oscillator_identity": {"const": "CX317"},
@@ -99,7 +101,7 @@
             "D10_external_event_excluded"
           ],
           "properties": {
-            "arming_required": {"const": true},
+            "arming_required": {"const": false},
             "one_request_outstanding": {"const": true},
             "automatic_retry": {"const": false},
             "automatic_restore": {"const": false},
@@ -286,8 +288,8 @@
         "automatic_restoration"
       ],
       "properties": {
-        "maximum_automatic_applications": {"const": 144},
-        "maximum_cumulative_absolute_movement_codes": {"const": 3024},
+        "maximum_automatic_applications": {"const": 0, "description": "No lifetime campaign budget in ordinary autonomous operation"},
+        "maximum_cumulative_absolute_movement_codes": {"const": 0, "description": "No lifetime campaign budget in ordinary autonomous operation"},
         "maximum_combined_step_codes": {"const": 21},
         "minimum_applied_cadence_s": {"const": 1800},
         "minimum_code": {"const": 43008},

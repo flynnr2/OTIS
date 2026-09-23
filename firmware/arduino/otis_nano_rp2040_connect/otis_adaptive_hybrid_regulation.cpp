@@ -302,7 +302,8 @@ int32_t no_zero_cross_cap(const OtisAdaptiveHybridEngine &engine,
           ? 0
           : engine.policy.maximum_cumulative_movement_codes -
                 engine.cumulative_movement_codes;
-  if (remaining < static_cast<uint32_t>(cap))
+  if (engine.policy.maximum_cumulative_movement_codes != 0u &&
+      remaining < static_cast<uint32_t>(cap))
     cap = static_cast<int32_t>(remaining);
   const int32_t range_headroom = sign > 0 ? engine.policy.maximum_code - code
                                           : code - engine.policy.minimum_code;
@@ -360,7 +361,10 @@ const char *chatter_reason(const OtisAdaptiveHybridEngine &engine, int32_t delta
       static_cast<int64_t>(engine.chatter_origin_code);
   const uint64_t net =
       static_cast<uint64_t>(net_signed < 0 ? -net_signed : net_signed);
-  if (path >= 42 && 4 * net <= path)
+  // Lifetime path efficiency is a finite-campaign diagnostic, not an
+  // indefinite-operation stop: healthy long-term drift may return to origin.
+  if (engine.policy.maximum_cumulative_movement_codes != 0u &&
+      path >= 42 && 4 * net <= path)
     return "prospective_low_efficiency_path";
   return nullptr;
 }
@@ -424,7 +428,8 @@ bool propose_or_hold(OtisAdaptiveHybridEngine *engine,
                   pll, false, projection);
     return true;
   }
-  if (engine->application_count >= engine->policy.maximum_applications) {
+  if (engine->policy.maximum_applications != 0u &&
+      engine->application_count >= engine->policy.maximum_applications) {
     engine->last_reason = "global_application_budget_hold";
     projection.count_limited = true;
     make_decision(*engine, engine->last_reason, decision, 0, cap, raw, fll,
@@ -433,10 +438,11 @@ bool propose_or_hold(OtisAdaptiveHybridEngine *engine,
   }
   const uint32_t movement =
       static_cast<uint32_t>(delta < 0 ? -delta : delta);
-  if (engine->cumulative_movement_codes >
+  if (engine->policy.maximum_cumulative_movement_codes != 0u &&
+      (engine->cumulative_movement_codes >
           engine->policy.maximum_cumulative_movement_codes ||
-      movement > engine->policy.maximum_cumulative_movement_codes -
-                     engine->cumulative_movement_codes) {
+       movement > engine->policy.maximum_cumulative_movement_codes -
+                     engine->cumulative_movement_codes)) {
     engine->last_reason = "global_cumulative_movement_budget_hold";
     projection.cumulative_budget_limited = true;
     make_decision(*engine, engine->last_reason, decision, 0, cap, raw, fll,
@@ -540,9 +546,9 @@ OtisAdaptiveHybridPolicy otis_adaptive_hybrid_default_policy() {
       43008,
       43776,
       1800,
-      144,
-      3024,
-      43085,
+      0,
+      0,
+      OTIS_INSTRUMENT_START_CODE,
   };
 }
 
@@ -597,8 +603,6 @@ bool otis_adaptive_hybrid_engine_init(OtisAdaptiveHybridEngine *engine,
       policy->minimum_code >= policy->maximum_code ||
       policy->minimum_cadence_s == 0 ||
       policy->minimum_cadence_s > UINT64_MAX / kCaptureTicksPerSecond ||
-      policy->maximum_applications == 0 ||
-      policy->maximum_cumulative_movement_codes == 0 ||
       setup_applied_code < policy->minimum_code ||
       setup_applied_code > policy->maximum_code || setup_dac_epoch == 0)
     return false;
@@ -632,6 +636,11 @@ bool otis_adaptive_hybrid_engine_decide(OtisAdaptiveHybridEngine *engine,
                               OtisAdaptiveHybridDecision *decision) {
   if (engine == nullptr || observation == nullptr || decision == nullptr)
     return false;
+  if (engine->decision_sequence == UINT64_MAX) {
+    fail_static(engine, "decision_identity_exhausted");
+    make_decision(*engine, engine->last_reason, decision);
+    return true;
+  }
   ++engine->decision_sequence;
   engine->current_timestamp_s = observation->timestamp_s;
   engine->current_timestamp_ticks = observation->timestamp_ticks;
@@ -1087,11 +1096,14 @@ bool otis_adaptive_hybrid_engine_note_application_and_first_consumer(
 
   engine->applied_code = actual_applied_code;
   engine->dac_epoch = actual_dac_epoch;
-  ++engine->application_count;
-  engine->cumulative_movement_codes += static_cast<uint32_t>(
+  if (engine->application_count != UINT32_MAX) ++engine->application_count;
+  const uint32_t movement = static_cast<uint32_t>(
       engine->pending_requested_delta_codes < 0
           ? -engine->pending_requested_delta_codes
           : engine->pending_requested_delta_codes);
+  engine->cumulative_movement_codes =
+      UINT32_MAX - engine->cumulative_movement_codes < movement
+          ? UINT32_MAX : engine->cumulative_movement_codes + movement;
   engine->last_application_available = true;
   engine->last_application_s = engine->pending_observation_timestamp_s;
   engine->last_application_ticks = engine->pending_observation_timestamp_ticks;

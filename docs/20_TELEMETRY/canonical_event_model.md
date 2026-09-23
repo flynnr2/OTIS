@@ -13,17 +13,17 @@ It should be:
 - lossless;
 - application-neutral.
 
-The Arduino Nano RP2040 Connect firmware should not interpret events as
-pendulum swings, oscillator phase measurements, or radio timing intervals.
-
-Firmware emits timestamped observations.
-Host software interprets them.
+The raw capture layer does not encode events as application conclusions.
+Firmware measurement and control layers may derive frequency/phase estimates
+and make bounded discipline decisions while retaining canonical observations
+unchanged. Host software independently records, replays and interprets evidence.
 
 ## Architectural Principle
 
 ```text
-Arduino Nano RP2040 Connect firmware = deterministic timestamp appliance
-Host software                         = interpretation + analysis engine
+Firmware capture layer = deterministic canonical observations
+Firmware instrument    = explicit measurement, qualification and bounded control
+Optional host          = recording, independent replay and analysis
 ```
 
 ## Canonical Observation Records
@@ -158,3 +158,18 @@ Preserve those rows as historical raw evidence and interpret them only with the
 revision and manifest that created them. In the current canonical topology D10
 is `CH0`, an external event/edge input to be measured against the disciplined D8
 oscillator; D14 alone is `REF`/PPS.
+
+## Instrument operation evidence
+
+The autonomous instrument adds ICM command receipts, IWR internal writes, IAP
+application results, IDC controller decisions, IRS response diagnostics and IST
+state transitions. These are derived/control records, never replacements for
+REF/SNP/CNT/APS/EST source evidence. Their exact schema and domain fields are in
+`data_contracts/otis_firmware_host_contract_v1.json` (contract V2).
+
+A record sequence is allocated before optional output publication. Bounded loss
+counters and current snapshots distinguish missing delivery from a healthy
+complete stream. Detached operation preserves control evidence internally only
+for the current bounded operation; it is not a historical archive. Full replay
+claims require the relevant retained sources and lifecycle records with exact
+session, code, epoch and ordering joins.

@@ -55,6 +55,6 @@ void produce_delayed_selected_response(
   publish_accepted_span(selection);
   otis_frequency_regulation_live_on_reference_selection(
       &selection, captured_ticks, 5000u,
-      operational_ticks % OTIS_RP2040_MONOTONIC_US32_MODULUS,
+      operational_ticks,
       &code, outcome);
 }

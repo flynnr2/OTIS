@@ -9,18 +9,16 @@ The design principles are in
 
 ## Current operating surface
 
-Current HEAD contains one instrument programme and one buildable fixed
-firmware image: `adaptive_hybrid_regulation`, policy
-`OTIS_ADAPTIVE_HYBRID_REGULATION_V1`. The firmware configuration is not a
-selectable profile matrix. Run duration and experiment-specific stop conditions
-belong in the frozen run specification, not in the product or policy identity.
+Current code builds one `adaptive_hybrid_regulation` image,
+`OTIS_AUTONOMOUS_INSTRUMENT_V2`. Firmware starts in autonomous hybrid discipline,
+writes `0xA84D`, qualifies D14/GNSS and steers D8 through the DAC without a host.
+Explicit serial commands also select observation/hold, fixed-code or finite
+characterization modes. Ordinary operation has no campaign correction budgets,
+leases or host acknowledgements.
 
-The current physical-entry surface has two exact purposes: a diagnostic
-`inhibited_zero_write` acquisition and the sole authority-bearing
-`contingent_72_hour_hybrid_control` programme. The latter runs to 259,200
-accepted D14/D8 apertures, admits at most 144 natural corrections within the
-characterized DAC envelope, and has a 280,800-second absolute wall limit. It
-does not stop after setup, the first correction, or an arbitrary short prefix.
+This is an implementation candidate awaiting physical integration. The detailed
+[fault mapping](docs/50_SOFTWARE/AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) remains
+subject to operator review before long-term adoption.
 
 The invariant bench topology is:
 
@@ -62,18 +60,12 @@ authority is
 its checked-in firmware projection must be regenerated with
 `tools/generate_firmware_host_contract.py` whenever that authority changes.
 
-The host has five jobs: capture, supervise, monitor, analyse, and package.
-One foreground experiment owner and one capture worker handle the live path.
-Monitoring is read-only. Build and physical entry are explicit engineering
-operations; ordinary observation and offline work never compile or flash.
-
-Freeze one inert run specification, rehearse it through the actual host path,
-and use its receipt with the explicit operator instruction for physical entry.
-There is no bundle/proposal/activation copy chain or global registry gate.
-The [host architecture](docs/50_SOFTWARE/HOST_ARCHITECTURE.md) explains ownership;
-the [evidence lifecycle](docs/50_SOFTWARE/EVIDENCE_LIFECYCLE.md) explains portable
-closure and later analysis. Start with `python -m host.otis_tools --help` (or
-`otis --help` after installation).
+The optional host records the stream and requests explicit state/mode operations
+through one serial owner. Ending a recording leaves the instrument operating.
+Start with `.venv/bin/python -m host.otis_tools --help`; the
+[host architecture](docs/50_SOFTWARE/HOST_ARCHITECTURE.md) describes commands,
+recorded evidence and bounded transport. Building and physical qualification
+remain explicit engineering operations.
 
 The current execution sequence is the
 [`OTIS consolidation programme`](docs/90_ROADMAP/OTIS_CONSOLIDATION_PROGRAMME.md):
@@ -88,9 +80,8 @@ the agreed scope.
 `runs/` is intentionally ignored local scientific evidence. Never force-add it
 or weaken `.gitignore`. Preserve raw packages unchanged; promote only reviewed
 conclusions, contracts, models, schemas, and small purpose-built fixtures.
-For delivery between machines, use
-[`closed evidence transfer`](docs/50_SOFTWARE/EVIDENCE_TRANSFER.md). Cloud storage
-carries sealed archives; acquisition and analysis use independent local copies.
+For bench exchange use `~/Documents/OTIS_DATA/` with exact file hashes and
+explicit transfer status; acquisition remains local.
 
 ## Verification
 

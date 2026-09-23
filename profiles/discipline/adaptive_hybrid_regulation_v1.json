@@ -30,7 +30,7 @@
       "dac_max_code": 43776
     },
     "authority": {
-      "arming_required": true,
+      "arming_required": false,
       "one_request_outstanding": true,
       "automatic_retry": false,
       "automatic_restore": false,
@@ -88,7 +88,10 @@
   "correction_debt": {
     "enabled": true,
     "maximum_absolute_total_picocodes": 500000000000,
-    "component_tags": ["FLL", "PLL"],
+    "component_tags": [
+      "FLL",
+      "PLL"
+    ],
     "commit": "only_after_exact_acceptance_application_code_epoch_and_first_dependent_consumer",
     "tag_allocation": "magnitude_weighted_by_current_raw_component_plus_prior_same_component_debt_with_PLL_as_exact_remainder",
     "preserve_without_accrual": [
@@ -118,8 +121,8 @@
     "run_terminal": false
   },
   "global_authority_limits": {
-    "maximum_automatic_applications": 144,
-    "maximum_cumulative_absolute_movement_codes": 3024,
+    "maximum_automatic_applications": 0,
+    "maximum_cumulative_absolute_movement_codes": 0,
     "maximum_combined_step_codes": 21,
     "minimum_applied_cadence_s": 1800,
     "minimum_code": 43008,
@@ -140,5 +143,6 @@
     "UTC_or_absolute_time_accuracy",
     "cross_phase_epoch_continuity",
     "D10_reference_or_control_authority"
-  ]
+  ],
+  "startup_code": 43085
 }

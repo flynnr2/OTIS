@@ -4,8 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// ACTIVE SETUP carries a complete SHA-256 configuration identity plus the
-// correlated authorization fields. The collector is static Core 0 storage.
+// The finite MODE request binds a boot nonce and command identity.
+// The collector is static Core 0 storage.
 constexpr size_t OTIS_SERIAL_COMMAND_BUFFER_SIZE = 192u;
 constexpr size_t OTIS_SERIAL_COMMAND_MAX_LENGTH =
     OTIS_SERIAL_COMMAND_BUFFER_SIZE - 1u;
@@ -37,11 +37,7 @@ enum class OtisSerialCommandKind : uint8_t {
   CountQuery,
   ActiveQuery,
   ActiveSnapshot,
-  ActiveSetup,
-  ActiveLease,
-  ActiveArm,
-  ActiveAbort,
-  ActiveEvidence,
+  ActiveMode,
   Unknown,
 };
 
@@ -59,7 +55,7 @@ OtisSerialFrameValidation otis_serial_frame_validate(
 OtisParsedSerialCommand otis_serial_command_parse(char *line);
 bool otis_serial_command_parse_nonzero_decimal_u32_fields(
     const char *text, uint32_t *values, uint8_t count);
-bool otis_serial_command_parse_active_evidence(
-    const char *text, uint32_t *request_sequence, uint32_t *phase);
+bool otis_serial_command_parse_decimal_u32_fields(const char *text, uint32_t *values, uint8_t count);
 
+bool otis_serial_command_parse_decimal_u64_fields(const char *text, uint64_t *values, uint8_t count);
 #endif

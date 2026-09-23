@@ -19,7 +19,7 @@ UF2_NOT_MAIN_FLASH = 0x00000001
 GNSS_BAUD_PACKET_PATTERN = re.compile(rb"\$PMTK251,[0-9]+\*[0-9A-F]{2}\r\n")
 EXPECTED_GNSS_PACKET = b"$PMTK251,115200*1F\r\n"
 REQUIRED_MARKERS = {
-    "firmware_version": b"OTIS_ADAPTIVE_HYBRID_REGULATION_V1",
+    "firmware_version": b"OTIS_AUTONOMOUS_INSTRUMENT_V2",
     "image_id": b"adaptive_hybrid_regulation",
     "d14_reference": b"D14",
     "d8_count_input": b"D8_GPIO20_GPIN0",
@@ -30,7 +30,7 @@ REQUIRED_MARKERS = {
     "frequency_estimator": b"OTIS_PPS_GATED_FREQUENCY_ESTIMATOR_V1",
     "phase_estimator": b"OTIS_RELATIVE_PHASE_ESTIMATOR_V1",
     "phase_raw_method": b"D14_ACCEPTED_SPAN_RELATIVE_PHASE_ACCUMULATOR_V1",
-    "active_status_contract": b"adaptive_hybrid_active_status_snapshot_v2",
+    "active_status_contract": b"OTIS_INSTRUMENT_STATUS_V2",
     "external_event_not_implemented": b"not_implemented",
 }
 FORBIDDEN_MARKERS = {

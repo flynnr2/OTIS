@@ -5,6 +5,7 @@
 
 #include "otis_dual_core_contract.h"
 #include "otis_firmware_host_contract.generated.h"
+#include "otis_instrument.h"
 
 constexpr uint32_t OTIS_SERVICE_TO_TIMING_QUEUE_DEPTH = 16u;
 constexpr uint32_t OTIS_OBSERVATION_QUEUE_DEPTH = 96u;
@@ -102,12 +103,11 @@ constexpr uint32_t OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST =
 constexpr uint32_t OTIS_TIMING_HEALTH_TELEMETRY_BURST =
     OTIS_TIMING_HEALTH_NONACTIVE_TELEMETRY_BURST +
     OTIS_REGULATION_STATUS_TELEMETRY_BURST;
+// The generated contract includes the autonomous instrument status fields as
+// well as the older active-control vocabulary. Outbound admission is bounded
+// by that declared maximum; congestion now records loss rather than faulting.
 constexpr uint32_t OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST =
-    OTIS_TIMING_HEALTH_TELEMETRY_BURST +
-    OTIS_REGULATION_STATUS_TELEMETRY_BURST;
-static_assert(OTIS_MAXIMUM_CONCURRENT_TELEMETRY_BURST ==
-                  OTIS_TELEMETRY_MAXIMUM_CONCURRENT_COUNT,
-              "periodic health plus one ACTIVE? response must remain exact");
+    OTIS_TELEMETRY_MAXIMUM_CONCURRENT_COUNT;
 // Retain conservative split-boot capacity; a smaller exact startup count is
 // not needed to protect the finite queue.
 constexpr uint32_t OTIS_MAXIMUM_BOOT_TELEMETRY_BURST =
@@ -123,17 +123,12 @@ static_assert(OTIS_TELEMETRY_QUEUE_DEPTH_VALUE >=
 
 enum class OtisPartitionFault : uint8_t {
   None,
-  BootTelemetryExhausted,
   BootHandshakeTimeout,
   ServiceToTimingExhausted,
-  ObservationExhausted,
-  CriticalExhausted,
-  EvidenceExhausted,
-  PhasePreviewQueueExhausted,
+  InstrumentWriteExhausted,
+  EvidenceIntegrityFault,
   PhasePreviewFault,
-  TransportObstructed,
-  ActuatorTimeout,
-  ActuatorAcknowledgementMismatch,
+  InstrumentApplicationMismatch,
 };
 
 // A low-cost Core 1 breadcrumb.  The sketch updates it only in a bounded,
@@ -206,17 +201,24 @@ struct OtisServiceFaultCapsule {
 struct OtisDualCoreQueueStats {
   uint32_t service_to_timing_depth;
   uint32_t service_to_timing_high_water;
+  uint32_t priority_hold_depth;
+  uint32_t priority_hold_high_water;
   uint32_t observation_depth;
   uint32_t observation_high_water;
+  uint32_t observation_dropped;
   uint32_t critical_depth;
   uint32_t critical_high_water;
+  uint32_t critical_dropped;
   uint32_t evidence_depth;
   uint32_t evidence_high_water;
+  uint32_t evidence_dropped_frames;
+  uint32_t evidence_dropped_bursts;
   uint32_t telemetry_depth;
   uint32_t telemetry_high_water;
   uint32_t telemetry_dropped;
   uint32_t phase_preview_depth;
   uint32_t phase_preview_high_water;
+  uint32_t phase_preview_dropped;
   uint32_t monitor_observation_depth;
   uint32_t monitor_observation_high_water;
   uint32_t monitor_observation_dropped;
@@ -231,7 +233,9 @@ void otis_dual_core_partition_reset(void);
 void otis_dual_core_set_timing_owner_active(bool active);
 bool otis_dual_core_timing_owner_active(void);
 
-// Core 0 producer / Core 1 consumer. Non-droppable.
+// Core 0 producer / Core 1 consumer. Non-droppable. Mode=Hold uses an
+// independent one-slot priority lane so a full routine service queue cannot
+// delay the explicit hold request.
 bool otis_dual_core_publish_service(const OtisServiceMessage *message);
 bool otis_dual_core_take_service(OtisServiceMessage *message);
 
@@ -245,7 +249,8 @@ using OtisObservationDiagnosticClock = uint64_t (*)(void);
 void otis_dual_core_set_observation_diagnostic_clock(
     OtisObservationDiagnosticClock reader);
 
-// Core 1 producer / Core 0 consumer. Raw evidence is non-droppable.
+// Core 1 producer / Core 0 consumer. Outbound observation copies drop on
+// saturation; canonical capture and controller state do not depend on USB.
 bool otis_dual_core_publish_observation(
     const OtisObservationMessage *message);
 bool otis_dual_core_take_observation(OtisObservationMessage *message);
@@ -257,17 +262,17 @@ bool otis_dual_core_publish_monitor_observation(
 bool otis_dual_core_take_monitor_observation(
     OtisMonitorObservationMessage *message);
 
-// Core 1 producer / Core 0 consumer. Transaction/state evidence is
-// non-droppable.
+// Core 1 producer / Core 0 consumer. Fault/state records are outbound copies;
+// the authoritative instrument state and actuator handoff use separate paths.
 bool otis_dual_core_publish_critical(const OtisCriticalRecordMessage *message);
 bool otis_dual_core_take_critical(OtisCriticalRecordMessage *message);
 
 // Core 1 producer / Core 0 consumer. Complete EST/CTL/ACT frames are
-// non-droppable; no mutable formatter buffer is shared between cores.
+// copied or dropped as whole records; no mutable formatter buffer is shared.
 bool otis_dual_core_publish_evidence(const OtisEvidenceFrameMessage *message);
 // Publish one preformatted logical evidence burst with a single commit. Every
 // member and capacity for the complete burst are checked before any frame is
-// visible to Core 0. Failure publishes no prefix and latches EvidenceExhausted.
+// visible to Core 0. Congestion publishes no prefix and increments loss.
 bool otis_dual_core_publish_evidence_burst(
     const OtisEvidenceFrameMessage *messages, uint32_t message_count);
 // In-place atomic burst construction avoids a second full-frame staging
@@ -298,12 +303,21 @@ bool otis_dual_core_publish_boot_telemetry(
     const OtisTelemetryMessage *message);
 bool otis_dual_core_take_telemetry(OtisTelemetryMessage *message);
 
-// Core 1 producer / Core 0 consumer. Numerical phase-preview evidence is
-// non-droppable and is formatted only after it crosses this value queue.
+// Core 1 producer / Core 0 consumer. Numerical phase-preview evidence drops
+// on saturation and is formatted only after it crosses this value queue.
 bool otis_dual_core_publish_phase_preview(
     const OtisPhasePreviewRecordMessage *message);
 bool otis_dual_core_take_phase_preview(
     OtisPhasePreviewRecordMessage *message);
+
+// Reserved internal actuator handoff. Neither direction shares the bounded
+// outbound evidence queues; a full slot is an integrity fault, never a drop.
+bool otis_dual_core_publish_instrument_write(const OtisInstrumentWrite *write);
+bool otis_dual_core_take_instrument_write(OtisInstrumentWrite *write);
+bool otis_dual_core_publish_instrument_application(
+    const OtisInstrumentApplication *application);
+bool otis_dual_core_take_instrument_application(
+    OtisInstrumentApplication *application);
 
 void otis_dual_core_note_timing_progress(OtisTimingProgressPhase phase,
                                          uint64_t now_ticks);

@@ -1,4 +1,33 @@
-# Instrument ownership and standalone direction
+# Instrument ownership and standalone operation
+
+## Current implementation — 23 September 2026
+
+The autonomous implementation replaces the supervised host runtime. Firmware
+writes `0xA84D` at each start and selects AUTO_DISCIPLINE. One Core 1 owner
+qualifies D14/D8 evidence and proposes bounded DAC writes; Core 0 validates and
+executes each exact request once. Frequency and phase consumers receive the
+confirmed code and DAC epoch before the owner commits the application.
+D9 forwards available D8 independently of host attachment.
+
+Serial requests select AUTO_DISCIPLINE, OBSERVE_HOLD, FIXED_CODE or finite
+CHARACTERIZE. A disconnect does not change the selected mode. Restart selects
+the boot policy again. The optional host records and requests explicit mode
+changes; ordinary control has no host leases, campaign budgets or evidence ACKs.
+Outbound congestion drops bounded output with counters, while internal capture,
+qualification and actuator service continue. Missing output remains missing
+scientific evidence; there is no durable onboard spool.
+
+See the [implemented proposal](HOST_CONTROL_REPLACEMENT_PROPOSAL.md),
+[current authority](CURRENT_CONTRACT_AND_POLICY_AUTHORITY.md), and
+[fault mapping awaiting operator review](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md).
+Offline integration does not establish physical timing or plant qualification.
+
+## Historical ownership review
+
+The remaining dated review records the predecessor and its evidence. Its host
+supervisor, admission and compatibility paths have been retired from current
+code. Statements below about “current” operation apply to their recorded
+September 11 revision, not the autonomous implementation.
 
 ## Scope and decision
 
@@ -109,6 +138,12 @@ admit capture closure, reconstruct the scientific outcome, and independently
 validate the sealed claim. Collapsing them would merge different authorities.
 
 ## What standalone operation still requires
+
+The [20 September consolidated proposal](HOST_CONTROL_REPLACEMENT_PROPOSAL.md)
+now brings this replacement forward: autonomous boot is the default alongside
+serial-selected operating modes, with an optional recording host. The following
+describes the current implementation gap, not a requirement to defer the work or
+retain the earlier proposed host decision worker.
 
 The existing firmware can acquire and drain capture without a host, and D9
 already forwards D8 through hardware at integer divisor one. It cannot yet

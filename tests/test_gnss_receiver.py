@@ -6,11 +6,6 @@ import subprocess
 
 import pytest
 
-from host.otis_tools.prewrite_readiness_contract import (
-    GNSS_OPERATIONAL_PREWRITE_EXACT,
-)
-
-
 ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE = ROOT / "firmware/arduino/otis_nano_rp2040_connect"
 
@@ -72,13 +67,3 @@ def test_gnss_configuration_tx_is_bounded_and_metadata_is_qualification_only() -
     assert sketch.index("otis_gnss_receiver_service(now_ms);") < sketch.index(
         "service_dual_core_serial_frame_transport();"
     )
-
-
-def test_firmware_reports_the_exact_configuration_blind_prewrite_contract() -> None:
-    sketch = (FIRMWARE / "otis_nano_rp2040_connect.ino").read_text(
-        encoding="utf-8"
-    )
-    for key in ("uart_configuration", "operational_baud_policy"):
-        expected = GNSS_OPERATIONAL_PREWRITE_EXACT[("gnss_receiver", key)]
-        assert f'"{key}"' in sketch
-        assert f'"{expected}"' in sketch
