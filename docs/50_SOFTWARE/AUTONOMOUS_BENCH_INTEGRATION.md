@@ -97,8 +97,9 @@ steering. Do not interrupt a recorder merely to obtain an earlier segment ending
    `auto-a`. Existing warmup is 1800 seconds, post-write settling 900 seconds and
    selected support 600 seconds; metadata recovery can require two fresh windows.
    A few minutes is insufficient. No nonzero automatic correction is required:
-   the measured error may legitimately require none. Any natural correction must
-   have its exact application and subsequent consumer/decision evidence retained.
+   the measured error may legitimately require none. Corrections within recorded
+   intervals require exact application and subsequent consumer/decision evidence;
+   actions during deliberate coverage gaps remain unobserved, as described below.
 5. At scheduled `auto-a` closure, confirm AUTO's stored deadline remains in the
    future. Leave the powered instrument without a reader for 60 seconds, then
    record `auto-b` for 2700 seconds. Require the same boot session, AUTO and unchanged
