@@ -46,8 +46,8 @@ The goal is disciplined, comprehensible engineering.
 The finished instrument should be usable without understanding its engineering
 campaign machinery. Power on, allow acquisition and discipline, use the output;
 attach a host when recording or inspection is useful. This is the intended
-experience, now implemented as an offline-verified candidate pending physical
-qualification.
+experience. The implemented candidate passed its short physical integration
+gate; sustained operation and unexercised fault cases remain separate questions.
 
 Be ruthless about accumulated scaffolding. A component must protect timing
 correctness, preserve necessary evidence, or make an experiment easier to run.

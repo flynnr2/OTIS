@@ -81,3 +81,13 @@ given on 23 September 2026. Offline/native tests and a compiled image
 do not qualify the real DAC, USB/UART, cross-core scheduling or physical plant.
 The next physical gate is a separately authorized short exact-image integration
 followed by the agreed 72-hour observation; a week is optional.
+
+
+## Autonomous observation progression
+
+The [short physical integration result](AUTONOMOUS_SHORT_GATE_RESULT_20260923.md)
+is bound to its original image, procedure and retained archive. Its conditional
+fault-mapping approval does not promote unexercised cases. The authorized
+[72-hour observation](AUTONOMOUS_72H_OBSERVATION.md) reuses the unchanged firmware
+with separate, removable local supervision. Its finite AUTO endpoint is an
+explicit operating-mode request, not a lease or lifetime movement budget.

@@ -7,6 +7,11 @@ approval is not a claim of physical qualification or unconditional long-term
 adoption; retain findings and revisit the mapping in light of bench evidence.
 No fault behavior or recovery predicate is changed by this approval record.
 
+The [short physical gate result](AUTONOMOUS_SHORT_GATE_RESULT_20260923.md) exercised
+metadata hold/recovery, operating-mode transitions, a bounded automatic correction
+and timed HOLD. It does not promote unexercised fault cases or remove the
+conditional nature of approval.
+
 ## Responsibilities and responses
 
 A hold inhibits new corrections; it does not invalidate canonical observations.

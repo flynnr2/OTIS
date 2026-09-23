@@ -108,10 +108,17 @@ def parse_instrument_status(fields: dict[str, str]) -> dict | None:
             int, (fields["session_id"], fields["command_sequence"],
                   fields["command_completed"], fields["applied_code"], fields["dac_epoch"])
         )
-    except ValueError:
+        write_sequence = int(fields["write_sequence"])
+        write_state = int(fields["write_state"])
+        instrument_ticks = int(fields["instrument_ticks"])
+        operating_end_ticks = int(fields["operating_end_ticks"])
+    except (KeyError, ValueError):
         return None
     if not (0 < session <= UINT64_MAX and 0 <= completed <= sequence <= UINT32_MAX
-            and 0 <= code <= 0xFFFF and 0 <= dac_epoch <= UINT32_MAX):
+            and 0 <= code <= 0xFFFF and 0 <= dac_epoch <= UINT32_MAX
+            and 0 <= write_sequence <= UINT32_MAX and 0 <= write_state <= 3
+            and 0 <= instrument_ticks <= UINT64_MAX
+            and 0 <= operating_end_ticks <= UINT64_MAX):
         return None
     if fields["confirmed_applied_code_known"] not in {"true", "false"}:
         return None
@@ -174,6 +181,9 @@ class InstrumentRecorder:
         self.last_state_write = 0.0
         self.error: str | None = None
         self.running = False
+        self.close_requested = False
+        self.close_deadline: float | None = None
+        self.close_boundary_complete: bool | None = None
 
     def _state(self) -> dict:
         age = None if self.instrument_at is None else max(0.0, self.monotonic() - self.instrument_at)
@@ -373,6 +383,8 @@ class InstrumentRecorder:
                     result = self._state()
                 elif value.get("operation") == "mode":
                     result = self._mode_request(value)
+                elif value.get("operation") == "close":
+                    result = self._close_request(value)
                 else:
                     raise ValueError("unsupported operation")
                 self._reply(client, result)
@@ -383,6 +395,8 @@ class InstrumentRecorder:
                     pass
 
     def _mode_request(self, request: dict) -> dict:
+        if self.close_requested:
+            raise ValueError("recording closure already requested")
         status = self.instrument
         if (status is None or self.instrument_at is None or self.status_fields is not None
                 or self.monotonic() - self.instrument_at > self.config.status_fresh_s):
@@ -421,6 +435,29 @@ class InstrumentRecorder:
         return {"submission": "written_unconfirmed", "session": expected,
                 "sequence": sequence, "command": command.decode("ascii").strip()}
 
+    def _close_request(self, request: dict) -> dict:
+        """Close evidence only after a fresh, exact firmware HOLD endpoint."""
+        status = self.instrument
+        if (status is None or self.instrument_at is None or self.status_fields is not None
+                or self.monotonic() - self.instrument_at > self.config.status_fresh_s):
+            raise ValueError("fresh instrument status required before recording closure")
+        expected_session = request.get("expected_session")
+        expected_sequence = request.get("expected_sequence")
+        if (type(expected_session) is not int or expected_session != status["session"]
+                or type(expected_sequence) is not int
+                or expected_sequence != status["completed_command_sequence"]):
+            raise ValueError("recording closure identity differs from instrument status")
+        fields = status["fields"]
+        if (status["mode"] != "OBSERVE_HOLD" or
+                status["requested_mode"] != "OBSERVE_HOLD" or
+                not status["applied_code_known"] or
+                fields["write_state"] != "0" or self.pending_command is not None):
+            raise ValueError("instrument HOLD endpoint or write completion is not established")
+        self.close_requested = True
+        self.close_deadline = self.monotonic() + 5.0
+        return {"closure": "requested", "session": expected_session,
+                "completed_command_sequence": expected_sequence}
+
     def run(self) -> dict:
         self.started = self.monotonic()
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -452,6 +489,10 @@ class InstrumentRecorder:
                     self._observe(data)
                 if self.monotonic() - self.last_state_write >= self.config.status_interval_s:
                     self._publish()
+                if self.close_requested:
+                    self.close_boundary_complete = not self.partial and self.status_fields is None
+                    if self.close_boundary_complete or self.monotonic() >= self.close_deadline:
+                        break
             self.running = False
         except BaseException as exc:
             self.error = f"{type(exc).__name__}: {exc}"
@@ -474,6 +515,7 @@ class InstrumentRecorder:
                 "observed_record_counts": self.record_counts,
                 "invalid_status_records": self.invalid_status,
                 "recording_error": self.error,
+                "close_boundary_complete": self.close_boundary_complete,
                 "instrument_session_at_close": self.instrument["session"] if self.instrument else None,
             })
             self._publish()

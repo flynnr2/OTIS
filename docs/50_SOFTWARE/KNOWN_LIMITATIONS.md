@@ -3,9 +3,10 @@
 Current firmware implements autonomous boot and explicit serial-selected modes.
 The following limitations apply to this implementation candidate:
 
-- Physical autonomous operation has not been qualified. Native tests exercise
-  actual owner, adapter, parser, mailboxes and executor admission with simulated
-  device results; they cannot establish real I2C, PIO, UART, USB or plant behavior.
+- The [short physical autonomous gate passed](AUTONOMOUS_SHORT_GATE_RESULT_20260923.md),
+  including metadata recovery, one bounded correction and timed HOLD. Sustained
+  72-hour behavior and the unexercised fault cases remain unqualified. Native
+  tests retain their simulated-device boundary; they do not extend physical claims.
 - The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) remains
   conditionally approved for progression; long-term adoption remains subject to
   the resulting evidence and review. There is no generic
@@ -21,13 +22,18 @@ The following limitations apply to this implementation candidate:
   firmware capture backend remains unimplemented. D6 diagnostics cannot veto
   D14/D8 control. D9 digital forwarding does not qualify analog waveform quality,
   jitter, loading or independently referenced frequency.
-- The Adafruit device migration and core 6.1.0 image still need physical
-  integration on the actual bench. Library/build checks do not qualify buses.
+- The exact core 6.1.0 image completed the short physical integration gate.
+  This exercises the actual installed device path, not arbitrary bus fault cases
+  or independent analog readback; library/build checks alone do not qualify buses.
 - Accepted-reference selection cannot distinguish an impostor edge within its
   qualification window. FIFO-service coordinates are not hardware D14 timestamps;
   recognition brackets can withdraw qualification after delayed service.
 - Host recording failures terminate recording truthfully without stopping the
   instrument. External notification delivery is not an instrument control gate.
+- Detached local supervision protects against invoking-terminal loss, not host
+  reboot, power loss, disk failure or coordinator destruction. The finite
+  firmware endpoint remains independent. A fault-inhibited endpoint may reject
+  HOLD and requires review rather than a fabricated clean completion.
 - Earlier physical runs qualify only their frozen source, hardware and claims.
   They do not establish the new autonomous 72-hour observation endpoint.
 

@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools.instrument_recorder import (
-    InstrumentRecorder, RecorderConfig, passive_serial_open, request, socket_path,
+    InstrumentRecorder, RecorderConfig, parse_instrument_status, parse_status_row,
+    passive_serial_open, request, socket_path,
     verify_recording,
 )
 from host.otis_tools.firmware_host_contract import ACTIVE_STATUS_KEYS
@@ -35,6 +36,21 @@ def _snapshot(session: int = 42, generation: int = 1, command_sequence: int = 0,
     pairs.extend((key, values[key]) for key in ACTIVE_STATUS_KEYS)
     pairs.append(("snapshot_generation_complete", str(generation)))
     return b"".join(_sts(key, value, i + 1) for i, (key, value) in enumerate(pairs))
+
+
+def test_malformed_decision_counter_cannot_become_fresh_status() -> None:
+    rows = (parse_status_row(line) for line in _snapshot().splitlines())
+    fields = {key: value for component, key, value in rows if component == "adaptive_hybrid"}
+    fields.pop("snapshot_generation_begin")
+    fields.pop("snapshot_generation_complete")
+    fields.pop("snapshot_contract")
+    fields["snapshot_contract"] = "OTIS_INSTRUMENT_STATUS_V2"
+    assert parse_instrument_status(fields) is not None
+    for key, malformed in (("write_sequence", "broken"), ("write_state", "4"),
+                           ("instrument_ticks", "-1"),
+                           ("operating_end_ticks", str(2**64))):
+        invalid = dict(fields, **{key: malformed})
+        assert parse_instrument_status(invalid) is None
 
 
 class _PtyPort:
