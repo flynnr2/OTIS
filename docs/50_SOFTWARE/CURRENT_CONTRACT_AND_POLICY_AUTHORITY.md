@@ -76,7 +76,8 @@ durable spool. A recorder failure has no automatic stop or reset authority.
 
 See [the proposal](HOST_CONTROL_REPLACEMENT_PROPOSAL.md) and the detailed
 [fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md). The operator reserved
-long-term approval of that mapping. Offline/native tests and a compiled image
+long-term review of that mapping; conditional approval and progression were
+given on 23 September 2026. Offline/native tests and a compiled image
 do not qualify the real DAC, USB/UART, cross-core scheduling or physical plant.
 The next physical gate is a separately authorized short exact-image integration
 followed by the agreed 72-hour observation; a week is optional.

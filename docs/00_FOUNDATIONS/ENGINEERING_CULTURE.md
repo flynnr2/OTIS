@@ -199,7 +199,8 @@ not change operating mode. The [consolidated replacement proposal](../50_SOFTWAR
 brings this work forward and supersedes the proposed mandatory host decision
 worker. Offline implementation and physical qualification are separate gates;
 ordinary use requires no campaign leases, per-correction host acknowledgements
-or Codex. The detailed fault mapping still needs its reserved operator review.
+or Codex. The detailed fault mapping received conditional operator approval on
+23 September 2026; progression must retain evidence for its long-term review.
 
 Compact serial evidence and full replay are different reporting contracts,
 not different owners of timing or control. Characterization and future output

@@ -111,8 +111,9 @@ lasting preference changes.
   autonomous implementation and removal of backward compatibility. Ordinary
   operation has no campaign leases, budgets or host correction acknowledgements.
   Physical deployment remains separate; preserve historical evidence under its
-  original contract. Long-term adoption of the detailed fault mapping awaits
-  the operator's reserved review.
+  original contract. The operator conditionally approved the detailed fault
+  mapping on 23 September 2026 and directed progression; long-term adoption
+  remains subject to bench evidence and review.
 - Existing D10 implementation scaffolding, test artefacts, and prospective
   wire formats may be replaced completely; no backward compatibility is
   required. Preserve D10's intended external-event role and isolation from

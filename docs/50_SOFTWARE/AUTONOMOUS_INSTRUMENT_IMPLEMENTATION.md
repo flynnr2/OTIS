@@ -109,11 +109,12 @@ is committed or claimed transferred to the bench.
 ## Remaining decisions and physical gates
 
 The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) is the
-implemented candidate and still requires the operator's reserved review before
-long-term adoption. It explicitly distinguishes qualification holds, controller
+implemented candidate, conditionally approved by the operator on 23 September
+2026 for progression. Long-term adoption remains subject to bench evidence. It explicitly distinguishes qualification holds, controller
 holds, internal integrity faults, optional evidence faults and output loss.
 
-Next is a separately authorized short integration with the exact image, then
+The operator has directed progression to the next steps. The prepared
+[short integration gate](AUTONOMOUS_BENCH_INTEGRATION.md) uses the exact image, then
 the agreed 72-hour observation; a week remains optional. That gate must exercise
 hostless boot, late attachment/disconnection, mode changes and physical
 application/consumer propagation. The recorder schedule itself must not become a

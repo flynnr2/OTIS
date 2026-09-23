@@ -1,10 +1,11 @@
-# Autonomous instrument fault mapping — operator review draft
+# Autonomous instrument fault mapping — conditionally approved
 
-23 September 2026. This is the explicit starting mapping used by the autonomous
-implementation candidate. The operator accepted the category approach but
-reserved review of the detailed mapping before long-term adoption. Passing
-verification does not remove that review step. No physical qualification or
-long-term fault-policy approval is claimed here.
+23 September 2026: the operator conditionally approved this mapping and directed
+progression to the next steps. The categories and detailed behavior below remain
+the implementation baseline for the short physical integration gate. Conditional
+approval is not a claim of physical qualification or unconditional long-term
+adoption; retain findings and revisit the mapping in light of bench evidence.
+No fault behavior or recovery predicate is changed by this approval record.
 
 ## Responsibilities and responses
 
@@ -15,14 +16,14 @@ continue. D9 continues forwarding available D8; output presence is not a lock or
 accuracy claim. No class grants a host parser, recorder or analyzer automatic
 abort, mode-change or reset authority.
 
-| Class | Meaning | Candidate behavior | Exit |
-| ----- | ------- | ------------------ | ---- |
-| Qualification hold | Required evidence temporarily unavailable | Preserve code and valid history; continue observation | Explicit fresh causal requalification |
-| Operator mode | Hold, fixed code or finite characterization selected | One firmware owner executes accepted mode | Explicit mode request, finite completion or declared restart policy |
-| Controller hold | Selected controller's own diagnostic rejects further corrections | Retain observations and last code; inhibit selected control | Review; no automatic clearing in this candidate |
-| Instrument integrity fault | Capture, command/application identity, internal arithmetic or actuator state cannot be trusted | Inhibit new writes; retain exact pending action and first fault | Review/repair; restart is a new session, not proof of fault resolution |
-| Evidence-delivery loss | Optional USB/host output cannot be retained | Continue qualified internal control; record bounded loss summaries | Reader/service recovery; missing historical evidence stays missing |
-| Optional evidence fault | D6, D10 or other non-authoritative diagnostic | Degrade that evidence only | Local recovery |
+| Class                      | Meaning                                                                                        | Candidate behavior                                                 | Exit                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Qualification hold         | Required evidence temporarily unavailable                                                      | Preserve code and valid history; continue observation              | Explicit fresh causal requalification                                  |
+| Operator mode              | Hold, fixed code or finite characterization selected                                           | One firmware owner executes accepted mode                          | Explicit mode request, finite completion or declared restart policy    |
+| Controller hold            | Selected controller's own diagnostic rejects further corrections                               | Retain observations and last code; inhibit selected control        | Review; no automatic clearing in this candidate                        |
+| Instrument integrity fault | Capture, command/application identity, internal arithmetic or actuator state cannot be trusted | Inhibit new writes; retain exact pending action and first fault    | Review/repair; restart is a new session, not proof of fault resolution |
+| Evidence-delivery loss     | Optional USB/host output cannot be retained                                                    | Continue qualified internal control; record bounded loss summaries | Reader/service recovery; missing historical evidence stays missing     |
+| Optional evidence fault    | D6, D10 or other non-authoritative diagnostic                                                  | Degrade that evidence only                                         | Local recovery                                                         |
 
 ## Qualification and command outcomes
 
@@ -55,25 +56,25 @@ The following reasons inhibit new writes and remain latched in the candidate.
 They are instrument-local findings, not declarations that physical reality or
 all retained measurement failed.
 
-| Reason | Evidence or invariant | Review focus |
-| ------ | --------------------- | ------------ |
-| `startup_identity_invalid` | Missing boot session or timer identity | Initialization order and session generation |
-| `instrument_clock_backward` | Service clock regressed in declared extended timer domain | Timer/domain or caller defect |
-| `capture_identity_or_integrity` | Capture session changed or hardware capture integrity failed | Capture evidence; repair vs explicit restart |
-| `instrument_identity_exhausted` | Request or DAC epoch cannot increment without reuse | New explicit session, never silent rollover |
-| `actuator_or_consumer_deadline` | Released operation/consumer confirmation missed its fixed deadline | Exact pending identity and actual application evidence |
-| `application_identity_or_deadline` | Application does not match released request or legal event interval | Cross-core ordering and actual DAC state |
-| `dac_application_unknown` | Write attempt failed, result contradicts request, or execution was rejected outside the recoverable qualification case | Distinguish last confirmed code from currently established state |
-| `application_consumer_identity` | Frequency/phase consumer confirmation mismatches application | Both sides of handoff and first dependent decision |
-| `controller_application_commit` | Engine rejected exact application/consumer commit | Pending decision and debt identity |
-| `controller_initialization` | Selected policy or initial application could not bind | Boot policy and applied-state provenance |
-| `characterization_deadline_overflow` | Finite plan deadline is not representable | Reject rather than wrap or run indefinitely |
-| `operating_deadline_overflow` | A timed AUTO request was accepted before a pending write completed, but its effective transition time cannot represent the full requested duration | Retain the exact application and inhibit new writes rather than wrap the stop deadline |
-| `decision_clock_or_freshness` | Decision reorders, has invalid time, or exceeds the 60-second source-to-service bound | Capture and operational coordinates separately |
-| `controller_decision_invalid` | Selected engine rejected its input/transition | Estimator and engine state, not raw-observation validity |
-| `nonfinite_source_error` | A proposed correction lacks finite error evidence | Estimator input/serialization defect |
-| `response_accumulator_exhausted` | Existing diagnostic response accumulator would overflow | Explicit classifier/session reset policy after review |
-| `internal_write_mailbox` | Sole actuator dispatch mailbox could not accept a released request | Internal ownership or service starvation |
+| Reason                               | Evidence or invariant                                                                                                                              | Review focus                                                                           |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `startup_identity_invalid`           | Missing boot session or timer identity                                                                                                             | Initialization order and session generation                                            |
+| `instrument_clock_backward`          | Service clock regressed in declared extended timer domain                                                                                          | Timer/domain or caller defect                                                          |
+| `capture_identity_or_integrity`      | Capture session changed or hardware capture integrity failed                                                                                       | Capture evidence; repair vs explicit restart                                           |
+| `instrument_identity_exhausted`      | Request or DAC epoch cannot increment without reuse                                                                                                | New explicit session, never silent rollover                                            |
+| `actuator_or_consumer_deadline`      | Released operation/consumer confirmation missed its fixed deadline                                                                                 | Exact pending identity and actual application evidence                                 |
+| `application_identity_or_deadline`   | Application does not match released request or legal event interval                                                                                | Cross-core ordering and actual DAC state                                               |
+| `dac_application_unknown`            | Write attempt failed, result contradicts request, or execution was rejected outside the recoverable qualification case                             | Distinguish last confirmed code from currently established state                       |
+| `application_consumer_identity`      | Frequency/phase consumer confirmation mismatches application                                                                                       | Both sides of handoff and first dependent decision                                     |
+| `controller_application_commit`      | Engine rejected exact application/consumer commit                                                                                                  | Pending decision and debt identity                                                     |
+| `controller_initialization`          | Selected policy or initial application could not bind                                                                                              | Boot policy and applied-state provenance                                               |
+| `characterization_deadline_overflow` | Finite plan deadline is not representable                                                                                                          | Reject rather than wrap or run indefinitely                                            |
+| `operating_deadline_overflow`        | A timed AUTO request was accepted before a pending write completed, but its effective transition time cannot represent the full requested duration | Retain the exact application and inhibit new writes rather than wrap the stop deadline |
+| `decision_clock_or_freshness`        | Decision reorders, has invalid time, or exceeds the 60-second source-to-service bound                                                              | Capture and operational coordinates separately                                         |
+| `controller_decision_invalid`        | Selected engine rejected its input/transition                                                                                                      | Estimator and engine state, not raw-observation validity                               |
+| `nonfinite_source_error`             | A proposed correction lacks finite error evidence                                                                                                  | Estimator input/serialization defect                                                   |
+| `response_accumulator_exhausted`     | Existing diagnostic response accumulator would overflow                                                                                            | Explicit classifier/session reset policy after review                                  |
+| `internal_write_mailbox`             | Sole actuator dispatch mailbox could not accept a released request                                                                                 | Internal ownership or service starvation                                               |
 
 The adapter also latches `fresh_dac_snapshot_contradiction` only when a DAC
 snapshot was published at or after the last physical application and contradicts
@@ -137,7 +138,8 @@ must discover current firmware state; it does not reconstruct the missing gap.
 
 ## Review deliverable
 
-Review this mapping together with the exact candidate source and test results.
+Conditional approval permits progression with the exact candidate source and
+test results. Review the resulting physical evidence against this mapping.
 Confirm especially repeated-alternation handling, no-write executor rejection
 categories, internal service starvation, fresh DAC contradictions, and the
 absence of a generic clear-fault command. Changes following review need the

@@ -7,7 +7,8 @@ The following limitations apply to this implementation candidate:
   actual owner, adapter, parser, mailboxes and executor admission with simulated
   device results; they cannot establish real I2C, PIO, UART, USB or plant behavior.
 - The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) remains
-  subject to the operator's reserved long-term review. There is no generic
+  conditionally approved for progression; long-term adoption remains subject to
+  the resulting evidence and review. There is no generic
   clear-fault command; HOLD does not erase an integrity fault.
 - USB output is bounded and may be dropped while detached or obstructed. Control
   continues from internal evidence. There is no durable onboard spool and no
