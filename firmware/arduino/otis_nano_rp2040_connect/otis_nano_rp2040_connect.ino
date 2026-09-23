@@ -1102,6 +1102,8 @@ void emit_pps_count_boundary(
   note_reference_service_latency(observation.session, observation.sequence,
       OTIS_LATENCY_READY_TO_FIRST_ESTIMATOR_CONSUMPTION, observation_ready_ticks,
       first_estimator_ticks);
+  // Report capture transitions after first consumption, before health refresh.
+  otis_count_observation_emit_pending_boundary_status();
   update_adaptive_hybrid_regulation_health();
   otis_frequency_regulation_live_on_reference_selection(
       &selection, closing_extended_ticks, uint32_t(time_us_64()/1000000ull),
@@ -2297,6 +2299,10 @@ void execute_serial_command(const OtisParsedSerialCommand &command) {
 }
 
 void service_serial_commands(bool output_allowed = true) {
+  // Keep scanning bounded RX while one admitted normal command waits for the
+  // active output frame. Later normal commands are rejected, never substituted;
+  // a later explicit HOLD must still reach Core 1 without output permission.
+  static uint32_t deferred_normal_rejections = 0u;
   if (output_allowed && deferred_serial_error ==
                             OtisSerialFrameEvent::RejectedTooLong) {
     deferred_serial_error = OtisSerialFrameEvent::None;
@@ -2317,9 +2323,13 @@ void service_serial_commands(bool output_allowed = true) {
     execute_serial_command(command);
     return;
   }
-  // One complete non-abort command may wait behind the current wire frame.
-  // Leave later bytes in the USB RX buffer until that command is executed.
-  if (!output_allowed && deferred_serial_command_ready) return;
+  if (output_allowed && deferred_normal_rejections != 0u) {
+    const uint32_t rejected = deferred_normal_rejections;
+    deferred_normal_rejections = 0u;
+    emit_status_u32("command", "deferred_commands_rejected", rejected,
+                    OTIS_SEVERITY_WARN, OTIS_FLAG_NONE);
+    return;
+  }
 
   uint8_t byte_budget = 32u;
   while (Serial.available() > 0 && byte_budget-- > 0u) {
@@ -2355,9 +2365,19 @@ void service_serial_commands(bool output_allowed = true) {
         otis_serial_command_parse(serial_command_collector.line);
     otis_serial_frame_collector_init(&serial_command_collector);
     if (!output_allowed) {
-      if (command.kind == OtisSerialCommandKind::ActiveMode) {
+      uint64_t priority_fields[5] = {};
+      if (command.kind == OtisSerialCommandKind::ActiveMode &&
+          command.arguments_valid &&
+          otis_serial_command_parse_decimal_u64_fields(
+              command.text_argument, priority_fields, 5) &&
+          priority_fields[2] == static_cast<uint64_t>(OtisInstrumentMode::Hold)) {
         // Reserved HOLD delivery remains available while a USB frame is obstructed.
         queue_instrument_mode(command);
+        return;
+      }
+      if (deferred_serial_command_ready) {
+        if (deferred_normal_rejections != UINT32_MAX)
+          ++deferred_normal_rejections;
         return;
       }
       snprintf(deferred_serial_command, sizeof(deferred_serial_command), "%s",

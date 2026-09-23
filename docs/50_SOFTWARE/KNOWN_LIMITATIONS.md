@@ -192,3 +192,18 @@ withdraw qualification even when the count is preserved. The unchanged PIO
 program observes D14 at D8-dependent checkpoints, so electrical D14 timing
 under stopped/slow D8 remains unmeasured. Native tests and host rehearsal do
 not establish physical interrupt timing. See SINGLE_REFERENCE_OWNER_REPAIR.md.
+
+The current 10 MHz [capture assessment](PPS_CAPTURE_CURRENT_ASSESSMENT_2026_09_19.md)
+adds a conditional ten-PIO-clock bound from D14 high presented to the SM to its
+count snapshot, assuming 4–9-clock synchronized D8 dwells and no FIFO stall.
+This does not bound the electrical input path, characterize metastability or
+confirm the actual bench duty/edge quality. No per-event hardware clock
+coordinate or hardware-to-service latency becomes available.
+
+The periodic Core 0 report now uses one frozen view and bounded per-row USB
+admission; other existing synchronous output paths are unchanged. Desktop
+regressions establish framing, ordering, independent abort scanning and fixed
+obstruction deadlines, not a target worst-case service-time guarantee. The
+combined image leaves 470 bytes below the unchanged static RAM ceiling; live
+heap/stack reserves remain required physical evidence. See
+[the prepared service/capture handoff](SERVICE_CAPTURE_BENCH_HANDOFF.md).

@@ -802,3 +802,12 @@ and phase measurement state incorporated that fact before dependent control.
 An output-loss counter describes delivery loss, not capture validity or an
 oscillator failure. Instrument execution coordinates in `rp2040_timer_us64` are
 CPU hardware-timer observations, not hardware-latched D14 edge timestamps.
+
+### Historical supervised endurance completion and unanswered escalation
+
+Endurance completion means the declared host monotonic observation window ended
+with exact disarmed terminal evidence. Accepted D14/D8 apertures and control
+availability are reported separately; elapsed host duration is not metrological
+measurement duration. An unanswered escalation is retained evidence awaiting
+review plus the frozen immediate operating response. It is never implicit
+approval, a new control lease, or an automatic scientific failure.

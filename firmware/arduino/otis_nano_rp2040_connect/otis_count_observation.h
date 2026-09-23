@@ -27,6 +27,11 @@ bool otis_count_observation_on_pps_boundary(
     OtisStatusEmitContext *status_context,
     const OtisCountObservationConfig *config,
     const OtisPpsCountBoundaryObservation *observation);
+// Finish the current boundary's transition telemetry after its first phase
+// consumer, before health refresh. Core 1 must call this before another boundary;
+// count/reference mutation entry points also flush it before changing state.
+// This is one deferred formatting operation, not a queue or an authority gate.
+void otis_count_observation_emit_pending_boundary_status(void);
 void otis_count_observation_note_capture_loss(
     OtisRuntimeState *runtime_state,
     OtisStatusEmitContext *status_context,

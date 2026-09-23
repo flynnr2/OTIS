@@ -59,6 +59,7 @@ extern SerialStub Serial;
 bool tud_cdc_connected();
 uint32_t tud_cdc_write_available();
 uint32_t tud_cdc_write(const void*, uint32_t);
+uint32_t tud_cdc_write_flush();
 """)
 
     cursor = _description_source()
@@ -101,6 +102,7 @@ uint32_t tud_cdc_write(const void* data, uint32_t count) {{
   capacity -= count;
   return count;
 }}
+uint32_t tud_cdc_write_flush() {{ assert(locked); return 0u; }}
 static uint32_t status_sequence = 0u;
 static bool core0_description_pending = true;
 static uint16_t core0_description_cursor = 0u;

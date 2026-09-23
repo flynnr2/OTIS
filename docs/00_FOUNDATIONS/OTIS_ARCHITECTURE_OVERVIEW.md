@@ -119,3 +119,13 @@ See [the single-owner contract](../50_SOFTWARE/SINGLE_REFERENCE_OWNER_REPAIR.md)
 for bounds, fault retention and the distinction between PIO recognition and an
 electrical D14 edge. Session/acceptance-epoch changes require fresh support;
 an uninterrupted campaign cannot sum different epochs.
+
+## Unattended finite host supervision
+
+The detached local launcher runs the existing host command owner and capture
+worker. A separate read-only observer retains transition notifications and a
+heartbeat. It requires neither Codex nor network access, cannot grant authority,
+and cannot restart or terminate the owner. Unknown discrepancies retain review
+holds; known receiver metadata recovery remains causal and automatic. Firmware
+continues to own hardware capture, controller decisions and independent safety
+expiry. This is host-acknowledged operation, not autonomous firmware startup.

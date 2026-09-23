@@ -102,6 +102,9 @@ size_t otis_transport_try_write_frame_chunk(const uint8_t *data,
   if (tud_cdc_connected() &&
       tud_cdc_write_available() >= length + kReservedBytes) {
     const size_t written = tud_cdc_write(data, static_cast<uint32_t>(length));
+    // TinyUSB only auto-flushes a full packet. Schedule the final short
+    // packet without polling USB or waiting for endpoint completion.
+    if (written != 0u) tud_cdc_write_flush();
     accepted = note_written(written);
   }
   mutex_exit(&USB.mutex);
@@ -120,8 +123,10 @@ bool otis_transport_try_write_diagnostic(const uint8_t *data, size_t length) {
     // cdc_device.c writes at most UINT16_MAX to the FIFO. Capacity admission
     // and this copy share the USB lock: neither another writer nor tud_task's
     // disconnect/reset callbacks can interleave. The optional auto-flush inside
-    // tud_cdc_write only schedules an endpoint transfer; it does not poll.
+    // tud_cdc_write only covers a full packet; flush also schedules a short
+    // final packet without polling or waiting for delivery.
     const size_t written = tud_cdc_write(data, static_cast<uint32_t>(length));
+    if (written != 0u) tud_cdc_write_flush();
     note_written(written);
     accepted = written == length;
   }

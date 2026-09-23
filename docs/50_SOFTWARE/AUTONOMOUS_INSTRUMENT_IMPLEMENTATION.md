@@ -45,7 +45,7 @@ These checks do not execute physical I2C writes or establish real concurrent
 scheduling, analog response, UART behavior, USB attachment or D9 waveform quality.
 No board was opened, reset or flashed during this implementation.
 
-## Final offline results
+## Initial implementation verification (before main integration)
 
 - Full current suite: **378 passed**, 35.33 seconds, with
   `/tmp/otis-host-test-venv/bin/python -m pytest -q tests`.

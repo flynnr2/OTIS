@@ -75,3 +75,19 @@ uses one mutex try-lock and whole-row FIFO capacity with 64 bytes reserved.
 Unavailable capacity drops the complete row without a pending-frame owner.
 Host interpretation requires all seven parts, validates identities/counts and
 retains missing, reordered, duplicate and malformed evidence explicitly.
+
+The [current PIO capture assessment](../docs/50_SOFTWARE/PPS_CAPTURE_CURRENT_ASSESSMENT_2026_09_19.md)
+provides a conditional bound in PIO execution clocks from D14 presented to the
+SM to the count copy. No per-event PIO clock coordinate or timer mapping is
+recorded, and its D8 dwell assumptions are not measured by LAT. It is static
+proof evidence only: `hw=0`, existing stages, `u`, and raw SNP uncertainty keep
+their current meanings. No software-stage interval includes or estimates it.
+
+The normal ready-to-first-estimator path now defers count-transition status
+until after the first phase-consumer call. CNT/APS remain before it; faults flush
+pending status before replacing its state. Endpoint meanings and schema are
+unchanged. See the [startup review](../docs/50_SOFTWARE/STARTUP_ESTIMATOR_SERVICE_REVIEW.md).
+The [periodic-output repair](../docs/50_SOFTWARE/PERIODIC_STATUS_SERVICE_REPAIR.md)
+yields between complete retained status rows. Stages 3/4 still overlap at one
+precommit; only exact matching samples permit their subtraction, and neither
+establishes completed formatting or physical delivery.

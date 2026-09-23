@@ -47,6 +47,7 @@ extern SerialStub Serial;
 bool tud_cdc_connected();
 uint32_t tud_cdc_write_available();
 uint32_t tud_cdc_write(const void*, uint32_t);
+uint32_t tud_cdc_write_flush();
 """)
     harness = tmp_path / "test.cpp"
     harness.write_text("""
@@ -58,8 +59,8 @@ uint32_t tud_cdc_write(const void*, uint32_t);
 SerialStub Serial;
 USBStub USB;
 bool locked, contention, connected = true;
-uint32_t capacity = 128u, attempts, exits, queries, writes;
-char copied[128];
+uint32_t capacity = 128u, attempts, exits, queries, writes, flushes;
+char copied[256];
 bool mutex_try_enter(mutex_t* m, uint32_t*) {
  assert(m == &USB.mutex); ++attempts;
  if (contention) return false;
@@ -69,9 +70,10 @@ void mutex_exit(mutex_t*) { assert(locked); locked = false; ++exits; }
 bool tud_cdc_connected() { assert(locked); ++queries; return connected; }
 uint32_t tud_cdc_write_available() { assert(locked); ++queries; return capacity; }
 uint32_t tud_cdc_write(const void* p, uint32_t n) {
- assert(locked && n + 64u <= capacity); ++writes;
+ assert(locked && n <= capacity); ++writes;
  memcpy(copied, p, n); capacity -= n; return n;
 }
+uint32_t tud_cdc_write_flush() { assert(locked); ++flushes; return 0u; }
 int main() {
  const uint8_t row[] = "diagnostic\\n";
  const uint32_t n = sizeof(row) - 1u;
@@ -90,7 +92,7 @@ int main() {
  assert(exits == 2 && writes == 0 && !locked);
  capacity = n + 64u;
  assert(otis_transport_try_write_diagnostic(row, n));
- assert(exits == 3 && writes == 1 && capacity == 64u && !locked);
+ assert(exits == 3 && writes == 1 && flushes == 1u && capacity == 64u && !locked);
  assert(memcmp(copied, row, n) == 0);
  assert(otis_transport_written_bytes() == n);
  assert(!otis_transport_try_write_diagnostic(row, n));
@@ -105,7 +107,7 @@ int main() {
  assert(otis_transport_row_active() && writes == 1u);
  contention = false; capacity = 128u;
  otis_transport_service_row();
- assert(!otis_transport_row_pending() && writes == 2u);
+ assert(!otis_transport_row_pending() && writes == 2u && flushes == 2u);
  assert(memcmp(copied, "STS,42\\r\\n", 8u) == 0);
  for (unsigned i = 0u; i < 3u; ++i)
    otis_transport_write_cstr("STS,queued\\r\\n");
@@ -126,6 +128,7 @@ int main() {
  otis_transport_service_row();
  assert(memcmp(copied, "OK\\r\\n", 4u) == 0);
  assert(!otis_transport_row_pending());
+ assert(flushes == writes);
 }
 """)
     executable = tmp_path / "diagnostic_transport"
@@ -147,4 +150,19 @@ def test_diagnostic_admission_never_polls_or_uses_blocking_serial_wrapper():
         assert forbidden not in code
     assert code.count("mutex_try_enter(") == 1
     assert code.count("tud_cdc_write(") == 1
+    assert code.count("tud_cdc_write_flush(") == 1
     assert code.count("mutex_exit(") == 1
+
+
+def test_pending_frame_usb_service_is_one_bounded_attempt():
+    source = (FIRMWARE / "otis_transport_serial.cpp").read_text()
+    body = source.split("size_t otis_transport_try_write_frame_chunk(", 1)[1]
+    body = body.split("bool otis_transport_try_write_diagnostic", 1)[0]
+    for forbidden in ("Serial.", "tud_task(", "CoreMutex", "while (", "for (",
+                      "mutex_enter_blocking", "delay(", "sleep_"):
+        assert forbidden not in body
+    assert body.count("mutex_try_enter(") == 1
+    assert body.count("tud_cdc_write(") == 1
+    assert body.count("tud_cdc_write_flush(") == 1
+    assert body.count("mutex_exit(") == 1
+    assert "length > kMaximumFrameChunk" in body
