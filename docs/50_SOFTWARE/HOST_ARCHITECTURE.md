@@ -140,3 +140,22 @@ five-second deadline. The manifest retains `close_boundary_complete`; timeout
 preserves the actual bytes and the incomplete-boundary finding. Ordinary
 `--duration-s` recording remains independent of instrument mode and does not
 acquire this operating-endpoint requirement.
+
+## Open-ended engineering recording
+
+The [open-ended steering observation](OPEN_ENDED_STEERING_OBSERVATION.md) reuses
+the same detached observer with `observation_kind=open_ended` and AUTO dwell zero.
+Entry can observe already-running indefinite AUTO without a command, or select
+it once from fresh HOLD. It rejects takeover of a finite operation and preserves
+unknown pre-attachment history. The observer has no scheduled firmware endpoint.
+
+An explicit `unattended end-recording` creates a plan-bound local request. The coordinator and offline finalizer
+validate its operation and exact plan hash; malformed or mismatched requests
+remain review findings with supervision and capture retained.
+The recorder's separate `end_recording` socket operation closes evidence without
+changing instrument mode, even with stale status or a pending application. It
+retains the same five-second row/cohort closure bound. The finite experiment's
+existing `close` admission still requires its exact HOLD endpoint. Packages
+identify which endpoint contract applies; an open-ended cutoff never supplies
+a firmware-timed HOLD claim. Coordinator logs are frozen with chronology before
+packaging, preserving repeatable offline artifact identities.
