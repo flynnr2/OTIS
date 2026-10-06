@@ -66,3 +66,25 @@ def test_actual_firmware_snapshot_and_receipt_reach_recorder(integration_native,
     assert recorder.pending_command is None
     assert recorder.last_receipt['result'] == 'ACCEPTED'
     assert recorder.last_receipt['session'] == status['session']
+
+
+def test_alternating_corrections_reach_consumers_recorder_and_offline_analysis(integration_native, tmp_path):
+    from host.otis_tools.instrument_recorder import InstrumentRecorder, RecorderConfig
+    from host.otis_tools.unattended import _analyze_raw
+    wire = subprocess.run([str(integration_native), 'alternating_wire'],
+                          capture_output=True, check=True).stdout
+    recorder = InstrumentRecorder(RecorderConfig(device='unused', run_dir=tmp_path))
+    recorder.started_utc = 'native-alternation-integration'
+    for offset in range(0, len(wire), 13):
+        recorder._observe(wire[offset:offset + 13])
+    status = recorder.instrument
+    assert status is not None and status['fields']['fault'] == 'none'
+    assert status['dac_epoch'] == 7 and status['state'] == 'RESPONSE_PENDING'
+    (tmp_path / 'serial-0001.raw').write_bytes(wire)
+    summary = _analyze_raw(tmp_path, {'segments': [{'path': 'serial-0001.raw'}]})
+    assert summary['write_request_application_joins']['matched_accepted'] == 7
+    assert summary['write_request_application_joins']['contradictions'] == []
+    assert summary['malformed_instrument_rows'] == 0
+    assert summary['instrument_record_gaps'] == 0
+    assert summary['decision_reasons']['maintenance_request_ready_repeated_alternation'] == 3
+    assert 'prospective_repeated_alternation' not in summary['decision_reasons']

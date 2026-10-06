@@ -1,0 +1,161 @@
+{
+  "authority": "Operator approved offline progression on 6 October; commit/merge and bench delivery subsequently requested. No physical deployment, restart, mode command or recording closure performed or authorized by this review.",
+  "canonical_evidence": {
+    "dac_epoch": 108,
+    "final_applied_deltas": [
+      1,
+      -5,
+      5
+    ],
+    "final_response_reasons": [
+      "response_detected_with_commanded_sign",
+      "response_detected_with_commanded_sign",
+      "response_detected_with_commanded_sign"
+    ],
+    "instrument_record_sequence_gaps": 0,
+    "last_confirmed_code": 43074,
+    "retained_applications": 51,
+    "retained_decisions": 295,
+    "source_window_checks": [
+      {
+        "decision_sequence": "551",
+        "hardware_snapshot_discrepancies": [],
+        "missing_APS_boundaries": [],
+        "reconstructed_edge_error": 0,
+        "recorded_edge_error": 0
+      },
+      {
+        "decision_sequence": "558",
+        "hardware_snapshot_discrepancies": [],
+        "missing_APS_boundaries": [],
+        "reconstructed_edge_error": 1,
+        "recorded_edge_error": 1
+      },
+      {
+        "decision_sequence": "587",
+        "hardware_snapshot_discrepancies": [],
+        "missing_APS_boundaries": [],
+        "reconstructed_edge_error": -1,
+        "recorded_edge_error": -1
+      },
+      {
+        "decision_sequence": "592",
+        "hardware_snapshot_discrepancies": [],
+        "missing_APS_boundaries": [],
+        "reconstructed_edge_error": 1,
+        "recorded_edge_error": 1
+      },
+      {
+        "decision_sequence": "593",
+        "hardware_snapshot_discrepancies": [],
+        "missing_APS_boundaries": [],
+        "reconstructed_edge_error": 1,
+        "recorded_edge_error": 1
+      }
+    ],
+    "write_application_contradictions": [],
+    "write_application_joins": 51
+  },
+  "classification": "Controller-policy operational limitation under prolonged intended use; original guard executed as documented. No capture-failure or physical-instability verdict.",
+  "coverage_limits": [
+    "Unobserved pre-attachment controller state; checkpoint cadence/directions not invented.",
+    "Intervention and environmental history unknown.",
+    "Reference/phase qualification gaps and optional ENV loss retained.",
+    "Combined frequency uncertainty unavailable; count resolution is not absolute accuracy.",
+    "Post-divergence performance needs physical evidence."
+  ],
+  "decision": "Repeated direction alternation is diagnostic only; retain all independent request, qualification, transaction and integrity gates.",
+  "firmware": {
+    "binding": "Build provenance retains original working-tree context; packaged committed source must verify identical firmware-input closure before reuse. No relabeling of the build provenance.",
+    "build_repository_context": {
+      "firmware_identity_authority": false,
+      "git_commit": "7c083d7467ea57caf425716c3259146b69fc4d01",
+      "working_tree_state": "dirty"
+    },
+    "committed_input_binding": {
+      "firmware_audit_revision": "3eeaa60f6f63c7ebff7f94682ce4051520c513a1",
+      "input_count": 154,
+      "source_and_configuration_identical_to_built_artifact": true,
+      "source_state": "clean",
+      "verified": true
+    },
+    "config_sha256": "3c401d4fdb83046143ee4734df88b808e307457f56677c7d93e9b241044c0aed",
+    "policy_sha256": "9568fc3cd5ba8d6e1ad91776e22058adc040e7b18e32a42a498f7caf9a738bc9",
+    "program_storage_used_bytes": 174264,
+    "runtime_memory_available_bytes": 111320,
+    "source_sha256": "ff2e1a8f2c756397fec11b4626e65d4d6b381e9e3fd782cd8a3e7bf7462b1bfc",
+    "static_dynamic_memory_used_bytes": 150824,
+    "uf2_sha256": "64284ec0ecce5adf3132d526dddc9934ede155fe43702396d274991d1b85f2c1"
+  },
+  "implementation": {
+    "automatic_fault_clearing": false,
+    "new_command": false,
+    "telemetry": "IDC v2 layout unchanged; additive request-ready reason suffix _repeated_alternation on otherwise eligible proposals.",
+    "unchanged": [
+      "Request arithmetic",
+      "Conservative cap and tagged debt",
+      "Persistence",
+      "Range and step bounds",
+      "Cadence and settling",
+      "D14/D8 and GNSS qualification",
+      "Phase-direction coherence",
+      "Single firmware actuator owner",
+      "Exact application and first-consumer confirmation",
+      "Integrity faults"
+    ]
+  },
+  "input_archive_sha256": "cff16314e7b44ebadda1985c659a143bba1b40d88c0ae082b3ad7054f9557cc1",
+  "input_gate": {
+    "files_verified": 33,
+    "mismatches": 0,
+    "missing": 0,
+    "official_closed_acquisition": false,
+    "raw_segments": 9
+  },
+  "post_hold_observations": {
+    "acceptance_epochs": [
+      1129,
+      1312
+    ],
+    "edge_error_count_histogram": {
+      "-1": 1,
+      "0": 39,
+      "1": 87,
+      "2": 4,
+      "3": 1
+    },
+    "interpretation": "Fixed-code observations with qualification gaps. Neither uninterrupted steering nor reference-loss holdover; no response claim for the unapplied counterfactual.",
+    "qualified_selected_windows": 132,
+    "reference": "D8 counted edges against qualified D14 PPS spans; nominal 600 reference intervals per selected window"
+  },
+  "replay": {
+    "checkpoint_limit": "Initialized immediately before phase-material decision 551 at recorded code 43073/epoch105; earlier cadence and directions not reconstructed. After three recorded applications latest-three direction history is exact; decision551 resets maintenance debt/persistence.",
+    "first_divergence": [
+      {
+        "baseline_delta": 0,
+        "candidate_cap": 5,
+        "candidate_code": 43069,
+        "candidate_delta": -5,
+        "candidate_reason": "maintenance_request_ready_repeated_alternation",
+        "sequence": "593"
+      }
+    ],
+    "mismatches": [],
+    "post_divergence_physical_claim": false,
+    "recorded_applications_replayed": 3,
+    "recorded_decisions_compared": 43
+  },
+  "review_date": "2026-10-06",
+  "schema": "OTIS_ALTERNATION_POLICY_REVIEW_V1",
+  "source_manifest_sha256": "81c84ffd86a4b3da8d498a8361c6b15a01382282a8f3074fd4a33df71248ef92",
+  "verification": {
+    "analysis_consumer_identity_note": "Pre-existing working-tree analyzer used read-only. This review does not commit its unrelated changes.",
+    "analysis_consumer_sha256": "e587557b7475cbd95c38b8c0199f2d1e4e3e3e9f5e120ff18185bd199a018281",
+    "committed_source_suite": "433 passed, 1 skipped in 61.04 seconds in a clean checkout of 3eeaa60f6f63c7ebff7f94682ce4051520c513a1; the same default-path CDC skip has separately verified pinned-core assertions. Uncommitted observation/analysis changes excluded.",
+    "full_working_tree_suite": "462 passed, 1 skipped in 124.29 seconds; skipped default-path CDC test assertions separately passed against verified isolated core6.1.0.",
+    "native_boundary": "Actual firmware owner, live adapter, partition mailboxes, application/first-consumer barrier, emitted rows, recorder parser and offline analyzer; six alternating synthetic demands.",
+    "physical_boundary": "No USB, hardware capture, electrical DAC response or physical post-divergence control exercised.",
+    "pio_instruction_proof": "passed with pinned pioasm and generated instruction words",
+    "supplemental_changed_path_suite": "49 passed in 68.69 seconds, including all four diagnostic request paths and existing real PTY open-ended host scenarios."
+  }
+}

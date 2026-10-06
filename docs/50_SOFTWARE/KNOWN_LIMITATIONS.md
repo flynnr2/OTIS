@@ -3,11 +3,23 @@
 Current firmware implements autonomous boot and explicit serial-selected modes.
 The following limitations apply to this implementation candidate:
 
-- Physical autonomous operation has not been qualified. Native tests exercise
-  actual owner, adapter, parser, mailboxes and executor admission with simulated
-  device results; they cannot establish real I2C, PIO, UART, USB or plant behavior.
+- The 5 October open-ended instrument latched its documented
+  `prospective_repeated_alternation` controller hold at code `43074`, DAC epoch
+  `108`, while D14/D8 capture continued. The 6 October offline revision removes
+  that sign-only veto and records an alternation diagnostic on eligible requests.
+  Retained source-window reconstruction and checkpoint replay support the narrow
+  change; they cannot prove the response to the rejected correction or indefinite
+  control performance. That revised image has not been physically deployed.
+  The active earlier image stays held until a separately authorized intervention;
+  this change adds no clear-fault or automatic resumption command.
+
+- The [short physical autonomous gate passed](AUTONOMOUS_SHORT_GATE_RESULT_20260923.md),
+  including metadata recovery, one bounded correction and timed HOLD. Sustained
+  72-hour behavior and the unexercised fault cases remain unqualified. Native
+  tests retain their simulated-device boundary; they do not extend physical claims.
 - The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) remains
-  subject to the operator's reserved long-term review. There is no generic
+  conditionally approved for progression; long-term adoption remains subject to
+  the resulting evidence and review. There is no generic
   clear-fault command; HOLD does not erase an integrity fault.
 - USB output is bounded and may be dropped while detached or obstructed. Control
   continues from internal evidence. There is no durable onboard spool and no
@@ -20,13 +32,18 @@ The following limitations apply to this implementation candidate:
   firmware capture backend remains unimplemented. D6 diagnostics cannot veto
   D14/D8 control. D9 digital forwarding does not qualify analog waveform quality,
   jitter, loading or independently referenced frequency.
-- The Adafruit device migration and core 6.1.0 image still need physical
-  integration on the actual bench. Library/build checks do not qualify buses.
+- The exact core 6.1.0 image completed the short physical integration gate.
+  This exercises the actual installed device path, not arbitrary bus fault cases
+  or independent analog readback; library/build checks alone do not qualify buses.
 - Accepted-reference selection cannot distinguish an impostor edge within its
   qualification window. FIFO-service coordinates are not hardware D14 timestamps;
   recognition brackets can withdraw qualification after delayed service.
 - Host recording failures terminate recording truthfully without stopping the
   instrument. External notification delivery is not an instrument control gate.
+- Detached local supervision protects against invoking-terminal loss, not host
+  reboot, power loss, disk failure or coordinator destruction. The finite
+  firmware endpoint remains independent. A fault-inhibited endpoint may reject
+  HOLD and requires review rather than a fabricated clean completion.
 - Earlier physical runs qualify only their frozen source, hardware and claims.
   They do not establish the new autonomous 72-hour observation endpoint.
 

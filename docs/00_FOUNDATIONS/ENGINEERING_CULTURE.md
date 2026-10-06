@@ -46,8 +46,8 @@ The goal is disciplined, comprehensible engineering.
 The finished instrument should be usable without understanding its engineering
 campaign machinery. Power on, allow acquisition and discipline, use the output;
 attach a host when recording or inspection is useful. This is the intended
-experience, now implemented as an offline-verified candidate pending physical
-qualification.
+experience. The implemented candidate passed its short physical integration
+gate; sustained operation and unexercised fault cases remain separate questions.
 
 Be ruthless about accumulated scaffolding. A component must protect timing
 correctness, preserve necessary evidence, or make an experiment easier to run.
@@ -199,7 +199,8 @@ not change operating mode. The [consolidated replacement proposal](../50_SOFTWAR
 brings this work forward and supersedes the proposed mandatory host decision
 worker. Offline implementation and physical qualification are separate gates;
 ordinary use requires no campaign leases, per-correction host acknowledgements
-or Codex. The detailed fault mapping still needs its reserved operator review.
+or Codex. The detailed fault mapping received conditional operator approval on
+23 September 2026; progression must retain evidence for its long-term review.
 
 Compact serial evidence and full replay are different reporting contracts,
 not different owners of timing or control. Characterization and future output

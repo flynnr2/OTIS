@@ -18,10 +18,21 @@
     "correction_debt",
     "gnss_metadata_hold",
     "global_authority_limits",
+    "repeated_alternation",
     "failure_isolation",
     "claims_not_made"
   ],
   "properties": {
+    "repeated_alternation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["predicate", "authority", "recording"],
+      "properties": {
+        "predicate": {"const": "latest_three_applied_directions_and_nonzero_prospective_direction_reverse_three_times"},
+        "authority": {"const": "diagnostic_only"},
+        "recording": {"const": "request_reason_suffix_repeated_alternation"}
+      }
+    },
     "schema_version": {"const": 1},
     "startup_code": {"const": 43085},
     "policy_id": {"const": "OTIS_ADAPTIVE_HYBRID_REGULATION_V1"},

@@ -340,7 +340,7 @@ void make_decision(const OtisAdaptiveHybridEngine &engine, const char *reason,
   };
 }
 
-const char *chatter_reason(const OtisAdaptiveHybridEngine &engine, int32_t delta) {
+bool repeated_alternation(const OtisAdaptiveHybridEngine &engine, int32_t delta) {
   const int8_t direction = delta > 0 ? 1 : -1;
   if (engine.direction_count >= 3) {
     int reversals = 0;
@@ -350,8 +350,12 @@ const char *chatter_reason(const OtisAdaptiveHybridEngine &engine, int32_t delta
       previous = engine.direction_history[index];
     }
     if (previous != direction) ++reversals;
-    if (reversals == 3) return "prospective_repeated_alternation";
+    return reversals == 3;
   }
+  return false;
+}
+
+const char *finite_movement_reason(const OtisAdaptiveHybridEngine &engine, int32_t delta) {
   const uint32_t movement =
       static_cast<uint32_t>(delta < 0 ? -delta : delta);
   const uint64_t path =
@@ -449,12 +453,24 @@ bool propose_or_hold(OtisAdaptiveHybridEngine *engine,
                   pll, false, projection);
     return true;
   }
-  const char *chatter = chatter_reason(*engine, delta);
-  if (chatter != nullptr) {
-    fail_static(engine, chatter);
-    make_decision(*engine, chatter, decision, 0, cap, raw, fll, pll, false,
+  const char *movement_reason = finite_movement_reason(*engine, delta);
+  if (movement_reason != nullptr) {
+    fail_static(engine, movement_reason);
+    make_decision(*engine, movement_reason, decision, 0, cap, raw, fll, pll, false,
                   projection);
     return true;
+  }
+  if (repeated_alternation(*engine, delta)) {
+    // Direction history is diagnostic only. Keep the request's path explicit
+    // in the existing IDC reason atom without allocating or changing its wire layout.
+    if (maintenance_request)
+      ready_reason = "maintenance_request_ready_repeated_alternation";
+    else if (strcmp(ready_reason, "phase_degraded_frequency_only_request_ready") == 0)
+      ready_reason = "phase_degraded_frequency_only_request_ready_repeated_alternation";
+    else if (strcmp(ready_reason, "phase_material_ordinary_request_ready") == 0)
+      ready_reason = "phase_material_ordinary_request_ready_repeated_alternation";
+    else
+      ready_reason = "outside_tight_ordinary_request_ready_repeated_alternation";
   }
   engine->request_pending = true;
   engine->last_reason = ready_reason;

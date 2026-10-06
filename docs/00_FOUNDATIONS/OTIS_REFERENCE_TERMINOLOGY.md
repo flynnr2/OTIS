@@ -228,6 +228,17 @@ remain pending. Intermittent byte progress does not extend it. Reaching the
 horizon is a transport fault and an evidence-continuity boundary; it is not a
 statement about timing capture truth before the fault.
 
+### Controller direction alternation
+
+A sequence of changes in the sign of applied oscillator corrections and a
+specified prospective correction. In the current instrument, three reversals
+over the latest three applied directions plus an otherwise eligible nonzero
+proposal are recorded as a diagnostic. This describes direction history; it
+does not by itself establish rapid chatter, excessive movement, harmful
+oscillation, oscillator instability or invalid measurement. Magnitude,
+elapsed interval, qualified error evidence and observed responses are distinct
+facts. A policy that inhibits correction must name its independent criterion.
+
 ### Quantization
 
 The finite resolution imposed by the tick rate of the timing source.

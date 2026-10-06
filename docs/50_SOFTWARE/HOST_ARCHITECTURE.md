@@ -103,3 +103,40 @@ closure. A simulated serial endpoint cannot establish actual Nano RP2040
 serial-open reset behavior, firmware cross-core propagation or physical DAC
 behavior. Those require the exact-profile firmware integration checks and a
 separately authorized short bench gate.
+
+## Finite unattended qualification
+
+The optional [72-hour observation coordinator](AUTONOMOUS_72H_OBSERVATION.md)
+wraps the recorder and read-only monitor for one explicitly selected experiment.
+It is separate from ordinary instrument runtime. Its detached local process
+requires no model/API budget and does not make a connected host a steering owner.
+
+A frozen plan binds discovered boot session, exact build and policy identities,
+firmware dwell, local observation deadlines, review behavior and output paths.
+Entry requires fresh HOLD, no pending write, known in-envelope code and advancing
+capture. The coordinator issues one timed AUTO request through the sole recorder
+and retains its exact receipt and effective firmware deadline. It neither retries
+AUTO with a new sequence nor automatically resumes after review HOLD.
+
+Unknown decision-bearing contradictions can exercise the plan's narrowly
+preauthorized one-shot HOLD path when fresh identity permits it. Unresolved
+identity cannot authorize guessing, abort, reset or teardown. Delivery loss is an
+evidence gap, not a control veto. Firmware alone performs documented causal
+qualification recovery. Material findings are retained locally even without a
+reviewer or notification delivery; monitor failure cannot terminate the recorder.
+
+After an exactly established firmware HOLD endpoint and resolved application,
+the coordinator requests recording closure, verifies raw integrity and packages
+the closed evidence automatically. A recording-only close request never changes
+firmware mode. Missing endpoint proof retains capture and a review finding;
+a finished host duration cannot substitute for the firmware's static endpoint.
+An offline finalization path can retry analysis/package publication against closed
+evidence without serial access or renewed acquisition.
+
+The coordinator's local `close` request requires fresh exact HOLD identity,
+known code and no pending write. Once accepted, new mode requests are rejected
+and the recorder drains to a complete row/status cohort within one fixed
+five-second deadline. The manifest retains `close_boundary_complete`; timeout
+preserves the actual bytes and the incomplete-boundary finding. Ordinary
+`--duration-s` recording remains independent of instrument mode and does not
+acquire this operating-endpoint requirement.

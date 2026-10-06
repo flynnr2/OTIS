@@ -65,11 +65,11 @@ The final local artifact directory is
 with the UF2 and generated provenance header. These are ignored local build
 artifacts, not a transferred or physically qualified bench bundle.
 
-| Identity | SHA-256 |
-| --- | --- |
+| Identity           | SHA-256                                                            |
+| ------------------ | ------------------------------------------------------------------ |
 | Firmware input set | `86cd710c8a23797bb214fcaf110bf6f77b7c2ffabce3376098163db25afec9c0` |
-| UF2 | `7fb533b082c6022a46da40dbf9f1bff0c0b839f6ed5a4d396701231ae1953622` |
-| Configuration | `7b971d9a5c2fa63abd20037be23b94e117d0a73f092644b10b45abb08f407585` |
+| UF2                | `7fb533b082c6022a46da40dbf9f1bff0c0b839f6ed5a4d396701231ae1953622` |
+| Configuration      | `7b971d9a5c2fa63abd20037be23b94e117d0a73f092644b10b45abb08f407585` |
 
 Final integration also covers native timer operation beyond the 49-day
 millisecond rollover, complete paced configuration delivery through the actual
@@ -97,24 +97,30 @@ intervals at each of 10 and 16 MHz**, plus the declared synchronized-input
 4..9-clock dwell model. These remain digital-model claims, not physical pin
 or service-latency qualification.
 
-| PR image identity | SHA-256 |
-| --- | --- |
+| PR image identity  | SHA-256                                                            |
+| ------------------ | ------------------------------------------------------------------ |
 | Firmware input set | `e00d4d02522405321c16046f796127306a178d3d82d3d031f72fecde13ea1a39` |
-| UF2 | `60e94ea2cf4f43b4b7c0a14287940dbd6f4fd9c84f4d9bece0f965a7990d013d` |
+| UF2                | `60e94ea2cf4f43b4b7c0a14287940dbd6f4fd9c84f4d9bece0f965a7990d013d` |
 
 Local build artifacts are in `runs/autonomous-pr-build/`; the expanded proof and
 merged-suite logs are in `runs/autonomous-pr-verification/`. Neither directory
 is committed or claimed transferred to the bench.
 
-## Remaining decisions and physical gates
+## Physical gate and next decision
 
 The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) is the
-implemented candidate and still requires the operator's reserved review before
-long-term adoption. It explicitly distinguishes qualification holds, controller
+implemented candidate, conditionally approved by the operator on 23 September
+2026 for progression. Long-term adoption remains subject to bench evidence. It explicitly distinguishes qualification holds, controller
 holds, internal integrity faults, optional evidence faults and output loss.
 
-Next is a separately authorized short integration with the exact image, then
-the agreed 72-hour observation; a week remains optional. That gate must exercise
-hostless boot, late attachment/disconnection, mode changes and physical
-application/consumer propagation. The recorder schedule itself must not become a
-steering lease. A required timed stop must be explicitly selected in firmware.
+The [short physical integration gate passed](AUTONOMOUS_SHORT_GATE_RESULT_20260923.md).
+It exercised hostless entry, reattachment, restart, serial-selected modes,
+application/consumer propagation, metadata hold/recovery, one bounded autonomous
+correction and the firmware-timed HOLD endpoint. The returned archive and all four
+recordings were independently integrity-verified on the development Mac.
+
+The operator authorized preparation of the 72-hour autonomous observation with
+local unattended supervision and automatic evidence packaging. The attached direct
+output-loss finding must be classified before freezing its evidence contract.
+Unexercised fault cases and D9 pin behavior remain open. The recorder schedule
+must not become a steering lease; the required static endpoint belongs to firmware.

@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 
 from host.otis_tools.instrument_recorder import (
-    InstrumentRecorder, RecorderConfig, passive_serial_open, request, socket_path,
+    InstrumentRecorder, RecorderConfig, parse_instrument_status, parse_status_row,
+    passive_serial_open, request, socket_path,
     verify_recording,
 )
 from host.otis_tools.firmware_host_contract import ACTIVE_STATUS_KEYS
@@ -21,12 +22,13 @@ def _sts(key: str, value: str, sequence: int) -> bytes:
     return f"STS,1,{sequence},1000000,rp2040_monotonic_us32,adaptive_hybrid,{key},{value},INFO,0\n".encode()
 
 
-def _snapshot(session: int = 42, generation: int = 1, command_sequence: int = 0) -> bytes:
+def _snapshot(session: int = 42, generation: int = 1, command_sequence: int = 0,
+              mode: str = "AUTO_DISCIPLINE", code: int = 43085) -> bytes:
     values = {key: "0" for key in ACTIVE_STATUS_KEYS}
     values.update(session_id=str(session), capture_session="1",
-                  mode="AUTO_DISCIPLINE", requested_mode="AUTO_DISCIPLINE",
-                  state="ACQUIRING_OR_TRACKING", reason="acquiring", fault="none",
-                  applied_code="43085", confirmed_applied_code_known="true",
+                  mode=mode, requested_mode=mode,
+                  state=mode, reason="operator_request", fault="none",
+                  applied_code=str(code), confirmed_applied_code_known="true",
                   dac_epoch="1", command_sequence=str(command_sequence),
                   command_completed=str(command_sequence), instrument_ticks_domain="rp2040_timer_us64")
     pairs = [("snapshot_generation_begin", str(generation)),
@@ -34,6 +36,21 @@ def _snapshot(session: int = 42, generation: int = 1, command_sequence: int = 0)
     pairs.extend((key, values[key]) for key in ACTIVE_STATUS_KEYS)
     pairs.append(("snapshot_generation_complete", str(generation)))
     return b"".join(_sts(key, value, i + 1) for i, (key, value) in enumerate(pairs))
+
+
+def test_malformed_decision_counter_cannot_become_fresh_status() -> None:
+    rows = (parse_status_row(line) for line in _snapshot().splitlines())
+    fields = {key: value for component, key, value in rows if component == "adaptive_hybrid"}
+    fields.pop("snapshot_generation_begin")
+    fields.pop("snapshot_generation_complete")
+    fields.pop("snapshot_contract")
+    fields["snapshot_contract"] = "OTIS_INSTRUMENT_STATUS_V2"
+    assert parse_instrument_status(fields) is not None
+    for key, malformed in (("write_sequence", "broken"), ("write_state", "4"),
+                           ("instrument_ticks", "-1"),
+                           ("operating_end_ticks", str(2**64))):
+        invalid = dict(fields, **{key: malformed})
+        assert parse_instrument_status(invalid) is None
 
 
 class _PtyPort:
@@ -132,6 +149,55 @@ def test_attach_record_mode_and_duration_leave_instrument_alone(tmp_path: Path) 
         first.write_bytes(first.read_bytes() + b"tampered")
         with pytest.raises(ValueError, match="identity mismatch"):
             verify_recording(tmp_path)
+    finally:
+        os.close(master)
+
+
+def test_progressive_four_mode_requests_use_one_serial_owner_and_exact_identity(tmp_path: Path) -> None:
+    master, recorder, thread, outcome = _start_recorder(tmp_path, duration=3)
+    try:
+        os.write(master, _snapshot())
+        until = time.monotonic() + 1
+        while recorder.instrument is None:
+            assert time.monotonic() < until
+            time.sleep(0.005)
+
+        requests = [
+            (1, 0, 0, "OBSERVE_HOLD", 43085),
+            (2, 43085, 0, "FIXED_CODE", 43085),
+            (3, 43086, 30, "CHARACTERIZE", 43086),
+            (0, 0, 5400, "AUTO_DISCIPLINE", 43086),
+        ]
+        for sequence, (mode, code, dwell, mode_name, applied_code) in enumerate(requests, 1):
+            result = request(tmp_path, {"operation": "mode", "expected_session": 42,
+                                           "mode": mode, "code": code, "dwell_s": dwell})
+            assert result == {
+                "submission": "written_unconfirmed", "session": 42, "sequence": sequence,
+                "command": f"ACTIVE MODE 42 {sequence} {mode} {code} {dwell}",
+            }
+            assert select.select([master], [], [], 1)[0]
+            assert os.read(master, 512) == (result["command"] + "\n").encode()
+            if sequence == 1:
+                blocked = request(tmp_path, {"operation": "mode", "expected_session": 42,
+                                             "mode": 2, "code": 43085, "dwell_s": 0})
+                assert "previous mode request is still unconfirmed" in blocked["error"]
+            receipt = (f"ICM,2,{sequence},42,{sequence},{mode},{code},{dwell},"
+                       f"ACCEPTED,{sequence},{1000000 + sequence},rp2040_timer_us64\n").encode()
+            os.write(master, receipt + _snapshot(
+                generation=sequence + 1, command_sequence=sequence,
+                mode=mode_name, code=applied_code,
+            ))
+            until = time.monotonic() + 1
+            while recorder.completed_generation != sequence + 1:
+                assert time.monotonic() < until
+                time.sleep(0.005)
+            assert recorder.pending_command is None
+            assert recorder.last_receipt["result"] == "ACCEPTED"
+            assert recorder.instrument["mode"] == mode_name
+            assert recorder.instrument["completed_command_sequence"] == sequence
+        thread.join(4)
+        assert not thread.is_alive() and "error" not in outcome
+        assert verify_recording(tmp_path)["status"] == "verified"
     finally:
         os.close(master)
 

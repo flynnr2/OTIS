@@ -106,8 +106,18 @@ int main() {
       have_decision = false;
       have_pending_decision = false;
       emit("INIT", ok, &engine, nullptr);
-    } else if (command == "DECIDE") {
+    } else if (command == "SET_SEQUENCE") {
+      std::cin >> engine.decision_sequence;
+      emit("SET_SEQUENCE", true, &engine, nullptr);
+    } else if (command == "SET_POLICY_LIMITS") {
+      std::cin >> engine.policy.maximum_applications >>
+          engine.policy.maximum_cumulative_movement_codes;
+      emit("SET_POLICY_LIMITS", true, &engine, nullptr);
+    } else if (command == "DECIDE" || command == "DECIDE_AT_EPOCH") {
       OtisAdaptiveHybridObservation observation = {};
+      observation.source_acceptance_epoch = 1u;
+      if (command == "DECIDE_AT_EPOCH")
+        std::cin >> observation.source_acceptance_epoch;
       int tight = 0;
       int phase_valid = 0;
       int authority_valid = 0;
@@ -124,7 +134,6 @@ int main() {
           observation.selected_estimator_identity >> phase_valid >>
           authority_valid >> settled >> cadence >> metadata;
       observation.tight_inside = tight != 0;
-      observation.source_acceptance_epoch = 1u;
       observation.phase_valid = phase_valid != 0;
       observation.authority_valid = authority_valid != 0;
       observation.settled = settled != 0;
