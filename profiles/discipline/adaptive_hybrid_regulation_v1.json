@@ -131,6 +131,11 @@
     "automatic_retry": false,
     "automatic_restoration": false
   },
+  "repeated_alternation": {
+    "predicate": "latest_three_applied_directions_and_nonzero_prospective_direction_reverse_three_times",
+    "authority": "diagnostic_only",
+    "recording": "request_reason_suffix_repeated_alternation"
+  },
   "failure_isolation": {
     "D10_absence_noise_invalidity_or_overflow": "degrade_external_event_evidence_only",
     "D6_failure": "degrade_diagnostic_monitor_only",

@@ -295,8 +295,9 @@ def test_ordinary_gates_are_range_aware_and_preserve_selected_safety_limits() ->
     alternating.direction_history = [1, -1, 1]
     assert alternating.decide(
         _observation(alternating, 0, 0, 600, counts=2, phase=0, tight_state="OUTSIDE")
-    ).reason == "prospective_repeated_alternation"
-    assert alternating.fail_static_reason == "prospective_repeated_alternation"
+    ).reason == "outside_tight_ordinary_request_ready_repeated_alternation"
+    assert alternating.fail_static_reason is None
+    assert alternating.request_pending
 
     inefficient = _controller()
     inefficient.cumulative_movement_codes = 41

@@ -56,6 +56,26 @@ and types:
 - IST: mode, state, reason and qualification transitions with source frontiers,
   known code/DAC epoch and response incompleteness.
 
+The 6 October 2026 policy revision keeps the IDC v2 field layout. An otherwise
+eligible nonzero proposal that reverses each of the latest three applied
+directions appends `_repeated_alternation` to its request-ready `reason` atom.
+The base reasons are `maintenance_request_ready`,
+`outside_tight_ordinary_request_ready`,
+`phase_material_ordinary_request_ready`, and
+`phase_degraded_frequency_only_request_ready`. The suffix is an additive
+direction-history diagnostic, not a hold, fault, response verdict, or independent
+actuation gate. Earlier qualification/cadence/settling/range and integrity holds
+retain their own reasons and authority; the diagnostic does not override them.
+Direction history advances only after exact application and first-consumer
+commit, so a rejected or unconfirmed proposal cannot manufacture a reversal.
+The recorder and offline analyzer retain these reason atoms unchanged.
+
+Historical `prospective_repeated_alternation` rows still describe the original
+policy's rejected zero-delta decision and latched controller hold. Policy hash
+and source/build identities distinguish those observations from the revised
+policy; no historical row is rewritten. The revised request still passes the
+sole firmware owner's normal application and consumer confirmation path.
+
 All new execution coordinates use `rp2040_timer_us64`, the native extended RP2040
 microsecond timer sampled by `time_us_64()`. These are application/service
 coordinates, never hardware edge-latch timestamps. Raw capture coordinates and

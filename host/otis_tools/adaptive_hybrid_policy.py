@@ -116,6 +116,11 @@ def policy_from_mapping(
         != 332_041_393_326_771_929_124
         or debt.get("maximum_absolute_total_picocodes") != DEBT_LIMIT
         or limits.get("maximum_outstanding_requests") != 1
+        or value.get("repeated_alternation") != {
+            "predicate": "latest_three_applied_directions_and_nonzero_prospective_direction_reverse_three_times",
+            "authority": "diagnostic_only",
+            "recording": "request_reason_suffix_repeated_alternation",
+        }
         or limits.get("maximum_combined_step_codes")
         != parameters.get("maximum_update_codes")
         or limits.get("minimum_applied_cadence_s")
@@ -387,12 +392,13 @@ class AdaptiveHybridPhasePriorityController:
             False,
         )
 
-    def _chatter_reason(self, delta: int) -> str | None:
+    def _repeated_alternation(self, delta: int) -> bool:
         direction = 1 if delta > 0 else -1
         prospective = [*self.direction_history[-3:], direction]
         reversals = sum(a != b for a, b in zip(prospective, prospective[1:]))
-        if len(prospective) == 4 and reversals == 3:
-            return "prospective_repeated_alternation"
+        return len(prospective) == 4 and reversals == 3
+
+    def _finite_movement_reason(self, delta: int) -> str | None:
         path = self.cumulative_movement_codes + abs(delta)
         net = abs(self.applied_code + delta - self.chatter_origin_code)
         if self.policy.maximum_cumulative_movement_codes and path >= 42 and 4 * net <= path:
@@ -523,12 +529,16 @@ class AdaptiveHybridPhasePriorityController:
                 cumulative_budget_limited=True,
                 **projection,
             )
-        chatter = self._chatter_reason(delta)
-        if chatter is not None:
-            self._fail_static(chatter)
+        movement_reason = self._finite_movement_reason(delta)
+        if movement_reason is not None:
+            self._fail_static(movement_reason)
             return self._decision(
-                chatter, cap=cap, raw=raw, fll=fll, pll=pll, **projection
+                movement_reason, cap=cap, raw=raw, fll=fll, pll=pll, **projection
             )
+        if self._repeated_alternation(delta):
+            # A sign sequence does not establish excessive movement or a bad
+            # response. All eligibility gates above still govern this proposal.
+            reason += "_repeated_alternation"
         decision = self._decision(
             reason,
             delta,

@@ -99,4 +99,41 @@ void snapshot_wire() {
  otis_adaptive_hybrid_regulation_live_visit_status(nullptr,wire_field,0);
  OtisEvidenceFrameMessage frame={};while(otis_dual_core_take_evidence(&frame)) std::fputs(frame.data,stdout);
 }
-int main(int argc,char**argv) {assert(argc==2);if(!strcmp(argv[1],"boot_repeated"))boot_and_repeated();else if(!strcmp(argv[1],"executor"))executor();else if(!strcmp(argv[1],"commands"))commands();else if(!strcmp(argv[1],"wire"))wire_records();else if(!strcmp(argv[1],"snapshot_wire"))snapshot_wire();else return 1;}
+void alternating_wire() {
+ init();auto w=release(2);application(w,100);
+ OtisEvidenceFrameMessage frame={};
+ while(otis_dual_core_take_evidence(&frame)) std::fputs(frame.data,stdout);
+ unsigned corrections=0;
+ for(unsigned i=1;i<=40 && corrections<6;++i) {
+  const uint64_t t=uint64_t(i)*2000*1000000ull;
+  OtisAdaptiveHybridRegulationLiveHealth h={};h.session_id=17;h.acceptance_epoch=1;h.accepted_boundary_ordinal=i*600;
+  h.gnss_metadata_sequence=i;
+  h.gnss_metadata_valid=h.gnss_identity_stable=h.gnss_3d_evidence=h.raw_pps_valid=h.reference_integrity_valid=h.count_valid=h.accepted_anchor_current=h.abort_path_live=true;
+  otis_adaptive_hybrid_regulation_live_update_health_at_ticks(&h,0,t);
+  snapshot();assert(status["fault"]=="none");
+  OtisAdaptiveHybridRegulationLiveDecision d={};d.capture_session=17;d.source_acceptance_epoch=1;
+  d.source_opening_accepted_boundary_ordinal=(i-1)*600;d.source_closing_accepted_boundary_ordinal=i*600;
+  d.dac_epoch=std::stoul(status["dac_epoch"]);d.current_applied_code=std::stoul(status["applied_code"]);
+  // Alternating synthetic demands; this fixture makes no physical plant claim.
+  d.accumulated_edge_error_counts=corrections%2==0?-1:1;
+  d.frequency_error_hz=d.accumulated_edge_error_counts/600.0;
+  d.tight_state="TIGHT_INSIDE";d.phase_epoch=1;d.phase_dac_epoch=d.dac_epoch;d.phase_applied_code=d.current_applied_code;
+  d.phase_continuous=d.phase_current=d.measurement_valid=d.model_applicable=d.preview_available=true;
+  OtisAdaptiveHybridRegulationLiveOutcome out={};
+  otis_adaptive_hybrid_regulation_live_on_decision_at_ticks(&d,t,&out);
+  assert(!out.faulted);
+  otis_adaptive_hybrid_regulation_live_service(t+1);
+  if(otis_dual_core_take_instrument_write(&w)) {
+   const int delta=int(w.code)-int(d.current_applied_code);
+   assert((delta>0)==(corrections%2==0));
+   application(w,t+100);++corrections;
+   snapshot();assert(status["dac_epoch"]==std::to_string(corrections+1));
+   assert(status["applied_code"]==std::to_string(w.code));
+   assert(status["state"]=="RESPONSE_PENDING" && status["fault"]=="none");
+  }
+  while(otis_dual_core_take_evidence(&frame)) std::fputs(frame.data,stdout);
+ }
+ assert(corrections==6);
+ otis_adaptive_hybrid_regulation_live_visit_status(nullptr,wire_field,0);
+}
+int main(int argc,char**argv) {assert(argc==2);if(!strcmp(argv[1],"boot_repeated"))boot_and_repeated();else if(!strcmp(argv[1],"executor"))executor();else if(!strcmp(argv[1],"commands"))commands();else if(!strcmp(argv[1],"wire"))wire_records();else if(!strcmp(argv[1],"snapshot_wire"))snapshot_wire();else if(!strcmp(argv[1],"alternating_wire"))alternating_wire();else return 1;}

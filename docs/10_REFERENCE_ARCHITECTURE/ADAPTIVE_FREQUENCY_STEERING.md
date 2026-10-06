@@ -424,6 +424,28 @@ with the Python oracle before this policy may enter the bench.
 
 ## Proportionate work for a changed policy
 
+### Long-term direction alternation review — 6 October 2026
+
+The operator approved removing independent veto authority from repeated
+direction alternation. Legitimate oscillator drift can require reversals, and
+signs alone do not distinguish that demand from measurement quantization or
+controller-induced oscillation. The ordinary-operation revision retains the
+selected request arithmetic, conservative maintenance cap, persistence, tagged
+debt, range, step, cadence, settling, qualification and transaction gates. It
+records alternation as a suffix on an otherwise eligible request reason, without
+adding an automatic recovery or clear-fault mechanism.
+
+Use causal replay only through the first changed application. Recorded later
+measurements at an unchanged code cannot establish the physical response to a
+counterfactual correction. A checkpoint replay must declare unavailable earlier
+state rather than manufacturing it; exact direction history becomes known once
+the latest three actual applications are retained. Check every relevant source
+window against accepted spans and canonical hardware snapshots. Response sign
+classification supports the observed response, not proof of optimal control.
+Post-hold data is qualified fixed-code observation where its source supports
+that claim, not continued active steering or reference-loss holdover. The
+deployed earlier image and its held recording retain their original contract.
+
 The next work must not be another open-ended equilibrium characterization or a
 repeat qualification of unchanged FLL/PLL boundaries. Before promoting a
 materially changed policy it must:

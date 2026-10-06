@@ -7,6 +7,15 @@ approval is not a claim of physical qualification or unconditional long-term
 adoption; retain findings and revisit the mapping in light of bench evidence.
 No fault behavior or recovery predicate is changed by this approval record.
 
+6 October 2026: after the open-ended instrument held on slow alternating
+corrections, the operator approved treating direction alternation as a recorded
+diagnostic without independent correction-veto authority. The offline policy
+revision below supersedes that one selected-engine guard. The active bench image
+and its latched hold remain unchanged; deployment and physical performance are
+separate gates.
+The [retained review](ALTERNATION_POLICY_REVIEW_20261006.json) binds the source
+windows, checkpoint comparison, coverage limits and offline verification.
+
 The [short physical gate result](AUTONOMOUS_SHORT_GATE_RESULT_20260923.md) exercised
 metadata hold/recovery, operating-mode transitions, a bounded automatic correction
 and timed HOLD. It does not promote unexercised fault cases or remove the
@@ -100,11 +109,20 @@ no-write provenance alone is not evidence of physical danger.
 
 ## Selected engine diagnostics
 
-Retain existing numerical calculations and their checks. The first implementation
-continues to inhibit selected control on `prospective_repeated_alternation` (three
-reversals over the latest four proposed/applied directions). This is a controller
-review hold, not a capture failure. The operator should specifically review
-whether its long-term recovery should be manual, timed, or evidence-driven.
+Retain existing numerical calculations and their checks. The 6 October offline
+revision records three reversals over the latest three applied directions plus
+one otherwise eligible nonzero proposal as a diagnostic. It appends
+`_repeated_alternation` to the existing request-ready reason in IDC. It neither
+changes the proposed delta nor creates a fault, hold, automatic recovery, retry,
+or new command. Qualification, persistence, conservative cap, cadence, settling,
+range, step, phase-direction coherence and transaction-integrity gates retain
+their existing authority. A sign sequence alone establishes neither oscillator
+instability nor excessive actuator movement.
+
+The deployed earlier policy still enters `CONTROLLER_HOLD` on
+`prospective_repeated_alternation`. Its 5 October rejection remains a correct
+execution of that frozen policy; the new interpretation does not rewrite it or
+clear the running instrument's fault. No generic clear-fault command is added.
 
 Remove the lifetime `prospective_low_efficiency_path` stop in ordinary operation:
 long-term movement away from and back toward the boot code is not, by itself,

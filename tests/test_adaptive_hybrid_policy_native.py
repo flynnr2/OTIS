@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import replace
 import io
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -615,10 +617,111 @@ def test_ordinary_paths_limits_chatter_and_fail_static_are_parity_checked(
     assert expected[3].reason == "phase_degraded_frequency_only_request_ready"
     assert decision_rows[-4]["reason"] == "persistence_first_interval_hold"
     assert decision_rows[-3]["reason"] == "maintenance_request_ready"
-    assert decision_rows[-2]["reason"] == "prospective_repeated_alternation"
-    assert decision_rows[-2]["fail_static_reason"] == "prospective_repeated_alternation"
+    assert decision_rows[-2]["reason"] == "outside_tight_ordinary_request_ready_repeated_alternation"
+    assert decision_rows[-2]["fail_static_reason"] == ""
+    assert decision_rows[-2]["request_pending"] == "1"
     assert decision_rows[-1]["reason"] == "outside_tight_ordinary_request_ready"
     assert decision_rows[-1]["fail_static_reason"] == ""
+
+
+def test_recorded_alternation_frontier_matches_native_through_first_divergence(
+    adaptive_hybrid_native_harness: Path,
+) -> None:
+    fixture = json.loads((ROOT / "tests/fixtures/adaptive_hybrid/alternation_review_20261005.json").read_text())
+    controller = _controller(code=43073, epoch=105)
+    controller.decision_sequence = 550
+    commands = ["INIT 43073 105", "SET_SEQUENCE 550"]
+    expected = []
+    pending = None
+    for row in fixture["records"]:
+        if row["record_type"] == "IDC":
+            ticks = int(row["timestamp_ticks"])
+            observation = AdaptiveHybridObservation(
+                timestamp_s=ticks // 1_000_000, timestamp_ticks=ticks,
+                capture_session=int(row["capture_session"]),
+                source_acceptance_epoch=int(row["acceptance_epoch"]),
+                source_opening_accepted_boundary_ordinal=int(row["opening_accepted_boundary"]),
+                source_closing_accepted_boundary_ordinal=int(row["closing_accepted_boundary"]),
+                dac_epoch=int(row["dac_epoch"]), applied_code=int(row["applied_code"]),
+                accumulated_edge_error_counts=int(row["edge_error_counts"]),
+                tight_state="TIGHT_INSIDE" if row["tight_inside"] == "1" else "OUTSIDE",
+                phase_epoch=int(row["phase_epoch"]), relative_phase_cycles=int(row["relative_phase_cycles"]),
+                **{key: row[key] == "1" for key in ("phase_valid", "authority_valid", "settled", "metadata_qualified")},
+            )
+            pending = controller.decide(observation)
+            if int(row["sequence"]) < 593:
+                assert pending.reason == row["reason"]
+                assert pending.requested_delta_codes == int(row["delta_codes"])
+            expected.append((pending, replace(controller.debt)))
+            commands.append(_decide_command(observation).replace("DECIDE ", "DECIDE_AT_EPOCH 1129 ", 1))
+        elif row["record_type"] == "IAP":
+            assert pending is not None
+            controller.confirm_application(pending, applied_code=int(row["applied_code"]),
+                dac_epoch=int(row["dac_epoch"]), first_consumer_exact=True)
+            commands.append(f"APPLY {row['applied_code']} {row['dac_epoch']} 1")
+        elif row["record_type"] == "IRS":
+            controller.complete_response(fresh_exact=True)
+            commands.append("RESPONSE 1")
+    rows = _run(adaptive_hybrid_native_harness, commands)
+    decisions = [row for row in rows if row["command"] == "DECIDE"]
+    assert len(decisions) == len(expected) == 43
+    for actual, (decision, debt) in zip(decisions, expected):
+        assert actual["ok"] == "1" and actual["fail_static_reason"] == ""
+        assert actual["reason"] == decision.reason
+        assert int(actual["decision_sequence"]) == decision.decision_sequence
+        assert int(actual["requested_delta_codes"]) == decision.requested_delta_codes
+        assert int(actual["requested_code"]) == decision.requested_code
+        assert int(actual["raw_fll_picocodes"]) == decision.raw_fll_picocodes
+        assert int(actual["raw_pll_picocodes"]) == decision.raw_pll_picocodes
+        assert int(actual["debt_fll_picocodes"]) == debt.fll_picocodes
+        assert int(actual["debt_pll_picocodes"]) == debt.pll_picocodes
+    assert decisions[-1]["reason"] == "maintenance_request_ready_repeated_alternation"
+    assert decisions[-1]["requested_delta_codes"] == "-5"
+    assert decisions[-1]["requested_code"] == "43069"
+    assert decisions[-1]["safe_cap_codes"] == "5"
+
+
+def test_alternation_diagnostic_cannot_bypass_an_independent_finite_movement_guard(
+    adaptive_hybrid_native_harness: Path,
+) -> None:
+    controller = AdaptiveHybridPhasePriorityController(
+        replace(load_policy(), maximum_cumulative_movement_codes=100)
+    )
+    controller.direction_history = [1, -1, 1]
+    controller.cumulative_movement_codes = 41
+    observation = _observation(controller, 0, 0, 600, counts=2, phase=0, tight_state="OUTSIDE")
+    decision = controller.decide(observation)
+    rows = _run(adaptive_hybrid_native_harness, ["INIT 43085 1", "SET_POLICY_LIMITS 0 100",
+        "SET_BUDGET 0 41", "SET_DIRECTIONS 3 1 -1 1 43085", _decide_command(observation)])
+    assert decision.reason == rows[-1]["reason"] == "prospective_low_efficiency_path"
+    assert rows[-1]["requested_delta_codes"] == "0"
+    assert rows[-1]["fail_static_reason"] == "prospective_low_efficiency_path"
+
+
+@pytest.mark.parametrize("changes, reason", [
+    ({"counts": 2, "phase": 0, "tight_state": "OUTSIDE"}, "outside_tight_ordinary_request_ready"),
+    ({"counts": 0, "phase": 4}, "phase_material_ordinary_request_ready"),
+    ({"counts": 2, "phase": 0, "phase_valid": False}, "phase_degraded_frequency_only_request_ready"),
+    ({"counts": 1, "phase": 2}, "maintenance_request_ready"),
+])
+def test_each_request_path_records_alternation_without_changing_its_authority(
+    adaptive_hybrid_native_harness: Path, changes: dict, reason: str,
+) -> None:
+    controller = _controller()
+    controller.direction_history = [1, -1, 1]
+    commands = ["INIT 43085 1", "SET_DIRECTIONS 3 1 -1 1 43085"]
+    observation = _observation(controller, 0, 0, 600, **changes)
+    decision = controller.decide(observation)
+    commands.append(_decide_command(observation))
+    if decision.requested_delta_codes == 0:
+        observation = _observation(controller, 600, 600, 1200, **changes)
+        decision = controller.decide(observation)
+        commands.append(_decide_command(observation))
+    actual = _run(adaptive_hybrid_native_harness, commands)[-1]
+    _assert_decision_parity(actual, decision, controller)
+    assert actual["reason"] == reason + "_repeated_alternation"
+    assert int(actual["requested_delta_codes"]) < 0
+    assert actual["fail_static_reason"] == "" and actual["request_pending"] == "1"
 
 
 @pytest.mark.parametrize(

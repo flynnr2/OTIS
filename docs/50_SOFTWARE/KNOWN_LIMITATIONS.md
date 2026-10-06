@@ -3,6 +3,16 @@
 Current firmware implements autonomous boot and explicit serial-selected modes.
 The following limitations apply to this implementation candidate:
 
+- The 5 October open-ended instrument latched its documented
+  `prospective_repeated_alternation` controller hold at code `43074`, DAC epoch
+  `108`, while D14/D8 capture continued. The 6 October offline revision removes
+  that sign-only veto and records an alternation diagnostic on eligible requests.
+  Retained source-window reconstruction and checkpoint replay support the narrow
+  change; they cannot prove the response to the rejected correction or indefinite
+  control performance. That revised image has not been physically deployed.
+  The active earlier image stays held until a separately authorized intervention;
+  this change adds no clear-fault or automatic resumption command.
+
 - The [short physical autonomous gate passed](AUTONOMOUS_SHORT_GATE_RESULT_20260923.md),
   including metadata recovery, one bounded correction and timed HOLD. Sustained
   72-hour behavior and the unexercised fault cases remain unqualified. Native
