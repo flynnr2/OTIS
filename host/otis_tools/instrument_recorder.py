@@ -18,7 +18,6 @@ from pathlib import Path
 
 from .firmware_host_contract import ACTIVE_STATUS_KEYS
 
-
 STATE = "recorder_state.json"
 RESERVATION = "recorder.in_progress"
 MAX_REQUEST_BYTES = 1024
@@ -308,10 +307,10 @@ class InstrumentRecorder:
                 if self.instrument and status["session"] != self.instrument["session"]:
                     self.last_sequence = 0
                     self.completed_generation = 0
-                elif self.instrument and self.status_generation <= self.completed_generation:
-                    self.invalid_status += 1
-                    continue
-                elif self.instrument and status["last_command_sequence"] < self.instrument["last_command_sequence"]:
+                elif self.instrument and (
+                    self.status_generation <= self.completed_generation or
+                    status["last_command_sequence"] < self.instrument["last_command_sequence"]
+                ):
                     self.invalid_status += 1
                     continue
                 self.instrument = status
@@ -378,13 +377,20 @@ class InstrumentRecorder:
                     raise ValueError("request must be one bounded JSON line")
                 value = json.loads(request)
                 if not isinstance(value, dict):
-                    raise ValueError("request must be an object")
+                    raise ValueError("request must be an object")  # noqa: TRY004 - socket validation reply
                 if value.get("operation") == "status":
                     result = self._state()
                 elif value.get("operation") == "mode":
                     result = self._mode_request(value)
                 elif value.get("operation") == "close":
                     result = self._close_request(value)
+                elif value.get("operation") == "end_recording":
+                    # Explicit local evidence cutoff, independent of firmware
+                    # mode, freshness or a pending application. No wire command.
+                    if not self.close_requested:
+                        self.close_requested = True
+                        self.close_deadline = self.monotonic() + 5.0
+                    result = {"closure": "requested", "instrument_mode_changed": False}
                 else:
                     raise ValueError("unsupported operation")
                 self._reply(client, result)

@@ -192,3 +192,27 @@ Firmware input closure remains exactly
 `e00d4d02522405321c16046f796127306a178d3d82d3d031f72fecde13ea1a39`.
 The existing audited image and resource/PIO results are reused; no firmware
 rebuild or reflash is required by this host-only change.
+
+
+## Returned evidence and epoch-aware replay — 26 September 2026
+
+The [72-hour result](AUTONOMOUS_72H_RESULT_20260926.md) records the completed
+physical observation and the superseding offline analysis. The original automatic
+package reported a canonical coverage finding because it compared local counters
+across epoch boundaries. This was a platform analyzer defect that escaped rehearsal;
+it did not alter commands, firmware, acquisition or the retained raw evidence.
+
+Offline coverage now compares APS ordinals within `(capture_session,
+acceptance_epoch)` and RPH/PHE observations within `(capture_session, phase_epoch)`.
+It reports observed scopes and transitions separately from sequence gaps. The first
+attached scope has unknown prefix coverage. At observed subsequent epoch starts,
+APS begins at ordinal 1, while phase records may begin at anchor 0 or first span 1.
+Missing prefixes, gaps within an epoch, duplicates, backward movement, malformed
+scope fields, old epoch re-entry and capture-session re-entry remain findings.
+Missing whole phase epochs also remain findings: each firmware phase increment
+produces a record. Acceptance epochs without an emitted span may legitimately be
+absent from APS. No new timing or scientific acceptance threshold is introduced.
+
+A new analysis identity and package supersede only the false offline coverage
+finding. Preserve the original ZIP, original summary and all raw hashes, and keep
+the automatic operational result separate from the reviewed scientific conclusion.

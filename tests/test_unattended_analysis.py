@@ -7,9 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from host.otis_tools.firmware_host_contract import RECORD_FIELDS, RECORD_TYPE_TO_CONTRACT
+from host.otis_tools.firmware_host_contract import (
+    RECORD_FIELDS,
+    RECORD_TYPE_TO_CONTRACT,
+)
 from host.otis_tools.unattended import _analyze_raw, finalize
-
 
 # Literal records were taken from the retained 2026-09-23 autonomous short gate.
 # Sequence/tick mutations below isolate one causal defect at a time.
@@ -128,7 +130,12 @@ def test_raw32_rollover_does_not_look_like_source_regression(tmp_path):
         assert coverage["nonmonotonic_or_restart"] == 0
 
 
-def test_offline_reanalysis_of_relocated_closed_recording_keeps_frozen_inputs(tmp_path):
+@pytest.mark.parametrize("scope_case, coverage_finding", [
+    ("valid", False), ("regression", True), ("malformed", True), ("gap", True), ("phase_gap", True),
+])
+def test_offline_reanalysis_of_relocated_closed_recording_keeps_frozen_inputs(
+    tmp_path, scope_case, coverage_finding
+):
     original = tmp_path / "bench-run"
     relocated = tmp_path / "extracted" / "bench-run"
     relocated.mkdir(parents=True)
@@ -146,7 +153,16 @@ def test_offline_reanalysis_of_relocated_closed_recording_keeps_frozen_inputs(tm
     }
     plan_bytes = (json.dumps(plan, sort_keys=True) + "\n").encode()
     (relocated / "unattended_plan.json").write_bytes(plan_bytes)
-    raw = (ENV_A + "\r\n" + ENV_B + "\r\n").encode()
+    scope_rows = [_source("APS", 99), _source("APS", 1, epoch=2)]
+    if scope_case == "regression":
+        scope_rows.append(_source("APS", 100, epoch=1))
+    elif scope_case == "malformed":
+        scope_rows.append(_field(_source("APS", 2, epoch=2), "acceptance_epoch", "bad"))
+    elif scope_case == "gap":
+        scope_rows.append(_source("APS", 3, epoch=2))
+    elif scope_case == "phase_gap":
+        scope_rows.extend([_source("RPH", 99), _source("RPH", 1, epoch=3)])
+    raw = ("\r\n".join([ENV_A, ENV_B, *scope_rows]) + "\r\n").encode()
     (relocated / "serial-0001.raw").write_bytes(raw)
     (relocated / "recording_manifest.json").write_text(json.dumps({
         "schema_version": 1,
@@ -195,6 +211,7 @@ def test_offline_reanalysis_of_relocated_closed_recording_keeps_frozen_inputs(tm
         assert "unattended-events.jsonl" not in archive.namelist()
         archive.extractall(tmp_path / "archive-extract")
     summary = json.loads(Path(result["summary"]).read_text())
+    assert ("canonical_source_sequence_coverage_gap" in summary["review_findings"]) == coverage_finding
     assert summary["original_run_dir"] == str(original)
     assert summary["analysis_run_dir"] == str(relocated)
     assert summary["scientific_qualification"] == "not_established_by_automatic_package"
@@ -210,3 +227,79 @@ def test_offline_reanalysis_of_relocated_closed_recording_keeps_frozen_inputs(tm
     assert replay_summary["analysis_run_dir"] == str(replay_root)
     assert (replay_root / "unattended_plan.json").read_bytes() == plan_bytes
     assert (replay_root / "serial-0001.raw").read_bytes() == raw
+
+
+def _source(tag, sequence, epoch=1, capture=1, **overrides):
+    fields = RECORD_FIELDS[RECORD_TYPE_TO_CONTRACT[tag]]
+    values = dict.fromkeys(fields, "0")
+    values.update(record_type=tag, schema_version="2" if tag in {"RPH", "PHE"} else "1",
+                  capture_session=str(capture), acceptance_epoch=str(epoch),
+                  phase_epoch=str(epoch), accepted_boundary_ordinal=str(sequence),
+                  observation_sequence=str(sequence))
+    values.update({key: str(value) for key, value in overrides.items()})
+    return ",".join(values[name] for name in fields)
+
+
+@pytest.mark.parametrize("tag", ["APS", "RPH", "PHE"])
+def test_epoch_transition_restarts_local_sequence_without_losing_coverage(tmp_path, tag):
+    first = 1 if tag == "APS" else 0
+    rows = [_source(tag, 99), _source(tag, 100),
+            _source(tag, first, epoch=2), _source(tag, first + 1, epoch=2)]
+    coverage = _analyze(tmp_path, *rows)["source_sequence_coverage"][tag]
+    assert coverage["gaps"] == coverage["nonmonotonic_or_restart"] == 0
+    assert coverage["scope_regressions"] == coverage["malformed_records"] == 0
+    assert coverage["observed_scopes"] == 2
+    assert coverage["scope_transitions"] == 1
+
+
+@pytest.mark.parametrize("tag", ["RPH", "PHE"])
+def test_phase_epoch_may_begin_with_first_span_and_acceptance_cannot_mask_reset(tmp_path, tag):
+    rows = [_source(tag, 99), _source(tag, 1, epoch=2),
+            _source(tag, 2, epoch=2),
+            _source(tag, 1, epoch=2, acceptance_epoch=3)]
+    coverage = _analyze(tmp_path, *rows)["source_sequence_coverage"][tag]
+    assert coverage["gaps"] == coverage["scope_regressions"] == 0
+    assert coverage["scope_transitions"] == 1
+    assert coverage["nonmonotonic_or_restart"] == 1
+
+
+@pytest.mark.parametrize("tag", ["APS", "RPH", "PHE"])
+def test_epoch_aware_coverage_retains_real_gaps_duplicates_and_resets(tmp_path, tag):
+    rows = [_source(tag, 10), _source(tag, 12), _source(tag, 12),
+            _source(tag, 1), _source(tag, 4, epoch=2)]
+    coverage = _analyze(tmp_path, *rows)["source_sequence_coverage"][tag]
+    assert coverage["gaps"] == 4  # one within epoch, three at observed next epoch
+    assert coverage["nonmonotonic_or_restart"] == 2
+
+
+@pytest.mark.parametrize("tag", ["APS", "RPH", "PHE"])
+def test_old_or_backward_epoch_remains_a_review_finding(tmp_path, tag):
+    rows = [_source(tag, 10, epoch=2), _source(tag, 1, epoch=4),
+            _source(tag, 1, epoch=3), _source(tag, 11, epoch=2)]
+    coverage = _analyze(tmp_path, *rows)["source_sequence_coverage"][tag]
+    assert coverage["scope_regressions"] == 2
+
+
+@pytest.mark.parametrize("tag", ["APS", "RPH", "PHE"])
+@pytest.mark.parametrize("return_epoch", [1, 2])
+def test_capture_session_is_part_of_epoch_identity_and_cannot_reenter(tmp_path, tag, return_epoch):
+    rows = [_source(tag, 10), _source(tag, 1, capture=2),
+            _source(tag, 11, capture=1, epoch=return_epoch)]
+    coverage = _analyze(tmp_path, *rows)["source_sequence_coverage"][tag]
+    assert coverage["observed_scopes"] == (2 if return_epoch == 1 else 3)
+    assert coverage["scope_regressions"] == 1
+
+
+@pytest.mark.parametrize("tag", ["APS", "RPH", "PHE"])
+def test_malformed_scope_is_visible_not_silently_skipped(tmp_path, tag):
+    epoch_field = "acceptance_epoch" if tag == "APS" else "phase_epoch"
+    rows = [_source(tag, 10), _field(_source(tag, 11), epoch_field, "invalid")]
+    coverage = _analyze(tmp_path, *rows)["source_sequence_coverage"][tag]
+    assert coverage["malformed_records"] == 1
+
+
+@pytest.mark.parametrize("tag, missing", [("APS", 0), ("RPH", 1), ("PHE", 1)])
+def test_missing_whole_phase_epoch_is_loss_but_empty_acceptance_epoch_is_legal(tmp_path, tag, missing):
+    rows = [_source(tag, 10), _source(tag, 1, epoch=3)]
+    coverage = _analyze(tmp_path, *rows)["source_sequence_coverage"][tag]
+    assert coverage["missing_phase_epochs"] == missing

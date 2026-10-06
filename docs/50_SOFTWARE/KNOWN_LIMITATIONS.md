@@ -13,10 +13,21 @@ The following limitations apply to this implementation candidate:
   The active earlier image stays held until a separately authorized intervention;
   this change adds no clear-fault or automatic resumption command.
 
+- [Open-ended steering recording](OPEN_ENDED_STEERING_OBSERVATION.md) has no
+  scheduled static-actuator endpoint or automatic retention cap. It warns about
+  low free space locally, requires operator disk checks and does not recover its
+  recorder after a Mac reboot. Ending that recording leaves instrument mode
+  unchanged; writes or responses beyond its cutoff remain unobserved.
+
 - The [short physical autonomous gate passed](AUTONOMOUS_SHORT_GATE_RESULT_20260923.md),
-  including metadata recovery, one bounded correction and timed HOLD. Sustained
-  72-hour behavior and the unexercised fault cases remain unqualified. Native
-  tests retain their simulated-device boundary; they do not extend physical claims.
+  including metadata recovery, one bounded correction and timed HOLD. The
+  [72-hour observation also completed](AUTONOMOUS_72H_RESULT_20260926.md), with
+  53 corrections and recovered reference/metadata holds. Qualified coverage was
+  incomplete. [Offline investigation](AUTONOMOUS_REFERENCE_DISCONTINUITIES_20260926.md)
+  reproduced 216 uncertainty-bracket losses and one distinct late-boundary event.
+  Periodic timing-core publication is the leading source of clustered polling
+  gaps; its exact execution interval is not retained. Unexercised faults remain
+  open. Native tests retain their simulated-device boundary.
 - The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) remains
   conditionally approved for progression; long-term adoption remains subject to
   the resulting evidence and review. There is no generic
@@ -44,8 +55,11 @@ The following limitations apply to this implementation candidate:
   reboot, power loss, disk failure or coordinator destruction. The finite
   firmware endpoint remains independent. A fault-inhibited endpoint may reject
   HOLD and requires review rather than a fabricated clean completion.
-- Earlier physical runs qualify only their frozen source, hardware and claims.
-  They do not establish the new autonomous 72-hour observation endpoint.
+- Physical runs qualify only their frozen source, hardware and claims. The
+  26 September result establishes its finite autonomous endpoint, not indefinite
+  unattended reliability or all fault mappings. The original offline coverage
+  analyzer confused epoch resets with regressions; corrected replay preserves
+  the original finding and unchanged evidence under a new analysis identity.
 
 The remaining entries preserve limitations of historical evidence. They are
 scientific context only and do not imply that their profiles, programme CLIs,

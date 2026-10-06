@@ -1,4 +1,4 @@
-"""Detached local coordinator for one finite autonomous instrument observation.
+"""Detached local supervision of finite or open-ended instrument observations.
 
 Firmware remains the sole operating owner. This process owns no serial port: it
 starts exactly one recorder, observes its atomic state, and sends at most one
@@ -35,6 +35,7 @@ EVENTS = "unattended-events.jsonl"
 MIN_CODE = 0xA800
 MAX_CODE = 0xAB00
 DEFAULT_MINIMUM_FREE = 5 * 1024 * 1024 * 1024
+END_RECORDING = "operator_end_recording.json"
 
 
 def _utc() -> str:
@@ -47,6 +48,14 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _recording_end_request(run_dir: Path, plan_sha256: str) -> dict:
+    value = json.loads((run_dir / END_RECORDING).read_text(encoding="utf-8"))
+    if (not isinstance(value, dict) or value.get("operation") != "end_recording" or
+            value.get("plan_sha256") != plan_sha256):
+        raise ValueError("operator recording endpoint does not match the frozen plan")
+    return value
 
 
 def _int_field(document: dict, key: str, low: int, high: int, default: int | None = None) -> int:
@@ -71,6 +80,7 @@ class Plan:
     endpoint_grace_s: int
     minimum_free_bytes: int
     keep_awake: bool
+    observation_kind: str = "finite"
 
     @classmethod
     def load(cls, data: bytes) -> Plan:
@@ -100,6 +110,13 @@ class Plan:
         keep_awake = document.get("keep_awake", sys.platform == "darwin")
         if type(keep_awake) is not bool:
             raise ValueError("keep_awake must be Boolean")
+        kind = document.get("observation_kind", "finite")
+        if kind not in {"finite", "open_ended"}:
+            raise ValueError("observation_kind must be finite or open_ended")
+        dwell = _int_field(document, "auto_dwell_s", 0 if kind == "open_ended" else 1,
+                           604800, 0 if kind == "open_ended" else 259200)
+        if kind == "open_ended" and dwell != 0:
+            raise ValueError("open_ended observation requires auto_dwell_s zero")
         return cls(
             device=device,
             run_dir=Path(run_dir).resolve(),
@@ -107,7 +124,7 @@ class Plan:
             expected_session=_int_field(document, "expected_session", 1, UINT64_MAX),
             expected_build_identity=build,
             expected_policy_sha256=policy,
-            auto_dwell_s=_int_field(document, "auto_dwell_s", 1, 604800, 259200),
+            auto_dwell_s=dwell,
             poll_interval_s=_int_field(document, "poll_interval_s", 1, 60, 5),
             startup_deadline_s=_int_field(document, "startup_deadline_s", 30, 300, 30),
             command_deadline_s=_int_field(document, "command_deadline_s", 5, 300, 60),
@@ -116,6 +133,7 @@ class Plan:
                 document, "minimum_free_bytes", 0, 1 << 50, DEFAULT_MINIMUM_FREE
             ),
             keep_awake=keep_awake,
+            observation_kind=kind,
         )
 
 
@@ -210,6 +228,7 @@ class Coordinator:
         self.review_reason: str | None = None
         self.review_hold_pending = False
         self.coverage_escalations: list[str] = []
+        self.recording_end_attempted = False
 
     def capture_progress(self, state: dict | None) -> bool:
         counts = (state or {}).get("observed_record_counts") or {}
@@ -246,6 +265,7 @@ class Coordinator:
             auto_sequence=self.auto_sequence, operating_end_ticks=self.end_ticks,
             hold_submitted=self.hold_submitted, review_reason=self.review_reason,
             coverage_escalations=self.coverage_escalations,
+            observation_kind=self.plan.observation_kind,
             **extra,
         )
 
@@ -340,8 +360,11 @@ class Coordinator:
                         instrument_ticks = -1
                     if (
                         self._identity_valid(state) and
-                        instrument["mode"] == "OBSERVE_HOLD" and
-                        instrument["requested_mode"] == "OBSERVE_HOLD" and
+                        (instrument["mode"] == instrument["requested_mode"] == "OBSERVE_HOLD" or
+                         (self.plan.observation_kind == "open_ended" and
+                          instrument["mode"] == instrument["requested_mode"] == "AUTO_DISCIPLINE" and
+                          fields["operating_end_ticks"] == "0" and
+                          instrument["last_command_sequence"] == instrument["completed_command_sequence"])) and
                         instrument["applied_code_known"] and
                         MIN_CODE <= code <= MAX_CODE and
                         write_state == 0 and
@@ -359,6 +382,7 @@ class Coordinator:
                             instrument_ticks=instrument_ticks,
                             build_identity=instrument["build_identity"],
                             policy_identity=instrument["policy_identity"],
+                            mode=instrument["mode"],
                             record_counts={tag: counts[tag] for tag in ("REF", "SNP", "CNT")},
                         )
                         return state
@@ -533,10 +557,14 @@ class Coordinator:
                         now = int(fields["instrument_ticks"])
                     except (KeyError, TypeError, ValueError):
                         continue
+                    receipt_ticks = receipt.get("ticks")
+                    expected_end = (0 if self.plan.observation_kind == "open_ended" else
+                                    receipt_ticks + self.plan.auto_dwell_s * 1_000_000
+                                    if type(receipt_ticks) is int else None)
                     if (type(receipt.get("ticks")) is not int or
                             now < receipt["ticks"] or
-                            end != receipt["ticks"] + self.plan.auto_dwell_s * 1_000_000 or
-                            not now < end):
+                            end != expected_end or
+                            (self.plan.observation_kind == "finite" and not now < end)):
                         self.review("auto_effective_deadline_contradiction", state, try_hold=True)
                         return False
                     self.end_ticks = end
@@ -556,7 +584,16 @@ class Coordinator:
         last_epoch = -1
         last_tick = -1
         next_summary = time.monotonic() + 3600
+        disk_warning = False
         while True:
+            if self.operator_recording_end():
+                return
+            if (self.plan.observation_kind == "open_ended" and not disk_warning and
+                    shutil.disk_usage(self.plan.run_dir).free < self.plan.minimum_free_bytes):
+                disk_warning = True
+                self.coverage_escalations.append("recording_storage_reserve_low")
+                self.journal.emit("coverage_escalation", reason="recording_storage_reserve_low")
+                self.publish("running")
             if self.recorder is not None and self.recorder.poll() is not None:
                 if (self.plan.run_dir / "recording_manifest.json").is_file():
                     self.journal.emit("recorder_closed_while_observing",
@@ -576,7 +613,10 @@ class Coordinator:
                                           error=f"{type(exc).__name__}: {exc}")
                         self.publish("recording_closed_review_required")
                     else:
-                        self.publish("recording_closed_review_required", package=result)
+                        phase = ("complete" if self.plan.observation_kind == "open_ended" and
+                                 self.review_reason is None and self.recorder.returncode == 0 else
+                                 "recording_closed_review_required")
+                        self.publish(phase, package=result)
                 else:
                     self.review("recorder_lost_without_manifest", self.observe(), try_hold=False)
                     self.publish("recording_lost")
@@ -653,7 +693,12 @@ class Coordinator:
                 self.review("unexpected_command_sequence_during_unattended_run",
                             state, try_hold=True)
                 break
-            if instrument["mode"] == "AUTO_DISCIPLINE":
+            if self.plan.observation_kind == "open_ended":
+                if (end != 0 or instrument["mode"] != "AUTO_DISCIPLINE" or
+                        instrument["requested_mode"] != "AUTO_DISCIPLINE"):
+                    self.review("indefinite_auto_mode_or_deadline_changed", state, try_hold=True)
+                    break
+            elif instrument["mode"] == "AUTO_DISCIPLINE":
                 if end not in (0, self.end_ticks):
                     self.review("firmware_operating_deadline_changed", state, try_hold=True)
                     break
@@ -728,6 +773,8 @@ class Coordinator:
     def observe_review(self) -> None:
         next_summary = 0.0
         while True:
+            if self.operator_recording_end():
+                return
             if self.recorder is not None and self.recorder.poll() is not None:
                 if (self.plan.run_dir / "recording_manifest.json").is_file():
                     if self.monitor is not None and self.monitor.poll() is None:
@@ -771,17 +818,35 @@ class Coordinator:
                 next_summary = time.monotonic() + 3600
             time.sleep(self.plan.poll_interval_s)
 
-    def close_and_finalize(self, state: dict) -> None:
-        instrument = state["instrument"]
+    def operator_recording_end(self) -> bool:
+        if self.plan.observation_kind != "open_ended" or self.recording_end_attempted:
+            return False
+        marker = self.plan.run_dir / END_RECORDING
+        if not marker.is_file():
+            return False
+        try:
+            value = _recording_end_request(self.plan.run_dir, self.plan_sha256)
+        except (OSError, ValueError):
+            self.review("operator_recording_end_identity_mismatch", self.observe(), try_hold=False)
+            return False
+        self.journal.emit("operator_recording_end", request=value,
+                          instrument_mode_changed=False)
+        self.recording_end_attempted = True
+        self.close_and_finalize(self.observe(), recording_only=True)
+        return True
+
+    def close_and_finalize(self, state: dict | None, *, recording_only: bool = False) -> None:
+        instrument = (state or {}).get("instrument") or {}
         deadline = time.monotonic() + self.plan.command_deadline_s
         result: dict = {"error": "recording closure deadline"}
         while time.monotonic() < deadline:
             try:
-                result = request(self.plan.run_dir, {
+                close_request = {"operation": "end_recording"} if recording_only else {
                     "operation": "close",
                     "expected_session": instrument["session"],
                     "expected_sequence": instrument["completed_command_sequence"],
-                })
+                }
+                result = request(self.plan.run_dir, close_request)
             except OSError as exc:
                 # A lost socket reply is ambiguous; never assume closure or
                 # resend until local state proves the recorder is still open.
@@ -839,7 +904,14 @@ class Coordinator:
             if initial is None:
                 self.observe_review()
                 return
-            if not self.preload_auto():
+            if (self.plan.observation_kind == "open_ended" and
+                    initial["instrument"]["mode"] == "AUTO_DISCIPLINE"):
+                self.auto_sequence = initial["instrument"]["completed_command_sequence"]
+                self.end_ticks = 0
+                self.journal.emit("existing_indefinite_auto_observed", instrument=initial["instrument"],
+                                  prefix_history="unobserved_before_attachment")
+                self.publish("running", auto_entry="existing_indefinite_auto_observed")
+            elif not self.preload_auto():
                 self.observe_review()
                 return
             self.run_observation()
@@ -900,9 +972,23 @@ def _analyze_raw(run_dir: Path, manifest: dict) -> dict:
         "APS": "accepted_boundary_ordinal", "RPH": "observation_sequence",
         "PHE": "observation_sequence", "ENV": "env_seq",
     }
+    # APS ordinals restart within each acceptance epoch. RPH/PHE observations
+    # restart within each phase epoch, independently of acceptance changes.
+    source_scope_fields = {
+        "APS": ("capture_session", "acceptance_epoch"),
+        "RPH": ("capture_session", "phase_epoch"),
+        "PHE": ("capture_session", "phase_epoch"),
+    }
     source_last_sequence: dict[str, int] = {}
+    source_last_scope: dict[str, tuple[int, ...]] = {}
+    source_seen_scopes: dict[str, set[tuple[int, ...]]] = {}
+    source_max_epoch: dict[tuple[str, int], int] = {}
     source_coverage = {
-        tag: {"gaps": 0, "nonmonotonic_or_restart": 0}
+        tag: {"gaps": 0, "nonmonotonic_or_restart": 0,
+              "scope_fields": list(source_scope_fields.get(tag, ())),
+              "observed_scopes": 0, "scope_transitions": 0,
+              "scope_regressions": 0, "missing_phase_epochs": 0,
+              "malformed_records": 0}
         for tag in source_sequence_fields
     }
     pending_write: dict | None = None
@@ -930,22 +1016,66 @@ def _analyze_raw(run_dir: Path, manifest: dict) -> dict:
         if tag in source_sequence_fields and contract is not None:
             fields = RECORD_FIELDS[contract]
             key = source_sequence_fields[tag]
-            if len(row) == len(fields) and key in fields:
-                try:
-                    sequence = int(row[fields.index(key)])
-                except ValueError:
-                    pass
+            coverage = source_coverage[tag]
+            try:
+                if len(row) != len(fields):
+                    raise ValueError("source row width")
+                sequence = int(row[fields.index(key)])
+                scope = tuple(int(row[fields.index(name)])
+                              for name in source_scope_fields.get(tag, ()))
+                if not 0 <= sequence <= 0xFFFFFFFF or any(
+                    not 0 <= value <= 0xFFFFFFFF for value in scope
+                ):
+                    raise ValueError("source counter range")
+            except ValueError:
+                coverage["malformed_records"] += 1
+            else:
+                seen = source_seen_scopes.setdefault(tag, set())
+                previous_scope = source_last_scope.get(tag)
+                new_scope = tag in source_last_scope and scope != previous_scope
+                if new_scope:
+                    coverage["scope_transitions"] += 1
+                    epoch_key = (tag, scope[0])
+                    capture_reentry = (
+                        previous_scope is not None and scope[0] != previous_scope[0]
+                        and epoch_key in source_max_epoch
+                    )
+                    if (capture_reentry or scope in seen or
+                            scope[1] <= source_max_epoch.get(epoch_key, -1)):
+                        coverage["scope_regressions"] += 1
+                    else:
+                        # Every phase increment produces a row; an absent whole
+                        # phase is loss. Acceptance epochs may have no APS spans.
+                        if (tag in {"RPH", "PHE"} and previous_scope is not None
+                                and scope[0] == previous_scope[0]):
+                            coverage["missing_phase_epochs"] += max(
+                                0, scope[1] - previous_scope[1] - 1
+                            )
+                        # First attachment has unknown prefix coverage. At an
+                        # observed new epoch APS begins at 1; phase begins at 0
+                        # (anchor) or 1 (first accepted span). Neither is loss.
+                        if sequence > 1:
+                            coverage["gaps"] += sequence - 1
+                        if tag == "APS" and sequence == 0:
+                            coverage["nonmonotonic_or_restart"] += 1
                 else:
                     previous = source_last_sequence.get(tag)
                     if previous is not None:
-                        # These sequence fields are 32-bit counters; this is
-                        # sequence arithmetic, not timestamp-domain rollover.
+                        # Sequence arithmetic, independent of timestamp rollover.
                         delta = (sequence - previous) & 0xFFFFFFFF
                         if delta == 0 or delta > 0x7FFFFFFF:
-                            source_coverage[tag]["nonmonotonic_or_restart"] += 1
+                            coverage["nonmonotonic_or_restart"] += 1
                         elif delta > 1:
-                            source_coverage[tag]["gaps"] += delta - 1
-                    source_last_sequence[tag] = sequence
+                            coverage["gaps"] += delta - 1
+                seen.add(scope)
+                coverage["observed_scopes"] = len(seen)
+                if scope:
+                    epoch_key = (tag, scope[0])
+                    source_max_epoch[epoch_key] = max(
+                        scope[1], source_max_epoch.get(epoch_key, -1)
+                    )
+                source_last_scope[tag] = scope
+                source_last_sequence[tag] = sequence
         if tag in instrument_tags:
             if (contract is None or len(row) != len(RECORD_FIELDS[contract]) or
                     row[1] != "2"):
@@ -1129,6 +1259,18 @@ def finalize(run_dir: Path, *, output_dir: Path | None = None) -> dict:
             shutil.copyfileobj(source, target, length=1024 * 1024)
             target.flush()
             os.fsync(target.fileno())
+    # The coordinator prints its own final result after packaging. Freeze its
+    # logs alongside chronology so that this later output cannot change the
+    # identity of an offline repeat against the same closed evidence.
+    mutable_logs = {"coordinator.stdout.log", "coordinator.stderr.log"}
+    for name in sorted(mutable_logs):
+        path = root / name
+        frozen_log = root / name.replace(".log", "-frozen.log")
+        if path.is_file() and not frozen_log.exists():
+            with path.open("rb") as source, frozen_log.open("xb") as target:
+                shutil.copyfileobj(source, target, length=1024 * 1024)
+                target.flush()
+                os.fsync(target.fileno())
     instrument = state.get("instrument") or {}
     fields = instrument.get("fields") or {}
     raw = _analyze_raw(root, manifest)
@@ -1142,7 +1284,10 @@ def finalize(run_dir: Path, *, output_dir: Path | None = None) -> dict:
         findings.append("instrument_record_delivery_or_order_gap")
     if any(
         raw["source_sequence_coverage"][tag]["gaps"] or
-        raw["source_sequence_coverage"][tag]["nonmonotonic_or_restart"]
+        raw["source_sequence_coverage"][tag]["nonmonotonic_or_restart"] or
+        raw["source_sequence_coverage"][tag]["scope_regressions"] or
+        raw["source_sequence_coverage"][tag]["missing_phase_epochs"] or
+        raw["source_sequence_coverage"][tag]["malformed_records"]
         for tag in ("REF", "SNP", "CNT", "APS", "RPH", "PHE")
     ):
         findings.append("canonical_source_sequence_coverage_gap")
@@ -1197,12 +1342,22 @@ def finalize(run_dir: Path, *, output_dir: Path | None = None) -> dict:
         coordinator_state.get("operating_end_ticks") is not None and
         int(fields.get("instrument_ticks", "0")) >= coordinator_state["operating_end_ticks"]
     )
-    if not endpoint_confirmed:
+    if plan.observation_kind == "open_ended":
+        # This boundary closes evidence only. A last status is retained state,
+        # not proof of static actuation or an uninterrupted physical interval.
+        endpoint_confirmed = False
+        if coordinator_state.get("auto_sequence") is None:
+            findings.append("indefinite_auto_entry_unconfirmed")
+        try:
+            _recording_end_request(root, hashlib.sha256(data).hexdigest())
+        except (OSError, ValueError):
+            findings.append("operator_recording_endpoint_unconfirmed")
+    elif not endpoint_confirmed:
         findings.append("firmware_timed_hold_endpoint_unconfirmed")
     analysis_sha = _sha256(Path(__file__))
     evidence_paths = [
         path for path in sorted(root.rglob("*"))
-        if path.is_file() and path.name not in {STATE, EVENTS}
+        if path.is_file() and path.name not in {STATE, EVENTS, *mutable_logs}
         and not path.name.startswith(".")
         and not path.name.startswith("unattended_package_result")
         and not path.name.startswith("unattended_summary-")
@@ -1229,6 +1384,9 @@ def finalize(run_dir: Path, *, output_dir: Path | None = None) -> dict:
         "monitor": monitor,
         "endpoint": endpoint,
         "firmware_timed_hold_endpoint_confirmed": endpoint_confirmed,
+        "observation_kind": plan.observation_kind,
+        "endpoint_contract": ("operator_recording_cutoff_instrument_continues" if
+                              plan.observation_kind == "open_ended" else "firmware_timed_hold"),
         "operational_result": (
             "completed_with_review_findings" if findings else "completed_observation"
         ),
@@ -1318,15 +1476,33 @@ def status(run_dir: Path) -> dict:
     return state
 
 
+def end_recording(run_dir: Path) -> dict:
+    """Persist an explicit evidence cutoff for the detached observer."""
+    data = (run_dir / PLAN).read_bytes()
+    plan = Plan.load(data)
+    if plan.observation_kind != "open_ended" or plan.run_dir != run_dir.resolve():
+        raise ValueError("end-recording requires the original open_ended run directory")
+    marker = run_dir / END_RECORDING
+    if not marker.exists():
+        _atomic_json(marker, {"operation": "end_recording", "requested_utc": _utc(),
+                              "plan_sha256": hashlib.sha256(data).hexdigest()})
+    else:
+        _recording_end_request(run_dir, hashlib.sha256(data).hexdigest())
+    return {"recording_end": "requested", "instrument_mode_changed": False,
+            "run_dir": str(run_dir.resolve())}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="otis-unattended", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    launch = commands.add_parser("start", help="Launch a detached local finite-run coordinator")
+    launch = commands.add_parser("start", help="Launch detached local observation")
     launch.add_argument("--plan", required=True, type=Path)
     child = commands.add_parser("run", help=argparse.SUPPRESS)
     child.add_argument("run_dir", type=Path)
     inspect = commands.add_parser("status", help="Read durable coordinator and recorder status")
     inspect.add_argument("run_dir", type=Path)
+    cutoff = commands.add_parser("end-recording", help="End open-ended recording; instrument keeps operating")
+    cutoff.add_argument("run_dir", type=Path)
     finish = commands.add_parser("finalize", help="Package already closed evidence without serial I/O")
     finish.add_argument("run_dir", type=Path)
     finish.add_argument("--output-dir", type=Path,
@@ -1340,6 +1516,8 @@ def main(argv: list[str] | None = None) -> int:
             result = {"status": "coordinator_exited"}
         elif args.command == "status":
             result = status(args.run_dir)
+        elif args.command == "end-recording":
+            result = end_recording(args.run_dir)
         else:
             result = finalize(args.run_dir, output_dir=args.output_dir)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
