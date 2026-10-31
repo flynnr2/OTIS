@@ -1,0 +1,1445 @@
+{
+  "schema": "OTIS_PHASE_EXCURSION_TRADEOFF_RESULT_V1",
+  "authority": "offline_only",
+  "quick_matrix": false,
+  "contract_sha256": "0113bb94561bb8bf6515ee27a3de7d8470eaec0967245271573a00369b44c900",
+  "case_count": 3060,
+  "model_rows": 18360,
+  "methods": [
+    "baseline",
+    "blanket_two_window_confirmation",
+    "single_span_FLL_separation",
+    "single_span_one_window_confirmation",
+    "segmented_trend_and_phase_step",
+    "segmented_with_local_confirmation_fallback"
+  ],
+  "summary": [
+    {
+      "family": "quiet",
+      "candidate": "baseline",
+      "cases": 36,
+      "maximum_step": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 4.472222222222222,
+        "max": 16
+      },
+      "cases_with_large_applications": 10,
+      "movement": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 13.61111111111111,
+        "max": 70
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 18,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "quiet",
+      "candidate": "blanket_two_window_confirmation",
+      "cases": 36,
+      "maximum_step": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 0.3333333333333333,
+        "max": 1
+      },
+      "cases_with_large_applications": 0,
+      "movement": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 0.6111111111111112,
+        "max": 4
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 18,
+        "min": 0.21621621621583584,
+        "median": 0.594202898548639,
+        "mean": 0.6279044516419462,
+        "max": 1.2058823529422928
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "quiet",
+      "candidate": "single_span_FLL_separation",
+      "cases": 36,
+      "maximum_step": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 4.472222222222222,
+        "max": 16
+      },
+      "cases_with_large_applications": 10,
+      "movement": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 13.61111111111111,
+        "max": 70
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 18,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "quiet",
+      "candidate": "single_span_one_window_confirmation",
+      "cases": 36,
+      "maximum_step": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 4.472222222222222,
+        "max": 16
+      },
+      "cases_with_large_applications": 10,
+      "movement": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 13.61111111111111,
+        "max": 70
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 18,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "quiet",
+      "candidate": "segmented_trend_and_phase_step",
+      "cases": 36,
+      "maximum_step": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 4.472222222222222,
+        "max": 16
+      },
+      "cases_with_large_applications": 10,
+      "movement": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 13.61111111111111,
+        "max": 70
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 18,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "quiet",
+      "candidate": "segmented_with_local_confirmation_fallback",
+      "cases": 36,
+      "maximum_step": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 4.472222222222222,
+        "max": 16
+      },
+      "cases_with_large_applications": 10,
+      "movement": {
+        "n": 36,
+        "min": 0,
+        "median": 0,
+        "mean": 13.61111111111111,
+        "max": 70
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 18,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_step",
+      "candidate": "baseline",
+      "cases": 624,
+      "maximum_step": {
+        "n": 624,
+        "min": 4,
+        "median": 15,
+        "mean": 14.423076923076923,
+        "max": 21
+      },
+      "cases_with_large_applications": 504,
+      "movement": {
+        "n": 624,
+        "min": 10,
+        "median": 39,
+        "mean": 40.41185897435897,
+        "max": 81
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 624,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 624,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_step",
+      "candidate": "blanket_two_window_confirmation",
+      "cases": 624,
+      "maximum_step": {
+        "n": 624,
+        "min": 4,
+        "median": 15,
+        "mean": 14.60897435897436,
+        "max": 21
+      },
+      "cases_with_large_applications": 504,
+      "movement": {
+        "n": 624,
+        "min": 10,
+        "median": 38,
+        "mean": 39.54647435897436,
+        "max": 76
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 624,
+        "min": -1200,
+        "median": 0,
+        "mean": 238.94230769230768,
+        "max": 1200
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 624,
+        "min": 0.5918649420245626,
+        "median": 1.0535957485717522,
+        "mean": 1.0531556703711888,
+        "max": 1.8714578966938809
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_step",
+      "candidate": "single_span_FLL_separation",
+      "cases": 624,
+      "maximum_step": {
+        "n": 624,
+        "min": 4,
+        "median": 15,
+        "mean": 14.423076923076923,
+        "max": 21
+      },
+      "cases_with_large_applications": 504,
+      "movement": {
+        "n": 624,
+        "min": 10,
+        "median": 39,
+        "mean": 40.41185897435897,
+        "max": 81
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 624,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 624,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_step",
+      "candidate": "single_span_one_window_confirmation",
+      "cases": 624,
+      "maximum_step": {
+        "n": 624,
+        "min": 4,
+        "median": 15,
+        "mean": 14.423076923076923,
+        "max": 21
+      },
+      "cases_with_large_applications": 504,
+      "movement": {
+        "n": 624,
+        "min": 10,
+        "median": 39,
+        "mean": 40.41185897435897,
+        "max": 81
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 624,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 624,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_step",
+      "candidate": "segmented_trend_and_phase_step",
+      "cases": 624,
+      "maximum_step": {
+        "n": 624,
+        "min": 4,
+        "median": 15,
+        "mean": 14.423076923076923,
+        "max": 21
+      },
+      "cases_with_large_applications": 504,
+      "movement": {
+        "n": 624,
+        "min": 10,
+        "median": 39,
+        "mean": 40.41185897435897,
+        "max": 81
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 624,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 624,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_step",
+      "candidate": "segmented_with_local_confirmation_fallback",
+      "cases": 624,
+      "maximum_step": {
+        "n": 624,
+        "min": 4,
+        "median": 15,
+        "mean": 14.423076923076923,
+        "max": 21
+      },
+      "cases_with_large_applications": 504,
+      "movement": {
+        "n": 624,
+        "min": 10,
+        "median": 39,
+        "mean": 40.41185897435897,
+        "max": 81
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 624,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 624,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_ramp",
+      "candidate": "baseline",
+      "cases": 264,
+      "maximum_step": {
+        "n": 264,
+        "min": 11,
+        "median": 21,
+        "mean": 17.041666666666668,
+        "max": 21
+      },
+      "cases_with_large_applications": 264,
+      "movement": {
+        "n": 264,
+        "min": 33,
+        "median": 68,
+        "mean": 55.82575757575758,
+        "max": 102
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 264,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 264,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_ramp",
+      "candidate": "blanket_two_window_confirmation",
+      "cases": 264,
+      "maximum_step": {
+        "n": 264,
+        "min": 11,
+        "median": 21,
+        "mean": 17.03409090909091,
+        "max": 21
+      },
+      "cases_with_large_applications": 264,
+      "movement": {
+        "n": 264,
+        "min": 33,
+        "median": 68,
+        "mean": 55.90530303030303,
+        "max": 77
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 264,
+        "min": -1200,
+        "median": 600,
+        "mean": 363.6363636363636,
+        "max": 3300
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 264,
+        "min": 0.7162390320869377,
+        "median": 1.1184172434726314,
+        "mean": 1.104609454282005,
+        "max": 1.816217387520216
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_ramp",
+      "candidate": "single_span_FLL_separation",
+      "cases": 264,
+      "maximum_step": {
+        "n": 264,
+        "min": 11,
+        "median": 21,
+        "mean": 17.041666666666668,
+        "max": 21
+      },
+      "cases_with_large_applications": 264,
+      "movement": {
+        "n": 264,
+        "min": 33,
+        "median": 68,
+        "mean": 55.82575757575758,
+        "max": 102
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 264,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 264,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_ramp",
+      "candidate": "single_span_one_window_confirmation",
+      "cases": 264,
+      "maximum_step": {
+        "n": 264,
+        "min": 11,
+        "median": 21,
+        "mean": 17.041666666666668,
+        "max": 21
+      },
+      "cases_with_large_applications": 264,
+      "movement": {
+        "n": 264,
+        "min": 33,
+        "median": 68,
+        "mean": 55.82575757575758,
+        "max": 102
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 264,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 264,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_ramp",
+      "candidate": "segmented_trend_and_phase_step",
+      "cases": 264,
+      "maximum_step": {
+        "n": 264,
+        "min": 11,
+        "median": 21,
+        "mean": 17.041666666666668,
+        "max": 21
+      },
+      "cases_with_large_applications": 264,
+      "movement": {
+        "n": 264,
+        "min": 33,
+        "median": 68,
+        "mean": 55.82575757575758,
+        "max": 102
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 264,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 264,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "frequency_ramp",
+      "candidate": "segmented_with_local_confirmation_fallback",
+      "cases": 264,
+      "maximum_step": {
+        "n": 264,
+        "min": 11,
+        "median": 21,
+        "mean": 17.041666666666668,
+        "max": 21
+      },
+      "cases_with_large_applications": 264,
+      "movement": {
+        "n": 264,
+        "min": 33,
+        "median": 68,
+        "mean": 55.82575757575758,
+        "max": 102
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 264,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 264,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "localized_reference_phase",
+      "candidate": "baseline",
+      "cases": 1128,
+      "maximum_step": {
+        "n": 1128,
+        "min": 0,
+        "median": 4,
+        "mean": 7.61613475177305,
+        "max": 21
+      },
+      "cases_with_large_applications": 446,
+      "movement": {
+        "n": 1128,
+        "min": 0,
+        "median": 11,
+        "mean": 17.76595744680851,
+        "max": 74
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 783,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "localized_reference_phase",
+      "candidate": "blanket_two_window_confirmation",
+      "cases": 1128,
+      "maximum_step": {
+        "n": 1128,
+        "min": 0,
+        "median": 1,
+        "mean": 1.2579787234042554,
+        "max": 15
+      },
+      "cases_with_large_applications": 40,
+      "movement": {
+        "n": 1128,
+        "min": 0,
+        "median": 4,
+        "mean": 4.61613475177305,
+        "max": 39
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 783,
+        "min": 0.0,
+        "median": 0.7543252595131554,
+        "mean": 0.8128832330431589,
+        "max": 1.8371075798656362
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "localized_reference_phase",
+      "candidate": "single_span_FLL_separation",
+      "cases": 1128,
+      "maximum_step": {
+        "n": 1128,
+        "min": 0,
+        "median": 1,
+        "mean": 5.778368794326241,
+        "max": 21
+      },
+      "cases_with_large_applications": 315,
+      "movement": {
+        "n": 1128,
+        "min": 0,
+        "median": 5,
+        "mean": 13.924645390070921,
+        "max": 74
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 783,
+        "min": 0.41834451901525405,
+        "median": 1.0,
+        "mean": 0.9351781789873564,
+        "max": 1.0331491712713838
+      },
+      "model_selection_count": 385
+    },
+    {
+      "family": "localized_reference_phase",
+      "candidate": "single_span_one_window_confirmation",
+      "cases": 1128,
+      "maximum_step": {
+        "n": 1128,
+        "min": 0,
+        "median": 1,
+        "mean": 5.778368794326241,
+        "max": 21
+      },
+      "cases_with_large_applications": 315,
+      "movement": {
+        "n": 1128,
+        "min": 0,
+        "median": 5,
+        "mean": 13.88918439716312,
+        "max": 74
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 783,
+        "min": 0.4049217002230599,
+        "median": 1.0,
+        "mean": 0.9303095769221672,
+        "max": 1.0076628352442951
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "localized_reference_phase",
+      "candidate": "segmented_trend_and_phase_step",
+      "cases": 1128,
+      "maximum_step": {
+        "n": 1128,
+        "min": 0,
+        "median": 1,
+        "mean": 4.579787234042553,
+        "max": 21
+      },
+      "cases_with_large_applications": 226,
+      "movement": {
+        "n": 1128,
+        "min": 0,
+        "median": 5,
+        "mean": 11.421985815602836,
+        "max": 74
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 783,
+        "min": 0.41834451901525405,
+        "median": 1.0,
+        "mean": 0.9037525258871394,
+        "max": 1.4420600858401755
+      },
+      "model_selection_count": 692
+    },
+    {
+      "family": "localized_reference_phase",
+      "candidate": "segmented_with_local_confirmation_fallback",
+      "cases": 1128,
+      "maximum_step": {
+        "n": 1128,
+        "min": 0,
+        "median": 1,
+        "mean": 3.767730496453901,
+        "max": 21
+      },
+      "cases_with_large_applications": 168,
+      "movement": {
+        "n": 1128,
+        "min": 0,
+        "median": 5,
+        "mean": 9.715425531914894,
+        "max": 74
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 783,
+        "min": 0.4049217002230599,
+        "median": 1.0,
+        "mean": 0.8732821182863487,
+        "max": 1.4420600858401755
+      },
+      "model_selection_count": 692
+    },
+    {
+      "family": "mixed_frequency_and_phase",
+      "candidate": "baseline",
+      "cases": 744,
+      "maximum_step": {
+        "n": 744,
+        "min": 5,
+        "median": 16,
+        "mean": 15.801075268817204,
+        "max": 21
+      },
+      "cases_with_large_applications": 597,
+      "movement": {
+        "n": 744,
+        "min": 13,
+        "median": 40,
+        "mean": 45.88306451612903,
+        "max": 113
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 744,
+        "min": 0,
+        "median": 0,
+        "mean": 0.0,
+        "max": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 744,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "mixed_frequency_and_phase",
+      "candidate": "blanket_two_window_confirmation",
+      "cases": 744,
+      "maximum_step": {
+        "n": 744,
+        "min": 4,
+        "median": 15,
+        "mean": 13.891129032258064,
+        "max": 21
+      },
+      "cases_with_large_applications": 507,
+      "movement": {
+        "n": 744,
+        "min": 10,
+        "median": 38,
+        "mean": 40.420698924731184,
+        "max": 72
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 744,
+        "min": -900,
+        "median": 0,
+        "mean": 335.88709677419354,
+        "max": 2100
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 744,
+        "min": 0.40284904553059914,
+        "median": 1.0082280365164582,
+        "mean": 0.9769113272719051,
+        "max": 2.489193522468862
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "mixed_frequency_and_phase",
+      "candidate": "single_span_FLL_separation",
+      "cases": 744,
+      "maximum_step": {
+        "n": 744,
+        "min": 5,
+        "median": 15,
+        "mean": 15.196236559139784,
+        "max": 21
+      },
+      "cases_with_large_applications": 569,
+      "movement": {
+        "n": 744,
+        "min": 11,
+        "median": 40,
+        "mean": 44.07795698924731,
+        "max": 101
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 744,
+        "min": -900,
+        "median": 0,
+        "mean": 20.161290322580644,
+        "max": 1800
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 744,
+        "min": 0.3073249482818908,
+        "median": 1.0,
+        "mean": 0.9980781727230802,
+        "max": 2.1083725174979793
+      },
+      "model_selection_count": 150
+    },
+    {
+      "family": "mixed_frequency_and_phase",
+      "candidate": "single_span_one_window_confirmation",
+      "cases": 744,
+      "maximum_step": {
+        "n": 744,
+        "min": 4,
+        "median": 15,
+        "mean": 15.186827956989248,
+        "max": 21
+      },
+      "cases_with_large_applications": 567,
+      "movement": {
+        "n": 744,
+        "min": 11,
+        "median": 39,
+        "mean": 43.979838709677416,
+        "max": 101
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 744,
+        "min": -900,
+        "median": 0,
+        "mean": 64.51612903225806,
+        "max": 2100
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 744,
+        "min": 0.3918052004445551,
+        "median": 1.0,
+        "mean": 0.9874099007000625,
+        "max": 1.8770499163174144
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "mixed_frequency_and_phase",
+      "candidate": "segmented_trend_and_phase_step",
+      "cases": 744,
+      "maximum_step": {
+        "n": 744,
+        "min": 5,
+        "median": 15,
+        "mean": 14.821236559139784,
+        "max": 21
+      },
+      "cases_with_large_applications": 560,
+      "movement": {
+        "n": 744,
+        "min": 11,
+        "median": 40,
+        "mean": 43.25403225806452,
+        "max": 113
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 744,
+        "min": -1200,
+        "median": 0,
+        "mean": -33.46774193548387,
+        "max": 1800
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 744,
+        "min": 0.3135528342506645,
+        "median": 1.0,
+        "mean": 0.9932231101242577,
+        "max": 2.3163722836729783
+      },
+      "model_selection_count": 442
+    },
+    {
+      "family": "mixed_frequency_and_phase",
+      "candidate": "segmented_with_local_confirmation_fallback",
+      "cases": 744,
+      "maximum_step": {
+        "n": 744,
+        "min": 4,
+        "median": 15,
+        "mean": 14.559139784946236,
+        "max": 21
+      },
+      "cases_with_large_applications": 548,
+      "movement": {
+        "n": 744,
+        "min": 11,
+        "median": 39,
+        "mean": 42.34274193548387,
+        "max": 73
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 744,
+        "min": -1200,
+        "median": 0,
+        "mean": -4.435483870967742,
+        "max": 2100
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 744,
+        "min": 0.3135528342506645,
+        "median": 1.0,
+        "mean": 0.9879808135032421,
+        "max": 2.3163722836729783
+      },
+      "model_selection_count": 442
+    },
+    {
+      "family": "snapshot_offset_and_rebound",
+      "candidate": "baseline",
+      "cases": 144,
+      "maximum_step": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 4.326388888888889,
+        "max": 21
+      },
+      "cases_with_large_applications": 36,
+      "movement": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 10.895833333333334,
+        "max": 56
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 40,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "snapshot_offset_and_rebound",
+      "candidate": "blanket_two_window_confirmation",
+      "cases": 144,
+      "maximum_step": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 0.3125,
+        "max": 15
+      },
+      "cases_with_large_applications": 2,
+      "movement": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 0.6805555555555556,
+        "max": 35
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 40,
+        "min": 0.0,
+        "median": 0.0,
+        "mean": 0.26272106941756296,
+        "max": 1.23606342347767
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "snapshot_offset_and_rebound",
+      "candidate": "single_span_FLL_separation",
+      "cases": 144,
+      "maximum_step": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 1.4375,
+        "max": 21
+      },
+      "cases_with_large_applications": 12,
+      "movement": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 3.9166666666666665,
+        "max": 56
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 40,
+        "min": 0.0,
+        "median": 0.19125683060112214,
+        "mean": 0.462995962620952,
+        "max": 1.0
+      },
+      "model_selection_count": 39
+    },
+    {
+      "family": "snapshot_offset_and_rebound",
+      "candidate": "single_span_one_window_confirmation",
+      "cases": 144,
+      "maximum_step": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 1.3194444444444444,
+        "max": 21
+      },
+      "cases_with_large_applications": 12,
+      "movement": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 3.7430555555555554,
+        "max": 56
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 40,
+        "min": 0.0,
+        "median": 0.0,
+        "mean": 0.4097402435248231,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "snapshot_offset_and_rebound",
+      "candidate": "segmented_trend_and_phase_step",
+      "cases": 144,
+      "maximum_step": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 4.326388888888889,
+        "max": 21
+      },
+      "cases_with_large_applications": 36,
+      "movement": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 10.895833333333334,
+        "max": 56
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 40,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "snapshot_offset_and_rebound",
+      "candidate": "segmented_with_local_confirmation_fallback",
+      "cases": 144,
+      "maximum_step": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 1.3194444444444444,
+        "max": 21
+      },
+      "cases_with_large_applications": 12,
+      "movement": {
+        "n": 144,
+        "min": 0,
+        "median": 0,
+        "mean": 3.7430555555555554,
+        "max": 56
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 40,
+        "min": 0.0,
+        "median": 0.0,
+        "mean": 0.4097402435248231,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "persistent_counter_offset",
+      "candidate": "baseline",
+      "cases": 120,
+      "maximum_step": {
+        "n": 120,
+        "min": 0,
+        "median": 4,
+        "mean": 6.75,
+        "max": 20
+      },
+      "cases_with_large_applications": 40,
+      "movement": {
+        "n": 120,
+        "min": 0,
+        "median": 10,
+        "mean": 15.75,
+        "max": 51
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 80,
+        "min": 1.0,
+        "median": 1.0,
+        "mean": 1.0,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "persistent_counter_offset",
+      "candidate": "blanket_two_window_confirmation",
+      "cases": 120,
+      "maximum_step": {
+        "n": 120,
+        "min": 0,
+        "median": 1,
+        "mean": 0.8333333333333334,
+        "max": 5
+      },
+      "cases_with_large_applications": 0,
+      "movement": {
+        "n": 120,
+        "min": 0,
+        "median": 4,
+        "mean": 3.6666666666666665,
+        "max": 12
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 80,
+        "min": 0.4095022624433466,
+        "median": 1.0,
+        "mean": 0.8312359057771388,
+        "max": 1.2770562770555425
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "persistent_counter_offset",
+      "candidate": "single_span_FLL_separation",
+      "cases": 120,
+      "maximum_step": {
+        "n": 120,
+        "min": 0,
+        "median": 1,
+        "mean": 1.4583333333333333,
+        "max": 6
+      },
+      "cases_with_large_applications": 0,
+      "movement": {
+        "n": 120,
+        "min": 0,
+        "median": 4,
+        "mean": 4.5,
+        "max": 12
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 80,
+        "min": 0.42081447963803914,
+        "median": 1.0077821011701635,
+        "mean": 0.799896992561149,
+        "max": 1.0276243093925703
+      },
+      "model_selection_count": 120
+    },
+    {
+      "family": "persistent_counter_offset",
+      "candidate": "single_span_one_window_confirmation",
+      "cases": 120,
+      "maximum_step": {
+        "n": 120,
+        "min": 0,
+        "median": 1,
+        "mean": 1.4583333333333333,
+        "max": 6
+      },
+      "cases_with_large_applications": 0,
+      "movement": {
+        "n": 120,
+        "min": 0,
+        "median": 4,
+        "mean": 4.375,
+        "max": 12
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 80,
+        "min": 0.4095022624433466,
+        "median": 1.0,
+        "mean": 0.784127885487262,
+        "max": 1.0
+      },
+      "model_selection_count": 0
+    },
+    {
+      "family": "persistent_counter_offset",
+      "candidate": "segmented_trend_and_phase_step",
+      "cases": 120,
+      "maximum_step": {
+        "n": 120,
+        "min": 0,
+        "median": 1,
+        "mean": 3.575,
+        "max": 20
+      },
+      "cases_with_large_applications": 16,
+      "movement": {
+        "n": 120,
+        "min": 0,
+        "median": 4,
+        "mean": 9.0,
+        "max": 51
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 80,
+        "min": 0.42081447963803914,
+        "median": 1.0,
+        "mean": 0.8799381955366894,
+        "max": 1.0276243093925703
+      },
+      "model_selection_count": 72
+    },
+    {
+      "family": "persistent_counter_offset",
+      "candidate": "segmented_with_local_confirmation_fallback",
+      "cases": 120,
+      "maximum_step": {
+        "n": 120,
+        "min": 0,
+        "median": 1,
+        "mean": 1.4583333333333333,
+        "max": 6
+      },
+      "cases_with_large_applications": 0,
+      "movement": {
+        "n": 120,
+        "min": 0,
+        "median": 4,
+        "mean": 4.45,
+        "max": 12
+      },
+      "additional_first_correct_application_delay_s": {
+        "n": 0
+      },
+      "no_correct_application_when_baseline_has_one": [],
+      "integrated_error_ratio_to_baseline": {
+        "n": 80,
+        "min": 0.4095022624433466,
+        "median": 1.0,
+        "mean": 0.7935893497315941,
+        "max": 1.0276243093925703
+      },
+      "model_selection_count": 72
+    }
+  ],
+  "physical_source_attribution": "not_established",
+  "source_hashes": {
+    "tools/compare_phase_excursion_tradeoffs.py": "b6904effe05bd1d075da6142c5c7c999b259b9f7fc90e80735fa9abcc9592cda",
+    "tests/cpp/phase_excursion_tradeoff_harness.cpp": "3ba7abaaf752d3aa3f04fa858fe56b6c8f4255dc788b008982e70be61c929f80",
+    "firmware/arduino/otis_nano_rp2040_connect/otis_adaptive_hybrid_regulation.cpp": "298fde801b0b55f7a32ae775d29c7880e3a5b486f1cfbcc0bec3665d6b278dff",
+    "firmware/arduino/otis_nano_rp2040_connect/otis_adaptive_hybrid_wide.cpp": "4e8d239da4db459735b1bf0eecb311e0fab7d3e9644118e2b08a8919c374f883",
+    "firmware/arduino/otis_nano_rp2040_connect/otis_integer_count_tight_deadband.cpp": "4ca8e367c6b9133a9cef965d4f40fb9a690204417a90a8adb407bda4d3515b31"
+  },
+  "limits": "Results after candidate divergence belong to the stated synthetic plant, never to replayed physical evidence.",
+  "native_input_sha256": "210f5d9a46f95a681e60bcf50172ff4bfa9813343aa068b3d8b3ad210ac9ecfd",
+  "native_binary_sha256": "2ae629b4b6de6bb828eb45a848972043c61cd186fafba5cc5e699cdc22d07e7e"
+}

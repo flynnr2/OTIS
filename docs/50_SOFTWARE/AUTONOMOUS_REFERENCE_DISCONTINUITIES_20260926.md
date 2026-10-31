@@ -178,3 +178,14 @@ summaries and the previously sealed reanalysis package remain unchanged.
 
 This was a bounded offline investigation. No serial connection, reset, flash,
 new physical acquisition or acceptance-policy modification occurred.
+
+## Follow up on 31 October 2026
+
+The [25-day follow-up and repair candidate](AUTO_STEER_INVESTIGATION_20261031.md)
+reproduce 2,440 observation-age ambiguity losses and two late boundaries under
+the same reference acceptance semantics. A deterministic collision test now
+exercises the actual periodic publication path through the reference selector
+and first frequency-estimator consumer. Non-consuming FIFO-empty observations
+between fields prevent the modelled publication gap without renewing interrupt
+credit or mutating the state being snapshotted. The compiled candidate awaits
+physical integration; this does not revise the September image or its evidence.

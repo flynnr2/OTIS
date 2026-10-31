@@ -1,0 +1,242 @@
+{
+  "schema": "OTIS_PHASE_EXCURSION_COMPARISON_RESULT_V1",
+  "authority": "offline_diagnostic_only",
+  "contract_sha256": "ebc29d5ceab3a702906ef733756e6765ffc685a1d9c02f479e8a2899a7a0967f",
+  "fixture_sha256": "36e2f2a498e0797846106063ac1b008224e20fe656bfc4f2e4aa6b5800d887f4",
+  "source_zip_sha256": "f73cd9001fef7a761f4bae8cfb62b525bfea3aabb51b31fa7b94928884a5b49e",
+  "source_windows": {
+    "pre_minus_2": {
+      "signed_count_total": 0,
+      "nonzero_span_count": 0,
+      "maximum_absolute_single_span_count": 0,
+      "first_half_count_total": 0,
+      "second_half_count_total": 0
+    },
+    "pre_minus_1": {
+      "signed_count_total": -1,
+      "nonzero_span_count": 5,
+      "maximum_absolute_single_span_count": 1,
+      "first_half_count_total": -1,
+      "second_half_count_total": 0
+    },
+    "selected_pre": {
+      "signed_count_total": 4,
+      "nonzero_span_count": 1,
+      "maximum_absolute_single_span_count": 4,
+      "first_half_count_total": 4,
+      "second_half_count_total": 0
+    },
+    "first_post_after_settling": {
+      "signed_count_total": -3,
+      "nonzero_span_count": 31,
+      "maximum_absolute_single_span_count": 1,
+      "first_half_count_total": -1,
+      "second_half_count_total": -2
+    },
+    "response_post": {
+      "signed_count_total": -2,
+      "nonzero_span_count": 22,
+      "maximum_absolute_single_span_count": 1,
+      "first_half_count_total": -1,
+      "second_half_count_total": -1
+    }
+  },
+  "synthetic_shapes": [
+    {
+      "name": "quiet",
+      "first": {
+        "signed_count_total": 0,
+        "nonzero_span_count": 0,
+        "maximum_absolute_single_span_count": 0,
+        "first_half_count_total": 0,
+        "second_half_count_total": 0
+      },
+      "next": {
+        "signed_count_total": 0,
+        "nonzero_span_count": 0,
+        "maximum_absolute_single_span_count": 0,
+        "first_half_count_total": 0,
+        "second_half_count_total": 0
+      },
+      "recorded_phase_arithmetic_projection": {
+        "delta_codes": -1,
+        "reason": "phase_material_ordinary_request_ready"
+      }
+    },
+    {
+      "name": "positive_localized",
+      "first": {
+        "signed_count_total": 4,
+        "nonzero_span_count": 1,
+        "maximum_absolute_single_span_count": 4,
+        "first_half_count_total": 4,
+        "second_half_count_total": 0
+      },
+      "next": {
+        "signed_count_total": 0,
+        "nonzero_span_count": 0,
+        "maximum_absolute_single_span_count": 0,
+        "first_half_count_total": 0,
+        "second_half_count_total": 0
+      },
+      "recorded_phase_arithmetic_projection": {
+        "delta_codes": -20,
+        "reason": "phase_material_ordinary_request_ready"
+      }
+    },
+    {
+      "name": "negative_localized",
+      "first": {
+        "signed_count_total": -4,
+        "nonzero_span_count": 1,
+        "maximum_absolute_single_span_count": 4,
+        "first_half_count_total": -4,
+        "second_half_count_total": 0
+      },
+      "next": {
+        "signed_count_total": 0,
+        "nonzero_span_count": 0,
+        "maximum_absolute_single_span_count": 0,
+        "first_half_count_total": 0,
+        "second_half_count_total": 0
+      },
+      "recorded_phase_arithmetic_projection": {
+        "delta_codes": 0,
+        "reason": "phase_direction_coherence_hold"
+      }
+    },
+    {
+      "name": "positive_persistent",
+      "first": {
+        "signed_count_total": 4,
+        "nonzero_span_count": 4,
+        "maximum_absolute_single_span_count": 1,
+        "first_half_count_total": 2,
+        "second_half_count_total": 2
+      },
+      "next": {
+        "signed_count_total": 4,
+        "nonzero_span_count": 4,
+        "maximum_absolute_single_span_count": 1,
+        "first_half_count_total": 2,
+        "second_half_count_total": 2
+      },
+      "recorded_phase_arithmetic_projection": {
+        "delta_codes": -20,
+        "reason": "phase_material_ordinary_request_ready"
+      }
+    },
+    {
+      "name": "negative_persistent",
+      "first": {
+        "signed_count_total": -4,
+        "nonzero_span_count": 4,
+        "maximum_absolute_single_span_count": 1,
+        "first_half_count_total": -2,
+        "second_half_count_total": -2
+      },
+      "next": {
+        "signed_count_total": -4,
+        "nonzero_span_count": 4,
+        "maximum_absolute_single_span_count": 1,
+        "first_half_count_total": -2,
+        "second_half_count_total": -2
+      },
+      "recorded_phase_arithmetic_projection": {
+        "delta_codes": 0,
+        "reason": "phase_direction_coherence_hold"
+      }
+    },
+    {
+      "name": "mixed_localized_and_persistent",
+      "first": {
+        "signed_count_total": 5,
+        "nonzero_span_count": 2,
+        "maximum_absolute_single_span_count": 4,
+        "first_half_count_total": 4,
+        "second_half_count_total": 1
+      },
+      "next": {
+        "signed_count_total": 1,
+        "nonzero_span_count": 1,
+        "maximum_absolute_single_span_count": 1,
+        "first_half_count_total": 0,
+        "second_half_count_total": 1
+      },
+      "recorded_phase_arithmetic_projection": {
+        "delta_codes": 0,
+        "reason": "persistence_first_interval_hold"
+      }
+    },
+    {
+      "name": "zero_net_quantization_pair",
+      "first": {
+        "signed_count_total": 0,
+        "nonzero_span_count": 2,
+        "maximum_absolute_single_span_count": 1,
+        "first_half_count_total": 0,
+        "second_half_count_total": 0
+      },
+      "next": {
+        "signed_count_total": 0,
+        "nonzero_span_count": 0,
+        "maximum_absolute_single_span_count": 0,
+        "first_half_count_total": 0,
+        "second_half_count_total": 0
+      },
+      "recorded_phase_arithmetic_projection": {
+        "delta_codes": -1,
+        "reason": "phase_material_ordinary_request_ready"
+      }
+    }
+  ],
+  "recorded_native_aggregate_projection": {
+    "delta_codes": -20,
+    "reason": "phase_material_ordinary_request_ready"
+  },
+  "conditional_zero_FLL_retained_phase_projection": {
+    "delta_codes": -1,
+    "reason": "phase_material_ordinary_request_ready"
+  },
+  "native_projection_scope": "Initialized arithmetic checkpoint at recorded code/epoch and preceding application; ordinary request resets maintenance debt. Not full historical engine/response-state replay and no counterfactual plant response.",
+  "response_comparisons": [
+    {
+      "pre_baseline": "recorded_selected_pre_window",
+      "pre_error_hz": 0.006666666666666667,
+      "post_error_hz": -0.0033333333333333335,
+      "observed_difference_hz": -0.01,
+      "fresh_state_local_classifier": {
+        "classification": 5,
+        "reason": "response_exceeds_gain_envelope_plus_empirical_margin"
+      }
+    },
+    {
+      "pre_baseline": "previous_complete_selected_window",
+      "pre_error_hz": -0.0016666666666666668,
+      "post_error_hz": -0.0033333333333333335,
+      "observed_difference_hz": -0.0016666666666666668,
+      "fresh_state_local_classifier": {
+        "classification": 1,
+        "reason": "healthy_evidence_below_empirical_detection_floor"
+      }
+    },
+    {
+      "pre_baseline": "mean_of_two_previous_complete_selected_windows",
+      "pre_error_hz": -0.0008333333333333334,
+      "post_error_hz": -0.0033333333333333335,
+      "observed_difference_hz": -0.0025,
+      "fresh_state_local_classifier": {
+        "classification": 1,
+        "reason": "healthy_evidence_below_empirical_detection_floor"
+      }
+    }
+  ],
+  "frozen_response_classification": 5,
+  "source_identity": {
+    "tools/analyze_phase_excursion_case.py": "c2ed1b061f095be8129d9f2b3d5fa79c108a4a886ef55eac71cc08bb26bb1208",
+    "tests/cpp/phase_excursion_comparison_harness.cpp": "f766b3a695c739f4ef02e18e054a198a6fd52aab2c05589ddfba5cbf1d4841d6",
+    "firmware/arduino/otis_nano_rp2040_connect/otis_adaptive_hybrid_regulation.cpp": "298fde801b0b55f7a32ae775d29c7880e3a5b486f1cfbcc0bec3665d6b278dff",
+    "firmware/arduino/otis_nano_rp2040_connect/otis_adaptive_hybrid_wide.cpp": "4e8d239da4db459735b1bf0eecb311e0fab7d3e9644118e2b08a8919c374f883",
+    "firmware/arduino/otis_nano_rp2040_connect/otis_regulation_transaction.cpp": "65551d2a9b3b3fa92fd09deb323560da544f2ea69cc00ecd3df71c118a526a30"
+  }
+}
