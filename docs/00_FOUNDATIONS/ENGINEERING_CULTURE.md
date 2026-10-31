@@ -99,14 +99,19 @@ Architectural discussions should continuously ask:
 
 # Development and Bench Exchange
 
-The development Mac and bench Mac exchange prepared bundles, manifests, JSON,
-checksums, prompts and completed evidence through `~/Documents/OTIS_DATA/`.
-A bench handoff must name the actual shared delivery directory and a return
-location there. Copy and verify the prepared files before reporting delivery;
-a verified local copy does not prove synchronization has reached the other Mac.
-Keep active acquisition in the repository's local `runs/` directory and copy
-completed evidence without changing its records or seals. State access or
-transfer failures explicitly rather than substituting an unshared local path.
+The development Mac and bench Mac use `~/Documents/OTIS_DATA/` as a transient
+exchange mailbox, not as an evidence archive. Each delivery or return is one
+top-level `.tar.gz` containing its prompt, manifests, results and internal
+checksums. Extracted directories and loose sidecars do not belong in the
+mailbox because directory synchronization has proven unreliable. Communicate
+the archive's outer SHA-256 through the controlling prompt or turn, verify that
+exact identity on the receiving Mac, and distinguish verified placement on the
+sending Mac from confirmed arrival on the receiver. After confirmation, move
+the transfer into local ignored `runs/_handoffs/` retention and clear it from
+the mailbox. Keep active acquisition in the repository's local `runs/`
+directory and preserve completed evidence without changing its records or
+seals. State access or transfer failures explicitly rather than substituting an
+unshared local path.
 
 ---
 
