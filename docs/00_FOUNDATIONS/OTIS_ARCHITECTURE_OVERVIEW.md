@@ -115,6 +115,11 @@ FIFO service coordinates are CPU observations, not hardware-latched D14 edge
 timestamps. Their explicit uncertainty brackets PIO snapshot recognition using
 a prior FIFO-empty observation. The whole possible interval must satisfy the
 reference tolerance. Receiver metadata remains a separate control gate.
+Core 1 may refresh a proven-empty FIFO lower bound between status fields without
+consuming capture, renewing interrupt service credit or advancing the state
+being snapshotted. Status publication must not leave that lower bound stale
+through an entire formatting burst. This changes service scheduling, not the
+reference tolerance or canonical timestamp semantics.
 See [the single-owner contract](../50_SOFTWARE/SINGLE_REFERENCE_OWNER_REPAIR.md)
 for bounds, fault retention and the distinction between PIO recognition and an
 electrical D14 edge. Session/acceptance-epoch changes require fresh support;

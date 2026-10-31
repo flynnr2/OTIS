@@ -355,12 +355,22 @@ void otis_pps_snapshot_backend_poll(void) {
 
   // Sample before observing empty so a racing push cannot move the retained
   // lower bound past an unread word.
-  const uint64_t empty_candidate = time_us_64();
-  if (pio_sm_is_rx_fifo_empty(backend.pio, sm_index())) {
+  HardwareFifoPort port;
+  if (otis_pps_fifo_observe_empty(port, backend.empty_lower_bound_ticks)) {
     backend.have_empty_lower_bound = true;
-    backend.empty_lower_bound_ticks = empty_candidate;
   }
   if (backend.running) set_source_enabled(true);
+  restore_interrupts(interrupt_state);
+}
+
+void otis_pps_snapshot_backend_observe_empty(void) {
+  if (!backend.initialized || get_core_num() != 1u) return;
+  const uint32_t interrupt_state = save_and_disable_interrupts();
+  if (backend.running && !backend.fault_latched) {
+    HardwareFifoPort port;
+    if (otis_pps_fifo_observe_empty(port, backend.empty_lower_bound_ticks))
+      backend.have_empty_lower_bound = true;
+  }
   restore_interrupts(interrupt_state);
 }
 

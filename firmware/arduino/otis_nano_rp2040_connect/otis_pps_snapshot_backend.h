@@ -59,6 +59,11 @@ bool otis_pps_snapshot_backend_begin(void);
 // source-filtered IRQ entry and eight FIFO word reads before the next call.
 void otis_pps_snapshot_backend_poll(void);
 
+// Core 1 only: refresh a proven-empty FIFO recognition lower bound between
+// bounded status fields. No FIFO/ring consumption, IRQ-credit renewal, fault
+// clearance, rearm, measurement or controller service occurs here.
+void otis_pps_snapshot_backend_observe_empty(void);
+
 // Non-consuming calls: neither replenishes IRQ credit nor rearms a source.
 // get_stats also samples and latches the sticky RXSTALL hardware fault before
 // returning so authority checks cannot use a stale clean snapshot.

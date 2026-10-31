@@ -390,6 +390,10 @@ bool dual_core_receiver_qualified_for_control(void) {
 void publish_dual_core_timing_status(const char *component, const char *key,
                                      const char *value,
                                      const char *severity, uint32_t flags) {
+  // Keep the recognition bracket bounded by individual field preparation,
+  // rather than the complete multi-field publication burst. This observation
+  // neither consumes capture nor advances the state being snapshotted.
+  otis_pps_snapshot_backend_observe_empty();
   OtisTelemetryMessage message = {};
   message.sequence = ++dual_core_timing_telemetry_sequence;
   message.timestamp_ticks = otis_monotonic_us32_now();
@@ -399,6 +403,7 @@ void publish_dual_core_timing_status(const char *component, const char *key,
   snprintf(message.value, sizeof(message.value), "%s", value);
   snprintf(message.severity, sizeof(message.severity), "%s", severity);
   otis_dual_core_publish_telemetry(&message);
+  otis_pps_snapshot_backend_observe_empty();
 }
 
 void publish_dual_core_timing_status_sink(

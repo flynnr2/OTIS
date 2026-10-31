@@ -111,6 +111,25 @@ int main() {
   assert(record.timestamp_uncertainty_ticks == 3u);
   assert_empty_ring();
 
+  // Status-field observations can narrow a proven-empty recognition bracket
+  // without replenishing the foreground IRQ/word budgets or enabling a source
+  // whose one entry has already been spent.
+  const auto entries_before_refresh = backend.irq_entries_since_poll;
+  const auto words_before_refresh = backend.words_since_poll;
+  const auto enables_before_refresh = mock_pio_source_enable_count;
+  mock_time_us += 10u;
+  otis_pps_snapshot_backend_observe_empty();
+  assert(backend.empty_lower_bound_ticks == mock_time_us - 1u);
+  assert(backend.irq_entries_since_poll == entries_before_refresh);
+  assert(backend.words_since_poll == words_before_refresh);
+  assert(mock_pio_source_enable_count == enables_before_refresh);
+  assert(!mock_pio_irq1_source_enabled);
+  const auto bound_before_wrong_core = backend.empty_lower_bound_ticks;
+  mock_core_num = 0u;
+  otis_pps_snapshot_backend_observe_empty();
+  assert(backend.empty_lower_bound_ticks == bound_before_wrong_core);
+  mock_core_num = 1u;
+
   // Every word in a multiword service batch is marked timestamp-ambiguous.
   otis_pps_snapshot_backend_poll();
   push_word(0x22222222u);
@@ -139,6 +158,10 @@ int main() {
   pio_set_irq1_source_enabled(
       pio0, pio_get_rx_fifo_not_empty_interrupt_source(0u), false);
   push_word(0x3f3f3f3fu);
+  const auto pending_bound = backend.empty_lower_bound_ticks;
+  otis_pps_snapshot_backend_observe_empty();
+  assert(backend.empty_lower_bound_ticks == pending_bound);
+  assert(mock_pio_fifo.front() == 0x3f3f3f3fu);
   fire_pio_irq();
   assert(mock_pio_fifo.size() == 1u);
   assert_empty_ring();
@@ -167,6 +190,10 @@ int main() {
   assert(stats.fault_latched && !stats.running);
   assert(stats.pio_rxstall_count == 1u);
   assert(stats.continuity_loss_count == 1u);
+  const auto fault_bound = backend.empty_lower_bound_ticks;
+  otis_pps_snapshot_backend_observe_empty();
+  assert(backend.empty_lower_bound_ticks == fault_bound);
+  assert(backend.fault_latched && !mock_pio_sm_enabled);
 
   assert(otis_pps_snapshot_backend_rearm());
   mock_pio.fdebug = 0u;
