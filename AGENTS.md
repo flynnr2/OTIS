@@ -136,14 +136,17 @@ lasting preference changes.
 
 ## Repository and documentation discipline
 
-- Use `~/Documents/OTIS_DATA/` as the shared development-Mac / bench-Mac
-  exchange location. Before a bench handoff, copy the prepared bundles,
-  manifests/JSON, checksums and current bench prompt there, and name the exact
-  shared paths in the prompt. Return completed bench evidence and result
-  summaries through that location as well. Keep active acquisition local to
-  `runs/`, preserve frozen evidence, and distinguish a verified local copy from
-  confirmed arrival on the other Mac. If access is blocked, report that plainly;
-  do not claim the handoff was copied or synchronized.
+- Use `~/Documents/OTIS_DATA/` only as the transient shared development-Mac /
+  bench-Mac exchange mailbox. Each handoff must be one top-level `.tar.gz`
+  containing its prompt, manifest, results and internal checksums; do not place
+  extracted directories or loose sidecars in the mailbox. Communicate the
+  archive's outer SHA-256 through the controlling prompt or turn, require the
+  receiving Mac to confirm that exact identity, then move the confirmed archive
+  out of the mailbox into local ignored `runs/_handoffs/` retention. Keep active
+  acquisition local to `runs/`, preserve frozen evidence, and distinguish a
+  verified local copy from confirmed arrival on the other Mac. If access is
+  blocked, report that plainly; do not claim the handoff was copied or
+  synchronized.
 
 - Treat `.gitignore` as an architectural storage boundary. Never force-add an
   ignored file, bypass ignore rules, or weaken them temporarily to stage an
