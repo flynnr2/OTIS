@@ -19,6 +19,18 @@ struct OtisPpsFifoDrainResult {
   uint64_t empty_observation_ticks;
 };
 
+// Non-consuming recognition lower bound. Sample BEFORE testing empty: a
+// racing push either prevents the update or follows the retained coordinate.
+// This never reads a word, replenishes IRQ credit, clears a fault or rearms.
+// The hardware caller serializes this pair with its FIFO IRQ.
+template <typename Port>
+bool otis_pps_fifo_observe_empty(Port &port, uint64_t &lower_bound_ticks) {
+  const uint64_t candidate = port.now();
+  if (!port.empty()) return false;
+  lower_bound_ticks = candidate;
+  return true;
+}
+
 static inline uint32_t otis_pps_fifo_uncertainty(
     bool have_empty_lower_bound, uint64_t empty_lower_bound_ticks,
     uint64_t service_ticks) {

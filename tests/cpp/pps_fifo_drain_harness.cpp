@@ -33,6 +33,19 @@ struct Port {
 };
 
 int main() {
+  // A diagnostic refresh is non-consuming and cannot move its lower bound
+  // past an unread word, including a push between timer and empty reads.
+  uint64_t bound = 1u;
+  Port refresh({});
+  assert(otis_pps_fifo_observe_empty(refresh, bound) && bound == 10u);
+  refresh.fifo.push_back(99u);
+  assert(!otis_pps_fifo_observe_empty(refresh, bound) && bound == 10u);
+  assert(refresh.fifo.front() == 99u && !refresh.stopped);
+  Port refresh_race({});
+  refresh_race.inject_word_on_now = true;
+  assert(!otis_pps_fifo_observe_empty(refresh_race, bound));
+  assert(bound == 10u && refresh_race.fifo.front() == 0xfeedu);
+
   uint32_t sequence = 0u;
   Port unbounded({11u});
   auto result =

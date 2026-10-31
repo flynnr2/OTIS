@@ -1,0 +1,566 @@
+{
+  "schema": "OTIS_LARGE_STEERING_STEP_AUDIT_V1",
+  "authority": "offline_only",
+  "fixture_sha256": "4a0fa294db109eb323bb4fc5cf6f5620e6b48c71643c70d0be45cc7773d62a9f",
+  "contract_sha256": "0113bb94561bb8bf6515ee27a3de7d8470eaec0967245271573a00369b44c900",
+  "applications": [
+    {
+      "dac_epoch": 24,
+      "elapsed_days": 1.2766137252430556,
+      "recorded_delta_codes": 10,
+      "recorded_reason": "outside_tight_ordinary_request_ready",
+      "source_error_counts": -2,
+      "nonzero_spans": 6,
+      "maximum_absolute_span_residual": 1,
+      "multicycle_spans": [],
+      "following_applications": [
+        {
+          "dac_epoch": "25",
+          "elapsed_days": "1.3773192347916667",
+          "delta_codes": "-1",
+          "seconds_since_previous_application": "8700.956025",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "0"
+        },
+        {
+          "dac_epoch": "26",
+          "elapsed_days": "1.4016362475462962",
+          "delta_codes": "-1",
+          "seconds_since_previous_application": "2100.989902",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "0"
+        },
+        {
+          "dac_epoch": "27",
+          "elapsed_days": "1.4259532437152778",
+          "delta_codes": "-6",
+          "seconds_since_previous_application": "2100.988469",
+          "pre_error_ppb": "0.16666666666666666",
+          "post_error_ppb": "0.0",
+          "response_classification": "0"
+        }
+      ],
+      "checkpoint_scope": "Recorded ordinary-path code/epoch, prior application and raw decision gates; not earlier engine history.",
+      "projections": [
+        {
+          "candidate": "baseline",
+          "FLL_counts": -2,
+          "delta_codes": 10,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "blanket_two_window_confirmation",
+          "FLL_counts": -2,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_FLL_separation",
+          "FLL_counts": -2,
+          "delta_codes": 10,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_one_window_confirmation",
+          "FLL_counts": -2,
+          "delta_codes": 10,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_trend_and_phase_step",
+          "FLL_counts": -2,
+          "delta_codes": 10,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_with_local_confirmation_fallback",
+          "FLL_counts": -2,
+          "delta_codes": 10,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        }
+      ]
+    },
+    {
+      "dac_epoch": 36,
+      "elapsed_days": 2.0267483397800925,
+      "recorded_delta_codes": -15,
+      "recorded_reason": "outside_tight_ordinary_request_ready",
+      "source_error_counts": 3,
+      "nonzero_spans": 1,
+      "maximum_absolute_span_residual": 3,
+      "multicycle_spans": [
+        [
+          13,
+          3
+        ]
+      ],
+      "following_applications": [
+        {
+          "dac_epoch": "37",
+          "elapsed_days": "2.058009738587963",
+          "delta_codes": "15",
+          "seconds_since_previous_application": "2700.984857",
+          "pre_error_ppb": "-0.5",
+          "post_error_ppb": "0.16666666666666666",
+          "response_classification": "0"
+        },
+        {
+          "dac_epoch": "38",
+          "elapsed_days": "2.248992495335648",
+          "delta_codes": "1",
+          "seconds_since_previous_application": "16500.910183",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "0"
+        },
+        {
+          "dac_epoch": "39",
+          "elapsed_days": "2.2941427045254628",
+          "delta_codes": "1",
+          "seconds_since_previous_application": "3900.978074",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "-0.16666666666666666",
+          "response_classification": "1"
+        }
+      ],
+      "checkpoint_scope": "Recorded ordinary-path code/epoch, prior application and raw decision gates; not earlier engine history.",
+      "projections": [
+        {
+          "candidate": "baseline",
+          "FLL_counts": 3,
+          "delta_codes": -15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "blanket_two_window_confirmation",
+          "FLL_counts": 3,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_FLL_separation",
+          "FLL_counts": 0,
+          "delta_codes": -1,
+          "confirmation_pending": false,
+          "step_model_selected": true
+        },
+        {
+          "candidate": "single_span_one_window_confirmation",
+          "FLL_counts": 3,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_trend_and_phase_step",
+          "FLL_counts": 3,
+          "delta_codes": -15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_with_local_confirmation_fallback",
+          "FLL_counts": 3,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        }
+      ]
+    },
+    {
+      "dac_epoch": 37,
+      "elapsed_days": 2.058009738587963,
+      "recorded_delta_codes": 15,
+      "recorded_reason": "phase_material_ordinary_request_ready",
+      "source_error_counts": -3,
+      "nonzero_spans": 19,
+      "maximum_absolute_span_residual": 1,
+      "multicycle_spans": [],
+      "following_applications": [
+        {
+          "dac_epoch": "38",
+          "elapsed_days": "2.248992495335648",
+          "delta_codes": "1",
+          "seconds_since_previous_application": "16500.910183",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "0"
+        },
+        {
+          "dac_epoch": "39",
+          "elapsed_days": "2.2941427045254628",
+          "delta_codes": "1",
+          "seconds_since_previous_application": "3900.978074",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "-0.16666666666666666",
+          "response_classification": "1"
+        },
+        {
+          "dac_epoch": "40",
+          "elapsed_days": "2.318459693634259",
+          "delta_codes": "1",
+          "seconds_since_previous_application": "2100.987859",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "0"
+        }
+      ],
+      "checkpoint_scope": "Recorded ordinary-path code/epoch, prior application and raw decision gates; not earlier engine history.",
+      "projections": [
+        {
+          "candidate": "baseline",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "blanket_two_window_confirmation",
+          "FLL_counts": -3,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_FLL_separation",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_one_window_confirmation",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_trend_and_phase_step",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_with_local_confirmation_fallback",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        }
+      ]
+    },
+    {
+      "dac_epoch": 126,
+      "elapsed_days": 7.565551338854167,
+      "recorded_delta_codes": 15,
+      "recorded_reason": "phase_material_ordinary_request_ready",
+      "source_error_counts": -3,
+      "nonzero_spans": 29,
+      "maximum_absolute_span_residual": 1,
+      "multicycle_spans": [],
+      "following_applications": [
+        {
+          "dac_epoch": "127",
+          "elapsed_days": "7.610701642708333",
+          "delta_codes": "-5",
+          "seconds_since_previous_application": "3900.986253",
+          "pre_error_ppb": "0.16666666666666666",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        },
+        {
+          "dac_epoch": "128",
+          "elapsed_days": "7.648907382013889",
+          "delta_codes": "-1",
+          "seconds_since_previous_application": "3300.975876",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        },
+        {
+          "dac_epoch": "129",
+          "elapsed_days": "7.673224392905093",
+          "delta_codes": "-1",
+          "seconds_since_previous_application": "2100.989741",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        }
+      ],
+      "checkpoint_scope": "Recorded ordinary-path code/epoch, prior application and raw decision gates; not earlier engine history.",
+      "projections": [
+        {
+          "candidate": "baseline",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "blanket_two_window_confirmation",
+          "FLL_counts": -3,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_FLL_separation",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_one_window_confirmation",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_trend_and_phase_step",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_with_local_confirmation_fallback",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        }
+      ]
+    },
+    {
+      "dac_epoch": 266,
+      "elapsed_days": 20.533202787314814,
+      "recorded_delta_codes": 10,
+      "recorded_reason": "maintenance_request_ready",
+      "source_error_counts": -2,
+      "nonzero_spans": 22,
+      "maximum_absolute_span_residual": 1,
+      "multicycle_spans": [],
+      "following_applications": [
+        {
+          "dac_epoch": "267",
+          "elapsed_days": "20.578353071030094",
+          "delta_codes": "-5",
+          "seconds_since_previous_application": "3900.984513",
+          "pre_error_ppb": "0.16666666666666666",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        },
+        {
+          "dac_epoch": "268",
+          "elapsed_days": "20.616558845162036",
+          "delta_codes": "-1",
+          "seconds_since_previous_application": "3300.978885",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        },
+        {
+          "dac_epoch": "269",
+          "elapsed_days": "20.647820303715278",
+          "delta_codes": "-1",
+          "seconds_since_previous_application": "2700.990019",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        }
+      ],
+      "checkpoint_scope": "Maintenance checkpoint needs prior persistence/debt state; no incomplete per-window projection is attributed to it.",
+      "projections": []
+    },
+    {
+      "dac_epoch": 305,
+      "elapsed_days": 23.490538273877316,
+      "recorded_delta_codes": -20,
+      "recorded_reason": "phase_material_ordinary_request_ready",
+      "source_error_counts": 4,
+      "nonzero_spans": 1,
+      "maximum_absolute_span_residual": 4,
+      "multicycle_spans": [
+        [
+          202,
+          4
+        ]
+      ],
+      "following_applications": [
+        {
+          "dac_epoch": "306",
+          "elapsed_days": "23.528744092418982",
+          "delta_codes": "15",
+          "seconds_since_previous_application": "3300.982722",
+          "pre_error_ppb": "-0.5",
+          "post_error_ppb": "-0.16666666666666666",
+          "response_classification": "0"
+        },
+        {
+          "dac_epoch": "307",
+          "elapsed_days": "23.553061085833335",
+          "delta_codes": "6",
+          "seconds_since_previous_application": "2100.988231",
+          "pre_error_ppb": "-0.16666666666666666",
+          "post_error_ppb": "",
+          "response_classification": ""
+        },
+        {
+          "dac_epoch": "308",
+          "elapsed_days": "23.731474483483797",
+          "delta_codes": "1",
+          "seconds_since_previous_application": "15414.917557",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        }
+      ],
+      "checkpoint_scope": "Recorded ordinary-path code/epoch, prior application and raw decision gates; not earlier engine history.",
+      "projections": [
+        {
+          "candidate": "baseline",
+          "FLL_counts": 4,
+          "delta_codes": -20,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "blanket_two_window_confirmation",
+          "FLL_counts": 4,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_FLL_separation",
+          "FLL_counts": 0,
+          "delta_codes": -1,
+          "confirmation_pending": false,
+          "step_model_selected": true
+        },
+        {
+          "candidate": "single_span_one_window_confirmation",
+          "FLL_counts": 4,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_trend_and_phase_step",
+          "FLL_counts": 0,
+          "delta_codes": -1,
+          "confirmation_pending": false,
+          "step_model_selected": true
+        },
+        {
+          "candidate": "segmented_with_local_confirmation_fallback",
+          "FLL_counts": 0,
+          "delta_codes": -1,
+          "confirmation_pending": false,
+          "step_model_selected": true
+        }
+      ]
+    },
+    {
+      "dac_epoch": 306,
+      "elapsed_days": 23.528744092418982,
+      "recorded_delta_codes": 15,
+      "recorded_reason": "phase_material_ordinary_request_ready",
+      "source_error_counts": -3,
+      "nonzero_spans": 51,
+      "maximum_absolute_span_residual": 1,
+      "multicycle_spans": [],
+      "following_applications": [
+        {
+          "dac_epoch": "307",
+          "elapsed_days": "23.553061085833335",
+          "delta_codes": "6",
+          "seconds_since_previous_application": "2100.988231",
+          "pre_error_ppb": "-0.16666666666666666",
+          "post_error_ppb": "",
+          "response_classification": ""
+        },
+        {
+          "dac_epoch": "308",
+          "elapsed_days": "23.731474483483797",
+          "delta_codes": "1",
+          "seconds_since_previous_application": "15414.917557",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        },
+        {
+          "dac_epoch": "309",
+          "elapsed_days": "23.755791483483797",
+          "delta_codes": "1",
+          "seconds_since_previous_application": "2100.9888",
+          "pre_error_ppb": "0.0",
+          "post_error_ppb": "0.0",
+          "response_classification": "1"
+        }
+      ],
+      "checkpoint_scope": "Recorded ordinary-path code/epoch, prior application and raw decision gates; not earlier engine history.",
+      "projections": [
+        {
+          "candidate": "baseline",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "blanket_two_window_confirmation",
+          "FLL_counts": -3,
+          "delta_codes": 0,
+          "confirmation_pending": true,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_FLL_separation",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "single_span_one_window_confirmation",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_trend_and_phase_step",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        },
+        {
+          "candidate": "segmented_with_local_confirmation_fallback",
+          "FLL_counts": -3,
+          "delta_codes": 15,
+          "confirmation_pending": false,
+          "step_model_selected": false
+        }
+      ]
+    }
+  ],
+  "source_zip_sha256": "f73cd9001fef7a761f4bae8cfb62b525bfea3aabb51b31fa7b94928884a5b49e",
+  "source_attribution": "No event is assigned to oscillator or reference by this audit.",
+  "counterfactual_scope": "Recorded later counts followed the actual commands; they are not responses to these unissued projections."
+}

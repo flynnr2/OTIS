@@ -1,0 +1,43 @@
+{
+  "schema": "OTIS_PHASE_EXCURSION_OFFLINE_COMPARISON_V1",
+  "frozen_date": "2026-10-31",
+  "question": "What can the retained source shape and alternative pre-window baselines establish about epoch305, before any controller retuning?",
+  "authority": "offline_diagnostic_only",
+  "baseline_policy_sha256": "9568fc3cd5ba8d6e1ad91776e22058adc040e7b18e32a42a498f7caf9a738bc9",
+  "source_zip_sha256": "f73cd9001fef7a761f4bae8cfb62b525bfea3aabb51b31fa7b94928884a5b49e",
+  "instrument_session": "15433150169270463301",
+  "application_dac_epoch": 305,
+  "selected_window_spans": 600,
+  "nominal_edges_per_span": 10000000,
+  "source_shape_outputs": [
+    "signed_count_total",
+    "nonzero_span_count",
+    "maximum_absolute_single_span_count",
+    "first_half_count_total",
+    "second_half_count_total"
+  ],
+  "response_comparisons": [
+    "recorded_selected_pre_window",
+    "previous_complete_selected_window",
+    "mean_of_two_previous_complete_selected_windows"
+  ],
+  "comparison_scope": "Compare the same recorded post-window with these descriptive pre-baselines using the unchanged existing response margins. A different label is model sensitivity, not a new physical response or an acceptance verdict.",
+  "synthetic_traces": [
+    {"name": "quiet", "first": [], "next": []},
+    {"name": "positive_localized", "first": [[201, 4]], "next": []},
+    {"name": "negative_localized", "first": [[201, -4]], "next": []},
+    {"name": "positive_persistent", "first": [[75, 1], [225, 1], [375, 1], [525, 1]], "next": [[75, 1], [225, 1], [375, 1], [525, 1]]},
+    {"name": "negative_persistent", "first": [[75, -1], [225, -1], [375, -1], [525, -1]], "next": [[75, -1], [225, -1], [375, -1], [525, -1]]},
+    {"name": "mixed_localized_and_persistent", "first": [[201, 4], [525, 1]], "next": [[525, 1]]},
+    {"name": "zero_net_quantization_pair", "first": [[201, 1], [202, -1]], "next": []}
+  ],
+  "native_boundary": "Run the unchanged hybrid arithmetic on inputs with identical aggregate error, phase and authority. This tests whether those inputs retain source-shape information; it does not apply a candidate command or simulate a counterfactual plant.",
+  "conditional_projection": "Also project the unchanged arithmetic with zero FLL count residual and the recorded raw relative phase retained, explicitly conditional on assigning all four counts to a localized phase contribution. This is a model assumption, not a corrected observation or a proposed command.",
+  "physical_limits": [
+    "The epoch305 case is retrospectively selected and already inspected, not independent prospective validation.",
+    "A localized count contribution cannot identify oscillator, reference or electrical origin.",
+    "Recorded post-application observations cannot stand in for a plant response to a different unissued command.",
+    "No raw span, phase epoch, reference acceptance tolerance or current operating threshold changes.",
+    "Any future candidate qualification requires its own frozen pre-acquisition contract and decision criteria."
+  ]
+}

@@ -6,18 +6,18 @@ word, and continues counting. The FIFO IRQ service assigns the capture session
 and ordinal when it reads that immutable word. No independent GPIO observation
 is associated with the PIO word.
 
-| Field | Type | Meaning |
-|---|---|---|
-| `record_type` | enum | Always `SNP`. |
-| `schema_version` | integer | Always `2`. |
-| `session` | u32 | Capture session. A change forbids differencing across the boundary. |
-| `snapshot_sequence` | u32 | Committed FIFO-word ordinal within the session, modulo 2^32. Identity advances once per word read, not once per IRQ. |
-| `cumulative_down_counter` | u32 | Raw PIO X value captured with `IN X, 32`; not an interval. |
-| `reference_sequence` | u32 | Consumer-identity copy of `snapshot_sequence`; it must equal `snapshot_sequence`. It is not `REF.event_seq`. |
-| `reference_timestamp_ticks` | u64 | RP2040 timer coordinate at FIFO CPU service, encoded in the wrapping `rp2040_monotonic_us32` domain. It is not a hardware-latched D14 timestamp. |
-| `timestamp_uncertainty_ticks` | u32 | Lower-bound service uncertainty: elapsed microsecond ticks since the IRQ owner last observed this FIFO empty, plus one tick for the audited PIO recognition-to-push quantization margin. `UINT32_MAX` means unknown. |
-| `status` | u32 bitmask | FIFO transport/service status. Zero alone is eligible for qualification. |
-| `backend` | text | Always `pio_wait_cumulative_snapshot_fifo_irq_v2`. |
+| Field                         | Type        | Meaning                                                                                                                                                                                                              |
+| ----------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record_type`                 | enum        | Always `SNP`.                                                                                                                                                                                                        |
+| `schema_version`              | integer     | Always `2`.                                                                                                                                                                                                          |
+| `session`                     | u32         | Capture session. A change forbids differencing across the boundary.                                                                                                                                                  |
+| `snapshot_sequence`           | u32         | Committed FIFO-word ordinal within the session, modulo 2^32. Identity advances once per word read, not once per IRQ.                                                                                                 |
+| `cumulative_down_counter`     | u32         | Raw PIO X value captured with `IN X, 32`; not an interval.                                                                                                                                                           |
+| `reference_sequence`          | u32         | Consumer-identity copy of `snapshot_sequence`; it must equal `snapshot_sequence`. It is not `REF.event_seq`.                                                                                                         |
+| `reference_timestamp_ticks`   | u64         | RP2040 timer coordinate at FIFO CPU service, encoded in the wrapping `rp2040_monotonic_us32` domain. It is not a hardware-latched D14 timestamp.                                                                     |
+| `timestamp_uncertainty_ticks` | u32         | Lower-bound service uncertainty: elapsed microsecond ticks since the IRQ owner last observed this FIFO empty, plus one tick for the audited PIO recognition-to-push quantization margin. `UINT32_MAX` means unknown. |
+| `status`                      | u32 bitmask | FIFO transport/service status. Zero alone is eligible for qualification.                                                                                                                                             |
+| `backend`                     | text        | Always `pio_wait_cumulative_snapshot_fifo_irq_v2`.                                                                                                                                                                   |
 
 Canonical header:
 
@@ -42,15 +42,23 @@ latency, or timing derived from D8. `timestamp_uncertainty_ticks >= 2^31` is
 ambiguous for modular interval selection. `UINT32_MAX` must be paired with
 `TIMESTAMP_UNBOUNDED`.
 
+The timing owner can also retain a proven-empty observation between bounded
+status fields. It samples the timer before testing FIFO empty, serialized with
+its IRQ, and does not update the lower bound while a word is pending. This
+non-consuming observation does not renew IRQ/word credit or advance controller
+state. It narrows the actual observation gap without changing this record,
+inventing an edge timestamp or relaxing reference acceptance. The normal
+foreground poll remains the sole IRQ-credit boundary.
+
 Status bits are:
 
-| Bit | Name | Meaning |
-|---:|---|---|
-| 0 | `TIMESTAMP_AMBIGUOUS` | More than one committed word was drained in the IRQ batch; every word in that batch carries the bit. |
-| 1 | `TIMESTAMP_UNBOUNDED` | No retained FIFO-empty lower bound exists; uncertainty is `UINT32_MAX`. |
-| 2 | `PIO_RXSTALL` | The PIO reported a stalled push. |
-| 3 | `RING_FULL` | The bounded software ring could not accept another committed FIFO word. |
-| 4 | `IRQ_BUDGET_EXHAUSTED` | The FIFO source remained asserted after the bounded eight-word drain. |
+| Bit  | Name                   | Meaning                                                                                              |
+| ---: | ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| 0    | `TIMESTAMP_AMBIGUOUS`  | More than one committed word was drained in the IRQ batch; every word in that batch carries the bit. |
+| 1    | `TIMESTAMP_UNBOUNDED`  | No retained FIFO-empty lower bound exists; uncertainty is `UINT32_MAX`.                              |
+| 2    | `PIO_RXSTALL`          | The PIO reported a stalled push.                                                                     |
+| 3    | `RING_FULL`            | The bounded software ring could not accept another committed FIFO word.                              |
+| 4    | `IRQ_BUDGET_EXHAUSTED` | The FIFO source remained asserted after the bounded eight-word drain.                                |
 
 Any nonzero status prevents qualification. Unknown status bits are invalid.
 The first record in a session is an anchor only. Sequence continuity is modulo

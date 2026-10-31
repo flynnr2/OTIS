@@ -7,11 +7,13 @@ The following limitations apply to this implementation candidate:
   `prospective_repeated_alternation` controller hold at code `43074`, DAC epoch
   `108`, while D14/D8 capture continued. The 6 October offline revision removes
   that sign-only veto and records an alternation diagnostic on eligible requests.
-  Retained source-window reconstruction and checkpoint replay support the narrow
-  change; they cannot prove the response to the rejected correction or indefinite
-  control performance. That revised image has not been physically deployed.
-  The active earlier image stays held until a separately authorized intervention;
-  this change adds no clear-fault or automatic resumption command.
+  The revised image subsequently completed the operator-selected 6–31 October
+  observation in one boot session with 326 corrections and seven completed
+  repeated-alternation response cases. This supports diagnostic-only treatment
+  of those cases, not indefinite reliability or a response to an earlier unissued
+  command. The observation ended in confirmed operator HOLD; no clear-fault or
+  automatic resumption command was added. See the
+  [31 October investigation](AUTO_STEER_INVESTIGATION_20261031.md).
 
 - [Open-ended steering recording](OPEN_ENDED_STEERING_OBSERVATION.md) has no
   scheduled static-actuator endpoint or automatic retention cap. It warns about
@@ -27,7 +29,25 @@ The following limitations apply to this implementation candidate:
   reproduced 216 uncertainty-bracket losses and one distinct late-boundary event.
   Periodic timing-core publication is the leading source of clustered polling
   gaps; its exact execution interval is not retained. Unexercised faults remain
-  open. Native tests retain their simulated-device boundary.
+  open. The 25-day observation reproduced 2,440 observation-age ambiguity losses
+  and two late boundaries. The 31 October candidate refreshes proven-empty FIFO
+  observations between status fields without consuming capture or renewing IRQ
+  credit. Deterministic collision tests and the fixed build pass, but physical
+  execution bounds and the new image's short integration gate remain open.
+  Native tests retain their simulated-device boundary.
+- The epoch-305 four-count excursion drove a 20-code correction; its completed
+  response was classified as excess against the transient-bearing pre-window.
+  Alternative descriptive pre-baselines change a fresh-state local response
+  label. This establishes baseline sensitivity, not excessive actuator gain or
+  the physical origin of the count excursion. The frozen
+  [offline comparison](phase_excursion_comparison_v1.json) has zero authority;
+  neither the numerical controller nor historical IRS classification changes.
+  The [extended tradeoff study](PHASE_EXCURSION_TRADEOFF_STUDY_20261031.md) finds
+  the same localized contribution behind the earlier -15/+15 pair. Targeted
+  confirmation avoids large requests for modeled one-span changes without
+  delaying the tested pure frequency steps/ramps, but mixed, wider and jitter
+  cases remain unresolved. The model assumes a fixed initial relative phase
+  and idealized plant; no candidate is physically qualified or active.
 - The [detailed fault mapping](AUTONOMOUS_INSTRUMENT_FAULT_MAPPING.md) remains
   conditionally approved for progression; long-term adoption remains subject to
   the resulting evidence and review. There is no generic
