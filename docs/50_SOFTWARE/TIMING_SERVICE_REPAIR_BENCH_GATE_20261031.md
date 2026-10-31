@@ -28,11 +28,14 @@ rebuild or substitute firmware on the bench.
 
 ## Entry and upload
 
-Use `~/Documents/OTIS_DATA/timing-service-repair-20261031/` for the immutable
-handoff and `~/Documents/OTIS_DATA/timing-service-repair-results/` for completed
-evidence. Acquisition stays in a fresh repository-local `runs/` workspace.
-Confirm receipt and checksums on the bench Mac; a development-Mac copy alone
-does not prove arrival. Read the latest repository working agreements first.
+Deliver one `~/Documents/OTIS_DATA/timing-service-repair-20261031.tar.gz`, with
+the prompt, manifests, image, verification results and checksums inside it.
+Communicate its outer SHA-256 in the controlling turn and require the bench Mac
+to confirm that exact identity before extraction. After confirmation, move the
+archive to local ignored `runs/_handoffs/` retention and extract there. A
+development-Mac copy alone does not prove arrival. Read the latest repository
+working agreements first. Do not add loose sidecars or extracted directories
+to the shared mailbox.
 
 Identify the actual Nano RP2040 Connect, physical USB serial identity, current
 serial owner and any active experiment. Historical endpoint session
@@ -120,7 +123,10 @@ unrelated reference/metadata event must retain its own classification and raw
 evidence. Zero observed losses alone does not qualify indefinite operation or
 prove a physical worst-case bound. Do not retune after inspecting this gate.
 
-Return raw recordings, plans, manifest, checksums, upload/discovery transcripts,
-monitor/coordinator logs, automatic package and a concise assessment through the
-shared results directory. Offline packaging may be repaired and replayed over
+Keep acquisition and the coordinator's output in local `runs/`. Return one
+top-level results `.tar.gz` through the shared mailbox, containing raw recordings,
+plans, manifest, internal checksums, upload/discovery transcripts,
+monitor/coordinator logs, automatic package and a concise assessment. Communicate
+its outer SHA-256 and move the confirmed transfer to local `runs/_handoffs/`
+retention after receipt. Offline packaging may be repaired and replayed over
 unchanged closed evidence without repeating a successful physical acquisition.
