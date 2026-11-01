@@ -64,7 +64,9 @@ uint32_t dual_core_timing_telemetry_sequence=0;
 uint32_t dual_core_last_timing_status_ms=0;
 constexpr uint32_t kStatusPeriodMs=10000;
 bool otis_pps_snapshot_backend_begin() { return true; }
-void otis_pps_snapshot_backend_get_stats(OtisPpsSnapshotBackendStats *s) { *s={}; }
+void otis_pps_snapshot_backend_get_stats(OtisPpsSnapshotBackendStats *s) {
+  *s={};s->initialized=s->running=true;s->session=1;s->ring_capacity=128;
+}
 void otis_forwarded_clock_monitor_get_stats(OtisForwardedClockMonitorStats *s) { *s={}; }
 void publish_dual_core_timing_status(const char *,const char *,const char *,const char *,uint32_t);
 void otis_emit_health(uint32_t, uint64_t, const char *, const char *, const char *,
@@ -88,6 +90,21 @@ unsigned run(bool refresh, uint64_t offset = 3000, bool verbose = false) {
   // Initial count configuration is outside the collision stimulus.
   OtisTelemetryMessage discarded = {};
   while (otis_dual_core_take_telemetry(&discarded)) {}
+  // Exercise the populated periodic capsule, including fields conditional on
+  // a previous raw boundary, rather than only the startup/unavailable shape.
+  for (unsigned i = 0; i < 2; ++i) {
+    OtisPpsCountBoundaryObservation boundary = {};
+    boundary.session = 1;
+    boundary.sequence = boundary.reference_sequence = 7+i;
+    boundary.pps_timestamp_ticks = 8000000+i*1000000;
+    boundary.cumulative_down_counter = UINT32_MAX-(7+i)*10000000;
+    boundary.capture_flags = OTIS_FLAG_TIMESTAMP_RECONSTRUCTED;
+    port.ticks = boundary.pps_timestamp_ticks;
+    otis_count_observation_on_pps_boundary(&runtime_state,
+        &dual_core_timing_status_context, &config, &boundary);
+    otis_count_observation_emit_pending_boundary_status();
+    while (otis_dual_core_take_telemetry(&discarded)) {}
+  }
   assert(otis_adaptive_hybrid_regulation_live_begin(17,1,1));
   otis_adaptive_hybrid_regulation_live_service(2);
   OtisInstrumentWrite w={};assert(otis_dual_core_take_instrument_write(&w));
@@ -136,13 +153,17 @@ unsigned run(bool refresh, uint64_t offset = 3000, bool verbose = false) {
   std::map<std::string,std::string> fields;
   OtisTelemetryMessage message={};
   unsigned count_fields = 0;
+  bool have_boundary_sequence = false;
   while(otis_dual_core_take_telemetry(&message))
     if(std::strcmp(message.component,OTIS_ADAPTIVE_HYBRID_STATUS_COMPONENT)==0) {
       fields[message.key]=message.value;
     } else if (std::strcmp(message.component,"pps_gate")==0) {
       ++count_fields;
+      if (std::strcmp(message.key,"boundary_sequence")==0)
+        have_boundary_sequence = true;
     }
   assert(count_fields > 40); // Actual count module, not a publisher substitute.
+  assert(have_boundary_sequence);
   assert(fields.at("snapshot_generation_begin")==fields.at("snapshot_generation_complete"));
   assert(fields.at("applied_code")=="43085" && fields.at("dac_epoch")=="1");
   assert(fields.at("fault")=="none");
