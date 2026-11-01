@@ -52,10 +52,20 @@ void otis_pps_snapshot_backend_get_stats(OtisPpsSnapshotBackendStats *out) {
   out->ring_capacity = 128;
   out->system_clock_hz = 133000000;
 }
-void otis_status_emit(OtisStatusEmitContext *, const char *, const char *,
-                      const char *, const char *, uint32_t) { assert(false); }
-void otis_status_emit_u32(OtisStatusEmitContext *, const char *, const char *,
-                          uint32_t, const char *, uint32_t) { assert(false); }
+void status_sink(void *, const char *component, const char *key,
+                 const char *value, const char *severity, uint32_t flags) {
+  OtisTelemetryMessage message = {};
+  message.timestamp_ticks = mock_ticks;
+  message.flags = flags;
+  std::snprintf(message.component, sizeof(message.component), "%s", component);
+  std::snprintf(message.key, sizeof(message.key), "%s", key);
+  std::snprintf(message.value, sizeof(message.value), "%s", value);
+  std::snprintf(message.severity, sizeof(message.severity), "%s", severity);
+  otis_dual_core_publish_telemetry(&message);
+}
+void otis_emit_health(uint32_t, uint64_t, const char *, const char *, const char *,
+                       const char *, const char *, uint32_t) { assert(false); }
+void otis_gnss_receiver_service(uint32_t) { assert(false); }
 void otis_emit_count_observation(uint32_t, uint32_t, uint64_t, uint64_t,
                                  const char *, uint64_t, const char *,
                                  const char *, uint32_t) { assert(false); }
@@ -65,6 +75,7 @@ void otis_emit_count_observation(uint32_t, uint32_t, uint64_t, uint64_t,
 // observe the bridge itself rather than a second handwritten implementation.
 OtisRuntimeState runtime_state = {};
 OtisStatusEmitContext status_emit_context = {};
+OtisStatusEmitContext dual_core_timing_status_context = {};
 OtisReferenceAcceptanceLive reference_acceptance(OTIS_REFERENCE_ACCEPTANCE_POLICY);
 OtisEvidenceFrameMessage dual_core_reference_evidence_scratch = {};
 uint64_t time_us_64() { return mock_ticks; }
@@ -116,6 +127,9 @@ std::vector<std::string> values(const char *key) {
 int main() {
   OtisRuntimeState runtime = {};
   OtisStatusEmitContext context = {};
+  otis_status_emit_init_with_sink(&context, nullptr, status_sink);
+  otis_status_emit_init_with_sink(&dual_core_timing_status_context, nullptr,
+                                  status_sink);
   const OtisCountObservationConfig config = {
       1000000u, 60000u, 0u, OTIS_DOMAIN_H1_OSCILLATOR_10MHZ};
   assert(otis_count_observation_begin(&runtime, &context, &config));
@@ -225,7 +239,9 @@ int main() {
   assert(telemetry.size() == final_size);
 
   const auto bridge_config = count_observation_config();
-  assert(otis_count_observation_begin(&runtime_state, &status_emit_context, &bridge_config));
+  assert(otis_count_observation_begin(&runtime_state,
+                                    &dual_core_timing_status_context,
+                                    &bridge_config));
   bridge_active = true;
   for (uint32_t sequence = 0; sequence < 10; ++sequence) {
     boundary = {};

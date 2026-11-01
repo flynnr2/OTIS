@@ -120,6 +120,10 @@ consuming capture, renewing interrupt service credit or advancing the state
 being snapshotted. Status publication must not leave that lower bound stale
 through an entire formatting burst. This changes service scheduling, not the
 reference tolerance or canonical timestamp semantics.
+Every Core 1 count-status entry point supplies that timing context, including
+boot, service, capture-fault and deferred boundary reports. The count module
+uses the common status emitter; a private queue publisher would bypass the
+per-field capture-service boundary and is not an alternative output path.
 See [the single-owner contract](../50_SOFTWARE/SINGLE_REFERENCE_OWNER_REPAIR.md)
 for bounds, fault retention and the distinction between PIO recognition and an
 electrical D14 edge. Session/acceptance-epoch changes require fresh support;

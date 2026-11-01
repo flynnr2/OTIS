@@ -49,6 +49,9 @@ non-consuming observation does not renew IRQ/word credit or advance controller
 state. It narrows the actual observation gap without changing this record,
 inventing an edge timestamp or relaxing reference acceptance. The normal
 foreground poll remains the sole IRQ-credit boundary.
+Count-status output uses this same timing callback through its supplied status
+context, including deferred boundary and fault reports. A separate count-local
+telemetry publisher must not bypass the empty-observation boundary.
 
 Status bits are:
 

@@ -19,6 +19,9 @@ struct OtisCountObservationConfig {
   const char *source_domain;
 };
 
+// The caller supplies its owning service plane's status context. Core 1 uses
+// the timing sink, including deferred boundary status; this module never
+// bypasses that sink with a private telemetry publisher.
 bool otis_count_observation_begin(OtisRuntimeState *runtime_state,
                                   OtisStatusEmitContext *status_context,
                                   const OtisCountObservationConfig *config);

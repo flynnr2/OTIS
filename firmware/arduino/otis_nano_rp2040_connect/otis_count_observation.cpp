@@ -148,30 +148,16 @@ PendingBoundaryStatus pending_boundary_status = {};
 void emit_status(OtisStatusEmitContext *context, const char *component,
                  const char *key, const char *value, const char *severity,
                  uint32_t flags) {
-  if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
-    OtisTelemetryMessage message = {};
-    message.timestamp_ticks = otis_monotonic_us32_now();
-    message.flags = flags;
-    snprintf(message.component, sizeof(message.component), "%s", component);
-    snprintf(message.key, sizeof(message.key), "%s", key);
-    snprintf(message.value, sizeof(message.value), "%s", value);
-    snprintf(message.severity, sizeof(message.severity), "%s", severity);
-    otis_dual_core_publish_telemetry(&message);
-    return;
-  }
+  // The caller supplies its owning service plane's context. In particular,
+  // Core 1 must use the timing sink, whose per-field FIFO-empty observation
+  // keeps status formatting from widening recognition brackets. Do not bypass
+  // that sink with a second telemetry publisher here.
   otis_status_emit(context, component, key, value, severity, flags);
 }
 
 void emit_status_u32(OtisStatusEmitContext *context, const char *component,
                      const char *key, uint32_t value, const char *severity,
                      uint32_t flags) {
-  if (otis_dual_core_timing_owner_active() && get_core_num() == 1u) {
-    char formatted[24];
-    snprintf(formatted, sizeof(formatted), "%lu",
-             static_cast<unsigned long>(value));
-    emit_status(context, component, key, formatted, severity, flags);
-    return;
-  }
   otis_status_emit_u32(context, component, key, value, severity, flags);
 }
 

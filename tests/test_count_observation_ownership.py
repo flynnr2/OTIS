@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SKETCH = (
     ROOT
@@ -48,3 +47,29 @@ def test_explicit_count_query_requests_the_core1_runtime_snapshot() -> None:
     assert "OtisRunControlKind::DiagnosticRuntimeQuery" in query_handler
     assert '"timing_runtime_snapshot"' in query_handler
     assert "queued_to_core1" in query_handler
+
+
+def test_count_status_uses_supplied_sink_and_timing_callers_supply_core1_context():
+    count = COUNT_SOURCE.read_text()
+    emitters = count.split("void emit_status(", 1)[1].split(
+        "const char *bool_text(", 1
+    )[0]
+    assert "otis_dual_core_publish_telemetry" not in emitters
+    assert "otis_status_emit(context," in emitters
+    assert "otis_status_emit_u32(context," in emitters
+    sketch = SKETCH.read_text()
+    for name in (
+        "otis_count_observation_begin",
+        "otis_count_observation_service",
+        "otis_count_observation_on_pps_boundary",
+        "otis_count_observation_note_capture_loss",
+        "otis_count_observation_emit_status",
+        "otis_count_observation_emit_runtime_status",
+        "otis_count_observation_emit_configuration_status",
+    ):
+        calls = sketch.split(name + "(")[1:]
+        assert calls
+        for call in calls:
+            arguments = call.split(");", 1)[0]
+            assert "&dual_core_timing_status_context" in arguments
+            assert "&status_emit_context" not in arguments

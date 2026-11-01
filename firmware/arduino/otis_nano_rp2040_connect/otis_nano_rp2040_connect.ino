@@ -958,7 +958,7 @@ void note_reference_capture_fault(const OtisPpsSnapshotBackendStats &stats) {
     reference_acceptance.invalidate(OtisReferenceAcceptanceReason::CaptureIntegrity);
     otis_count_observation_update_reference_acceptance(reference_acceptance.status());
     otis_count_observation_note_capture_loss(
-        &runtime_state, &status_emit_context, stats.consumer_ordinal,
+        &runtime_state, &dual_core_timing_status_context, stats.consumer_ordinal,
         "snapshot_backend_fault");
     const auto code = regulation_static_code_state();
     otis_frequency_regulation_live_on_capture_fault(
@@ -1084,7 +1084,7 @@ void emit_pps_count_boundary(
   // Its shorter rejected fragments are retained before derived APS evidence.
   OtisCountObservationConfig count_config = count_observation_config();
   const bool window_completed = otis_count_observation_on_pps_boundary(
-      &runtime_state, &status_emit_context, &count_config, &observation);
+      &runtime_state, &dual_core_timing_status_context, &count_config, &observation);
   if (selection.has_span) {
     // Reuse the timing owner's existing sequential evidence scratch buffer.
     // The timing owner formats one accepted-span record at a time.
@@ -2091,7 +2091,7 @@ void boot_phase_timer_init(void) {
   runtime_state.tcxo.fault_after_startup = false;
   OtisCountObservationConfig count_config = count_observation_config();
   const bool ready = otis_count_observation_begin(
-      &runtime_state, &status_emit_context, &count_config);
+      &runtime_state, &dual_core_timing_status_context, &count_config);
   record_capability_result(OtisBootCapability::OscillatorCount, ready);
   complete_boot_phase(BootPhase::TimerInit);
 }
@@ -2200,7 +2200,7 @@ void boot_phase_run_mode(void) {
 
 void service_tcxo_gate(void) {
   OtisCountObservationConfig count_config = count_observation_config();
-  otis_count_observation_service(&runtime_state, &status_emit_context,
+  otis_count_observation_service(&runtime_state, &dual_core_timing_status_context,
                                  &count_config);
 }
 
