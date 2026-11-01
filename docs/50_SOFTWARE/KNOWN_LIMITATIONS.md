@@ -32,9 +32,17 @@ The following limitations apply to this implementation candidate:
   open. The 25-day observation reproduced 2,440 observation-age ambiguity losses
   and two late boundaries. The 31 October candidate refreshes proven-empty FIFO
   observations between status fields without consuming capture or renewing IRQ
-  credit. Deterministic collision tests and the fixed build pass, but physical
-  execution bounds and the new image's short integration gate remain open.
-  Native tests retain their simulated-device boundary.
+  credit. That image completed the 90-minute gate, with a maximum retained
+  bracket of 230 microseconds and no epoch resets. Its subsequent open-ended
+  observation nevertheless recorded 130 wide-bracket losses in a 22-minute
+  cluster, reaching 7,134 microseconds. The count module's private publisher
+  bypassed the refreshed callback; the original collision test substituted a
+  count producer which did not exercise that branch. The
+  [1 November repair](COUNT_STATUS_SERVICE_REPAIR_20261101.md) removes that
+  bypass, binds all Core 1 count callers to the timing context and tests the
+  actual producer. The current physical run remains on its original image;
+  candidate validation does not establish physical execution bounds or long-run
+  reliability. Native tests retain their simulated-device boundary.
 - The epoch-305 four-count excursion drove a 20-code correction; its completed
   response was classified as excess against the transient-bearing pre-window.
   Alternative descriptive pre-baselines change a fresh-state local response

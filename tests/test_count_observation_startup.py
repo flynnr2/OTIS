@@ -39,7 +39,8 @@ def test_startup_transition_status_follows_canonical_consumption(tmp_path: Path)
         "-I", str(ROOT / "tests/cpp/pps_snapshot_backend_stubs"),
         "-I", str(FIRMWARE),
         str(ROOT / "tests/cpp/count_observation_startup_harness.cpp"),
-        str(FIRMWARE / "otis_count_observation.cpp"), "-o", str(executable),
+        str(FIRMWARE / "otis_count_observation.cpp"),
+        str(FIRMWARE / "otis_status_emit.cpp"), "-o", str(executable),
     ], check=True, cwd=ROOT)
     result = subprocess.run([str(executable)], check=True, capture_output=True, text=True)
     assert "sequence=2 transition_rows=0" in result.stdout
